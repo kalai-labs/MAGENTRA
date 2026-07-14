@@ -1,0 +1,24 @@
+{
+  "name": "magentra-monorepo",
+  "version": "0.1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
+    "commit": "node tools/version/bin/magentra-version.mjs commit",
+    "version:current": "node tools/version/bin/magentra-version.mjs current",
+    "version:plan": "node tools/version/bin/magentra-version.mjs plan",
+    "version:apply": "node tools/version/bin/magentra-version.mjs apply",
+    "version:check": "node tools/version/bin/magentra-version.mjs check",
+    "test:version": "node --test \"tools/version/test/*.test.mjs\"",
+    "typecheck:version": "tsc -p tools/version"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

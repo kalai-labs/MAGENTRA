@@ -1,0 +1,28 @@
+{
+  "$comment": "Configuration for the MAGENTRA version tool. See VERSIONING.md.",
+
+  "tagPrefix": "v",
+  "releaseBranch": "main",
+
+  "targets": [
+    { "path": "package.json", "format": "full" }
+  ],
+
+  "types": {
+    "feat":     { "bump": "minor", "section": "Features" },
+    "fix":      { "bump": "patch", "section": "Bug fixes" },
+    "perf":     { "bump": "patch", "section": "Performance" },
+    "revert":   { "bump": "patch", "section": "Reverts" },
+    "docs":     { "bump": "build", "section": "Documentation" },
+    "refactor": { "bump": "build", "section": "Refactoring" },
+    "test":     { "bump": "build", "section": "Tests" },
+    "build":    { "bump": "build", "section": "Build system" },
+    "ci":       { "bump": "build", "section": "Continuous integration" },
+    "chore":    { "bump": "build", "section": "Chores" },
+    "style":    { "bump": "build", "section": "Code style" }
+  },
+
+  "scopes": [],
+
+  "subjectMaxLength": 72
+}

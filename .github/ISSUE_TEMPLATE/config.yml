@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: Question or idea
+    url: https://github.com/kalai-labs/MAGENTRA/discussions
+    about: Ask a question, or discuss an idea, in Discussions.
+
+  - name: How do I contribute?
+    url: https://github.com/kalai-labs/MAGENTRA/blob/main/CONTRIBUTING.md
+    about: Read this before you send your first pull request.
+
+  - name: How does the version work?
+    url: https://github.com/kalai-labs/MAGENTRA/blob/main/VERSIONING.md
+    about: MAGENTRA uses a version that has four parts.

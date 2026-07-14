@@ -1,0 +1,35 @@
+name: Feature request
+description: Tell us about a feature that MAGENTRA must have.
+title: 'feat: <a short description of the feature>'
+labels: [enhancement]
+
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is the problem?
+      description: Tell us the problem first, and not the solution.
+      placeholder: I cannot see which model a session uses.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What is your solution?
+      description: Tell us what MAGENTRA must do.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What else did you think about?
+      description: Tell us about the other solutions, and why they are not as good.
+
+  - type: checkboxes
+    id: breaking
+    attributes:
+      label: Does this break the old behaviour?
+      options:
+        - label: Yes. A user must change something to use the new version.

@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Two releases must not run at the same time. A second release would use an old
+# version, because the first release did not push its commit yet.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    # A fork must not make a release in its own repository.
+    if: github.event.repository.fork == false
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The version tool reads the tags and the commits of the full history.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Test the version tool
+        run: npm run test:version
+
+      - name: Set the identity of the release author
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      # The tool writes VERSION, CHANGELOG.md and the target files. Then it
+      # makes a commit and a tag. The commit message holds `[skip ci]`.
+      # Therefore this job does not start again for the release commit.
+      - name: Make the release
+        id: release
+        run: node tools/version/bin/magentra-version.mjs apply
+
+      - name: Push the commit and the tag
+        if: steps.release.outputs.released == 'true'
+        run: git push --follow-tags origin main
+
+      # The annotated tag holds the changelog of this release. Therefore the
+      # notes of the GitHub release are the same as the changelog.
+      - name: Publish the GitHub release
+        if: steps.release.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: gh release create "$TAG" --title "$TAG" --notes-from-tag
+
+      - name: Report the result
+        run: |
+          if [ '${{ steps.release.outputs.released }}' = 'true' ]; then
+            echo "Released ${{ steps.release.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No release. No commit changes the version.' >> "$GITHUB_STEP_SUMMARY"
+          fi

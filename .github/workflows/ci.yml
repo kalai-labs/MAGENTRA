@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  version-tool:
+    name: Version tool (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # The version tool has no runtime dependencies. Therefore `npm ci` is not
+      # necessary here, and the job starts immediately.
+      - name: Test the version tool
+        run: npm run test:version
+
+  types:
+    name: Types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # TypeScript reads the types in the comments of the version tool.
+      - name: Check the types of the version tool
+        run: npm run typecheck:version
+
+  commits:
+    name: Commit messages
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # A maintainer squashes a pull request into one commit. The title of the
+      # pull request becomes the message of that commit. Therefore the title
+      # must also be correct.
+      - name: Check the title of the pull request
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          printf '%s\n' "$PR_TITLE" > "$RUNNER_TEMP/pr-title.txt"
+          node tools/version/bin/magentra-version.mjs check --message-file "$RUNNER_TEMP/pr-title.txt"
+
+      - name: Check the commits of the pull request
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node tools/version/bin/magentra-version.mjs check --range "$BASE..$HEAD"
+
+  next-version:
+    name: Next version
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Show the result of this pull request on the summary page. A reviewer
+      # then sees the new version before the merge.
+      - name: Show the next version
+        run: |
+          {
+            echo '## Next version'
+            echo
+            echo '```'
+            NO_COLOR=1 node tools/version/bin/magentra-version.mjs plan
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

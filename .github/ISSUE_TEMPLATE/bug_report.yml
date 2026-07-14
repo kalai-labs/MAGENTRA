@@ -1,0 +1,66 @@
+name: Bug report
+description: Tell us about a defect in MAGENTRA.
+title: 'fix: <a short description of the defect>'
+labels: [bug]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report.
+
+        Please search the open issues first. Somebody can have the same problem.
+
+  - type: textarea
+    id: what-happens
+    attributes:
+      label: What happens?
+      description: Tell us what MAGENTRA does now.
+      placeholder: MAGENTRA stops with an error when I exit a session.
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-should-happen
+    attributes:
+      label: What must happen?
+      description: Tell us what MAGENTRA must do.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How do we see the defect?
+      description: Give us the exact steps. We must be able to repeat them.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: 'Run `npm run version:current`, or look at the tag of your release.'
+      placeholder: 0.1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Your operating system, and your Node.js version.
+      placeholder: Ubuntu 24.04, Node.js 20.11.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output
+      description: Copy the error message or the log here. Do not add a picture of text.
+      render: shell
