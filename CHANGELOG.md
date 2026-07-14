@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.2.0.0 — 2026-07-14
+
+### Features
+
+- desktop app and agent engine ([3105fe9](https://github.com/kalai-labs/MAGENTRA/commit/3105fe93b0bbedbc7c5a7ecdf4a9709a8f2060d5))
+
+[Compare with v0.1.0.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.1.0.0...v0.2.0.0)
+
 ## 0.1.0.0 — 2026-07-14
 
 The first release.

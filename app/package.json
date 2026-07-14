@@ -1,6 +1,6 @@
 {
   "name": "magentra-app",
-  "version": "0.1.0.0",
+  "version": "0.2.0.0",
   "private": true,
   "description": "MAGENTRA desktop app \u2014 the Electron shell around the agent engine.",
   "main": "main.js",
