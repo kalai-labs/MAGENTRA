@@ -1,24 +1,32 @@
 {
-  "name": "magentra-monorepo",
+  "name": "magentra",
   "version": "0.1.0.0",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
-  "engines": {
-    "node": ">=20"
-  },
+  "workspaces": [
+    "engine/*",
+    "app"
+  ],
+  "engines": { "node": ">=20" },
   "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "typecheck": "tsc -b",
+    "app": "npm start --workspace app",
+    "dist:linux": "npm run dist:linux --workspace app",
+    "dist:win": "npm run dist --workspace app",
     "prepare": "git config core.hooksPath .githooks || true",
     "commit": "node tools/version/bin/magentra-version.mjs commit",
     "version:current": "node tools/version/bin/magentra-version.mjs current",
     "version:plan": "node tools/version/bin/magentra-version.mjs plan",
     "version:apply": "node tools/version/bin/magentra-version.mjs apply",
     "version:check": "node tools/version/bin/magentra-version.mjs check",
-    "test:version": "node --test \"tools/version/test/*.test.mjs\"",
+    "test:version": "node tools/version/bin/run-tests.mjs",
     "typecheck:version": "tsc -p tools/version"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.0.0",
     "typescript": "^5.6.0"
   }
 }
