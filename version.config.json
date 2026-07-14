@@ -1,28 +1,93 @@
 {
   "$comment": "Configuration for the MAGENTRA version tool. See VERSIONING.md.",
-
   "tagPrefix": "v",
   "releaseBranch": "main",
-
   "targets": [
-    { "path": "package.json", "format": "full" }
+    {
+      "path": "package.json",
+      "format": "full"
+    },
+    {
+      "path": "engine/protocol/package.json",
+      "format": "full"
+    },
+    {
+      "path": "engine/providers/package.json",
+      "format": "full"
+    },
+    {
+      "path": "engine/core/package.json",
+      "format": "full"
+    },
+    {
+      "path": "engine/tools/package.json",
+      "format": "full"
+    },
+    {
+      "path": "engine/host/package.json",
+      "format": "full"
+    },
+    {
+      "path": "app/package.json",
+      "format": "full"
+    }
   ],
-
   "types": {
-    "feat":     { "bump": "minor", "section": "Features" },
-    "fix":      { "bump": "patch", "section": "Bug fixes" },
-    "perf":     { "bump": "patch", "section": "Performance" },
-    "revert":   { "bump": "patch", "section": "Reverts" },
-    "docs":     { "bump": "build", "section": "Documentation" },
-    "refactor": { "bump": "build", "section": "Refactoring" },
-    "test":     { "bump": "build", "section": "Tests" },
-    "build":    { "bump": "build", "section": "Build system" },
-    "ci":       { "bump": "build", "section": "Continuous integration" },
-    "chore":    { "bump": "build", "section": "Chores" },
-    "style":    { "bump": "build", "section": "Code style" }
+    "feat": {
+      "bump": "minor",
+      "section": "Features"
+    },
+    "fix": {
+      "bump": "patch",
+      "section": "Bug fixes"
+    },
+    "perf": {
+      "bump": "patch",
+      "section": "Performance"
+    },
+    "revert": {
+      "bump": "patch",
+      "section": "Reverts"
+    },
+    "docs": {
+      "bump": "build",
+      "section": "Documentation"
+    },
+    "refactor": {
+      "bump": "build",
+      "section": "Refactoring"
+    },
+    "test": {
+      "bump": "build",
+      "section": "Tests"
+    },
+    "build": {
+      "bump": "build",
+      "section": "Build system"
+    },
+    "ci": {
+      "bump": "build",
+      "section": "Continuous integration"
+    },
+    "chore": {
+      "bump": "build",
+      "section": "Chores"
+    },
+    "style": {
+      "bump": "build",
+      "section": "Code style"
+    }
   },
-
-  "scopes": [],
-
+  "scopes": [
+    "engine",
+    "core",
+    "tools",
+    "providers",
+    "protocol",
+    "host",
+    "app",
+    "docs",
+    "build"
+  ],
   "subjectMaxLength": 72
 }

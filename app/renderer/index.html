@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="phosphor" data-rain="faint" data-motion="full" data-detail="cinematic">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:;" />
+  <title>MAGENTRA</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-view="console">
+  <canvas id="rain"></canvas>
+  <div id="crt"></div>
+
+  <!-- ── left dock: the only navigation chrome ─────────────────────────── -->
+  <nav id="dock">
+    <div id="logo" title="MAGENTRA">
+      <span class="logo-mark">▮</span><span class="logo-text">MAGENTRA</span>
+    </div>
+    <button class="dock-btn active" id="navConsole" title="Console">
+      <span class="dock-glyph">▤</span><span class="dock-label">CONSOLE</span>
+    </button>
+    <button class="dock-btn hidden" id="teamBtn" title="Crew designer">
+      <span class="dock-glyph team-glyph">◪</span><span class="dock-label">CREW</span>
+    </button>
+    <button class="dock-btn hidden" id="navMission" title="Mission tracker">
+      <span class="dock-glyph">◒</span><span class="dock-label">MISSION</span>
+      <span id="dockMissionCount" class="dock-badge hidden">0</span>
+    </button>
+    <button class="dock-btn hidden" id="navChanges" title="Changes this session">
+      <span class="dock-glyph">±</span><span class="dock-label">CHANGES</span>
+      <span id="dockChangesCount" class="dock-badge hidden">0</span>
+    </button>
+    <div class="dock-spacer"></div>
+    <button class="dock-btn" id="navSettings" title="Settings">
+      <span class="dock-glyph">⚙</span><span class="dock-label">SETTINGS</span>
+    </button>
+  </nav>
+
+  <!-- ── single status strip ───────────────────────────────────────────── -->
+  <header id="topbar">
+    <button id="workspaceBtn" title="Choose workspace folder">
+      <span class="ws-glyph">◳</span><span id="workspacePath">select workspace</span>
+    </button>
+    <div id="modeChips" title="Styles (.ma)"></div>
+    <div id="topbar-right">
+      <div id="agentMeter" class="hidden" title="Live activity">
+        <span class="meter-glyph">⬢</span>
+        <span id="agentCount">0</span><span class="meter-label">agents</span>
+        <span class="meter-dot">·</span>
+        <span id="toolCount">0</span><span class="meter-label">ops</span>
+      </div>
+      <select id="modelSelect" title="Model (price per 1M tokens, in/out)">
+        <option value="openai/gpt-oss-120b">GPT-OSS 120B — $0.04 / $0.17</option>
+        <option value="deepseek-ai/DeepSeek-V4-Flash" selected>DeepSeek V4 Flash — $0.09 / $0.18</option>
+        <option value="Qwen/Qwen3-14B">Qwen3 14B — $0.12 / $0.24</option>
+        <option value="google/gemma-4-26B-A4B-it">Gemma 4 26B — $0.07 / $0.34</option>
+        <option value="google/gemma-4-31B-it">Gemma 4 31B — $0.13 / $0.38</option>
+        <option value="deepseek-ai/DeepSeek-V3.2">DeepSeek V3.2 — $0.26 / $0.38</option>
+        <option value="Qwen/Qwen3.6-35B-A3B">Qwen3.6 35B — $0.15 / $0.95</option>
+        <option value="Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo">Qwen3 Coder 480B — $0.30 / $1.00</option>
+        <option value="MiniMaxAI/MiniMax-M2.5">MiniMax M2.5 — $0.15 / $1.15</option>
+        <option value="XiaomiMiMo/MiMo-V2.5">MiMo V2.5 — $0.40 / $2.00</option>
+        <option value="zai-org/GLM-5">GLM-5 — $0.60 / $2.08</option>
+        <option value="moonshotai/Kimi-K2.5">Kimi K2.5 — $0.45 / $2.25</option>
+        <option value="deepseek-ai/DeepSeek-V4-Pro">DeepSeek V4 Pro — $1.30 / $2.60</option>
+        <option value="zai-org/GLM-5.2">GLM-5.2 — $0.93 / $3.00</option>
+        <option value="moonshotai/Kimi-K2.7-Code">Kimi K2.7 Code — $0.74 / $3.50</option>
+        <option value="moonshotai/Kimi-K2.6">Kimi K2.6 — $0.75 / $3.50</option>
+        <option value="__custom__">Custom…</option>
+      </select>
+      <input id="customModel" class="hidden" type="text" placeholder="provider/model-id" spellcheck="false" />
+      <div id="statusLed" class="idle" title="idle"></div>
+    </div>
+  </header>
+
+  <!-- ── stage: exactly one view visible ───────────────────────────────── -->
+  <div id="stage">
+
+    <section id="consoleView" class="stage-view">
+      <main id="transcript">
+        <div id="emptyState">
+          <pre class="empty-logo">
+▄▄  ▄▄  ▄▄▄  ▄▄▄▄ ▄▄▄▄ ▄▄  ▄ ▄▄▄▄▄ ▄▄▄▄  ▄▄▄
+██▀▄▀██ ██▄█ ██▄▄ ██▄▄ ██▀▄█   █   ██▄█ ██▄█
+██   ██ ██ █ ██▄█ ██▄▄ ██ ▀█   █   ██ █ ██ █</pre>
+          <p class="empty-tag">autonomous agent harness</p>
+          <button id="pickFolderBtn">SELECT WORKSPACE ▸</button>
+          <div id="recentList" class="recent-list hidden"></div>
+        </div>
+      </main>
+
+      <div id="nowLine" class="hidden">
+        <div class="now-inner">
+          <span id="nowSpinner">⠋</span>
+          <span id="nowText">idle</span>
+          <span id="nowTimer"></span>
+        </div>
+      </div>
+
+      <footer id="composer">
+        <div class="composer-inner">
+          <div id="slashPop" class="hidden"></div>
+          <textarea id="promptInput" rows="1" placeholder="Enter directive…" spellcheck="false" disabled></textarea>
+          <div class="composer-actions">
+            <button id="clearBtn" title="Clear chat and start a fresh session (Ctrl+L)" disabled>CLEAR ⌫</button>
+            <button id="sendBtn" disabled>SEND ⏎</button>
+            <button id="stopBtn" class="hidden" title="Hard stop — kills the turn, all agents, and any background work (Esc)">STOP ✕</button>
+          </div>
+        </div>
+        <div id="hintLine">
+          <span id="hintModel">deepseek-ai/DeepSeek-V4-Flash</span>
+          <span class="hint-sep">│</span>
+          <span id="hintAuto" class="hint-auto">autonomous · deletions always ask</span>
+          <span id="hintUsage" class="hint-usage hidden" title="Context in the window now · session cost so far (/session for the full bill)"></span>
+        </div>
+      </footer>
+    </section>
+
+    <section id="teamView" class="stage-view hidden">
+      <div class="team-head view-head">
+        <span class="team-title view-title">◪ CREW</span>
+        <span id="teamCount" class="team-sub view-sub">no agents</span>
+        <button id="draftTeamBtn">✨ DRAFT MY TEAM</button>
+        <button id="teamReloadBtn" class="view-tool" title="Reload team files">⟳</button>
+        <button id="teamCloseBtn" class="view-tool" title="Back to console">✕</button>
+      </div>
+      <div id="teamRoster"></div>
+      <p class="team-hint">Agents live in <code>.magentra/team/*.md</code> — edit files directly or drop documents onto a card to fill its backpack.</p>
+    </section>
+
+    <section id="changesView" class="stage-view hidden">
+      <div class="view-head">
+        <span class="view-title">± CHANGES</span>
+        <span id="changesSub" class="view-sub">no edits yet</span>
+        <button id="changesCloseBtn" class="view-tool" title="Back to console">✕</button>
+      </div>
+      <div id="changesList"></div>
+      <p id="changesEmpty" class="changes-empty">No edits yet this session. Files the agent writes appear here as diffs.</p>
+    </section>
+
+    <section id="settingsView" class="stage-view hidden">
+      <div class="view-head">
+        <span class="view-title">⚙ SETTINGS</span>
+        <span class="view-sub">appearance · activity · connection</span>
+        <button id="settingsCloseBtn" class="view-tool" title="Back to console">✕</button>
+      </div>
+
+      <div class="set-grid">
+        <div class="set-card">
+          <div class="set-card-title">APPEARANCE</div>
+
+          <div class="set-row">
+            <span class="set-label">Typeface</span>
+            <select id="setFont">
+              <option value='"Cascadia Mono", Consolas, monospace' selected>Cascadia Mono</option>
+              <option value='"Cascadia Code", "Cascadia Mono", Consolas, monospace'>Cascadia Code</option>
+              <option value='Consolas, "Courier New", monospace'>Consolas</option>
+              <option value='"Courier New", Courier, monospace'>Courier New</option>
+            </select>
+          </div>
+
+          <div class="set-row">
+            <span class="set-label">Text size</span>
+            <div class="seg" id="setSize">
+              <button class="seg-btn" data-size="12">S</button>
+              <button class="seg-btn" data-size="13">M</button>
+              <button class="seg-btn" data-size="15">L</button>
+              <button class="seg-btn on" data-size="17">XL</button>
+            </div>
+          </div>
+
+          <div class="set-row">
+            <span class="set-label">Theme</span>
+            <div class="swatches" id="setTheme">
+              <button class="swatch on" data-theme="phosphor" title="Matrix terminal — dark">PHOSPHOR</button>
+              <button class="swatch" data-theme="glacier" title="Winter — light, snowfall">GLACIER</button>
+              <button class="swatch" data-theme="dusk" title="Night observatory — dark, stars">DUSK</button>
+              <button class="swatch" data-theme="paper" title="Print — light, maximum readability">PAPER</button>
+            </div>
+          </div>
+
+          <div class="set-row">
+            <span class="set-label">Rain</span>
+            <div class="seg" id="setRain">
+              <button class="seg-btn" data-rain="off">OFF</button>
+              <button class="seg-btn on" data-rain="faint">FAINT</button>
+              <button class="seg-btn" data-rain="live">LIVE</button>
+            </div>
+          </div>
+
+          <div class="set-row">
+            <span class="set-label">Motion</span>
+            <div class="seg" id="setMotion">
+              <button class="seg-btn on" data-motion="full">FULL</button>
+              <button class="seg-btn" data-motion="calm">CALM</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="set-card">
+          <div class="set-card-title">ACTIVITY</div>
+          <div class="set-row">
+            <span class="set-label">Detail</span>
+            <div class="seg" id="setDetail">
+              <button class="seg-btn on" data-detail="cinematic">CINEMATIC</button>
+              <button class="seg-btn" data-detail="engineer">ENGINEER</button>
+            </div>
+          </div>
+          <p class="set-note">Cinematic shows the mission as choreography. Engineer exposes every operation and its raw output.</p>
+        </div>
+
+        <div class="set-card">
+          <div class="set-card-title">SAFETY</div>
+          <div class="set-row">
+            <span class="set-label">Deletions</span>
+            <div class="seg" id="setDeletions">
+              <button class="seg-btn on" data-deletions="ask">ASK ALWAYS</button>
+              <button class="seg-btn" data-deletions="allow">ALLOW</button>
+            </div>
+          </div>
+          <div class="set-row">
+            <span class="set-label">Commands</span>
+            <div class="seg" id="setCommands">
+              <button class="seg-btn on" data-commands="auto">AUTONOMOUS</button>
+              <button class="seg-btn" data-commands="ask">ASK ALWAYS</button>
+            </div>
+          </div>
+          <p class="set-note">ASK ALWAYS pauses for approval before consequential commands — never for reading. ALLOW lets the agent delete files without a prompt when you ask for it or the mission requires it.</p>
+          <div class="set-row">
+            <span class="set-label">Web search</span>
+            <div class="seg" id="setWebSearch">
+              <button class="seg-btn on" data-websearch="on">ON</button>
+              <button class="seg-btn" data-websearch="off">OFF</button>
+            </div>
+          </div>
+          <p class="set-note">Engine restarts when changed. Uses free DuckDuckGo by default.</p>
+        </div>
+
+        <div class="set-card">
+          <div class="set-card-title">CONNECTION</div>
+          <div class="set-row"><span class="set-label">Base URL</span><input id="setBaseUrl" type="text" spellcheck="false" placeholder="https://api.deepinfra.com/v1/openai" /></div>
+          <div class="set-row">
+            <span class="set-label">API key</span>
+            <div class="key-wrap">
+              <input id="setApiKey" type="password" spellcheck="false" placeholder="●●●●●●●●" />
+              <button id="setKeyReveal" title="Reveal">◉</button>
+            </div>
+          </div>
+          <div class="set-row"><span class="set-label">Model</span><input id="setModelDefault" type="text" spellcheck="false" placeholder="deepseek-ai/DeepSeek-V4-Flash" /></div>
+          <div class="set-row"><span class="set-label">Context size</span><input id="setContext" type="number" min="256" step="256" placeholder="4096 (local models)" /></div>
+          <div class="set-actions">
+            <span id="setConnStatus"></span>
+            <button id="setTestBtn">TEST</button>
+            <button id="setSaveBtn">SAVE TO WORKSPACE</button>
+          </div>
+          <p class="set-note">Credentials are written to <code>.env</code> in the current workspace. They never leave this machine.</p>
+        </div>
+
+        <div class="set-card">
+          <div class="set-card-title">ABOUT</div>
+          <p class="set-note"><span class="logo-mark">▮</span> MAGENTRA <span id="setVersion"></span> — autonomous agent harness.</p>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ── mission rail (overlay, right) ──────────────────────────────────── -->
+  <aside id="taskRail" class="hidden">
+    <div class="rail-head">
+      <span class="rail-title">◒ MISSION</span>
+      <span id="taskProgress">0/0</span>
+      <button id="taskCollapse" title="Collapse">▸</button>
+    </div>
+    <div class="rail-bar"><div id="taskBarFill"></div></div>
+    <div id="taskList"></div>
+  </aside>
+  <button id="taskTab" class="hidden" title="Show mission">◒ <span id="taskTabCount">0/0</span></button>
+
+  <!-- ── deletion guard ─────────────────────────────────────────────────── -->
+  <div id="deleteModal" class="hidden">
+    <div class="modal-box">
+      <div class="modal-title">⚠ APPROVAL REQUIRED</div>
+      <p class="modal-sub">The agent wants to run:</p>
+      <pre id="deleteSubject"></pre>
+      <div class="modal-actions">
+        <button id="denyBtn">DENY (Esc)</button>
+        <button id="allowBtn">ALLOW ONCE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── first-run wizard ───────────────────────────────────────────────── -->
+  <div id="setupWizard" class="hidden">
+    <div class="wiz-box">
+      <button id="wizCloseBtn" class="wiz-close" title="Not now (Esc)">✕</button>
+      <div class="wiz-title"><span class="logo-mark">▮</span> LINK YOUR ENGINE</div>
+      <p class="wiz-sub">This workspace has no credentials yet. Choose a provider and Magentra will write a local <code>.env</code> for it.</p>
+
+      <div class="wiz-presets">
+        <button class="wiz-preset on" data-preset="deepinfra">DEEPINFRA</button>
+        <button class="wiz-preset" data-preset="anthropic">ANTHROPIC</button>
+        <button class="wiz-preset" data-preset="ollama">OLLAMA</button>
+        <button class="wiz-preset" data-preset="lmstudio">LM STUDIO</button>
+        <button class="wiz-preset" data-preset="custom">CUSTOM</button>
+      </div>
+
+      <label class="wiz-field"><span>BASE URL</span>
+        <input id="wizBaseUrl" type="text" spellcheck="false" value="https://api.deepinfra.com/v1/openai" />
+      </label>
+      <label class="wiz-field" id="wizApiKeyField"><span>API KEY</span>
+        <input id="wizApiKey" type="password" spellcheck="false" placeholder="paste your key — stored only in this workspace" />
+      </label>
+      <label class="wiz-field"><span>MODEL</span>
+        <input id="wizModel" type="text" spellcheck="false" value="deepseek-ai/DeepSeek-V4-Flash" list="wizModels" />
+        <datalist id="wizModels">
+          <option value="deepseek-ai/DeepSeek-V4-Flash"></option>
+          <option value="openai/gpt-oss-120b"></option>
+          <option value="Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo"></option>
+          <option value="zai-org/GLM-5.2"></option>
+          <option value="moonshotai/Kimi-K2.6"></option>
+          <option value="deepseek-ai/DeepSeek-V4-Pro"></option>
+          <option value="qwen3:8b"></option>
+          <option value="qwen2.5-coder:7b"></option>
+          <option value="llama3.1:8b"></option>
+        </datalist>
+      </label>
+      <label class="wiz-field" id="wizContextField" hidden><span>CONTEXT SIZE</span>
+        <input id="wizContext" type="number" min="256" step="256" value="4096" spellcheck="false" />
+      </label>
+
+      <div class="wiz-actions">
+        <span id="wizStatus"></span>
+        <button id="wizTestBtn">TEST</button>
+        <button id="wizStartBtn">IGNITE ▸</button>
+      </div>
+      <p class="wiz-note" id="wizNote">The key is written to <code>.env</code> beside your code and never leaves this machine.</p>
+    </div>
+  </div>
+
+  <!-- Renderer modules: classic scripts sharing one global scope, executed in
+       this exact order (each builds on what the ones above it define). -->
+  <script src="modules/dom.js"></script>
+  <script src="modules/state.js"></script>
+  <script src="modules/util.js"></script>
+  <script src="modules/views.js"></script>
+  <script src="modules/missions.js"></script>
+  <script src="modules/stream.js"></script>
+  <script src="modules/crew.js"></script>
+  <script src="modules/setup.js"></script>
+  <script src="modules/events.js"></script>
+  <script src="modules/landing.js"></script>
+  <script src="modules/session.js"></script>
+  <script src="modules/composer.js"></script>
+  <script src="modules/atmosphere.js"></script>
+</body>
+</html>

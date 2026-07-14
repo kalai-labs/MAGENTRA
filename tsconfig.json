@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "engine/protocol" },
+    { "path": "engine/providers" },
+    { "path": "engine/core" },
+    { "path": "engine/tools" },
+    { "path": "engine/host" }
+  ]
+}

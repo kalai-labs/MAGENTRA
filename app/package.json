@@ -1,0 +1,77 @@
+{
+  "name": "magentra-app",
+  "version": "0.1.0.0",
+  "private": true,
+  "description": "MAGENTRA desktop app \u2014 the Electron shell around the agent engine.",
+  "main": "main.js",
+  "scripts": {
+    "start": "node scripts/launch.js",
+    "bundle:engine": "node scripts/bundle-engine.js",
+    "dist": "npm run bundle:engine && electron-builder --win portable",
+    "dist:linux": "npm run bundle:engine && electron-builder --linux",
+    "dist:all": "npm run bundle:engine && electron-builder --win portable --linux",
+    "smoke": "node scripts/launch.js --smoke"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1"
+  },
+  "build": {
+    "appId": "com.magentra.app",
+    "productName": "MAGENTRA",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "package.json",
+      {
+        "from": "build-resources/app",
+        "to": "."
+      }
+    ],
+    "win": {
+      "target": "portable",
+      "artifactName": "MAGENTRA-portable.exe",
+      "signExecutable": false,
+      "extraResources": [
+        {
+          "from": "build-resources/engine",
+          "to": "engine",
+          "filter": [
+            "engine.cjs",
+            "rg.exe"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "MAGENTRA-${version}-linux-${arch}.${ext}",
+      "category": "Development",
+      "extraResources": [
+        {
+          "from": "build-resources/engine",
+          "to": "engine",
+          "filter": [
+            "engine.cjs",
+            "rg"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,86 @@
+import {
+  DEFAULT_OPENAI_BASE_URL,
+  Engine,
+  createMcpTools,
+  createProviderForEndpoint,
+  isLocalBaseUrl,
+  loadSettings,
+  loadSkills,
+  resolveApiKey,
+} from "@magentra/core";
+import type { PermissionMode } from "@magentra/protocol";
+import type { Provider } from "@magentra/providers";
+import { createDefaultRegistry } from "@magentra/tools";
+import { loadDotEnv } from "./env.js";
+
+export interface BootstrapOptions {
+  /** Workspace root the engine operates on. */
+  cwd: string;
+  /** Overrides the permission mode from settings. */
+  mode?: PermissionMode;
+}
+
+export interface BootstrapResult {
+  engine: Engine;
+  /** Non-fatal settings problems, for the caller to surface however it likes. */
+  warnings: string[];
+}
+
+export class MissingApiKeyError extends Error {}
+
+/**
+ * Builds a ready-to-run Engine for `cwd`: loads `.env` and the layered settings,
+ * resolves the API key and provider endpoint, assembles the tool registry
+ * (including any configured MCP servers) and the skills.
+ *
+ * Deliberately free of any frontend concern — no argv, no prompts, no I/O to a
+ * terminal. The stdio host calls it; so can a test, or an in-process embedder.
+ * Throws {@link MissingApiKeyError} rather than exiting, so the caller decides
+ * how to report it.
+ */
+export async function bootstrapEngine(opts: BootstrapOptions): Promise<BootstrapResult> {
+  loadDotEnv(opts.cwd);
+
+  const { settings, warnings } = loadSettings(opts.cwd);
+  if (opts.mode) settings.permissionMode = opts.mode;
+
+  const apiKey = resolveApiKey(settings);
+  const baseUrl = settings.baseUrl ?? DEFAULT_OPENAI_BASE_URL;
+  // Local servers (Ollama, llama.cpp, LM Studio) need no key; hosted ones do.
+  const isLocalEndpoint = settings.provider !== "anthropic" && isLocalBaseUrl(baseUrl);
+  if (!apiKey && !isLocalEndpoint) {
+    const envName =
+      settings.apiKeyEnv ?? (settings.provider === "anthropic" ? "ANTHROPIC_API_KEY" : "DEEPINFRA_API_KEY");
+    throw new MissingApiKeyError(
+      `No API key found. Set ${envName} in the environment or in a .env file in ${opts.cwd}, ` +
+        "or configure it in the app's settings.",
+    );
+  }
+
+  const provider: Provider = createProviderForEndpoint(
+    settings.provider === "anthropic"
+      ? { provider: "anthropic", apiKey: apiKey ?? "" }
+      : {
+          provider: "openai-compatible",
+          baseUrl,
+          apiKey: apiKey ?? "",
+          // Tells a local server which context window to load the model with.
+          ...(isLocalEndpoint ? { numCtx: settings.contextWindow } : {}),
+        },
+  );
+
+  const registry = createDefaultRegistry();
+  for (const tool of await createMcpTools(settings.mcpServers)) {
+    registry.register(tool);
+  }
+
+  const engine = new Engine({
+    cwd: opts.cwd,
+    settings,
+    provider,
+    registry,
+    skills: loadSkills(opts.cwd),
+  });
+
+  return { engine, warnings: warnings.map((w) => `[${w.source}] ${w.message}`) };
+}

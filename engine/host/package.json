@@ -1,0 +1,21 @@
+{
+  "name": "@magentra/host",
+  "version": "0.1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless engine host: runs the agent engine and speaks NDJSON over stdio. The desktop app spawns this; it has no terminal UI.",
+  "main": "./dist/main.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@magentra/core": "*",
+    "@magentra/protocol": "*",
+    "@magentra/providers": "*",
+    "@magentra/tools": "*"
+  }
+}

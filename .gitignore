@@ -4,6 +4,13 @@ out/
 coverage/
 *.tsbuildinfo
 
+# desktop build artifacts
+app/build-resources/
+app/dist/
+
+# workspace state the engine writes
+.magentra/
+
 .env
 .env.*
 !.env.example

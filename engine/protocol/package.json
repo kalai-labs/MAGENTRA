@@ -1,0 +1,14 @@
+{
+  "name": "@magentra/protocol",
+  "version": "0.1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {}
+}
