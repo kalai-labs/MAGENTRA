@@ -13,7 +13,28 @@ function finalizeAssistantEl() {
   if (!currentAssistantEl) return;
   const caret = currentAssistantEl.querySelector(".caret");
   if (caret) caret.remove();
+  // Swap the plain live text for its Markdown rendering. On the off chance the
+  // renderer throws on some pathological input, the raw text already on screen
+  // stays — a message must never vanish over formatting.
+  const raw = currentAssistantEl._raw;
+  if (typeof raw === "string" && raw.length > 0) {
+    try {
+      const rendered = renderMarkdown(raw);
+      currentAssistantEl.textContent = "";
+      currentAssistantEl.appendChild(rendered);
+    } catch {
+      /* keep the plain live text already rendered */
+    }
+  }
   currentAssistantEl = null;
+}
+
+/* Close the live reasoning block so the next segment's thinking starts a fresh
+ * one. Leaves it in the transcript, collapsed. */
+function finalizeThinkingEl() {
+  if (!currentThinkingEl) return;
+  currentThinkingEl.classList.add("done");
+  currentThinkingEl = null;
 }
 
 function appendSysNote(text) {
@@ -28,11 +49,15 @@ function appendSysNote(text) {
 
 function appendSysError(text) {
   finalizeAssistantEl();
-  if (!streamEl) return null;
+  // Before a workspace opens there is no stream yet, but a boot/IPC error must
+  // still be visible — fall back to the transcript container so it lands on the
+  // landing page instead of vanishing (the status LED was the only prior clue).
+  const target = streamEl || transcriptEl;
+  if (!target) return null;
   const el = document.createElement("div");
   el.className = "sys-error";
   el.textContent = text;
-  withAutoScroll(() => streamEl.appendChild(el));
+  withAutoScroll(() => target.appendChild(el));
   return el;
 }
 
@@ -73,12 +98,29 @@ function trimStream() {
   }
 }
 
-function appendTurnSeparator() {
+// How a turn ended, for the separator. A clean completion says nothing extra;
+// anything else is worth surfacing so the user can tell "done" from "stopped"
+// or "failed" at a glance.
+const STOP_REASON_LABELS = {
+  aborted: "stopped by you",
+  error: "ended with an error",
+  max_tokens: "hit the response length limit",
+  max_iterations: "hit the tool-round limit",
+  refusal: "the model declined",
+};
+
+function appendTurnSeparator(stopReason) {
   if (!streamEl) return;
   trimStream();
   const el = document.createElement("div");
   el.className = "turn-sep";
-  el.textContent = timeString();
+  const label = STOP_REASON_LABELS[stopReason];
+  if (label) {
+    el.classList.add("flagged");
+    el.textContent = `${timeString()} · ${label}`;
+  } else {
+    el.textContent = timeString();
+  }
   withAutoScroll(() => streamEl.appendChild(el));
 }
 
@@ -133,9 +175,11 @@ function createToolRow(tool, description, input) {
   const detailEl = document.createElement("pre");
   detailEl.className = "tool-detail";
 
-  if (!cinematic) {
-    rowEl.addEventListener("click", () => rowEl.classList.toggle("open"));
-  }
+  // Every row is click-to-expand, cinematic included: the choreography is the
+  // default look, but a user must always be able to open a row and see the
+  // exact command and result — that is the whole basis of trusting the agent.
+  rowEl.classList.add("expandable");
+  rowEl.addEventListener("click", () => rowEl.classList.toggle("open"));
 
   return { rowEl, detailEl, glyphEl };
 }
@@ -145,25 +189,20 @@ function finishToolRow(row, isError, resultPreview) {
   row.rowEl.classList.add(isError ? "err" : "ok");
   row.glyphEl.textContent = isError ? "✗" : "✓"; // ✗ / ✓
 
-  const cinematic = row.rowEl.classList.contains("op-cine");
-  if (!cinematic) {
-    row.detailEl.textContent = resultPreview;
-  }
+  // The result is always available on expand, in both detail modes — hiding it
+  // in cinematic left the user unable to inspect what a tool returned.
+  row.detailEl.textContent = resultPreview;
 
+  // Show the real error, never a euphemism: "hit a snag — recovering" told the
+  // user nothing and hid genuine failures. summarizeError picks the meaningful
+  // line from the result.
   if (isError) {
-    if (cinematic) {
+    const summary = summarizeError(resultPreview);
+    if (summary) {
       const summaryEl = document.createElement("span");
       summaryEl.className = "tool-err-summary";
-      summaryEl.textContent = "hit a snag — recovering";
+      summaryEl.textContent = summary;
       row.rowEl.insertAdjacentElement("afterend", summaryEl);
-    } else {
-      const summary = summarizeError(resultPreview);
-      if (summary) {
-        const summaryEl = document.createElement("span");
-        summaryEl.className = "tool-err-summary";
-        summaryEl.textContent = summary;
-        row.rowEl.insertAdjacentElement("afterend", summaryEl);
-      }
     }
   }
 }

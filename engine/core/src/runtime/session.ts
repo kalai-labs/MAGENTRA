@@ -11,6 +11,7 @@ import {
   type Usage,
 } from "@magentra/protocol";
 import type { ContentBlock, Msg, Provider, StopReason, ToolSchema } from "@magentra/providers";
+import { friendlyProviderError } from "@magentra/providers";
 import { zodToJsonSchema } from "../util/zodToJsonSchema.js";
 import { AGENT_TYPES, SUBAGENT_RESULT_SECTION, agentToolNames, resolveAgentType } from "../agent/agents.js";
 import {
@@ -1153,7 +1154,11 @@ export class Session {
         });
       } else {
         stopReason = "error";
-        this.emit({ type: "error", message: (err as Error).message, fatal: false });
+        // Provider failures reach the user here: a raw "provider returned 401:
+        // {json}" means nothing, so classify to a plain-English cause. The
+        // original text is preserved in the engine log by the desktop layer.
+        const host = providerHost(this.settings);
+        this.emit({ type: "error", message: friendlyProviderError(err, host), fatal: false });
         if (repairs.length > 0) {
           this.pushMessage({
             role: "user",
@@ -1614,6 +1619,18 @@ function wrapReminder(text: string): string {
   return text.trimStart().startsWith("<system-reminder>")
     ? text
     : `<system-reminder>${text}</system-reminder>`;
+}
+
+/** A short host label for provider-error messages: the endpoint's hostname,
+ * or "anthropic" for the Anthropic provider. Best-effort — never throws. */
+function providerHost(settings: Settings): string | undefined {
+  if (settings.provider === "anthropic") return "anthropic";
+  if (!settings.baseUrl) return undefined;
+  try {
+    return new URL(settings.baseUrl).host;
+  } catch {
+    return undefined;
+  }
 }
 
 function safeParse(json: string): unknown {

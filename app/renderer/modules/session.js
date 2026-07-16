@@ -194,6 +194,7 @@ function resetSessionMeter() {
 }
 
 function applyModel(model) {
+  activeModel = model;
   const options = Array.from(modelSelectEl.options).map((o) => o.value);
   if (options.includes(model)) {
     modelSelectEl.value = model;
@@ -214,7 +215,20 @@ async function handleChooseWorkspace() {
   }
 }
 
+// The model the engine is actually running now. Guards against no-op restarts
+// (re-selecting the same model) and destructive mid-turn restarts.
+let activeModel = null;
+
 async function applyModelChange(model) {
+  if (!model || model === activeModel) return; // nothing changed — no restart
+  // Changing model restarts the engine and drops the current conversation. If
+  // a turn is mid-flight (or any context has built up), make that explicit
+  // rather than silently discarding it.
+  if (busy && !window.confirm(`Switch to ${model}? This restarts the engine and ends the current turn, losing its context.`)) {
+    applyModel(activeModel); // revert the dropdown to the running model
+    return;
+  }
+  activeModel = model;
   await window.magentra.setModel(model);
   hintModelEl.textContent = modelHintText(model);
   appendSysNote(`model set to ${model} — session restarted`);

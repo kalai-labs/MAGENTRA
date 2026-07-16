@@ -79,16 +79,23 @@ function syncActivityUi() {
   sendBtnEl.classList.toggle("hidden", busy);
   setStatusLed(working ? "busy" : "idle");
   document.body.classList.toggle("busy", busy);
+  // A model change restarts the engine; block it mid-turn at the source rather
+  // than racing a confirm dialog against a running turn.
+  if (modelSelectEl) modelSelectEl.disabled = busy;
+  if (customModelEl) customModelEl.disabled = busy;
 
   if (!workspaceOpen) return; // landing page: composer stays disabled regardless
   // Clearing mid-turn would swap the engine's session out from under it.
   clearBtnEl.disabled = busy;
-  // No credentials yet: a prompt would go into a dead engine — lock the
-  // composer and say why, instead of letting the first message fail red.
-  promptInputEl.disabled = busy || !engineLinked;
-  promptInputEl.placeholder = engineLinked
-    ? "Enter directive…"
-    : "engine not linked — open SETTINGS → CONNECTION or the setup wizard";
+  // The composer stays usable during a turn — a message typed now queues and
+  // sends on turn end. It locks only when there are no credentials (a prompt
+  // would go into a dead engine).
+  promptInputEl.disabled = !engineLinked;
+  promptInputEl.placeholder = !engineLinked
+    ? "engine not linked — open SETTINGS → CONNECTION or the setup wizard"
+    : busy
+      ? "queue a follow-up… (sends when the turn ends)"
+      : "Enter directive…";
 }
 
 function onTurnStarted() {
@@ -97,6 +104,7 @@ function onTurnStarted() {
   agentCards.clear();
   toolRows.clear();
   currentAssistantEl = null;
+  currentThinkingEl = null;
   updateAgentMeter();
 
   busy = true;
@@ -129,6 +137,7 @@ function onTurnFinished(event) {
     updateSessionMeter();
   }
 
+  finalizeThinkingEl();
   finalizeAssistantEl();
 
   finalizeAllAgentCards();
@@ -136,31 +145,70 @@ function onTurnFinished(event) {
 
   stopNowLine();
 
-  appendTurnSeparator();
+  appendTurnSeparator(event && event.stopReason);
+
+  // A follow-up typed during the turn now goes out (starting its own turn).
+  flushMessageQueue();
 }
 
 function onTextDelta(text) {
   if (busy) setNowActivity("responding", "");
   if (!streamEl) return;
+  // The model has moved from reasoning to answering — close the reasoning block.
+  finalizeThinkingEl();
   if (!currentAssistantEl) {
     currentAssistantEl = document.createElement("div");
     currentAssistantEl.className = "msg-assistant";
+    // Raw source accumulates here; it streams as plain text for liveness and is
+    // re-rendered as Markdown once the message finalizes (finalizeAssistantEl).
+    currentAssistantEl._raw = "";
+    const live = document.createElement("span");
+    live.className = "md-live";
     const caret = document.createElement("span");
     caret.className = "caret";
     caret.textContent = "▌"; // ▌
+    currentAssistantEl.appendChild(live);
     currentAssistantEl.appendChild(caret);
     withAutoScroll(() => streamEl.appendChild(currentAssistantEl));
   }
-  const caret = currentAssistantEl.querySelector(".caret");
+  currentAssistantEl._raw += text;
+  const live = currentAssistantEl.querySelector(".md-live");
   withAutoScroll(() => {
-    const textNode = document.createTextNode(text);
-    if (caret) currentAssistantEl.insertBefore(textNode, caret);
-    else currentAssistantEl.appendChild(textNode);
+    // Append to the live text span; full Markdown layout waits for finalize so
+    // half-streamed fences/lists don't flicker through partial parses.
+    if (live) live.appendChild(document.createTextNode(text));
   });
+}
+
+// Extended-thinking tokens (reasoning models). Rendered as a dim, collapsed
+// "reasoning" block so it's available without dominating the transcript, and
+// the last line feeds the now-line so "thinking · 45s" shows real movement.
+function onThinkingDelta(text) {
+  if (busy) {
+    const lastLine = text.split("\n").filter(Boolean).pop();
+    setNowActivity("thinking", lastLine ? lastLine.slice(0, 80) : "");
+  }
+  if (!streamEl) return;
+  if (!currentThinkingEl) {
+    finalizeAssistantEl();
+    currentThinkingEl = document.createElement("details");
+    currentThinkingEl.className = "msg-thinking";
+    const summary = document.createElement("summary");
+    summary.textContent = "reasoning";
+    const body = document.createElement("div");
+    body.className = "thinking-body";
+    currentThinkingEl.appendChild(summary);
+    currentThinkingEl.appendChild(body);
+    withAutoScroll(() => streamEl.appendChild(currentThinkingEl));
+  }
+  const body = currentThinkingEl.querySelector(".thinking-body");
+  withAutoScroll(() => body.appendChild(document.createTextNode(text)));
 }
 
 function onToolCallStarted(event) {
   toolCountThisTurn++;
+  // Reasoning for this segment is done once the model acts or speaks.
+  finalizeThinkingEl();
 
   if (event.subagent) {
     const card = getOrCreateAgentCard(event);
@@ -289,6 +337,9 @@ function clearPermissionState() {
 function onEngineGone() {
   backgroundJobs.clear();
   clearPermissionState();
+  // Drop queued follow-ups first: onTurnFinished would otherwise flush one into
+  // the dead engine.
+  clearMessageQueue();
   if (busy) onTurnFinished();
   else syncActivityUi();
 }
@@ -299,12 +350,15 @@ function onQuestionRequest(event) {
   if (!streamEl) return;
 
   (event.questions || []).forEach((q) => {
+    const multi = q.multiSelect === true;
     const cardEl = document.createElement("div");
     cardEl.className = "question-card";
 
     const headEl = document.createElement("div");
     headEl.className = "question-head";
-    headEl.textContent = "QUESTION";
+    // Use the question's own header when it provides one, so a series of
+    // questions is distinguishable instead of a wall of "QUESTION".
+    headEl.textContent = (q.header && q.header.trim()) || "QUESTION";
     cardEl.appendChild(headEl);
 
     const textEl = document.createElement("div");
@@ -312,19 +366,29 @@ function onQuestionRequest(event) {
     textEl.textContent = q.question;
     cardEl.appendChild(textEl);
 
+    if (multi) {
+      const hintEl = document.createElement("div");
+      hintEl.className = "question-multi-hint";
+      hintEl.textContent = "select all that apply";
+      cardEl.appendChild(hintEl);
+    }
+
     const optionsEl = document.createElement("div");
     optionsEl.className = "question-options";
     cardEl.appendChild(optionsEl);
 
-    function answerWith(rawValue, chosenBtnEl) {
+    // Sends the final answer array and locks the card. One element for single
+    // select; every chosen label for multi-select.
+    function submitAnswers(values) {
       window.magentra.send({
         type: "question_response",
         id: event.id,
-        answers: { [q.question]: [rawValue] },
+        answers: { [q.question]: values },
       });
       cardEl.classList.add("answered");
-      if (chosenBtnEl) chosenBtnEl.classList.add("chosen");
     }
+
+    const selected = new Set(); // multi-select accumulator
 
     (q.options || []).forEach((opt) => {
       const isRecommended = opt.label.includes(RECOMMENDED_SUFFIX);
@@ -341,7 +405,24 @@ function onQuestionRequest(event) {
         descEl.textContent = opt.description;
         btn.appendChild(descEl);
       }
-      btn.addEventListener("click", () => answerWith(opt.label, btn));
+      if (multi) {
+        // Toggle membership; the SUBMIT button below sends the whole set.
+        btn.addEventListener("click", () => {
+          if (selected.has(opt.label)) {
+            selected.delete(opt.label);
+            btn.classList.remove("chosen");
+          } else {
+            selected.add(opt.label);
+            btn.classList.add("chosen");
+          }
+        });
+      } else {
+        // Single-select answers immediately on click.
+        btn.addEventListener("click", () => {
+          btn.classList.add("chosen");
+          submitAnswers([opt.label]);
+        });
+      }
       optionsEl.appendChild(btn);
     });
 
@@ -350,33 +431,58 @@ function onQuestionRequest(event) {
 
     const otherInputEl = document.createElement("input");
     otherInputEl.className = "q-other-input";
-    otherInputEl.placeholder = "Other…";
+    otherInputEl.placeholder = multi ? "Add another…" : "Other…";
 
     const otherSendEl = document.createElement("button");
     otherSendEl.className = "q-other-send";
-    otherSendEl.textContent = "SEND";
+    otherSendEl.textContent = multi ? "ADD" : "SEND";
 
-    function sendOther() {
+    function addOther() {
       const val = otherInputEl.value.trim();
       if (!val) return;
-      const chosenBtn = document.createElement("button");
-      chosenBtn.className = "q-opt chosen";
-      chosenBtn.textContent = val;
-      optionsEl.appendChild(chosenBtn);
-      answerWith(val, chosenBtn);
+      if (multi) {
+        // Add as a chosen chip and clear the field; SUBMIT sends it with the rest.
+        selected.add(val);
+        const chip = document.createElement("button");
+        chip.className = "q-opt chosen";
+        chip.textContent = val;
+        chip.addEventListener("click", () => {
+          selected.delete(val);
+          chip.remove();
+        });
+        optionsEl.appendChild(chip);
+        otherInputEl.value = "";
+      } else {
+        const chosenBtn = document.createElement("button");
+        chosenBtn.className = "q-opt chosen";
+        chosenBtn.textContent = val;
+        optionsEl.appendChild(chosenBtn);
+        submitAnswers([val]);
+      }
     }
 
-    otherSendEl.addEventListener("click", sendOther);
+    otherSendEl.addEventListener("click", addOther);
     otherInputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        sendOther();
+        addOther();
       }
     });
 
     otherRowEl.appendChild(otherInputEl);
     otherRowEl.appendChild(otherSendEl);
     cardEl.appendChild(otherRowEl);
+
+    if (multi) {
+      const submitEl = document.createElement("button");
+      submitEl.className = "q-opt q-submit recommended";
+      submitEl.textContent = "SUBMIT SELECTION";
+      submitEl.addEventListener("click", () => {
+        if (selected.size === 0) return;
+        submitAnswers([...selected]);
+      });
+      cardEl.appendChild(submitEl);
+    }
 
     withAutoScroll(() => streamEl.appendChild(cardEl));
   });
@@ -463,6 +569,9 @@ function handleEngineEvent(event) {
     case "text_delta":
       onTextDelta(event.text);
       break;
+    case "thinking_delta":
+      onThinkingDelta(event.text);
+      break;
     case "tool_call_started":
       onToolCallStarted(event);
       break;
@@ -489,6 +598,9 @@ function handleEngineEvent(event) {
       break;
     case "task_list_updated":
       onTaskListUpdated(event);
+      break;
+    case "mode_changed":
+      onModeChanged(event);
       break;
     case "modes_updated":
       onModesUpdated(event);

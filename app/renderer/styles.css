@@ -563,6 +563,84 @@ html[data-theme="paper"] #rain { display: none; }
 }
 @keyframes caretBlink { 50% { opacity: 0; } }
 
+/* Rendered Markdown (assistant messages). The container keeps pre-wrap for the
+   live streaming text; once finalized it holds block elements, which set their
+   own normal wrapping. */
+.msg-assistant .md-p,
+.msg-assistant .md-h,
+.msg-assistant .md-list,
+.msg-assistant .md-quote { white-space: normal; }
+.md-p { margin: 0 0 10px; }
+.md-p:last-child { margin-bottom: 0; }
+.md-h { color: var(--text-hi); font-weight: 700; margin: 14px 0 8px; line-height: 1.3; }
+h1.md-h { font-size: 1.3rem; }
+h2.md-h { font-size: 1.15rem; }
+h3.md-h { font-size: 1.05rem; }
+h4.md-h, h5.md-h, h6.md-h { font-size: 1rem; }
+.md-list { margin: 0 0 10px; padding-left: 1.5em; }
+.md-list li { margin: 2px 0; }
+.md-quote {
+  margin: 0 0 10px;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid color-mix(in srgb, var(--acc) 45%, transparent);
+  color: var(--text-dim);
+}
+.md-link { color: var(--acc); text-decoration: underline; text-underline-offset: 2px; cursor: default; }
+.msg-assistant code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+}
+.md-code {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  background: var(--surface-1, color-mix(in srgb, var(--text) 6%, transparent));
+  border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  white-space: pre;
+}
+.md-code code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: 0.86rem;
+  color: var(--text-hi);
+}
+.md-code code[data-lang]::before {
+  content: attr(data-lang);
+  display: block;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+/* extended-thinking (reasoning models): dim, collapsed by default */
+.msg-thinking {
+  margin: 8px 0;
+  border-left: 2px solid color-mix(in srgb, var(--text-dim) 40%, transparent);
+  padding-left: 10px;
+}
+.msg-thinking > summary {
+  color: var(--text-dim);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+}
+.msg-thinking .thinking-body {
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .sys-note {
   margin: 8px 0;
   color: var(--text-dim);
@@ -600,6 +678,8 @@ html[data-theme="paper"] #rain { display: none; }
   letter-spacing: 0.1em;
   user-select: none;
 }
+/* a turn that did not simply complete — stopped, errored, hit a limit */
+.turn-sep.flagged { color: color-mix(in srgb, var(--amber) 85%, var(--text-dim)); }
 .turn-sep::before, .turn-sep::after {
   content: "";
   flex: 1;
@@ -653,9 +733,11 @@ html[data-theme="paper"] #rain { display: none; }
   word-break: break-word;
 }
 .tool-row.open + .tool-detail { display: block; }
+/* every row is expandable — including cinematic, so detail is always reachable */
+.tool-row.expandable { cursor: pointer; }
 
-/* cinematic: operations become choreography — no names, no payloads */
-.tool-row.op-cine { cursor: default; }
+/* cinematic: operations become choreography — quiet names, payload on expand */
+.tool-row.op-cine { cursor: pointer; }
 .tool-row.op-cine .glyph { color: var(--acc); }
 .tool-row.op-cine .tool-name {
   font-weight: 400;
@@ -799,6 +881,31 @@ html[data-theme="paper"] #rain { display: none; }
   font-size: 0.8rem;
 }
 .first-hint-close:hover { color: var(--text-hi); }
+
+/* queued follow-up messages (typed during a running turn) */
+#queueChip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+#queueChip .queue-label {
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+#queueChip .queue-item {
+  background: color-mix(in srgb, var(--acc) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--acc) 35%, transparent);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+#queueChip .queue-item:hover { border-color: var(--red); color: var(--text-hi); }
 
 /* wizard "get an API key" link-button under the key field */
 .wiz-key-hint {

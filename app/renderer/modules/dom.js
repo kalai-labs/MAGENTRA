@@ -23,6 +23,7 @@ const customModelEl = document.getElementById("customModel");
 const statusLedEl = document.getElementById("statusLed");
 const promptInputEl = document.getElementById("promptInput");
 const slashPopEl = document.getElementById("slashPop");
+const queueChipEl = document.getElementById("queueChip");
 const sendBtnEl = document.getElementById("sendBtn");
 const stopBtnEl = document.getElementById("stopBtn");
 const clearBtnEl = document.getElementById("clearBtn");

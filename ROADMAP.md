@@ -110,51 +110,51 @@ Goal: download → configured → first successful task, without reading source 
 
 Goal: during any task the user can always answer "what is it doing, what changed, why did it stop".
 
-- [ ] **2.1 Markdown + code rendering in the transcript**
+- [x] **2.1 Markdown + code rendering in the transcript** *(new markdown.js — dependency-free, DOM-built so no XSS; live text streams, re-renders on finalize)*
   Files: `app/renderer/modules/landing.js` (~:134-152), new renderer module, `app/renderer/styles.css`.
   Incremental rendering during streaming (or re-render per message on finalize); fenced code blocks styled + syntax highlighted; lists/headings/inline code. Must stay dependency-light (classic-script constraint) or introduce the app's first vendored lib deliberately.
   Done when: a reply containing a fenced diff/code block renders as a distinct, readable block.
 
-- [ ] **2.2 Human-readable provider errors**
+- [x] **2.2 Human-readable provider errors** *(friendlyProviderError in providers/retry.ts; session classifies at emit with the endpoint host)*
   Files: `engine/providers/src/openai-compat.ts` (~:65-69), `engine/providers/src/anthropic.ts`, `engine/providers/src/types.ts`.
   Classify 401/403 ("API key rejected by <host>"), 404 ("model '<m>' not found on this endpoint"), 429 ("rate limited"), ECONNREFUSED/ENOTFOUND ("can't reach <host> — is the server running?"). Keep original detail available (collapsed).
   Done when: a wrong key, a typo'd model, and a stopped local server each produce a distinct plain-English error in the transcript.
 
-- [ ] **2.3 Default detail mode = technical; cinematic rows expandable**
+- [x] **2.3 Default detail mode = technical; cinematic rows expandable** *(every row now click-to-expand incl. cinematic; "hit a snag" euphemism removed — real error shown)*
   Files: `app/renderer/modules/stream.js` (~:116-137), `app/renderer/modules/state.js`.
   Flip the default; make cinematic rows click-to-expand too; apply mode switches retroactively to existing rows; stop masking tool errors as "hit a snag — recovering" (~stream.js:154-158).
   Done when: a new user can click any tool row and see the command/result; switching modes restyles history.
 
-- [ ] **2.4 Turn outcome on the separator**
+- [x] **2.4 Turn outcome on the separator**
   Files: `app/renderer/modules/landing.js` (~:111-132).
   Render `turn_finished.stopReason`: completed silently, but "stopped by you" / "error" / "max tokens" / "iteration cap" labeled.
   Done when: an interrupted turn and an errored turn are visually distinct from a completed one.
 
-- [ ] **2.5 Composer usable during a turn (queue)**
+- [x] **2.5 Composer usable during a turn (queue)** *(messages typed mid-turn queue with removable chips, flush one per turn end)*
   Files: `app/renderer/modules/composer.js`, `app/renderer/modules/landing.js` (~:83).
   Keep the input enabled while busy; Enter queues the message and sends it on `turn_finished` (visible "queued" chip; Esc-clearable).
   Done when: you can type and queue the next instruction while the agent works.
 
-- [ ] **2.6 Render `thinking_delta`**
+- [x] **2.6 Render `thinking_delta`** *(collapsible dim reasoning block; last line feeds the now-line)*
   Files: `app/renderer/modules/landing.js` (~:497 default case), `app/renderer/modules/stream.js`.
   Collapsible dim "reasoning" block (collapsed by default) and/or rolling snippet in the now-line.
   Done when: a reasoning model shows live thinking instead of a static "thinking · 45s".
 
-- [ ] **2.7 Handle `mode_changed`**
+- [x] **2.7 Handle `mode_changed`** *(all four modes worded in the footer hint; commands segment synced where it maps)*
   Files: `app/renderer/modules/landing.js`, `app/renderer/modules/state.js` (~:156-160).
   Drive the safety hint + settings segment from engine truth; covers `/mode` and plan-mode flows.
   Done when: typing `/mode acceptEdits` updates the footer hint and settings UI.
 
-- [ ] **2.8 Question cards: honor `multiSelect` + `header`**
+- [x] **2.8 Question cards: honor `multiSelect` + `header`** *(toggle options + SUBMIT for multi; per-question header)*
   Files: `app/renderer/modules/landing.js` (~:271-356).
   Done when: a multi-select question accepts multiple options; the header chip renders.
 
-- [ ] **2.9 Pre-workspace errors are visible**
+- [x] **2.9 Pre-workspace errors are visible** *(appendSysError falls back to the transcript container before a stream exists)*
   Files: `app/renderer/modules/stream.js` (~:31), `app/renderer/modules/landing.js`.
   Buffer sys-errors until the stream exists, or show a toast/banner on the landing page.
   Done when: a boot error occurring before workspace open is readable somewhere.
 
-- [ ] **2.10 Model change guarded; no phantom restarts**
+- [x] **2.10 Model change guarded; no phantom restarts** *(no-op on unchanged; select disabled mid-turn; confirm when a change would end a running turn)*
   Files: `app/renderer/modules/session.js` (~:144-148), `app/renderer/modules/composer.js` (~:29), `app/main.js` (~:740-753, :801-803).
   No-op when custom-model blur value unchanged; disable model select while busy; confirm (or defer to turn end) any engine-restarting change mid-turn, incl. web-search toggle.
   Done when: clicking into and out of the custom-model field does nothing; changing model mid-turn asks first.

@@ -116,6 +116,8 @@ function resetLocalViewForClear() {
   toolCountThisTurn = 0;
   currentAgentsRow = null;
   currentAssistantEl = null;
+  currentThinkingEl = null;
+  clearMessageQueue();
   updateAgentMeter();
   onTaskListUpdated({ tasks: [] });
 }
@@ -142,19 +144,81 @@ function sendSlashCommand(trimmed) {
   hideSlashPop();
 }
 
-function sendMessage() {
-  const text = promptInputEl.value;
-  if (!text.trim() || busy || !engineLinked) return;
-  dismissFirstUseHint();
+// Messages typed while a turn is running wait here and flush one per turn end
+// (each starts its own turn), so the user can queue follow-ups instead of
+// being locked out of the composer for the whole turn.
+const messageQueue = [];
 
+function renderQueueChip() {
+  if (!queueChipEl) return;
+  if (messageQueue.length === 0) {
+    queueChipEl.classList.add("hidden");
+    queueChipEl.textContent = "";
+    return;
+  }
+  queueChipEl.classList.remove("hidden");
+  queueChipEl.textContent = "";
+  const label = document.createElement("span");
+  label.className = "queue-label";
+  label.textContent = `${messageQueue.length} queued`;
+  queueChipEl.appendChild(label);
+  messageQueue.forEach((text, idx) => {
+    const item = document.createElement("button");
+    item.className = "queue-item";
+    item.title = "Remove from queue";
+    const preview = text.replace(/\s+/g, " ").trim().slice(0, 48);
+    item.textContent = `${preview}${preview.length < text.trim().length ? "…" : ""} ✕`;
+    item.addEventListener("click", () => {
+      messageQueue.splice(idx, 1);
+      renderQueueChip();
+    });
+    queueChipEl.appendChild(item);
+  });
+}
+
+/** Actually send one message: a slash command or a user turn. Shared by the
+ * immediate path and the queue flush. */
+function dispatch(text) {
   const trimmed = text.trim();
   if (trimmed.startsWith("/") && !text.includes("\n")) {
     sendSlashCommand(trimmed);
     return;
   }
-
   appendUserMessage(text);
   window.magentra.send({ type: "user_message", text });
+}
+
+/** Flush the next queued message when the engine goes idle. One per turn end:
+ * the message starts a new turn, whose finish flushes the next. */
+function flushMessageQueue() {
+  if (busy || messageQueue.length === 0) return;
+  const text = messageQueue.shift();
+  renderQueueChip();
+  dispatch(text);
+}
+
+/** Drop every queued message — the engine went away or the chat was cleared,
+ * so flushing them would send into a dead or wrong session. */
+function clearMessageQueue() {
+  messageQueue.length = 0;
+  renderQueueChip();
+}
+
+function sendMessage() {
+  const text = promptInputEl.value;
+  if (!text.trim() || !engineLinked) return;
+  dismissFirstUseHint();
+
+  // Mid-turn: queue instead of dropping the input. It flushes on turn end.
+  if (busy) {
+    messageQueue.push(text);
+    renderQueueChip();
+    promptInputEl.value = "";
+    autoGrow(promptInputEl);
+    return;
+  }
+
+  dispatch(text);
   promptInputEl.value = "";
   autoGrow(promptInputEl);
 }

@@ -32,6 +32,7 @@ const OP_VERBS = {
 
 let streamEl = null;
 let currentAssistantEl = null;
+let currentThinkingEl = null; // live reasoning block for the current turn segment
 let currentAgentsRow = null;
 let agentCards = new Map(); // key -> card record
 let toolRows = new Map(); // id -> { rowEl, detailEl, glyphEl }
@@ -81,7 +82,9 @@ const DEFAULT_UI_SETTINGS = {
   theme: "phosphor", // phosphor (matrix) | glacier (winter) | dusk (night) | paper (print)
   rain: "faint",
   motion: "full",
-  detail: "cinematic",
+  // Default to the transparent view: a coding agent's trust rests on the user
+  // being able to see what each tool actually did. "cinematic" is opt-in.
+  detail: "technical",
   deletions: "ask", // "ask" (guard always prompts) | "allow" (deletions run freely)
   commands: "auto", // "auto" (autonomous) | "ask" (approval before consequential tools)
 };
@@ -158,10 +161,39 @@ function applySafetySettings(force) {
       lastSentSafety.commands = uiSettings.commands;
     }
   }
-  if (hintAutoEl) {
-    const acting = uiSettings.commands === "ask" ? "asks before acting" : "autonomous";
-    const deleting = uiSettings.deletions === "allow" ? "deletions allowed" : "deletions always ask";
-    hintAutoEl.textContent = `${acting} · ${deleting}`;
+  renderSafetyHint(uiSettings.commands === "ask" ? "default" : "bypass");
+}
+
+// The engine's four permission modes, worded for the footer hint. The UI's
+// two-way "commands" toggle only produces default/bypass, but /mode and plan
+// flows can put the engine in acceptEdits/plan — mode_changed drives this so
+// the hint never lies about what the agent will do.
+const MODE_HINT = {
+  default: "asks before acting",
+  acceptEdits: "auto-accepts edits, asks for commands",
+  plan: "plan mode — read-only",
+  bypass: "autonomous",
+};
+
+function renderSafetyHint(mode) {
+  if (!hintAutoEl) return;
+  const acting = MODE_HINT[mode] || MODE_HINT.default;
+  const deleting = uiSettings.deletions === "allow" ? "deletions allowed" : "deletions always ask";
+  hintAutoEl.textContent = `${acting} · ${deleting}`;
+}
+
+/** The engine changed permission mode on its own (/mode, plan approve/exit).
+ * Update the hint to match, and keep the commands segment in sync where the
+ * mode maps onto its two options. */
+function onModeChanged(event) {
+  const mode = event && event.mode;
+  if (!mode) return;
+  renderSafetyHint(mode);
+  if (mode === "default" || mode === "bypass") {
+    uiSettings.commands = mode === "default" ? "ask" : "auto";
+    lastSentSafety.commands = uiSettings.commands; // engine already there; don't echo back
+    saveUiSettings();
+    syncSegGroup(setCommandsEl, "commands");
   }
 }
 
