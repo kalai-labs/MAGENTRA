@@ -2,7 +2,9 @@
 
 Derived from `AUDIT.md` (2026-07-15). Work top to bottom: phases are ordered by priority, items inside a phase are ordered by suggested implementation sequence. Tick a box only when its **Done when** criterion is verified by actually running the app/engine (not by reading the diff).
 
-Testing policy for this roadmap: **no test-writing until Phase 10.** Features first; once every feature exists and behaves, tests are added one by one against FEATURES.md. (Exception: nothing — even the compaction fixes ship without tests for now; Phase 10 will cover them.)
+Testing policy for this roadmap: **no test-writing until Phase 10.** Features first; once every feature exists and behaves, tests are added one by one against FEATURES.md. One standing exception: `tools/version` has a pre-existing suite that gates every release in CI — that suite stays maintained (regression tests added as its bugs are fixed); it is release infrastructure, not product features.
+
+Platform note (2026-07-16): **macOS is now a build target** (arm64 .dmg in the release matrix). Later phases were written for Windows+Linux; mac-specific follow-ups live in Phase 9 and are flagged inline elsewhere.
 
 Line numbers are from the 2026-07-15 audit snapshot — re-verify before editing.
 
@@ -55,46 +57,52 @@ The app must stop corrupting its own sessions and stop locking up silently. Ever
 
 Goal: download → configured → first successful task, without reading source code.
 
-- [ ] **1.1 CI builds and releases actual binaries**
+- [x] **1.1 CI builds and releases actual binaries** *(+ mac .dmg; electron-builder rejected the 4-part version — scripts/dist.js swaps in the semver prefix for the build and keeps the 4-part in artifact names)*
   Files: `.github/workflows/release.yml`, `.github/workflows/ci.yml`.
   Add ubuntu + windows jobs: `npm ci && npm run build && npm run dist:linux|dist:win`; upload artifacts to the GitHub release. Add an app boot check to CI using the existing `--smoke` flag (`app/main.js` ~:512-527) — this is a build gate, not a "test" in the Phase-10 sense.
   Done when: a push to main produces a release carrying `.exe` + AppImage + tar.gz, and CI fails if the app cannot boot.
 
-- [ ] **1.2 Fail `dist` when the target ripgrep binary is missing**
+- [x] **1.2 Fail `dist` when the target ripgrep binary is missing**
   Files: `app/scripts/bundle-engine.js` (~:60-63 — WARN → hard error for the target OS).
   Done when: `npm run dist:win` on a machine without `rg.exe` staged fails loudly.
 
-- [ ] **1.3 Setup wizard: provider/model coupling + key guidance + real errors**
+- [x] **1.3 Setup wizard: provider/model coupling + key guidance + real errors**
   Files: `app/renderer/modules/setup.js` (~:11-117), `app/renderer/index.html` (~:293-338).
   Per-preset model suggestions (Anthropic presets suggest `claude-*` ids; datalist switches per provider); a "get an API key →" hint/link per provider; surface `result.error` on failed TEST (~setup.js:82-88); require TEST-or-explicit-confirm before IGNITE; validate MODEL/BASE URL non-empty per preset.
   Done when: choosing ANTHROPIC yields a sensible default model; a wrong key shows the provider's actual error; IGNITE with blank model is blocked.
 
-- [ ] **1.4 Composer disabled (with explanation) while unconfigured**
+- [x] **1.4 Composer disabled (with explanation) while unconfigured**
   Files: `app/renderer/modules/composer.js` (~:266 area), `app/renderer/modules/setup.js`.
   Dismissing the wizard leaves the composer disabled with an inline "engine not linked — SET UP ▸" affordance instead of letting the first prompt fail.
   Done when: no prompt can be sent into a credential-less engine; one click reopens the wizard.
 
-- [ ] **1.5 Windows: Git Bash detection at boot with actionable guidance**
+- [x] **1.5 Windows: Git Bash detection at boot with actionable guidance**
   Files: `engine/host/src/bootstrap.ts` or `engine/tools/src/bash.ts` (~:242-254).
   At startup on win32, probe for a usable bash; if absent, emit a warning event: "install Git for Windows or set MAGENTRA_BASH". Never fall back to bare `bash` (WSL hazard) silently.
   Done when: on Windows without Git Bash, the user sees the guidance before the first Bash call fails cryptically.
 
-- [ ] **1.6 Linux: packaged sandbox probe**
+- [x] **1.6 Linux: packaged sandbox probe** *(afterPack shell wrapper — verified: packaged tar.gz boots on a userns-restricted machine that previously FATALed)*
   Files: new AppRun wrapper / launcher script in `app/build-resources` config, `app/package.json` (electron-builder `linux` section); mirror logic from `app/scripts/launch.js` (~:25-57).
   Done when: the AppImage launches on Ubuntu 24.04 (userns-restricted) instead of dying silently — or shows a clear message with the `--no-sandbox` remedy.
 
-- [ ] **1.7 App icon + .desktop metadata**
+- [x] **1.7 App icon + .desktop metadata** *(generated from source — app/scripts/make-icon.js)*
   Files: `app/build-resources` (icon assets), `app/package.json` (electron-builder icon/desktop config).
   Done when: packaged builds show a MAGENTRA icon in taskbar/dock; AppImage carries desktop metadata.
 
-- [ ] **1.8 Post-workspace hint block (first-use guidance)**
+- [x] **1.8 Post-workspace hint block (first-use guidance)**
   Files: `app/renderer/modules/session.js` (~:11-17).
   After opening a workspace into an empty console, show a dismissible hint: 2–3 example prompts + "type `/` for commands".
   Done when: a fresh workspace shows the hint; it never reappears after first send (or after dismissal).
 
-- [ ] **1.9 Single-instance lock + atomic config writes**
+- [x] **1.9 Single-instance lock + atomic config writes**
   Files: `app/main.js` (`app.requestSingleInstanceLock`, focus existing window), `app/main/config.js` (~:68 temp+rename).
   Done when: second launch focuses the first window; config.json can't be truncated by a crash mid-write.
+
+### Unplanned work landed during Phases 0–1 (2026-07-16)
+
+- [x] **Version monotonicity** — `makePlan` bumped from the VERSION file at HEAD, which lags the tags on a stale checkout; v0.2.0.0 existed and a `fix` released v0.1.1.0. The bump base is now max(VERSION file, highest tag) (`tools/version/lib/plan.mjs`, + regression test). Latest release manually corrected to v0.2.1.0.
+- [x] **Packaging was entirely broken** — electron-builder rejects the 4-part version and cannot resolve the hoisted electron range; `app/scripts/dist.js` now swaps in the semver prefix for the build (restoring after), keeps the 4-part in artifact names via `${env.MAGENTRA_VERSION}`, and pins `electronVersion`.
+- [x] **macOS target added** (user request): `dist:mac`, mac build config, darwin ripgrep, release-matrix dmg. The "dead" macOS lifecycle code in main.js is now live code.
 
 ---
 
@@ -232,8 +240,8 @@ Goal: the engine's power is findable; words mean one thing each.
   Done when: extension points are discoverable in-product.
 
 - [ ] **4.8 Documentation truth pass**
-  Files: `docs/ARCHITECTURE.md` (rewrite against engine/+app/ layout), `docs/SCENARIOS.md` (retarget from nonexistent `packages/cli`), `docs/MA-FORMAT.md` (eleven builtins, `debug` row, `repro-failed` gate, fix paths), `docs/HIRABLE-CREW.md` (drop dead PRD link), new `docs/SETTINGS.md` or section covering `mcpServers`, STANDARDS.md convention, reuse gate (`reuseCheck.mode`), `.magentra/` directory reference; remove stale `INTEGRATION-phase3a.md` references in `engine/tools/src/worktree.ts` (~:99) and `engine/core/src/integrations/mcp.ts` (~:251).
-  Done when: no doc references a nonexistent path; every settings key that changes behavior is documented somewhere.
+  Files: `docs/ARCHITECTURE.md` (rewrite against engine/+app/ layout), `docs/SCENARIOS.md` (retarget from nonexistent `packages/cli`), `docs/MA-FORMAT.md` (eleven builtins, `debug` row, `repro-failed` gate, fix paths), `docs/HIRABLE-CREW.md` (drop dead PRD link), new `docs/SETTINGS.md` or section covering `mcpServers`, STANDARDS.md convention, reuse gate (`reuseCheck.mode`), `.magentra/` directory reference; remove stale `INTEGRATION-phase3a.md` references in `engine/tools/src/worktree.ts` (~:99) and `engine/core/src/integrations/mcp.ts` (~:251). Also `README.md`: releases now carry binaries — add an install section for all three artifacts (`dist:mac` beside the others; unsigned dmg needs right-click → Open; unsigned exe trips SmartScreen) so "clone and build" stops being the only documented path.
+  Done when: no doc references a nonexistent path; every settings key that changes behavior is documented somewhere; a new user can install from the README without building.
 
 - [ ] **4.9 In-app glossary / help**
   Files: renderer (help overlay or settings section).
@@ -354,8 +362,8 @@ Goal: the engine's power is findable; words mean one thing each.
 
 - [ ] **7.3 Keyboard power layer**
   Files: `composer.js`, new keymap module.
-  Prompt history (ArrowUp in empty composer), focus-composer key, Ctrl+1..4 view switching, keyboard approve/deny (e.g. A/D or Y/N with the modal focused), `?` shortcut cheat-sheet overlay.
-  Done when: a full task — prompt, approve, inspect, switch view — completes mouse-free, and `?` documents it.
+  Prompt history (ArrowUp in empty composer), focus-composer key, Ctrl+1..4 view switching, keyboard approve/deny (e.g. A/D or Y/N with the modal focused), `?` shortcut cheat-sheet overlay. Now that macOS is a target: Cmd variants for every Ctrl shortcut (Ctrl+L etc. — `composer.js` checks `e.ctrlKey` only).
+  Done when: a full task — prompt, approve, inspect, switch view — completes mouse-free on all three platforms, and `?` documents it.
 
 - [ ] **7.4 Non-color signals**
   Files: `styles.css`, `views.js`, `crew.js`.
@@ -379,9 +387,9 @@ Goal: the engine's power is findable; words mean one thing each.
   Done when: running background jobs are listed with individual stop buttons; background agents stay live past turn end.
 
 - [ ] **8.4 Model catalog from the endpoint**
-  Files: `engine/providers/src/openai-compat.ts` (`GET /models`), engine event, `session.js`/`index.html` (~:51-70 replace hardcoded catalog).
+  Files: `engine/providers/src/openai-compat.ts` (`GET /models`), engine event, `session.js`/`index.html` (~:51-70 replace hardcoded catalog), `setup.js` (`WIZ_PRESETS[*].models` — the wizard's static per-preset lists added in 1.3 are a stopgap this item supersedes).
   Populate the picker from the configured endpoint; validate the configured model at boot (clear warning on 404).
-  Done when: an Ollama user sees their local models in the dropdown; a typo'd model warns at startup, not on first turn.
+  Done when: an Ollama user sees their local models in the dropdown (wizard included); a typo'd model warns at startup, not on first turn.
 
 - [ ] **8.5 Session management extras**
   Files: sessions drawer from 3.4.
@@ -411,14 +419,17 @@ Goal: the engine's power is findable; words mean one thing each.
 
 - [ ] **9.1 Windows installer + auto-update**
   Files: `app/package.json` (NSIS target, publish config), electron-updater integration in `app/main.js`.
+  Note: auto-update on macOS is impossible without code signing (electron-updater requires a signed app there) — mac auto-update depends on 9.8.
   Done when: users install via a normal installer and receive updates automatically.
 - [ ] **9.2 Code signing (Windows at minimum)** — org decision + cert; removes SmartScreen friction and enables a sandboxed non-portable build.
 - [ ] **9.3 Windows toast AppUserModelID**
   Files: `app/main.js` (`app.setAppUserModelId`), verify `engine/tools/src/pushNotification.ts` toasts display.
 - [ ] **9.4 Linux `.deb` (and/or Flatpak) with proper sandbox helper** — complements 1.6.
 - [ ] **9.5 Window state persistence** — bounds/maximize in `userData/config.json` (`app/main.js` ~:487-540).
-- [ ] **9.6 Remove dead macOS lifecycle code** (`app/main.js` ~:894-909) or add a mac target — pick one.
+- [x] **9.6 macOS: dead code or real target — resolved as a real target** (Phase 1: dmg in the release matrix; the lifecycle handlers in `app/main.js` ~:894-909 are now live).
 - [ ] **9.7 PowerShell fallback for Bash tool** (large; optional after 1.5's guidance).
+- [ ] **9.8 macOS signing + notarization** — the arm64 dmg ships unsigned (Gatekeeper: right-click → Open). Apple Developer cert + notarize step in the release matrix; unblocks mac auto-update (9.1).
+- [ ] **9.9 Intel mac (x64) dmg** — needs a second (macos-13/x64) runner in the release matrix so the bundled ripgrep matches; only if someone asks.
 
 ---
 
@@ -466,4 +477,4 @@ Only after the features above exist and behave. Work through `FEATURES.md` top t
 - [ ] 10.4 `net` bucket (web search/fetch)
 - [ ] 10.5 `llm` bucket (turn loop, interrupt, compaction, subagents, plan mode, atlas build, backpack retrieval…) — env-gated
 - [ ] 10.6 `ui` bucket (boot, engine lifecycle, permission prompt, plan review, clear, meter, wizard, crew designer, changes panel)
-- [ ] 10.7 Packaging checks (clean-machine artifact launch, bundled rg, no `node_modules` at runtime)
+- [ ] 10.7 Packaging checks (clean-machine artifact launch on all three platforms incl. the mac dmg, bundled rg, sandbox wrapper on userns-restricted Linux, no `node_modules` at runtime)

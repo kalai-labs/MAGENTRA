@@ -22,15 +22,37 @@ const OUT_DIR = path.join(APP_DIR, "build-resources", "engine");
 const OUT_FILE = path.join(OUT_DIR, "engine.cjs");
 const RIPGREP_SHIM = path.join(APP_DIR, "shims", "ripgrep-shim.cjs");
 
-// Both binaries come from the @vscode/ripgrep platform packages in node_modules.
-// Packaging filters (build.win / build.linux) pick rg.exe vs rg per artifact, so
-// one machine can produce both as long as both packages are installed.
+// The binaries come from the @vscode/ripgrep platform packages in node_modules.
+// Packaging filters (build.win / build.linux / build.mac) pick rg.exe vs rg per
+// artifact. `--target win|linux|mac` (repeatable) names the OS(es) this run is
+// packaging for: a missing rg for a *target* OS fails the build — shipping an
+// artifact whose Grep tool is broken must never happen silently — while other
+// OSes' binaries stay optional so one machine can stage several.
 const RIPGREP = [
-  { src: path.join(REPO_ROOT, "node_modules", "@vscode", "ripgrep-win32-x64", "bin", "rg.exe"), dest: "rg.exe" },
-  { src: path.join(REPO_ROOT, "node_modules", "@vscode", "ripgrep-linux-x64", "bin", "rg"), dest: "rg" },
+  { target: "win", src: path.join(REPO_ROOT, "node_modules", "@vscode", "ripgrep-win32-x64", "bin", "rg.exe"), dest: "rg.exe" },
+  { target: "linux", src: path.join(REPO_ROOT, "node_modules", "@vscode", "ripgrep-linux-x64", "bin", "rg"), dest: "rg" },
+  // Mac artifacts are built per-arch on a matching runner; the darwin package
+  // npm installed there matches process.arch. Same "rg" dest as linux — the
+  // two are never staged on the same machine for the same artifact.
+  { target: "mac", src: path.join(REPO_ROOT, "node_modules", "@vscode", `ripgrep-darwin-${process.arch}`, "bin", "rg"), dest: "rg" },
 ];
 
+function parseTargets(argv) {
+  const targets = new Set();
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--target") {
+      const value = argv[++i];
+      if (!["win", "linux", "mac"].includes(value)) {
+        throw new Error(`--target expects win|linux|mac, got "${value}"`);
+      }
+      targets.add(value);
+    }
+  }
+  return targets;
+}
+
 async function main() {
+  const targets = parseTargets(process.argv.slice(2));
   if (!fs.existsSync(ENTRY)) {
     throw new Error(`Engine not built: ${ENTRY} is missing. Run \`npm run build\` at the repo root first.`);
   }
@@ -55,15 +77,21 @@ async function main() {
     logLevel: "info",
   });
 
-  for (const { src, dest } of RIPGREP) {
-    const target = path.join(OUT_DIR, dest);
+  for (const { target: rgTarget, src, dest } of RIPGREP) {
+    const outPath = path.join(OUT_DIR, dest);
     if (!fs.existsSync(src)) {
+      if (targets.has(rgTarget)) {
+        throw new Error(
+          `ripgrep for target "${rgTarget}" not found at ${src} — refusing to package an artifact with a broken Grep tool. ` +
+            (rgTarget === "win" ? "Run \`npm run fetch:rg-win\` at the repo root first." : "Run \`npm ci\` on a matching machine."),
+        );
+      }
       console.warn(`WARN: ripgrep not found at ${src} — artifacts for that OS will lack the Grep tool.`);
       continue;
     }
-    fs.copyFileSync(src, target);
-    fs.chmodSync(target, 0o755);
-    console.log(`Copied ripgrep -> ${path.relative(REPO_ROOT, target)}`);
+    fs.copyFileSync(src, outPath);
+    fs.chmodSync(outPath, 0o755);
+    console.log(`Copied ripgrep -> ${path.relative(REPO_ROOT, outPath)}`);
   }
 
   // The packaged app ships minified copies; development keeps the sources.

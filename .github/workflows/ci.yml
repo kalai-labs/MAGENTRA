@@ -32,6 +32,28 @@ jobs:
       - name: Test the version tool
         run: npm run test:version
 
+  # The product itself: compile the engine, then boot the Electron app and
+  # fail if the window does not come up clean (--smoke exits nonzero when the
+  # renderer crashes). xvfb provides the display GitHub runners lack.
+  engine-and-app:
+    name: Engine build + app smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build the engine
+        run: npm run build
+
+      - name: Boot the app (smoke)
+        run: xvfb-run --auto-servernum npm run smoke --workspace app
+
   types:
     name: Types
     runs-on: ubuntu-latest

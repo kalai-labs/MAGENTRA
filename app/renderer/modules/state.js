@@ -45,6 +45,11 @@ const backgroundJobs = new Set();
 // False until a workspace is chosen; before that the composer stays disabled
 // regardless of what else is going on.
 let workspaceOpen = false;
+// False while the workspace has no working credentials (setup:required fired
+// and no session_started since): prompts would go into a dead engine, so the
+// composer locks and points at setup instead. An engine CRASH does not clear
+// this — a configured engine can be restarted from the banner.
+let engineLinked = true;
 
 let permissionQueue = [];
 let activePermission = null;

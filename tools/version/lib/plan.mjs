@@ -3,7 +3,7 @@
  * Decide the next version from the commits since the last release.
  */
 
-import { commitsSince, lastVersionTag } from './git.mjs';
+import { commitsSince, versionTags } from './git.mjs';
 import { isGitGenerated, parseCommit } from './commits.mjs';
 import * as version from './version.mjs';
 
@@ -33,13 +33,25 @@ import * as version from './version.mjs';
  * version. One `feat` commit and ten `docs` commits produce a MINOR bump,
  * because MINOR is larger than BUILD.
  *
+ * The version must increase monotonically across releases. The `VERSION` file
+ * can lag behind the tags: a release commit lives only on the remote until the
+ * next pull, and a rebase can drop it entirely, while its tag stays. Bumping
+ * from a stale file would then release a LOWER version than one that already
+ * exists (this happened: v0.2.0.0 was the latest tag, a `fix` on a stale
+ * checkout released v0.1.1.0). Therefore the base for the bump is the largest
+ * of the `VERSION` file and the highest existing version tag.
+ *
  * @param {string} root The repository root.
  * @param {import('./config.mjs').Config} config
  * @param {import('./version.mjs').Version} current
  * @returns {Plan}
  */
 export function makePlan(root, config, current) {
-  const fromTag = lastVersionTag(root, config.tagPrefix);
+  const lastTag = versionTags(root, config.tagPrefix)[0] ?? null;
+  const fromTag = lastTag?.tag ?? null;
+  if (lastTag && version.compare(lastTag.version, current) > 0) {
+    current = lastTag.version;
+  }
   const raw = commitsSince(root, fromTag);
 
   /** @type {import('./commits.mjs').ParsedCommit[]} */

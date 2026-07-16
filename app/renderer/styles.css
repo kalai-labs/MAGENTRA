@@ -771,6 +771,48 @@ html[data-theme="paper"] #rain { display: none; }
 .q-opt:hover { border-color: var(--acc); color: var(--text-hi); }
 .q-opt.chosen { border-color: var(--acc); color: var(--acc); background: color-mix(in srgb, var(--acc) 8%, transparent); }
 .q-opt-desc { display: block; color: var(--text-dim); font-size: 0.75rem; margin-top: 2px; }
+
+/* first-use hint — one-time starter block after the first workspace open */
+.first-hint {
+  position: relative;
+  border: 1px dashed color-mix(in srgb, var(--acc) 40%, transparent);
+  border-radius: var(--radius);
+  padding: 14px 40px 12px 16px;
+  margin: 18px 0;
+}
+.first-hint-title {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  margin-bottom: 10px;
+}
+.first-hint-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.first-hint-foot { color: var(--text-dim); font-size: 0.72rem; }
+.first-hint-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.first-hint-close:hover { color: var(--text-hi); }
+
+/* wizard "get an API key" link-button under the key field */
+.wiz-key-hint {
+  background: none;
+  border: none;
+  padding: 2px 0 0;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.wiz-key-hint:hover { color: var(--acc); }
 .q-other-row { display: flex; gap: 6px; margin-top: 4px; }
 .q-other-input {
   flex: 1;

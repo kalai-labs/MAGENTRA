@@ -17,9 +17,82 @@ function enterActiveState(workspace) {
   }
   workspacePathEl.textContent = workspace;
   workspaceOpen = true;
-  promptInputEl.disabled = false;
   sendBtnEl.disabled = false;
   clearBtnEl.disabled = false;
+  syncActivityUi();
+  showFirstUseHint();
+}
+
+// ---------------------------------------------------------------------------
+// First-use hint — the console must never open as an unexplained blank page
+// ---------------------------------------------------------------------------
+
+const FIRST_HINT_KEY = "magentra-first-hint-done";
+let firstHintEl = null;
+
+/** One-time starter block after the first workspace open: example prompts to
+ * click, and the three keys worth knowing. Gone forever after the first send
+ * (or its ✕) — regulars never see it again. */
+function showFirstUseHint() {
+  if (!streamEl || firstHintEl) return;
+  try {
+    if (localStorage.getItem(FIRST_HINT_KEY)) return;
+  } catch {
+    return; // no storage — skip rather than nag on every launch
+  }
+
+  const el = document.createElement("div");
+  el.className = "first-hint";
+
+  const title = document.createElement("div");
+  title.className = "first-hint-title";
+  title.textContent = "WORKSPACE LINKED — TRY:";
+  el.appendChild(title);
+
+  const row = document.createElement("div");
+  row.className = "first-hint-row";
+  for (const suggestion of [
+    "describe this repository",
+    "fix the failing build",
+    "/atlas",
+  ]) {
+    const btn = document.createElement("button");
+    btn.className = "q-opt";
+    btn.textContent = suggestion;
+    btn.addEventListener("click", () => {
+      promptInputEl.value = suggestion;
+      promptInputEl.focus();
+      promptInputEl.dispatchEvent(new Event("input"));
+    });
+    row.appendChild(btn);
+  }
+  el.appendChild(row);
+
+  const foot = document.createElement("div");
+  foot.className = "first-hint-foot";
+  foot.textContent = "type / for commands · Ctrl+L clears the chat · Esc stops the agent";
+  el.appendChild(foot);
+
+  const close = document.createElement("button");
+  close.className = "first-hint-close";
+  close.title = "Dismiss";
+  close.textContent = "✕";
+  close.addEventListener("click", dismissFirstUseHint);
+  el.appendChild(close);
+
+  firstHintEl = el;
+  streamEl.appendChild(el);
+}
+
+function dismissFirstUseHint() {
+  if (!firstHintEl) return;
+  firstHintEl.remove();
+  firstHintEl = null;
+  try {
+    localStorage.setItem(FIRST_HINT_KEY, "1");
+  } catch {
+    // storage unavailable — it will show again next launch, harmless
+  }
 }
 
 // $/1M tokens: [cached, in, out], ctx = context window label.

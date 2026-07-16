@@ -18,6 +18,7 @@
     "app": "npm start --workspace app",
     "dist:linux": "npm run dist:linux --workspace app",
     "dist:win": "npm run dist --workspace app",
+    "dist:mac": "npm run dist:mac --workspace app",
     "prepare": "git config core.hooksPath .githooks || true",
     "commit": "node tools/version/bin/magentra-version.mjs commit",
     "version:current": "node tools/version/bin/magentra-version.mjs current",

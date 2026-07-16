@@ -144,7 +144,8 @@ function sendSlashCommand(trimmed) {
 
 function sendMessage() {
   const text = promptInputEl.value;
-  if (!text.trim() || busy) return;
+  if (!text.trim() || busy || !engineLinked) return;
+  dismissFirstUseHint();
 
   const trimmed = text.trim();
   if (trimmed.startsWith("/") && !text.includes("\n")) {
@@ -283,6 +284,11 @@ document.addEventListener("click", (e) => {
 
 function dismissSetupWizard() {
   setupWizardEl.classList.add("hidden");
+  if (!engineLinked) {
+    // The composer is locked (syncActivityUi) — give the stranded user the
+    // way back on a banner instead of only a note that scrolls away.
+    showEngineErrorBanner("Engine not linked — this workspace has no credentials yet.", "credential");
+  }
   appendSysNote("engine not linked — add credentials any time in SETTINGS → CONNECTION");
 }
 if (wizCloseBtnEl) wizCloseBtnEl.addEventListener("click", dismissSetupWizard);

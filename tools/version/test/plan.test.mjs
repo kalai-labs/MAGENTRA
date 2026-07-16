@@ -160,6 +160,20 @@ describe('makePlan', () => {
     assert.equal(plan.hasRelease, false);
     assert.equal(plan.ignored.length, 1);
   });
+
+  it('bumps from the highest tag when the VERSION file lags behind it', () => {
+    // The release commit that updates the VERSION file lives on the remote
+    // until the next pull, and a rebase can drop it while its tag stays. The
+    // version must still increase: a fix after v2.0.0.1 must never release
+    // v1.x, whatever the stale file says.
+    commit('fix: repair a defect on a stale checkout');
+
+    const plan = makePlan(root, config, parse('1.0.0.0'));
+
+    assert.equal(plan.hasRelease, true);
+    assert.equal(format(plan.current), '2.0.0.1');
+    assert.equal(format(plan.next), '2.0.1.0');
+  });
 });
 
 describe('syncTargets', () => {

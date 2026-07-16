@@ -17,6 +17,21 @@ const { logEvent, setLogWorkspace, flushLog } = require("./main/logging.js");
 
 const SMOKE = process.argv.includes("--smoke");
 
+// One instance only: two engines editing the same workspace tree concurrently,
+// and two writers of userData/config.json, corrupt each other. A second launch
+// focuses the existing window instead (skipped for --smoke so CI can boot a
+// throwaway instance beside a developer's running app).
+if (!SMOKE && !app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 // Portable runs extract to a temp dir whose ACLs the sandboxed Chromium child
 // processes cannot read — renderer/GPU die at boot with STATUS_DLL_NOT_FOUND.
 // Disable the Chromium sandbox for portable only; the renderer still runs with
@@ -769,7 +784,26 @@ ipcMain.handle("setup:testConnection", async (_evt, payload) => {
   }
 });
 
-ipcMain.handle("app:info", () => ({ version: app.getVersion() }));
+// Packaged builds carry the real 4-part version as `magentraVersion`
+// (electron-builder itself only accepts semver — see scripts/dist.js);
+// development reads the 4-part straight from package.json via getVersion().
+ipcMain.handle("app:info", () => ({
+  version: require("./package.json").magentraVersion || app.getVersion(),
+}));
+
+// The renderer may open exactly these pages (the wizard's "get an API key"
+// links) in the system browser — an allowlist, never an arbitrary URL, so a
+// compromised renderer cannot use the shell as a launcher.
+const EXTERNAL_URL_ALLOWLIST = new Set([
+  "https://deepinfra.com/dash/api_keys",
+  "https://console.anthropic.com/settings/keys",
+]);
+
+ipcMain.on("app:openExternal", (_evt, url) => {
+  if (typeof url === "string" && EXTERNAL_URL_ALLOWLIST.has(url)) {
+    shell.openExternal(url);
+  }
+});
 
 // ---------------------------------------------------------------------------
 // IPC

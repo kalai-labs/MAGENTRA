@@ -20,6 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     # A fork must not make a release in its own repository.
     if: github.event.repository.fork == false
+    # The build matrix below needs to know whether a release happened and
+    # which tag to build and upload to.
+    outputs:
+      released: ${{ steps.release.outputs.released }}
+      tag: ${{ steps.release.outputs.tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -66,3 +71,59 @@ jobs:
           else
             echo 'No release. No commit changes the version.' >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  # Build the desktop artifacts on each OS and attach them to the release the
+  # job above published. Per-OS runners keep packaging honest: every artifact
+  # bundles the ripgrep binary npm installed natively for that platform, and
+  # bundle-engine.js --target fails the build if it is missing.
+  binaries:
+    name: Binaries (${{ matrix.name }})
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+            dist: dist:linux
+            upload: app/dist/*.AppImage app/dist/*.tar.gz
+          - name: windows
+            os: windows-latest
+            dist: dist:win
+            upload: app/dist/*.exe
+          # macos-latest is arm64; the dmg ships an arm64 app + arm64 ripgrep.
+          # Intel macs would need a second (x64) runner — deliberately out of
+          # scope until someone asks for it.
+          - name: mac
+            os: macos-latest
+            dist: dist:mac
+            upload: app/dist/*.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Build exactly what was released, not whatever main moved on to.
+          ref: ${{ needs.release.outputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build the engine
+        run: npm run build
+
+      - name: Package the app
+        run: npm run ${{ matrix.dist }}
+
+      - name: Upload the artifacts to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: gh release upload "$TAG" ${{ matrix.upload }} --clobber

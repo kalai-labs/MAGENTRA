@@ -55,6 +55,9 @@ function onSessionStarted(event) {
   applySafetySettings(true);
   resetChanges();
   engineErrorBannerShown = false;
+  // A running session is the proof the credentials work — unlock the composer.
+  engineLinked = true;
+  syncActivityUi();
 }
 
 /**
@@ -80,7 +83,12 @@ function syncActivityUi() {
   if (!workspaceOpen) return; // landing page: composer stays disabled regardless
   // Clearing mid-turn would swap the engine's session out from under it.
   clearBtnEl.disabled = busy;
-  promptInputEl.disabled = busy;
+  // No credentials yet: a prompt would go into a dead engine — lock the
+  // composer and say why, instead of letting the first message fail red.
+  promptInputEl.disabled = busy || !engineLinked;
+  promptInputEl.placeholder = engineLinked
+    ? "Enter directive…"
+    : "engine not linked — open SETTINGS → CONNECTION or the setup wizard";
 }
 
 function onTurnStarted() {

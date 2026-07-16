@@ -10,7 +10,7 @@ import {
 } from "@magentra/core";
 import type { PermissionMode } from "@magentra/protocol";
 import type { Provider } from "@magentra/providers";
-import { createDefaultRegistry } from "@magentra/tools";
+import { createDefaultRegistry, resolveBashPath } from "@magentra/tools";
 import { loadDotEnv } from "./env.js";
 
 export interface BootstrapOptions {
@@ -43,6 +43,20 @@ export async function bootstrapEngine(opts: BootstrapOptions): Promise<Bootstrap
 
   const { settings, warnings } = loadSettings(opts.cwd);
   if (opts.mode) settings.permissionMode = opts.mode;
+
+  // The Bash tool needs a real bash. On Windows that means Git Bash; the bare
+  // "bash" fallback commonly resolves to WSL's launcher (whose /mnt/c view
+  // node cannot consume) or to nothing at all — warn at boot, before the first
+  // Bash call fails cryptically mid-task.
+  if (process.platform === "win32" && resolveBashPath() === "bash") {
+    warnings.push({
+      source: "environment",
+      message:
+        "Git Bash was not found — the Bash tool will not work reliably. " +
+        "Install Git for Windows (https://git-scm.com/download/win), " +
+        "or point MAGENTRA_BASH at a bash.exe.",
+    });
+  }
 
   const apiKey = resolveApiKey(settings);
   const baseUrl = settings.baseUrl ?? DEFAULT_OPENAI_BASE_URL;

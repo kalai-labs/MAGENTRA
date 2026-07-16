@@ -73,17 +73,6 @@ export function versionTags(root, tagPrefix) {
 }
 
 /**
- * Find the tag of the last release.
- *
- * @param {string} root
- * @param {string} tagPrefix
- * @returns {string | null} `null` if no release exists.
- */
-export function lastVersionTag(root, tagPrefix) {
-  return versionTags(root, tagPrefix)[0]?.tag ?? null;
-}
-
-/**
  * @typedef {object} RawCommit
  * @property {string} hash The full commit hash.
  * @property {string} shortHash The short commit hash.

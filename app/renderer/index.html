@@ -309,20 +309,12 @@
       </label>
       <label class="wiz-field" id="wizApiKeyField"><span>API KEY</span>
         <input id="wizApiKey" type="password" spellcheck="false" placeholder="paste your key — stored only in this workspace" />
+        <button id="wizKeyHint" class="wiz-key-hint" type="button" hidden></button>
       </label>
       <label class="wiz-field"><span>MODEL</span>
         <input id="wizModel" type="text" spellcheck="false" value="deepseek-ai/DeepSeek-V4-Flash" list="wizModels" />
-        <datalist id="wizModels">
-          <option value="deepseek-ai/DeepSeek-V4-Flash"></option>
-          <option value="openai/gpt-oss-120b"></option>
-          <option value="Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo"></option>
-          <option value="zai-org/GLM-5.2"></option>
-          <option value="moonshotai/Kimi-K2.6"></option>
-          <option value="deepseek-ai/DeepSeek-V4-Pro"></option>
-          <option value="qwen3:8b"></option>
-          <option value="qwen2.5-coder:7b"></option>
-          <option value="llama3.1:8b"></option>
-        </datalist>
+        <!-- options are filled per provider preset by setup.js -->
+        <datalist id="wizModels"></datalist>
       </label>
       <label class="wiz-field" id="wizContextField" hidden><span>CONTEXT SIZE</span>
         <input id="wizContext" type="number" min="256" step="256" value="4096" spellcheck="false" />

@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("magentra", {
   getWebSearch: () => ipcRenderer.invoke("settings:getWebSearch"),
   setWebSearch: (enabled) => ipcRenderer.invoke("settings:setWebSearch", enabled),
   getAppInfo: () => ipcRenderer.invoke("app:info"),
+  openExternal: (url) => ipcRenderer.send("app:openExternal", url),
   getPathForFile: (file) => {
     try {
       return webUtils.getPathForFile(file);

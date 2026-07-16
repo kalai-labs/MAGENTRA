@@ -64,8 +64,20 @@ function isLocalBaseUrl(baseUrl) {
 
 function writeConfig(config) {
   try {
-    fs.mkdirSync(path.dirname(configPath()), { recursive: true });
-    fs.writeFileSync(configPath(), JSON.stringify(config, null, 2), "utf8");
+    const file = configPath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    // Write-then-rename: a crash mid-write must never leave a truncated
+    // config.json that readConfig() would silently reset to defaults.
+    const tmp = `${file}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(config, null, 2), "utf8");
+    try {
+      fs.renameSync(tmp, file);
+    } catch {
+      // Windows can refuse rename-over-existing (EPERM); narrow the race to
+      // a missing-file window readConfig() already treats as defaults.
+      fs.rmSync(file, { force: true });
+      fs.renameSync(tmp, file);
+    }
   } catch (err) {
     console.error("Failed to persist config:", err);
   }

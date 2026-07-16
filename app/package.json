@@ -2,14 +2,15 @@
   "name": "magentra-app",
   "version": "0.1.0.0",
   "private": true,
-  "description": "MAGENTRA desktop app \u2014 the Electron shell around the agent engine.",
+  "description": "MAGENTRA desktop app — the Electron shell around the agent engine.",
   "main": "main.js",
   "scripts": {
     "start": "node scripts/launch.js",
     "bundle:engine": "node scripts/bundle-engine.js",
-    "dist": "npm run bundle:engine && electron-builder --win portable",
-    "dist:linux": "npm run bundle:engine && electron-builder --linux",
-    "dist:all": "npm run bundle:engine && electron-builder --win portable --linux",
+    "dist": "node scripts/bundle-engine.js --target win && node scripts/dist.js --win portable",
+    "dist:linux": "node scripts/bundle-engine.js --target linux && node scripts/dist.js --linux",
+    "dist:mac": "node scripts/bundle-engine.js --target mac && node scripts/dist.js --mac",
+    "dist:all": "node scripts/bundle-engine.js --target win --target linux && node scripts/dist.js --win portable --linux",
     "smoke": "node scripts/launch.js --smoke"
   },
   "devDependencies": {
@@ -21,8 +22,10 @@
     "appId": "com.magentra.app",
     "productName": "MAGENTRA",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
+    "afterPack": "scripts/afterPack.js",
     "files": [
       "package.json",
       {
@@ -32,7 +35,7 @@
     ],
     "win": {
       "target": "portable",
-      "artifactName": "MAGENTRA-portable.exe",
+      "artifactName": "MAGENTRA-${env.MAGENTRA_VERSION}-win-portable.exe",
       "signExecutable": false,
       "extraResources": [
         {
@@ -46,6 +49,8 @@
       ]
     },
     "linux": {
+      "executableName": "magentra",
+      "syncDesktopName": true,
       "target": [
         {
           "target": "AppImage",
@@ -60,8 +65,31 @@
           ]
         }
       ],
-      "artifactName": "MAGENTRA-${version}-linux-${arch}.${ext}",
+      "artifactName": "MAGENTRA-${env.MAGENTRA_VERSION}-linux-${arch}.${ext}",
       "category": "Development",
+      "extraResources": [
+        {
+          "from": "build-resources/engine",
+          "to": "engine",
+          "filter": [
+            "engine.cjs",
+            "rg"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "MAGENTRA-${env.MAGENTRA_VERSION}-mac-${arch}.${ext}",
+      "category": "public.app-category.developer-tools",
+      "identity": null,
       "extraResources": [
         {
           "from": "build-resources/engine",

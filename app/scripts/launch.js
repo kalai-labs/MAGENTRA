@@ -21,25 +21,36 @@ const { spawn } = require("node:child_process");
 const APP_DIR = path.join(__dirname, "..");
 const REPO_ROOT = path.join(APP_DIR, "..");
 
-/** True when Chromium has a usable sandbox: a setuid-root helper, or unprivileged user namespaces. */
+/**
+ * True when Chromium has a usable sandbox: unprivileged user namespaces
+ * (Chromium's preferred path — the setuid helper is ignored when they work),
+ * or a correctly configured setuid-root helper as the fallback. The same rule,
+ * in shell, guards packaged Linux artifacts — see scripts/afterPack.js.
+ */
 function sandboxUsable() {
   if (process.platform !== "linux") return true;
   // root cannot use the setuid sandbox at all.
   if (typeof process.getuid === "function" && process.getuid() === 0) return false;
 
-  const helper = path.join(REPO_ROOT, "node_modules", "electron", "dist", "chrome-sandbox");
+  const readKnob = (name) => {
+    try {
+      return fs.readFileSync(`/proc/sys/kernel/${name}`, "utf8").trim();
+    } catch {
+      return undefined; // knob absent — that restriction does not exist here
+    }
+  };
+  if (
+    readKnob("apparmor_restrict_unprivileged_userns") !== "1" &&
+    readKnob("unprivileged_userns_clone") !== "0"
+  ) {
+    return true; // namespace sandbox works — helper state is irrelevant
+  }
+
   try {
-    const st = fs.statSync(helper);
-    // Present: this is the sandbox Chromium will insist on using, so it must be
-    // configured correctly — otherwise there is no sandbox at all.
+    const st = fs.statSync(path.join(REPO_ROOT, "node_modules", "electron", "dist", "chrome-sandbox"));
     return st.uid === 0 && (st.mode & 0o4000) !== 0;
   } catch {
-    /* helper absent — the namespace sandbox is the only path left */
-  }
-  try {
-    return fs.readFileSync("/proc/sys/kernel/apparmor_restrict_unprivileged_userns", "utf8").trim() !== "1";
-  } catch {
-    return true; // knob absent — user namespaces are unrestricted
+    return false; // namespaces restricted and no helper — no sandbox path left
   }
 }
 
