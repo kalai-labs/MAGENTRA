@@ -208,7 +208,31 @@ export type CoreEvent =
       phase: string;
       done: number;
       total: number;
-    };
+    }
+  /**
+   * The full prior conversation, render-ready, sent once on /resume so the
+   * frontend can repaint the chat. Flat by design: the frontend cannot read the
+   * transcript file (sandboxed) and the wire has no user-message event, so the
+   * engine reconstructs a paint list here (tool calls already paired with their
+   * results, harness scaffolding stripped).
+   */
+  | { type: "session_restored"; sessionId: string; messages: RestoredMessage[] };
+
+export interface RestoredToolCall {
+  tool: string;
+  input: unknown;
+  result: string;
+  isError: boolean;
+}
+
+export interface RestoredMessage {
+  role: "user" | "assistant";
+  /** Concatenated text blocks (Markdown for an assistant message). */
+  text: string;
+  /** Assistant reasoning, when the model emitted extended thinking. */
+  thinking?: string;
+  toolCalls?: RestoredToolCall[];
+}
 
 /** Frontend -> core. */
 export type FrontendRequest =

@@ -8,9 +8,10 @@ import {
   type FrontendRequest,
   type PermissionDecision,
   type PermissionMode,
+  type RestoredMessage,
   type SessionSummary,
 } from "@magentra/protocol";
-import type { Provider } from "@magentra/providers";
+import type { ContentBlock, Msg, Provider } from "@magentra/providers";
 import { AsyncQueue } from "../util/asyncQueue.js";
 import { CronScheduler } from "../scheduling/cron.js";
 import { HookRunner } from "../agent/hooks.js";
@@ -44,6 +45,7 @@ import {
 } from "../crew/providerFactory.js";
 import { readRecord, summarizeRecord, verifyRecordChain } from "../crew/serviceRecord.js";
 import { Session } from "./session.js";
+import { SessionStats } from "./sessionStats.js";
 import {
   DEFAULT_OPENAI_BASE_URL,
   describeSettings,
@@ -190,7 +192,11 @@ export class Engine {
     this.events.push(event);
   };
 
-  private createSession(sessionId?: string, initialMessages?: Session["messages"]): Session {
+  private createSession(
+    sessionId?: string,
+    initialMessages?: Session["messages"],
+    stats?: SessionStats,
+  ): Session {
     const session = new Session({
       cwd: this.opts.cwd,
       settings: this.opts.settings,
@@ -225,6 +231,7 @@ export class Engine {
       ...(this.opts.skills ? { skills: this.opts.skills } : {}),
       ...(sessionId ? { sessionId } : {}),
       ...(initialMessages ? { initialMessages } : {}),
+      ...(stats ? { stats } : {}),
     });
     session.services.cron = this.scheduler;
     return session;
@@ -1599,17 +1606,92 @@ export class Engine {
   private resumeSession(id: string): void {
     const file = join(this.opts.cwd, STATE_DIR_NAME, "sessions", `${id}.jsonl`);
     try {
-      const messages = Transcript.replayMessages(file);
-      this.session = this.createSession(id, messages);
+      const { messages, meta } = Transcript.replay(file);
+      // Restore the session's accounting ledger and permission mode from the
+      // latest meta snapshot; transcripts that predate meta records (or carry
+      // a corrupt one) fall back to fresh stats and the configured mode.
+      this.session = this.createSession(id, messages, SessionStats.fromSnapshot(meta?.stats));
+      const mode = meta?.mode;
+      if (isPermissionMode(mode)) {
+        this.session.permissions.setMode(mode);
+        this.emit({ type: "mode_changed", mode });
+      }
       this.start();
-      this.emit({
-        type: "command_output",
-        text: `Resumed session ${id} (${messages.length} messages).`,
-      });
+      // Repaint the conversation in the UI. Replaces the old text-only note:
+      // the frontend rebuilds the chat from this render-ready snapshot.
+      this.emit({ type: "session_restored", sessionId: id, messages: reconstructForDisplay(messages) });
     } catch (err) {
-      this.emit({ type: "error", message: `Cannot resume ${id}: ${(err as Error).message}`, fatal: false });
+      const reason =
+        (err as NodeJS.ErrnoException).code === "ENOENT" ? "no such session" : (err as Error).message;
+      this.emit({ type: "error", message: `Cannot resume ${id}: ${reason}`, fatal: false });
     }
   }
+}
+
+/** Narrows a value read from disk to a PermissionMode before trusting it. */
+function isPermissionMode(value: unknown): value is PermissionMode {
+  return value === "default" || value === "acceptEdits" || value === "plan" || value === "bypass";
+}
+
+/** Concatenated text of a message's text blocks. */
+function textOf(msg: Msg): string {
+  return msg.content
+    .filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text")
+    .map((b) => b.text)
+    .join("\n");
+}
+
+/** Flattens a tool_result's content (string or parts) to a display string. */
+function flattenToolResult(content: string | { type: string; text?: string }[]): string {
+  if (typeof content === "string") return content;
+  return content.map((p) => (p.type === "text" ? (p.text ?? "") : "[image]")).join("\n");
+}
+
+/**
+ * Turns stored message history into a render-ready paint list for the frontend:
+ * pairs each assistant tool_use with its tool_result from the following user
+ * message, and drops harness scaffolding (tool_result-only and system-reminder
+ * user messages, including the compaction summary) that is not conversation.
+ */
+export function reconstructForDisplay(messages: Msg[]): RestoredMessage[] {
+  const out: RestoredMessage[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]!;
+    if (msg.role === "user") {
+      const text = textOf(msg).trim();
+      if (!text || text.startsWith("<system-reminder>")) continue;
+      out.push({ role: "user", text });
+      continue;
+    }
+    const thinking = msg.content
+      .filter((b): b is Extract<ContentBlock, { type: "thinking" }> => b.type === "thinking")
+      .map((b) => b.thinking)
+      .join("\n");
+    const text = textOf(msg);
+    const results = new Map<string, { content: string; isError: boolean }>();
+    const next = messages[i + 1];
+    if (next?.role === "user") {
+      for (const b of next.content) {
+        if (b.type === "tool_result") {
+          results.set(b.toolUseId, { content: flattenToolResult(b.content), isError: b.isError ?? false });
+        }
+      }
+    }
+    const toolCalls = msg.content
+      .filter((b): b is Extract<ContentBlock, { type: "tool_use" }> => b.type === "tool_use")
+      .map((tu) => {
+        const r = results.get(tu.id);
+        return { tool: tu.name, input: tu.input, result: r?.content ?? "(no result recorded)", isError: r?.isError ?? false };
+      });
+    if (!text && !thinking && toolCalls.length === 0) continue;
+    out.push({
+      role: "assistant",
+      text,
+      ...(thinking ? { thinking } : {}),
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
+    });
+  }
+  return out;
 }
 
 /** One roster line per loaded specialist: `✓ 🔍 reviewer — Argus, Code Reviewer [model @ endpoint]`. */

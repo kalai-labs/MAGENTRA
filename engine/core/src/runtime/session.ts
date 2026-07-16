@@ -121,9 +121,15 @@ export interface SessionOptions {
   /**
    * Share the parent's SessionStats (subagents/crew children do): their token
    * spend, API time and code changes belong to the same /session report as the
-   * orchestrator's. Omitted for a root session, which starts a fresh ledger.
+   * orchestrator's. Also set on /resume with the ledger rebuilt from the
+   * transcript's meta snapshot. Omitted for a fresh root session.
    */
   stats?: SessionStats;
+  /**
+   * Subagent/crew child session: its transcript lives in sessions/subagents/
+   * (off the resumable listing) and stats snapshots are the root's job.
+   */
+  child?: boolean;
   /** Runs lifecycle hooks; omitted for subagent sessions. */
   hookRunner?: HookRunner;
   /** The .ma style engine; omitted for subagent sessions (children inherit no modes). */
@@ -238,7 +244,7 @@ export class Session {
     this.teamAgents = opts.team ?? [];
     this.hooks = opts.hookRunner;
     this.extraPromptSections = [...(opts.extraPromptSections ?? [])];
-    this.transcript = new Transcript(this.stateDir, this.id);
+    this.transcript = new Transcript(this.stateDir, this.id, { child: opts.child ?? false });
     this.tasks = new TaskStore(this.stateDir, this.id, this.emit);
     // Hirable crew: when a crew-owned task is verified completed, confirm the
     // lessons that rode on the run and capture new candidates from the report.
@@ -563,6 +569,7 @@ export class Session {
       // ...and its stats ledger: a crew member's spend (possibly on its own
       // model) belongs in the same /session report as the orchestrator's.
       stats: this.stats,
+      child: true,
       ...(crew ? { crewSelf: crew.id } : {}),
     });
     child.setUnattended(this.unattended);
@@ -1180,6 +1187,15 @@ export class Session {
         usage: turnUsage,
         contextTokens: this.stats.contextTokens,
       });
+      // Snapshot the tree-wide ledger + mode so /resume restores real
+      // accounting instead of a $0.00 session. Children share the root's
+      // ledger, so only the root writes it.
+      if (!this.opts.child) {
+        this.transcript.append({
+          kind: "meta",
+          data: { stats: this.stats.snapshot(), mode: this.permissions.getMode() },
+        });
+      }
     }
 
     await this.maybeCompact();

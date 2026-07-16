@@ -60,6 +60,46 @@ export class SessionStats {
     this.contextTokens = contextSizeOf(usage);
   }
 
+  /** Serializable view for the transcript `meta` record, restored by /resume. */
+  snapshot(): Record<string, unknown> {
+    return {
+      startedAt: this.startedAt,
+      apiMs: this.apiMs,
+      linesAdded: this.linesAdded,
+      linesRemoved: this.linesRemoved,
+      contextTokens: this.contextTokens,
+      byModel: Object.fromEntries(this.byModel),
+    };
+  }
+
+  /**
+   * Rebuilds a ledger from a snapshot. Returns undefined on malformed data —
+   * a corrupt or missing meta line must never block a resume, it just means
+   * the session starts with fresh accounting.
+   */
+  static fromSnapshot(data: unknown): SessionStats | undefined {
+    if (typeof data !== "object" || data === null) return undefined;
+    const d = data as Record<string, unknown>;
+    if (typeof d.startedAt !== "number") return undefined;
+    const stats = new SessionStats(d.startedAt);
+    if (typeof d.apiMs === "number") stats.apiMs = d.apiMs;
+    if (typeof d.linesAdded === "number") stats.linesAdded = d.linesAdded;
+    if (typeof d.linesRemoved === "number") stats.linesRemoved = d.linesRemoved;
+    if (typeof d.contextTokens === "number") stats.contextTokens = d.contextTokens;
+    if (typeof d.byModel === "object" && d.byModel !== null) {
+      for (const [model, usage] of Object.entries(d.byModel)) {
+        const u = usage as Partial<Usage>;
+        stats.byModel.set(model, {
+          inputTokens: typeof u.inputTokens === "number" ? u.inputTokens : 0,
+          outputTokens: typeof u.outputTokens === "number" ? u.outputTokens : 0,
+          cacheReadTokens: typeof u.cacheReadTokens === "number" ? u.cacheReadTokens : 0,
+          cacheWriteTokens: typeof u.cacheWriteTokens === "number" ? u.cacheWriteTokens : 0,
+        });
+      }
+    }
+    return stats;
+  }
+
   /** Count a file edit's diff toward the session's code-change totals. */
   recordDiff(diff: string): void {
     for (const line of diff.split("\n")) {

@@ -75,8 +75,11 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 export class Transcript {
   readonly file: string;
 
-  constructor(stateDir: string, readonly sessionId: string) {
-    this.file = join(stateDir, "sessions", `${sessionId}.jsonl`);
+  constructor(stateDir: string, readonly sessionId: string, opts?: { child?: boolean }) {
+    // Subagent/crew children live in a subdirectory so the resumable session
+    // listing (a non-recursive readdir of sessions/) never shows them.
+    const dir = opts?.child ? join(stateDir, "sessions", "subagents") : join(stateDir, "sessions");
+    this.file = join(dir, `${sessionId}.jsonl`);
     mkdirSync(dirname(this.file), { recursive: true });
   }
 
@@ -137,12 +140,20 @@ export class Transcript {
     return undefined;
   }
 
-  /** Reconstructs message history (with compactions applied) for resume. */
-  static replayMessages(file: string): Msg[] {
+  /**
+   * Reconstructs message history (with compactions applied) plus the latest
+   * meta snapshot (session stats + permission mode), for resume. `meta` is the
+   * raw record data — the caller interprets it; absent in transcripts written
+   * before meta records existed.
+   */
+  static replay(file: string): { messages: Msg[]; meta?: Record<string, unknown> } {
     let messages: Msg[] = [];
+    let meta: Record<string, unknown> | undefined;
     for (const record of Transcript.read(file)) {
       if (record.kind === "message") {
         messages.push(record.message);
+      } else if (record.kind === "meta") {
+        meta = record.data;
       } else if (record.kind === "compaction") {
         const tail = messages.slice(record.replacedCount);
         messages = [
@@ -154,6 +165,6 @@ export class Transcript {
     // A crash mid-tool-batch leaves the last assistant tool_use unanswered on
     // disk; older transcripts may carry the same wound mid-history from resumes
     // that predate this repair.
-    return repairToolPairing(messages);
+    return { messages: repairToolPairing(messages), ...(meta !== undefined ? { meta } : {}) };
   }
 }

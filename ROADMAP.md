@@ -32,7 +32,7 @@ The app must stop corrupting its own sessions and stop locking up silently. Ever
 
 - [x] **0.4 Interrupt/crash leaves a resumable transcript**
   Files: `engine/core/src/runtime/session.ts` (~:1139-1143), `engine/core/src/state/transcript.ts` (~:91-105).
-  On abort, synthesize `tool_result: "(interrupted)"` for dangling tool_use blocks; apply the same repair during `replayMessages` so old crashed transcripts also resume.
+  On abort, synthesize `tool_result: "(interrupted)"` for dangling tool_use blocks; apply the same repair during transcript replay (`Transcript.replay`) so old crashed transcripts also resume.
   Done when: interrupting mid-tool-call then sending a new message works; `/resume` of a mid-turn-killed session works on its first request.
 
 - [x] **0.5 API keys stored 0600**
@@ -165,18 +165,20 @@ Goal: during any task the user can always answer "what is it doing, what changed
 
 Goal: quitting the app or switching contexts loses nothing.
 
-- [ ] **3.1 Engine: resume replays the conversation to the UI**
-  Files: `engine/core/src/runtime/engine.ts` (~:1589-1602), `engine/protocol/src/types.ts` (new event(s): replay stream or transcript snapshot).
+- [x] **3.1 Engine: resume replays the conversation to the UI** *(new `session_restored` CoreEvent — unavoidable: no engine→frontend event carries a user message, and the renderer can't read the transcript file. `reconstructForDisplay` pairs tool calls with results and strips scaffolding; the painter reuses renderMarkdown + createToolRow/finishToolRow + appendUserMessage. Swapped the old command_output note; minimal diff to resumeSession.)*
+  Files: `engine/core/src/runtime/engine.ts`, `engine/protocol/src/types.ts`, `app/renderer/modules/landing.js`.
   Done when: `/resume <id>` repaints the full prior conversation in the chat area (reusing the 2.1 renderer).
 
-- [ ] **3.2 Engine: persist session stats/mode in the transcript**
+- [x] **3.2 Engine: persist session stats/mode in the transcript**
   Files: `engine/core/src/state/transcript.ts` (use the declared-but-unwritten `meta` record kind, ~:7,17), `engine/core/src/runtime/session.ts`, `sessionStats.ts`.
   Snapshot stats + permission mode at turn end; restore on resume.
   Done when: `/session` after `/resume` shows yesterday's real cost, not $0.00.
+  *Done: root sessions append a `meta` record (stats snapshot + mode) after every `turn_finished`; `Transcript.replay` (renamed from `replayMessages`, now also returns the latest meta) feeds `SessionStats.fromSnapshot` + a validated `setMode` (+`mode_changed` emit) in `resumeSession`. Pre-meta/corrupt transcripts degrade to fresh stats + config mode. Verified end-to-end on a real Session + FakeProvider.*
 
-- [ ] **3.3 Engine: exclude subagent transcripts from the session list**
+- [x] **3.3 Engine: exclude subagent transcripts from the session list**
   Files: `engine/core/src/runtime/session.ts` (~:240-241 mark child transcripts — subdir or record flag), `engine/core/src/runtime/engine.ts` (~:1563-1587 filter listing + refuse resume of children).
   Done when: `/sessions` lists only top-level sessions, each with a human label.
+  *Done: new `SessionOptions.child` flag (set at the single spawn site) routes child transcripts to `sessions/subagents/`; the non-recursive listing and resume path exclude them with no filtering logic, and children skip the 3.2 meta snapshot (root owns the shared ledger). Resume of an unknown/child id now says "no such session" instead of a raw ENOENT. Limitation: subagent transcripts written before this change remain in `sessions/` (no reliable marker) — 3.7 GC is the place to age them out.*
 
 - [ ] **3.4 Sessions drawer in the UI**
   Files: `app/renderer/modules/landing.js` (handle the currently-unhandled `session_list` event), new UI on the landing page + dock, `app/main.js`/`preload.js` if new IPC is needed.

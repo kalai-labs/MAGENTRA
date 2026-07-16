@@ -46,6 +46,45 @@ if (window.magentra.onRecentWorkspaces) {
   window.magentra.onRecentWorkspaces(renderRecentList);
 }
 
+// Repaint a resumed conversation from the engine's render-ready snapshot. The
+// engine already paired tool calls with results and stripped scaffolding, so
+// this just replays it through the same DOM builders a live turn uses.
+function onSessionRestored(event) {
+  if (!streamEl) return;
+  resetLocalViewForClear(); // clear the current view + tool/agent maps
+  for (const m of event.messages || []) {
+    if (m.role === "user") {
+      appendUserMessage(m.text);
+      continue;
+    }
+    if (m.thinking) {
+      const details = document.createElement("details");
+      details.className = "msg-thinking done";
+      const summary = document.createElement("summary");
+      summary.textContent = "reasoning";
+      const body = document.createElement("div");
+      body.className = "thinking-body";
+      body.textContent = m.thinking;
+      details.appendChild(summary);
+      details.appendChild(body);
+      streamEl.appendChild(details);
+    }
+    if (m.text) {
+      const el = document.createElement("div");
+      el.className = "msg-assistant";
+      el.appendChild(renderMarkdown(m.text));
+      streamEl.appendChild(el);
+    }
+    for (const tc of m.toolCalls || []) {
+      const row = createToolRow(tc.tool, "", tc.input);
+      streamEl.appendChild(row.rowEl);
+      streamEl.appendChild(row.detailEl);
+      finishToolRow(row, tc.isError, tc.result);
+    }
+  }
+  appendSysNote(`resumed — ${(event.messages || []).length} messages restored`);
+}
+
 function onSessionStarted(event) {
   appendSysNote(`session ${event.sessionId} · model ${event.model}`);
   // A fresh session (boot, or /clear) is a fresh bill and an empty window.
@@ -559,6 +598,9 @@ function handleEngineEvent(event) {
   switch (event.type) {
     case "session_started":
       onSessionStarted(event);
+      break;
+    case "session_restored":
+      onSessionRestored(event);
       break;
     case "turn_started":
       onTurnStarted();
