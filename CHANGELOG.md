@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.2.3.0 — 2026-07-16
+
+### Bug fixes
+
+- core chat and agent transperency ([af38145](https://github.com/kalai-labs/MAGENTRA/commit/af38145ba3c0b457a3d451922d2bc8d3bb9f19b1))
+
+[Compare with v0.2.2.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.2.2.0...v0.2.3.0)
+
 ## 0.1.0.0 — 2026-07-14
 
 The first release.
