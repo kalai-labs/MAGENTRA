@@ -222,10 +222,30 @@ function hardStop() {
 
 stopBtnEl.addEventListener("click", hardStop);
 
-// Escape is the stop key everywhere else; make it one here too — but only when
-// it is not already busy dismissing the slash palette.
+// Escape, one handler, strict priority: dismiss the topmost surface first
+// (palette → styles panel → wizard → permission modal), and only interrupt
+// the turn when nothing was open. Two competing listeners here once made a
+// modal deny ALSO hard-kill the running turn.
 window.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || slashVisible) return;
+  if (e.key !== "Escape") return;
+  if (slashVisible) {
+    // Normally consumed by the composer's own keydown (which stops
+    // propagation); this is a safety net if focus wandered.
+    hideSlashPop();
+    return;
+  }
+  if (stylesPanelOpen) {
+    closeStylesPanel();
+    return;
+  }
+  if (!setupWizardEl.classList.contains("hidden")) {
+    dismissSetupWizard();
+    return;
+  }
+  if (!deleteModalEl.classList.contains("hidden")) {
+    resolvePermission("deny");
+    return;
+  }
   if (busy || backgroundJobs.size > 0) {
     e.preventDefault();
     hardStop();
@@ -267,28 +287,11 @@ function dismissSetupWizard() {
 }
 if (wizCloseBtnEl) wizCloseBtnEl.addEventListener("click", dismissSetupWizard);
 
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  if (stylesPanelOpen) {
-    closeStylesPanel();
-    return;
-  }
-  if (!setupWizardEl.classList.contains("hidden")) {
-    dismissSetupWizard();
-    return;
-  }
-  if (!deleteModalEl.classList.contains("hidden")) {
-    resolvePermission("deny");
-    return;
-  }
-  if (busy) {
-    window.magentra.interrupt();
-  }
-});
-
 window.magentra.onEvent(handleEngineEvent);
 window.magentra.onRestarted(() => {
-  // A running turn (if any) is no longer valid once the engine process restarts.
+  // A running turn (if any) and any queued permission requests are no longer
+  // valid once the engine process restarts.
+  clearPermissionState();
   if (busy) {
     onTurnFinished();
   }

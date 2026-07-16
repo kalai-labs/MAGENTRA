@@ -1,7 +1,8 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { CoreEvent, TaskItem } from "@magentra/protocol";
 import type { TaskPatch, TaskStoreApi } from "../agent/tool.js";
+import { writeFileAtomic } from "../util/fsAtomic.js";
 
 /**
  * Session task list, persisted per-session under .magentra/tasks/<sessionId>.json.
@@ -109,24 +110,31 @@ export class TaskStore implements TaskStoreApi {
   }
 
   private persist(): void {
-    mkdirSync(dirname(this.file), { recursive: true });
-    writeFileSync(
-      this.file,
-      JSON.stringify({ nextId: this.nextId, tasks: this.list() }, null, 2),
-    );
+    // Atomic (write-then-rename): a crash mid-write must never leave a
+    // truncated file that load() would then mistake for a fresh session.
+    writeFileAtomic(this.file, JSON.stringify({ nextId: this.nextId, tasks: this.list() }, null, 2));
     this.emit({ type: "task_list_updated", tasks: this.list() });
   }
 
   private load(): void {
+    let raw: string;
     try {
-      const data = JSON.parse(readFileSync(this.file, "utf8")) as {
-        nextId: number;
-        tasks: TaskItem[];
-      };
+      raw = readFileSync(this.file, "utf8");
+    } catch {
+      return; // no file — genuinely a fresh session
+    }
+    try {
+      const data = JSON.parse(raw) as { nextId: number; tasks: TaskItem[] };
       this.nextId = data.nextId;
       this.tasks = new Map(data.tasks.map((t) => [t.id, t]));
     } catch {
-      // fresh session
+      // The file exists but is unreadable — losing the task list silently
+      // reads as data loss; say so instead of pretending nothing was there.
+      this.emit({
+        type: "error",
+        message: `Task list at ${this.file} is corrupt — starting with an empty list.`,
+        fatal: false,
+      });
     }
   }
 }

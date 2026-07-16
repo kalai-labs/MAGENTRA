@@ -121,7 +121,14 @@ if (changesCloseBtnEl) changesCloseBtnEl.addEventListener("click", () => showVie
 
 let engineErrorBannerShown = false;
 
-function showEngineErrorBanner(message) {
+/** Does a failure message point at credentials rather than a crash? Steers
+ * which banner action leads — both are always offered, so a wrong guess costs
+ * one extra click, never a dead end. */
+function looksCredentialError(message) {
+  return /api.?key|credential|unauthorized|\b401\b|\b403\b/i.test(message || "");
+}
+
+function showEngineErrorBanner(message, kind) {
   if (engineErrorBannerShown || !streamEl) return;
   engineErrorBannerShown = true;
   finalizeAssistantEl();
@@ -129,10 +136,24 @@ function showEngineErrorBanner(message) {
   el.className = "engine-banner";
   const text = document.createElement("span");
   text.textContent = message;
-  const btn = document.createElement("button");
-  btn.className = "engine-banner-btn";
-  btn.textContent = "SET UP ENGINE ▸";
-  btn.addEventListener("click", openSetupWizard);
-  el.append(text, btn);
+  el.appendChild(text);
+
+  const restartBtn = document.createElement("button");
+  restartBtn.className = "engine-banner-btn";
+  restartBtn.textContent = "RESTART ENGINE ▸";
+  restartBtn.addEventListener("click", () => {
+    // Let a repeat failure raise a fresh banner instead of dying silently.
+    engineErrorBannerShown = false;
+    el.remove();
+    window.magentra.restartEngine();
+  });
+
+  const setupBtn = document.createElement("button");
+  setupBtn.className = "engine-banner-btn";
+  setupBtn.textContent = "SET UP ENGINE ▸";
+  setupBtn.addEventListener("click", openSetupWizard);
+
+  if (kind === "credential") el.append(setupBtn, restartBtn);
+  else el.append(restartBtn, setupBtn);
   withAutoScroll(() => streamEl.appendChild(el));
 }

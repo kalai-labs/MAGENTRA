@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { encodeFrame } from "@magentra/protocol";
 import type { PermissionMode } from "@magentra/protocol";
 import { MissingApiKeyError, bootstrapEngine } from "./bootstrap.js";
 import { runServe } from "./serve.js";
@@ -16,7 +17,13 @@ interface HostArgs {
   mode?: PermissionMode;
 }
 
+/**
+ * A fatal boot failure must reach the frontend in-band: the desktop app reads
+ * NDJSON from stdout, so an error that only hits stderr leaves the user with a
+ * dead process and no message. Emit the protocol frame first, stderr as backup.
+ */
 function fail(message: string): never {
+  process.stdout.write(encodeFrame({ type: "error", message, fatal: true }));
   process.stderr.write(`Error: ${message}\n`);
   process.exit(1);
 }
@@ -74,6 +81,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  process.stderr.write(`fatal: ${err instanceof Error ? err.message : String(err)}\n`);
+  const message = err instanceof Error ? err.message : String(err);
+  process.stdout.write(encodeFrame({ type: "error", message, fatal: true }));
+  process.stderr.write(`fatal: ${message}\n`);
   process.exit(1);
 });

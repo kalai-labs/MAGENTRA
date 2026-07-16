@@ -1,6 +1,56 @@
 import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { Msg } from "@magentra/providers";
+import type { ContentBlock, Msg } from "@magentra/providers";
+
+/**
+ * tool_use ids in `msg` that `next` does not answer with a matching
+ * tool_result. Providers reject a history where an assistant tool_use has no
+ * result in the immediately following message, so an interrupt, a provider
+ * error, or a crash mid-tool-batch must be repaired before the next request.
+ */
+export function unansweredToolUseIds(msg: Msg | undefined, next?: Msg): string[] {
+  if (!msg || msg.role !== "assistant") return [];
+  const ids = msg.content.filter((b) => b.type === "tool_use").map((b) => b.id);
+  if (ids.length === 0) return [];
+  const answered = new Set(
+    (next?.content ?? []).filter((b) => b.type === "tool_result").map((b) => b.toolUseId),
+  );
+  return ids.filter((id) => !answered.has(id));
+}
+
+/** Placeholder results for tool calls that never completed. */
+export function syntheticToolResults(ids: string[]): ContentBlock[] {
+  return ids.map((id) => ({
+    type: "tool_result",
+    toolUseId: id,
+    content: "(interrupted — this tool call never completed)",
+    isError: true,
+  }));
+}
+
+/**
+ * Walks a replayed history and inserts synthetic tool_results wherever an
+ * assistant tool_use was left unanswered (crash or interrupt mid-turn), so a
+ * resumed session never replays a request the provider would reject.
+ */
+export function repairToolPairing(messages: Msg[]): Msg[] {
+  const repaired: Msg[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]!;
+    repaired.push(msg);
+    const dangling = unansweredToolUseIds(msg, messages[i + 1]);
+    if (dangling.length === 0) continue;
+    const next = messages[i + 1];
+    if (next && next.role === "user" && next.content.some((b) => b.type === "tool_result")) {
+      // Partial batch: results must all sit in the following user message.
+      repaired.push({ ...next, content: [...syntheticToolResults(dangling), ...next.content] });
+      i++;
+    } else {
+      repaired.push({ role: "user", content: syntheticToolResults(dangling) });
+    }
+  }
+  return repaired;
+}
 
 export type TranscriptRecord =
   | { kind: "message"; ts: string; message: Msg }
@@ -101,6 +151,9 @@ export class Transcript {
         ];
       }
     }
-    return messages;
+    // A crash mid-tool-batch leaves the last assistant tool_use unanswered on
+    // disk; older transcripts may carry the same wound mid-history from resumes
+    // that predate this repair.
+    return repairToolPairing(messages);
   }
 }

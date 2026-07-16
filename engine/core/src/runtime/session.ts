@@ -61,7 +61,7 @@ import type {
   ToolRegistry,
   ToolResult,
 } from "../agent/tool.js";
-import { Transcript } from "../state/transcript.js";
+import { Transcript, syntheticToolResults, unansweredToolUseIds } from "../state/transcript.js";
 
 const DEFAULT_OUTPUT_LIMIT = 40_000;
 
@@ -1135,15 +1135,34 @@ export class Session {
         this.pushMessage({ role: "user", content: this.withReminders(results) });
       }
     } catch (err) {
+      // If the turn died between an assistant tool_use and its results, the
+      // history is malformed until each dangling call gets a tool_result —
+      // providers reject the next request otherwise (and /resume replays the
+      // same wound). Synthesize the missing results before recording anything.
+      const repairs = syntheticToolResults(
+        unansweredToolUseIds(this.messages[this.messages.length - 1]),
+      );
       if (signal.aborted) {
         stopReason = "aborted";
         this.pushMessage({
           role: "user",
-          content: [{ type: "text", text: "<system-reminder>The user interrupted this turn before it finished.</system-reminder>" }],
+          content: [
+            ...repairs,
+            { type: "text", text: "<system-reminder>The user interrupted this turn before it finished.</system-reminder>" },
+          ],
         });
       } else {
         stopReason = "error";
         this.emit({ type: "error", message: (err as Error).message, fatal: false });
+        if (repairs.length > 0) {
+          this.pushMessage({
+            role: "user",
+            content: [
+              ...repairs,
+              { type: "text", text: "<system-reminder>This turn ended with an error before its tool calls completed.</system-reminder>" },
+            ],
+          });
+        }
       }
     } finally {
       this.busy = false;
@@ -1491,10 +1510,18 @@ export class Session {
     if (!force && this.stats.contextTokens < threshold) return false;
     if (this.messages.length < 8) return false;
 
-    const keepTail = 6;
-    const head = this.messages.slice(0, this.messages.length - keepTail);
-    const tail = this.messages.slice(this.messages.length - keepTail);
-    if (head.length === 0) return false;
+    // Keep roughly the last 6 messages, but never split a tool_use from its
+    // tool_result: a tail that opens with tool_results whose tool_use was
+    // summarized away is a history every provider rejects, bricking the
+    // session. Tool pairs are adjacent, so walking the boundary back to a
+    // message with no tool_result blocks guarantees each pair lands whole.
+    let splitIdx = this.messages.length - 6;
+    while (splitIdx > 0 && this.messages[splitIdx]!.content.some((b) => b.type === "tool_result")) {
+      splitIdx--;
+    }
+    if (splitIdx <= 0) return false;
+    const head = this.messages.slice(0, splitIdx);
+    const tail = this.messages.slice(splitIdx);
 
     const summarySignal = new AbortController().signal;
     let summaryText = "";

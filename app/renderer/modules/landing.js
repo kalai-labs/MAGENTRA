@@ -266,6 +266,25 @@ function resolvePermission(decision) {
   showNextPermission();
 }
 
+/** Drop pending permission requests wholesale — used when the engine process
+ * goes away (crash or restart): a decision sent to the next engine would
+ * answer a request that no longer exists. */
+function clearPermissionState() {
+  permissionQueue = [];
+  activePermission = null;
+  deleteModalEl.classList.add("hidden");
+}
+
+/** The engine process is gone: nothing it owed the UI (turn end, background
+ * exits, permission decisions) will ever arrive — settle everything so a dead
+ * process can never leave the composer locked. */
+function onEngineGone() {
+  backgroundJobs.clear();
+  clearPermissionState();
+  if (busy) onTurnFinished();
+  else syncActivityUi();
+}
+
 const RECOMMENDED_SUFFIX = "(Recommended)";
 
 function onQuestionRequest(event) {
@@ -482,18 +501,24 @@ function handleEngineEvent(event) {
       appendSysError(event.message);
       if (event.fatal) {
         setStatusLed("error");
-        showEngineErrorBanner(event.message);
+        showEngineErrorBanner(event.message, looksCredentialError(event.message) ? "credential" : "crash");
       }
       break;
     case "engine_stderr":
       appendSysError(event.text);
       break;
-    case "engine_exit":
-      if (event.code) {
-        appendSysError(`engine exited with code ${event.code}`);
-        showEngineErrorBanner("The engine stopped. Check your connection settings, then set up again.");
-      }
+    case "engine_exit": {
+      // Deliberate stops (restart, model change, quit) are flagged expected by
+      // the main process; everything else — including signal deaths, where
+      // code is null — is a crash and must both say so and unlock the UI.
+      if (event.expected) break;
+      const cause = event.signal ? `signal ${event.signal}` : `code ${event.code}`;
+      appendSysError(`engine stopped unexpectedly (${cause})`);
+      setStatusLed("error");
+      showEngineErrorBanner("The engine stopped unexpectedly. Restart it, or review your connection settings.");
+      onEngineGone();
       break;
+    }
     default:
       break;
   }

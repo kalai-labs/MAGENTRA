@@ -469,6 +469,16 @@ export class Engine {
       case "reload_team":
         this.reloadTeam();
         break;
+      default:
+        // The wire accepts any {type: string} object, so an unknown type can
+        // arrive at runtime despite the exhaustive union above. Answer it —
+        // a silently dropped frame is undebuggable from the frontend side.
+        this.emit({
+          type: "error",
+          message: `Unknown request type "${(request as { type?: unknown }).type}"`,
+          fatal: false,
+        });
+        break;
     }
   }
 

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
@@ -354,8 +354,16 @@ export function setSetting(
 
   mkdirSync(dirname(file), { recursive: true });
   // mode 0600 applies only when the file is created; Node ignores it for an
-  // existing file, so pre-existing permissions are never clobbered.
+  // existing file. When a secret lands, chmod the file too so a pre-existing
+  // world-readable settings file stops exposing the key (no-op on Windows).
   writeFileSync(file, `${JSON.stringify(candidate, null, 2)}\n`, { mode: 0o600 });
+  if (SECRET_KEYS.has(topKey)) {
+    try {
+      chmodSync(file, 0o600);
+    } catch {
+      // best-effort — the write itself must never fail over permissions polish
+    }
+  }
   return { file, key: dotPath, value };
 }
 

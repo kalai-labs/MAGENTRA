@@ -77,6 +77,9 @@ function sendToRenderer(channel, payload) {
 function stopEngine() {
   if (engineChild) {
     logEvent("sys", { ev: "kill", pid: engineChild.pid });
+    // Mark this exit as ours (restart, quit, model change) so the exit handler
+    // can tell a deliberate stop from a crash — only crashes get a banner.
+    engineChild.expectedExit = true;
     try {
       engineChild.stdin.end();
     } catch {
@@ -93,10 +96,35 @@ function stopEngine() {
   engineStderrBuffer = "";
 }
 
+// Frames that represent an explicit user action: dropping one silently reads
+// as "the app ignored me". State-sync frames (set_mode, set_modes,
+// set_deletion_guard, reload_team) are re-sent on session start, so their
+// drops stay quiet by design — the renderer fires them before any engine runs.
+const USER_ACTION_FRAMES = new Set([
+  "user_message",
+  "slash_command",
+  "bang_command",
+  "interrupt",
+  "permission_response",
+  "question_response",
+  "plan_decision",
+  "resume_session",
+  "list_sessions",
+]);
+
 function writeToEngine(frame) {
   if (engineChild && engineChild.stdin.writable) {
     engineChild.stdin.write(JSON.stringify(frame) + "\n");
     logEvent("ui", frame);
+    return;
+  }
+  logEvent("sys", { ev: "engine-write-dropped", type: frame && frame.type });
+  if (frame && USER_ACTION_FRAMES.has(frame.type)) {
+    sendToRenderer("engine:event", {
+      type: "error",
+      message: "The engine is not running — restart it from the banner, or reopen the workspace.",
+      fatal: false,
+    });
   }
 }
 
@@ -198,6 +226,8 @@ function startEngine(workspace, model) {
       try {
         event = JSON.parse(line);
       } catch {
+        // A corrupt frame means protocol trouble — invisible unless logged.
+        logEvent("sys", { ev: "engine-stdout-unparseable", line: line.slice(0, 400) });
         continue;
       }
       logEvent("engine", event);
@@ -218,10 +248,13 @@ function startEngine(workspace, model) {
     }
   });
 
-  child.on("exit", (code) => {
-    logEvent("sys", { ev: "exit", pid: child.pid, code });
+  child.on("exit", (code, signal) => {
+    const expected = !!child.expectedExit;
+    logEvent("sys", { ev: "exit", pid: child.pid, code, signal, expected });
     flushLog();
-    sendToRenderer("engine:event", { type: "engine_exit", code });
+    // Signal deaths (SIGSEGV, OOM-kill) have code === null — the renderer must
+    // treat any unexpected exit as fatal, whatever the exit code says.
+    sendToRenderer("engine:event", { type: "engine_exit", code, signal, expected });
     if (engineChild === child) engineChild = null;
   });
 
@@ -645,7 +678,14 @@ ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
         keptLines.pop();
       }
       keptLines.push(`${envVarName}=${apiKey}`);
-      fs.writeFileSync(envPath, keptLines.join("\n") + "\n", "utf8");
+      // Holds the API key: owner-only. mode applies only on create, so chmod
+      // fixes up a pre-existing world-readable file too (no-op on Windows).
+      fs.writeFileSync(envPath, keptLines.join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
+      try {
+        fs.chmodSync(envPath, 0o600);
+      } catch {
+        // best-effort — never fail the write over permissions polish
+      }
     } catch (err) {
       const message = err && err.message ? err.message : String(err);
       return { ok: false, error: `failed to write .env: ${message}` };
@@ -858,6 +898,13 @@ ipcMain.on("engine:setModes", (_evt, activeIds) => {
 
 ipcMain.on("engine:interrupt", () => {
   writeToEngine({ type: "interrupt" });
+});
+
+// Restart after a crash — the failure banner's way back without re-running setup.
+ipcMain.on("engine:restart", () => {
+  if (!currentConfig.workspace) return;
+  startEngine(currentConfig.workspace, currentConfig.model);
+  sendToRenderer("engine:restarted", { model: currentConfig.model });
 });
 
 ipcMain.on("engine:permission", (_evt, { id, decision }) => {
