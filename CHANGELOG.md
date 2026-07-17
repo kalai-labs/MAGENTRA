@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.3.1.0 — 2026-07-17
+
+### Bug fixes
+
+- context size is set from one place ([3972567](https://github.com/kalai-labs/MAGENTRA/commit/3972567a064df495842d314db44bcb563dd561c9))
+
+[Compare with v0.3.0.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.3.0.0...v0.3.1.0)
+
 ## 0.1.0.0 — 2026-07-14
 
 The first release.
