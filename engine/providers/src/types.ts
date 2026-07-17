@@ -54,11 +54,15 @@ export interface StreamRequest {
   tools: ToolSchema[];
   maxTokens: number;
   signal: AbortSignal;
+  /** Observes connection retries (rate limit / server error / network) so the UI can say why it's waiting. */
+  onRetry?: (info: { attempt: number; delayMs: number; reason: string }) => void;
 }
 
 export interface Provider {
   stream(req: StreamRequest): AsyncIterable<ProviderEvent>;
   countTokens?(req: Omit<StreamRequest, "signal" | "maxTokens">): Promise<number>;
+  /** Model ids the endpoint actually serves (GET /models); feeds the UI's model picker. */
+  listModels?(): Promise<string[]>;
 }
 
 export const EMPTY_USAGE: Usage = {

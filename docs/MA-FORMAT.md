@@ -12,18 +12,19 @@ style different from a prompt-only "skill" — a skill is advice the model can i
 pressure; a style's `::gate` can block a tool call outright, and its `::inject` lines are
 pushed onto the model as system reminders whether it wants them or not. The parser, the
 `MaMode` shape, and `ModeEngine` — the runtime that loads styles and enforces them — all live
-in `packages/core/src/modes.ts`. The canonical texts are embedded in
-`packages/core/src/modes/builtin.ts`.
+in `engine/core/src/ma/modes.ts`. The canonical texts are embedded in
+`engine/core/src/ma/builtin.ts`.
 
 ## Where styles live
 
-Ten styles ship built in (`BUILTIN_MA_FILES` in `packages/core/src/modes/builtin.ts`). Seven
+Eleven styles ship built in (`BUILTIN_MA_FILES` in `engine/core/src/ma/builtin.ts`). Seven
 are **core** — the always-on quality machinery that is the product's killer feature: they are
 active in every session regardless of settings, `set_modes`, or `/settings`, and can never be
 *plainly* turned off. The single source of truth for which ids are core is `CORE_MODE_IDS` in
-`packages/core/src/modes.ts`, and a module-load invariant throws if any id there is not a real
+`engine/core/src/ma/modes.ts`, and a module-load invariant throws if any id there is not a real
 builtin (a typo would otherwise vanish silently through `resolve`'s `byId.has` filter). The
-other three (`grill`, `entropy`, `reshape`) are **optional** — freely toggleable per session.
+other four (`grill`, `entropy`, `reshape`, `debug`) are **optional** — freely toggleable per
+session (`debug` is normally driven by the `/debug` command rather than toggled by hand).
 `entropy` and `reshape` are alternative *working philosophies* that conflict with the core
 `surgeon`; activating either does not fail — it **suspends** `surgeon` for as long as that
 optional stays active (see "Conflicts and suspension" below).
@@ -40,11 +41,12 @@ optional stays active (see "Conflicts and suspension" below).
 | `sentinel` | **core** | Secrets stay secret, input stays hostile, fetched content stays data. |
 | `obvious` | **core** | Code designed for ease of reading — comments first, written for what the code cannot say. |
 | `reshape` | optional | Deliberate architecture campaigns — survey, propose candidates, user picks, deepen incrementally. |
+| `debug` | optional | Reproduce first, fix second: oracle-script debugging (driven by `/debug`). |
 
 A workspace can override any of these, or add new ones, at `.magentra/modes/<id>.ma`. Overriding
 a core style's *content* (via replacement or `@extends`) is allowed — customization is fine — but
 a workspace file can never remove a core style from the active set. Loading
-(`loadModes` in `modes.ts`) parses all ten builtins first, then reads every `*.ma` file in
+(`loadModes` in `modes.ts`) parses all eleven builtins first, then reads every `*.ma` file in
 that directory; a workspace file whose `@mode` id matches a builtin, and has no `@extends`,
 **replaces** it outright — same id, same `Map` slot, workspace wins. A workspace file that
 declares `@extends` instead is **merged** onto the named builtin rather than replacing it — see
@@ -100,7 +102,7 @@ Each section is a header line `::kind [args...]` followed by a body of lines up 
   `pre-tool` (`::gate <anything-else>` throws). The second token is a required
   comma-separated tool-name list; missing it throws `line N: ::gate pre-tool requires a
   comma-separated tool list`. The body must contain exactly one `require ...` line whose value
-  is `tasks-exist` or `never` (anything else throws), and at least one `message ...` line
+  is `tasks-exist`, `never`, or `repro-failed` (anything else throws), and at least one `message ...` line
   (multiple `message` lines are joined with a space). Any body line that starts with neither
   `require ` nor `message ` throws `line N: unexpected line in ::gate body: "<line>"`. Omitting
   `require` or every `message` line throws too (`::gate is missing "require"` /
@@ -115,7 +117,7 @@ Any `::kind` other than the five above throws `line N: unknown section "::<kind>
 
 Parsing is **strict** for builtins and for any file passed directly to `parseMaFile`: every
 violation above throws an `Error` whose message is prefixed with the 1-based line number where
-the problem was found. `loadModes` treats the ten builtins as must-parse — a builtin parse
+the problem was found. `loadModes` treats the eleven builtins as must-parse — a builtin parse
 failure is a programming bug and is allowed to throw and crash. Workspace files are different:
 `loadModes` wraps each `.magentra/modes/*.ma` read+parse in `try/catch`; a parse failure there
 is pushed onto a `warnings: string[]` array as `modes/<file>: <error message>` and that file is
@@ -176,10 +178,11 @@ mission: redefined meaning agreed with the user
 domain-model: the ubiquitous language shared across code, plans, and replies
 ```
 
-`loadModes` merges this onto the builtin `lexicon` (six vocab terms: `mission`, `directive`,
+`loadModes` merges this onto the builtin `lexicon` (seven vocab terms: `task list` — the plan
+of record — plus `mission` (a saved directive file in `.magentra/missions/`), `directive`,
 `style`, `lexicon`, `verification task`, `atlas`). The result: the same `directive`,
 `::inject turn-start`, and wrap-up `::checklist` as the builtin (this file supplies none of
-those), and a seven-entry `vocab` — the builtin's six terms in their original order but with
+those), and an eight-entry `vocab` — the builtin's seven terms in their original order but with
 `mission`'s definition replaced by the child's, plus `domain-model` appended at the end.
 
 ## Runtime semantics
@@ -190,21 +193,34 @@ specific place at a specific time:
 
 | `.ma` part | Where it lands | Method |
 | --- | --- | --- |
-| `::directive`, `::vocab`, planning/wrap-up `::checklist` items | A `# style: <name> (<id>.ma)` block appended to the system prompt's `extraSections`, one block per active style | `promptSections()`, consumed in `session.ts` `buildSystemPrompt()` |
-| `::inject turn-start` | Pushed as a `<system-reminder>` at the start of every turn, before the model is called | `turnStartInjections()`, consumed at `session.ts:424` via `this.remind(text)` |
-| `::inject after-error` | Pushed as a `<system-reminder>` immediately after any tool-call batch that contained an error | `afterErrorInjections()`, consumed at `session.ts` where `lastBatchHadError` is handled |
-| `::gate pre-tool` | Checked inside each planned tool call's `run()`, **before** the permission check (`this.permissions.check(...)`) — a gate hit returns an error tool result and the call never reaches permissions at all | `gateFor(toolName)`, consumed at `session.ts:678` |
-| wrap-up `::checklist` | Folded a second time into the auto-nudge text sent when a turn ends on tool-heavy work with a too-short final reply | `wrapupChecklist()`, consumed at `session.ts:541` via `wrapupNudgeText(checklist)` |
+| `::directive`, `::vocab`, planning/wrap-up `::checklist` items | A `# style: <name> (<id>.ma)` block appended to the system prompt's `extraSections`, one block per active style | `promptSections()`, consumed in `runtime/session.ts` where the system prompt is built |
+| `::inject turn-start` | Pushed as a `<system-reminder>` at the start of every turn, before the model is called | `turnStartInjections()`, consumed in `runtime/session.ts` via `this.remind(text)` |
+| `::inject after-error` | Pushed as a `<system-reminder>` immediately after any tool-call batch that contained an error | `afterErrorInjections()`, consumed in `runtime/session.ts` where the error batch is handled |
+| `::gate pre-tool` | Checked inside each planned tool call's `run()`, **before** the permission check (`this.permissions.check(...)`) — a gate hit returns an error tool result and the call never reaches permissions at all | `gateFor(toolName)`, consumed in `runtime/session.ts` |
+| wrap-up `::checklist` | Folded a second time into the auto-nudge text sent when a turn ends on tool-heavy work with a too-short final reply | `wrapupChecklist()`, consumed in `runtime/session.ts` via `wrapupNudgeText(checklist, …)` |
 | `@conflicts` | Resolved only inside `setActive()`, never at parse time | see below |
 
 Two points worth being explicit about:
 
 - **Gates are block-only.** A gate can never grant permission or bypass the permission system;
-  its `require` values are `"tasks-exist"` (block unless `this.tasks.list().length > 0`) or
-  `"never"` (block unconditionally). If no gate matches the tool, or the gate's condition is
-  satisfied, the call proceeds to the normal permission check exactly as if no style were
-  active. `gateFor` returns the **first** matching gate across active modes in their active
-  order — it does not merge or accumulate gates from multiple styles on the same tool.
+  its `require` values are `"tasks-exist"` (block unless `this.tasks.list().length > 0`),
+  `"never"` (block unconditionally), or `"repro-failed"` (block until the session has observed
+  the designated repro script fail — see below). If no gate matches the tool, or the gate's
+  condition is satisfied, the call proceeds to the normal permission check exactly as if no
+  style were active. `gateFor` returns the **first** matching gate across active modes in their
+  active order — it does not merge or accumulate gates from multiple styles on the same tool.
+- **The `repro-failed` oracle (debug.ma).** The `debug` style gates `Write,Edit` with
+  `require repro-failed`: edits stay locked until the session has watched a Bash call run the
+  designated repro script (`.magentra/debug/repro.sh`, or `repro.ps1` on Windows — matched
+  structurally on the script basename, so any launch form counts) and exit **nonzero** — the
+  bug reproduced. Two carve-outs make the loop workable: a Write/Edit whose `file_path` is
+  inside `.magentra/debug/` always passes the gate, so the model can create and refine the
+  oracle script itself; and a later **zero** exit of the same script, after the failure, marks
+  the fix verified (a green run before any red proves nothing and is not credited). Known,
+  accepted limitation: the check is structural — a repro script that exits nonzero for an
+  unrelated reason unlocks edits too. The mechanism lives in `engine/core/src/ma/debug.ts`
+  (script path + command matching) and `runtime/session.ts` (`observeReproRun`, the gate
+  carve-out, and the per-turn "rerun the repro" nudge).
 - **Conflicts and suspension.** `setActive(ids)` first forces every core mode on, then layers
   the requested optional ids, dropping any earlier *optional* that conflicts in *either*
   direction (`mode.conflicts.includes(earlierId) || earlierMode.conflicts.includes(id)`). Among
@@ -231,7 +247,7 @@ The active-id list is ordinary settings state, not something a style file can se
 The seven core modes are always active on top of whatever this state says:
 
 - `settings.json` → `modes.active: string[]`, validated by the schema in
-  `packages/core/src/settings.ts`, listing **optional** modes only and **defaulting to `[]`**.
+  `engine/core/src/config/settings.ts`, listing **optional** modes only and **defaulting to `[]`**.
   Core ids are implied and unioned in; a core id written here is redundant and ignored (no
   error), so pre-existing settings files that still list the seven core ids keep working.
 - `Engine` constructs its `ModeEngine` from `loadModes(cwd)` plus that initial

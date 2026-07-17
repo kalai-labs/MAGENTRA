@@ -46,6 +46,10 @@ const backgroundJobs = new Set();
 // False until a workspace is chosen; before that the composer stays disabled
 // regardless of what else is going on.
 let workspaceOpen = false;
+let activeWorkspace = null;
+let currentSessionId = null;
+let sessionSummaries = [];
+let openSessionPickerAfterList = false;
 // False while the workspace has no working credentials (setup:required fired
 // and no session_started since): prompts would go into a dead engine, so the
 // composer locks and points at setup instead. An engine CRASH does not clear
@@ -89,21 +93,49 @@ const DEFAULT_UI_SETTINGS = {
   commands: "auto", // "auto" (autonomous) | "ask" (approval before consequential tools)
 };
 
+// Until the user picks a theme themselves, the app follows the OS: light OS →
+// glacier, dark OS → phosphor. A saved `theme` key means an explicit choice.
+let themeExplicit = false;
+
+function osTheme() {
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
+    ? "glacier"
+    : "phosphor";
+}
+
 function loadUiSettings() {
+  let saved = {};
   try {
     const raw = localStorage.getItem(UI_SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_UI_SETTINGS };
-    return { ...DEFAULT_UI_SETTINGS, ...JSON.parse(raw) };
+    if (raw) saved = JSON.parse(raw);
   } catch {
-    return { ...DEFAULT_UI_SETTINGS };
+    saved = {};
   }
+  themeExplicit = typeof saved.theme === "string";
+  const settings = { ...DEFAULT_UI_SETTINGS, ...saved };
+  if (!themeExplicit) settings.theme = osTheme();
+  return settings;
 }
 
 let uiSettings = loadUiSettings();
 
+// While the theme is still OS-driven, follow OS switches live; the first
+// explicit pick (a swatch click persists `theme`) ends the tracking.
+if (window.matchMedia) {
+  window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+    if (themeExplicit) return;
+    uiSettings.theme = osTheme();
+    applyUiSettings();
+    syncUiControlsFromSettings();
+  });
+}
+
 function saveUiSettings() {
   try {
-    localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(uiSettings));
+    // Persist `theme` only once the user picked one — otherwise a font/size
+    // save would freeze the OS-following default into an "explicit" choice.
+    const { theme, ...rest } = uiSettings;
+    localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(themeExplicit ? uiSettings : rest));
   } catch {
     // ignore storage failures (private mode, quota, etc.)
   }
@@ -218,6 +250,7 @@ function wireSwatchGroup(containerEl, settingKey) {
       containerEl.querySelectorAll(".swatch").forEach((b) => b.classList.remove("on"));
       btn.classList.add("on");
       uiSettings[settingKey] = btn.dataset[settingKey];
+      if (settingKey === "theme") themeExplicit = true; // ends OS-following
       saveUiSettings();
       applyUiSettings();
     });
@@ -284,19 +317,13 @@ let stylesPanelOpen = false; // is the #stylesPanel popover currently open
 const HERO_MODE_IDS = ["grill", "reshape"];
 const HERO_MODE_LABELS = { grill: "⚡ grill", reshape: "⟲ reshape" };
 
-// slash-command palette state
-const SLASH_COMMANDS = [
-  { cmd: "/clear", args: "", desc: "fresh session — history cleared" },
-  { cmd: "/compact", args: "", desc: "compact the conversation now" },
-  { cmd: "/session", args: "", desc: "this session's bill: cost per model, time, code churn, context" },
-  { cmd: "/mode", args: "<default|acceptEdits|plan|bypass>", desc: "set permission mode" },
-  { cmd: "/styles", args: "[on|off <id>]", desc: "list optional .ma styles, or toggle one" },
-  { cmd: "/settings", args: "[<key> <value>]", desc: "show settings, or set one (persisted)" },
-  { cmd: "/tasks", args: "", desc: "show the task list" },
-  { cmd: "/build-crew", args: "", desc: "design a crew of specialist agents (if none exists)" },
-  { cmd: "/resume", args: "<session-id>", desc: "resume a previous session" },
-  { cmd: "/sessions", args: "", desc: "list saved sessions" },
+// slash-command palette state. The engine ships its real command registry in
+// session_started (onSessionStarted adopts it), so the palette can never
+// drift; this minimal set only covers the moments before the first session.
+let SLASH_COMMANDS = [
   { cmd: "/help", args: "", desc: "all commands" },
+  { cmd: "/settings", args: "[<key> <value>]", desc: "show settings, or set one (persisted)" },
+  { cmd: "/sessions", args: "", desc: "list saved sessions" },
 ];
 let slashMatches = []; // currently filtered registry rows shown in the palette
 let slashSelIdx = 0; // index into slashMatches of the "sel" row

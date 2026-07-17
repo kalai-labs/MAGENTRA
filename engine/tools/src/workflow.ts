@@ -33,7 +33,7 @@ Body hooks:
 - parallel(thunks): Promise<any[]> — run thunks concurrently and await all (a BARRIER). A thunk that throws resolves to null. Use ONLY when you need every result together (dedup/merge across the full set).
 - phase(title) / log(msg): emit progress lines to the user.
 - args: the tool's \`args\` input, verbatim.
-- budget: { total, spent(), remaining() } — a stub in this build (not enforced).
+- budget: { total, spent(), remaining() } — output tokens, ENFORCED: total is the turn's token ceiling; agent() throws once remaining() hits 0. Guard long loops with e.g. \`while (budget.remaining() > 20000) { ... }\`.
 
 DEFAULT TO pipeline; reach for a barrier only when a stage genuinely needs all prior-stage results at once. Concurrent agents are capped at 4; total agent calls per run are capped at 100. Date/Math.random are available but discouraged (no resume in this build).`;
 
@@ -62,7 +62,12 @@ export const workflowTool: ToolDefinition<WorkflowInput> = {
       args: input.args,
       session: ctx.session,
       signal,
-      onLog: (msg) => logs.push(msg),
+      onLog: (msg) => {
+        logs.push(msg);
+        // Live progress: phase()/log() lines tail into the tool row as they
+        // happen instead of only appearing in the final result.
+        if (ctx.callId) ctx.session.emit({ type: "tool_output_delta", id: ctx.callId, text: `${msg}\n` });
+      },
     });
 
     const logSection = logs.length > 0 ? `\n\nlog:\n${logs.join("\n")}` : "";

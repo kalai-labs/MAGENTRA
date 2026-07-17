@@ -63,9 +63,20 @@ export interface SessionSummary {
   updatedAt: string;
   cwd: string;
   firstUserMessage?: string;
+  /** Model used by the most recently completed turn, when recorded. */
+  model?: string;
+  /** User-assigned name (rename_session); shown instead of firstUserMessage. */
+  label?: string;
 }
 
 export type PermissionDecision = "allow_once" | "allow_session" | "deny";
+
+/** One slash command the engine understands — feeds the frontend palette. */
+export interface SlashCommandInfo {
+  cmd: string;
+  args: string;
+  desc: string;
+}
 
 /** Core -> frontend. */
 export type CoreEvent =
@@ -76,8 +87,32 @@ export type CoreEvent =
       cwd: string;
       model: string;
       mode: PermissionMode;
+      /** The engine's slash-command registry, so the palette can never drift. */
+      commands: SlashCommandInfo[];
+      /**
+       * The engine's rate card + context windows per known model ($/1M tokens),
+       * user pricing overrides applied — the frontend's single source for
+       * model hints; it must keep no pricing copy of its own.
+       */
+      rateCard: Record<
+        string,
+        { input: number; output: number; cacheRead?: number; cacheWrite?: number; contextWindow: number }
+      >;
     }
   | { type: "turn_started"; turnId: string }
+  | {
+      /** Incremental output from a running tool call (throttled) — lets the UI tail e.g. a build log live. */
+      type: "tool_output_delta";
+      id: string;
+      text: string;
+    }
+  | {
+      /** A provider call hit a retryable failure and is backing off — the UI shows why the spinner is waiting. */
+      type: "retry_status";
+      attempt: number;
+      delayMs: number;
+      reason: string;
+    }
   | { type: "text_delta"; text: string }
   | { type: "thinking_delta"; text: string }
   | {
@@ -163,6 +198,12 @@ export type CoreEvent =
        * arrives as cacheRead.
        */
       contextTokens: number;
+      /**
+       * Whole-session cost so far in USD, priced engine-side per model (crew
+       * runs on other models included). Absent when no used model has a rate
+       * card — the frontend must show nothing rather than a fake $0.
+       */
+      totalCostUsd?: number;
     }
   | { type: "error"; message: string; fatal: boolean }
   | {
@@ -199,6 +240,14 @@ export type CoreEvent =
         docCount: number;
         /** Backpack readiness: a distilled brief exists, or every doc reached at least the "noted" phase. */
         ready: boolean;
+        /** Ledger spend summary ("12.3k in / 4.1k out over 7 runs"); absent when the member has never run. */
+        spend?: string;
+        /** Durable lessons earned through verified work. */
+        lessonsPromoted: number;
+        /** Lessons still on probation. */
+        lessonsCandidate: number;
+        /** Verified completed tasks from the hash-chained service record. */
+        tasksCompleted: number;
       }[];
     }
   | {
@@ -216,7 +265,41 @@ export type CoreEvent =
    * engine reconstructs a paint list here (tool calls already paired with their
    * results, harness scaffolding stripped).
    */
-  | { type: "session_restored"; sessionId: string; messages: RestoredMessage[] };
+  | { type: "session_restored"; sessionId: string; messages: RestoredMessage[] }
+  | {
+      /** The model ids the configured endpoint actually serves — the UI rebuilds its picker from this. */
+      type: "model_catalog";
+      models: string[];
+    }
+  | {
+      /** The session's working directory moved (EnterWorktree/ExitWorktree). */
+      type: "cwd_changed";
+      cwd: string;
+      /** True while operating somewhere other than the workspace root. */
+      worktree: boolean;
+    }
+  | {
+      type: "missions_updated";
+      missions: {
+        id: string;
+        name: string;
+        description?: string;
+        keywords: string[];
+        /** 5-field cron expression from the mission file, when present. */
+        schedule?: string;
+        /** A durable cron job is currently armed for this mission. */
+        scheduled: boolean;
+        /** The mission is marked continuous-capable in its file. */
+        continuous: boolean;
+        /** The continuous loop is currently active. */
+        running: boolean;
+        /** Workspace-relative report path (explicit deliverable or the default). */
+        deliverable: string;
+        /** Last time the deliverable was written, when it exists. */
+        lastRunAt?: string;
+      }[];
+      warnings: string[];
+    };
 
 export interface RestoredToolCall {
   tool: string;
@@ -246,7 +329,7 @@ export type FrontendRequest =
   | {
       type: "question_response";
       id: string;
-      /** Keyed by question text; values are the selected option labels (or free text). */
+      /** Keyed positionally ("q:<idx>"; question text accepted as a legacy fallback); values are the selected option labels (or free text). */
       answers: Record<string, string[]>;
     }
   | { type: "plan_decision"; approve: boolean; editedPlan?: string; message?: string }
@@ -257,6 +340,10 @@ export type FrontendRequest =
   | { type: "slash_command"; command: string; args?: string }
   | { type: "bang_command"; cmd: string }
   | { type: "resume_session"; id: string }
+  | { type: "delete_session"; id: string }
+  | { type: "stop_background"; taskId: string }
+  | { type: "rename_session"; id: string; label: string }
+  | { type: "archive_session"; id: string }
   | { type: "list_sessions" }
   | { type: "set_modes"; active: string[] }
   | { type: "reload_team" };

@@ -42,6 +42,14 @@ export class BackgroundManager implements BackgroundApi {
       outputFile,
       status: "running",
     };
+    // Announce the launch: without this the UI can only infer background work
+    // from side effects (only the atlas build announced itself before).
+    this.emit({
+      type: "background_notification",
+      taskId: id,
+      kind: "start",
+      payload: { kind: opts.kind, description: opts.description },
+    });
     const child = opts.start(outputFile, (code) => {
       if (info.status === "running") {
         info.status = code === 0 ? "completed" : "failed";
@@ -74,15 +82,20 @@ export class BackgroundManager implements BackgroundApi {
     if (!handle || handle.info.status !== "running") return false;
     handle.info.status = "stopped";
     handle.stop();
+    // The onExit guard skips its notification for stopped tasks — tell the
+    // frontend here, or the job would look alive forever.
+    this.emit({
+      type: "background_notification",
+      taskId: id,
+      kind: "exit",
+      payload: { stopped: true, description: handle.info.description },
+    });
     return true;
   }
 
   stopAll(): void {
-    for (const handle of this.handles.values()) {
-      if (handle.info.status === "running") {
-        handle.info.status = "stopped";
-        handle.stop();
-      }
+    for (const id of [...this.handles.keys()]) {
+      this.stop(id);
     }
   }
 }

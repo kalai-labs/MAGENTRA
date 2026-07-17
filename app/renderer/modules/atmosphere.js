@@ -99,12 +99,29 @@
 
   let lastFrame = 0;
 
+  const reducedMotion = window.matchMedia
+    ? window.matchMedia("(prefers-reduced-motion: reduce)")
+    : { matches: false };
+  let staticTheme = null; // theme of the frozen frame currently painted, or null while animating
+
   function frame(now) {
     requestAnimationFrame(frame);
     if (document.hidden) return;
     const theme = document.documentElement.dataset.theme || "phosphor";
     // Hidden canvas (rain off, or paper theme) — skip the draw work too.
     if (document.documentElement.dataset.rain === "off" || theme === "paper") return;
+    // The OS reduced-motion setting and the app's CALM motion setting both
+    // freeze the atmosphere: draw one static frame, then stop animating.
+    if (reducedMotion.matches || document.documentElement.dataset.motion === "calm") {
+      if (staticTheme !== theme) {
+        if (theme === "glacier") drawSnow();
+        else if (theme === "dusk") drawStars();
+        else drawMatrix();
+        staticTheme = theme;
+      }
+      return;
+    }
+    staticTheme = null;
     // Glyph rain reads right at 15fps; drifting particles need 30 to be smooth.
     const interval = theme === "phosphor" ? 1000 / 15 : 1000 / 30;
     if (now - lastFrame < interval) return;

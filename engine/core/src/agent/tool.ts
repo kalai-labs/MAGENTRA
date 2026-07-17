@@ -71,6 +71,8 @@ export interface SessionServices {
   /** Block until the frontend responds to a plan_ready event. */
   requestPlanDecision(): Promise<PlanDecisionResult>;
   settings: Settings;
+  /** Output tokens billed to the whole session tree so far — lets a workflow enforce its token budget. */
+  usedOutputTokens(): number;
   stateDir: string;
   /** Phase 3: cron/wakeup scheduler, attached by the engine. */
   cron?: import("../scheduling/cron.js").CronScheduler;
@@ -91,6 +93,8 @@ export interface SessionServices {
 export interface ToolContext {
   cwd: string;
   session: SessionServices;
+  /** The tool_use id of this call — lets a tool stream tool_output_delta events to its own row. */
+  callId?: string;
 }
 
 export interface ToolDefinition<I = unknown> {

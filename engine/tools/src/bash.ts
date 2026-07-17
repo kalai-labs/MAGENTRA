@@ -23,10 +23,6 @@ const DELETION_SINGLE_WORDS = [
   "shred",
   "trash",
   "remove-item",
-  // mv removes content from where it was: it clobbers any existing destination
-  // and, moved outside the workspace, is a deletion in everything but name.
-  "mv",
-  "move-item",
 ];
 // Multi-word phrases matched as a unit (case-insensitive, via DELETION_PATTERN
 // below). Each ends in a word character so the shared trailing \b(?=\s|$)
@@ -37,6 +33,8 @@ const DELETION_PHRASES = [
   "git\\s+push\\s+--force",
   "git\\s+push\\s+-f",
   "git\\s+reset\\s+--hard",
+  "git\\s+stash\\s+drop",
+  "git\\s+stash\\s+clear",
   "terraform\\s+destroy",
   "drop\\s+table",
   "drop\\s+database",
@@ -61,6 +59,27 @@ const GIT_BRANCH_FORCE_DELETE = /\bgit\s+branch\s+-D\b(?=\s|$)/;
 // with a lookahead for the path that follows instead.
 const GIT_CHECKOUT_DISCARD = /\bgit\s+checkout\s+--\s+\S/i;
 
+// find's -delete action removes every matched file; the flag can sit anywhere
+// in the segment, so it needs its own pattern rather than a phrase.
+const FIND_DELETE = /\bfind\b[^|;&]*\s-delete\b/i;
+
+// mv is only destructive when it can silently destroy something: -f/--force
+// clobbers an existing destination without asking, and a destination outside
+// the workspace (absolute path, ~, or ..) removes the file from the
+// workspace's point of view. A plain rename inside the tree is not a deletion.
+const MV_SEGMENT = /(?:^|[|;&]\s*)\s*(?:mv|move-item)\s+([^|;&]*)/gi;
+
+function mvIsDestructive(command: string): boolean {
+  for (const match of command.matchAll(MV_SEGMENT)) {
+    const args = (match[1] ?? "").trim().split(/\s+/).filter(Boolean);
+    if (args.some((a) => a === "-f" || a === "--force" || /^-[a-z]*f[a-z]*$/i.test(a))) return true;
+    const paths = args.filter((a) => !a.startsWith("-"));
+    const dest = paths[paths.length - 1];
+    if (dest && /^(\/|~|\.\.(\/|$)|[A-Za-z]:[\\/])/.test(dest)) return true;
+  }
+  return false;
+}
+
 /**
  * Returns the command string when it looks like a destructive/irreversible
  * action (file deletion, forced git history rewrite, infra teardown, or a
@@ -73,7 +92,9 @@ export function bashDeletionSubject(command: string): string | undefined {
   const flagged =
     DELETION_PATTERN.test(command) ||
     GIT_BRANCH_FORCE_DELETE.test(command) ||
-    GIT_CHECKOUT_DISCARD.test(command);
+    GIT_CHECKOUT_DISCARD.test(command) ||
+    FIND_DELETE.test(command) ||
+    mvIsDestructive(command);
   return flagged ? command : undefined;
 }
 
@@ -157,10 +178,43 @@ export const bashTool: ToolDefinition<z.infer<typeof inputSchema>> = {
       };
     }
 
-    return runForeground(input, cwd, ctx.cwd, ctx.session, signal);
+    return runForeground(input, cwd, ctx.cwd, ctx.session, signal, ctx.callId);
   },
   inputSchema,
 };
+
+/**
+ * Throttled live-output streamer: buffers chunks and emits one
+ * tool_output_delta per interval, so a chatty build log costs a few events per
+ * second, not one per write. No-op without a call id (background/nested runs).
+ */
+function makeOutputStreamer(session: SessionServices, callId: string | undefined) {
+  if (!callId) return { push: (_: string) => {}, stop: () => {} };
+  let buffer = "";
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const flush = () => {
+    if (!buffer) return;
+    const text = buffer;
+    buffer = "";
+    session.emit({ type: "tool_output_delta", id: callId, text });
+  };
+  return {
+    push: (chunk: string) => {
+      // The pwd-tracking marker is plumbing, not command output.
+      const markerIdx = chunk.indexOf(PWD_MARKER);
+      buffer += markerIdx === -1 ? chunk : chunk.slice(0, markerIdx);
+      if (!timer) {
+        timer = setInterval(flush, 250);
+        if (typeof timer.unref === "function") timer.unref();
+      }
+    },
+    stop: () => {
+      if (timer) clearInterval(timer);
+      timer = undefined;
+      flush();
+    },
+  };
+}
 
 function runForeground(
   input: { command: string; timeout?: number },
@@ -170,16 +224,19 @@ function runForeground(
   baseCwd: string,
   session: SessionServices,
   signal: AbortSignal,
+  callId?: string,
 ): Promise<ToolResult> {
   return new Promise((resolve) => {
     const timeout = Math.min(input.timeout ?? DEFAULT_TIMEOUT, MAX_TIMEOUT);
     const child = spawnShell(input.command, cwd, true);
     let output = "";
     let done = false;
+    const streamer = makeOutputStreamer(session, callId);
 
     const finish = (result: ToolResult) => {
       if (done) return;
       done = true;
+      streamer.stop();
       clearTimeout(timer);
       signal.removeEventListener("abort", onAbort);
       resolve(result);
@@ -199,8 +256,16 @@ function runForeground(
     };
     signal.addEventListener("abort", onAbort, { once: true });
 
-    child.stdout.on("data", (chunk: Buffer) => (output += chunk.toString("utf8")));
-    child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString("utf8")));
+    child.stdout.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      output += text;
+      streamer.push(text);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      output += text;
+      streamer.push(text);
+    });
     child.on("error", (err) => finish({ content: `Failed to start shell: ${err.message}`, isError: true }));
     child.on("close", (code) => {
       const markerIdx = output.lastIndexOf(PWD_MARKER);
@@ -275,7 +340,7 @@ function clip(text: string, limit = 30_000): string {
   const half = limit / 2;
   return (
     text.slice(0, half) +
-    `\n[... output truncated (${text.length} chars total) ...]\n` +
+    `\n[truncated — ${text.length - limit} more chars omitted from the middle; redirect output to a file for the full text]\n` +
     text.slice(text.length - half)
   );
 }

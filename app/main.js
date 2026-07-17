@@ -13,7 +13,7 @@ const {
   rememberWorkspace,
   isLocalBaseUrl,
 } = require("./main/config.js");
-const { logEvent, setLogWorkspace, flushLog } = require("./main/logging.js");
+const { logEvent, setLogWorkspace, flushLog, initFallbackLog, activeLogsDir } = require("./main/logging.js");
 
 const SMOKE = process.argv.includes("--smoke");
 
@@ -46,6 +46,12 @@ if (process.env.PORTABLE_EXECUTABLE_FILE) {
 // too late — the flag has to be in the process arguments. scripts/launch.js
 // decides it up-front; a packaged AppImage that hits the same wall can be run
 // with --no-sandbox on the command line.
+
+// Windows toast notifications and taskbar grouping need an explicit
+// AppUserModelID — without it, notifications show as "electron.app.MAGENTRA".
+if (process.platform === "win32") {
+  app.setAppUserModelId("com.magentra.app");
+}
 
 // The live app config. main.js is its single owner: main/config.js is pure
 // (read/write/transform), so there is never a second copy that can drift.
@@ -89,22 +95,42 @@ function sendToRenderer(channel, payload) {
   }
 }
 
+// The child from a previous stopEngine that has not exited yet. A replacement
+// must never spawn while it lives — two engines in one process tree race over
+// the same workspace state.
+let dyingEngine = null;
+
 function stopEngine() {
   if (engineChild) {
-    logEvent("sys", { ev: "kill", pid: engineChild.pid });
+    const child = engineChild;
+    logEvent("sys", { ev: "kill", pid: child.pid });
     // Mark this exit as ours (restart, quit, model change) so the exit handler
     // can tell a deliberate stop from a crash — only crashes get a banner.
-    engineChild.expectedExit = true;
+    child.expectedExit = true;
     try {
-      engineChild.stdin.end();
+      child.stdin.end(); // EOF: the engine interrupts its turn and drains
     } catch {
       // ignore
     }
     try {
-      engineChild.kill();
+      child.kill("SIGTERM");
     } catch {
       // ignore
     }
+    // Escalate if it ignores SIGTERM (wedged turn, stuck pipe).
+    const killTimer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // ignore
+      }
+    }, 3000);
+    if (killTimer.unref) killTimer.unref();
+    dyingEngine = child;
+    child.once("exit", () => {
+      clearTimeout(killTimer);
+      if (dyingEngine === child) dyingEngine = null;
+    });
     engineChild = null;
   }
   engineStdoutBuffer = "";
@@ -124,7 +150,12 @@ const USER_ACTION_FRAMES = new Set([
   "question_response",
   "plan_decision",
   "resume_session",
+  "delete_session",
   "list_sessions",
+  "bang_command",
+  "stop_background",
+  "rename_session",
+  "archive_session",
 ]);
 
 function writeToEngine(frame) {
@@ -192,6 +223,13 @@ function startEngine(workspace, model) {
   stopEngine();
 
   if (!workspace) return;
+
+  // Never spawn a replacement while the old child lives: wait for its exit
+  // (stopEngine escalates to SIGKILL after 3s, so this always resolves).
+  if (dyingEngine) {
+    dyingEngine.once("exit", () => startEngine(workspace, model));
+    return;
+  }
 
   const entry = engineEntryPoint();
   const args = [...entry.args, "--serve", "--dangerously-bypass", "--cwd", workspace];
@@ -532,10 +570,59 @@ ipcMain.handle("team:removeAgent", async (_evt, agentId) => {
 // Window
 // ---------------------------------------------------------------------------
 
+/** Saved bounds, clamped to a live display so a detached monitor can't strand the window. */
+function savedWindowBounds() {
+  const saved = currentConfig.window;
+  if (!saved) return {};
+  const bounds = { width: saved.width, height: saved.height };
+  if (saved.x !== undefined && saved.y !== undefined) {
+    const { screen } = require("electron");
+    const visible = screen.getAllDisplays().some((d) => {
+      const a = d.workArea;
+      return (
+        saved.x + saved.width > a.x + 40 &&
+        saved.x < a.x + a.width - 40 &&
+        saved.y >= a.y - 20 &&
+        saved.y < a.y + a.height - 40
+      );
+    });
+    if (visible) {
+      bounds.x = saved.x;
+      bounds.y = saved.y;
+    }
+  }
+  return bounds;
+}
+
+/** Persist bounds + maximize state (debounced — resize fires continuously). */
+let windowStateTimer = null;
+function rememberWindowState() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (windowStateTimer) clearTimeout(windowStateTimer);
+  windowStateTimer = setTimeout(() => {
+    windowStateTimer = null;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const maximized = mainWindow.isMaximized();
+    // getBounds() while maximized reports the maximized rect; keep the
+    // last restored bounds so un-maximizing after a restart looks right.
+    const bounds = maximized ? (currentConfig.window || mainWindow.getNormalBounds()) : mainWindow.getBounds();
+    currentConfig = {
+      ...currentConfig,
+      window: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, maximized },
+    };
+    writeConfig(currentConfig);
+  }, 400);
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1240,
     height: 820,
+    ...savedWindowBounds(),
+    // The responsive floor the stylesheet is built for — below this, panels
+    // would clip horizontally rather than wrap.
+    minWidth: 700,
+    minHeight: 480,
     backgroundColor: "#050805",
     title: "MAGENTRA",
     autoHideMenuBar: true,
@@ -550,6 +637,12 @@ function createWindow() {
       devTools: !app.isPackaged,
     },
   });
+
+  if (currentConfig.window && currentConfig.window.maximized) mainWindow.maximize();
+  mainWindow.on("resize", rememberWindowState);
+  mainWindow.on("move", rememberWindowState);
+  mainWindow.on("maximize", rememberWindowState);
+  mainWindow.on("unmaximize", rememberWindowState);
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   mainWindow.webContents.on("will-navigate", (event) => {
@@ -774,7 +867,20 @@ ipcMain.handle("setup:testConnection", async (_evt, payload) => {
         signal: controller.signal,
       });
     }
-    return { ok: res.ok, status: res.status };
+    // Both API shapes list models as data[].id — hand them to the wizard so
+    // its model picker reflects the actual endpoint, not a hardcoded preset.
+    let models = [];
+    if (res.ok) {
+      try {
+        const body = await res.json();
+        if (body && Array.isArray(body.data)) {
+          models = body.data.map((m) => m && m.id).filter((id) => typeof id === "string");
+        }
+      } catch {
+        // a catalog is a bonus; the reachability result stands on its own
+      }
+    }
+    return { ok: res.ok, status: res.status, models };
   } catch (err) {
     const message =
       err && err.name === "AbortError" ? "timed out" : err && err.message ? err.message : String(err);
@@ -790,6 +896,16 @@ ipcMain.handle("setup:testConnection", async (_evt, payload) => {
 ipcMain.handle("app:info", () => ({
   version: require("./package.json").magentraVersion || app.getVersion(),
 }));
+
+// Diagnostics must be reachable from the UI: reveal the live log folder
+// (workspace logs when one is open, else the pre-workspace userData mirror).
+ipcMain.handle("app:openLogs", () => {
+  const dir = activeLogsDir();
+  if (!dir) return { ok: false };
+  flushLog();
+  shell.openPath(dir);
+  return { ok: true };
+});
 
 // The renderer may open exactly these pages (the wizard's "get an API key"
 // links) in the system browser — an allowlist, never an arbitrary URL, so a
@@ -885,6 +1001,9 @@ function openWorkspace(workspace) {
   writeConfig(currentConfig);
   setLogWorkspace(workspace);
   logEvent("sys", { ev: "workspace-changed", workspace });
+  // Reset workspace-scoped renderer state before the replacement engine can
+  // emit anything. Waiting for the invoke response races a fast engine boot.
+  sendToRenderer("engine:event", { type: "workspace_changed", workspace });
   if (hasCredentials(workspace)) {
     startEngine(workspace, currentConfig.model);
   } else {
@@ -970,7 +1089,57 @@ app.on("web-contents-created", (_evt, contents) => {
   });
 });
 
-app.whenReady().then(createWindow);
+// ---------------------------------------------------------------------------
+// Update check (notify-only). The binaries ship unsigned (no code-signing cert
+// yet), so silent auto-update is off the table — instead, compare the latest
+// GitHub release tag against this build once per launch and tell the user.
+// ---------------------------------------------------------------------------
+
+const RELEASES_URL = "https://github.com/kalai-labs/MAGENTRA/releases/latest";
+
+function compareVersions(a, b) {
+  const pa = String(a).replace(/^v/, "").split(".").map(Number);
+  const pb = String(b).replace(/^v/, "").split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+async function checkForUpdates() {
+  if (!app.isPackaged) return;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch("https://api.github.com/repos/kalai-labs/MAGENTRA/releases/latest", {
+      headers: { accept: "application/vnd.github+json" },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return;
+    const body = await res.json();
+    const latest = body && typeof body.tag_name === "string" ? body.tag_name : null;
+    const current = require("./package.json").magentraVersion || app.getVersion();
+    if (latest && compareVersions(latest, current) > 0) {
+      logEvent("sys", { ev: "update-available", current, latest });
+      sendToRenderer("engine:event", {
+        type: "command_output",
+        text: `⬆ MAGENTRA ${latest} is available (you run v${current}). Download: ${RELEASES_URL}`,
+      });
+    }
+  } catch {
+    // offline or rate-limited — try again next launch
+  }
+}
+
+app.whenReady().then(() => {
+  // Arm the userData/logs mirror first: a crash on the landing page (before
+  // any workspace opens) must still leave a log a user can find from the UI.
+  initFallbackLog(app.getPath("userData"));
+  createWindow();
+  setTimeout(() => void checkForUpdates(), 5000);
+});
 
 app.on("window-all-closed", () => {
   stopEngine();

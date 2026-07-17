@@ -10,7 +10,8 @@
 // Changes review panel — accumulates file_edited diffs for the session
 // ---------------------------------------------------------------------------
 
-// relPath -> { diff, adds, dels, count }
+// relPath -> { diffs: string[], adds, dels, count } — every edit this session,
+// accumulated: a file edited five times shows all five, never just the latest.
 const sessionChanges = new Map();
 
 /** Pull the workspace-relative path and +/- counts out of a unified diff. */
@@ -30,12 +31,12 @@ function parseDiff(diff, fallbackPath) {
 
 function onFileEdited(event) {
   const { relPath, adds, dels } = parseDiff(event.diff || "", event.path || "file");
-  const prev = sessionChanges.get(relPath);
+  const prev = sessionChanges.get(relPath) || { diffs: [], adds: 0, dels: 0, count: 0 };
   sessionChanges.set(relPath, {
-    diff: event.diff || "",
-    adds,
-    dels,
-    count: (prev ? prev.count : 0) + 1,
+    diffs: [...prev.diffs, event.diff || ""],
+    adds: prev.adds + adds,
+    dels: prev.dels + dels,
+    count: prev.count + 1,
   });
   if (navChangesEl) navChangesEl.classList.remove("hidden");
   renderChanges();
@@ -43,6 +44,7 @@ function onFileEdited(event) {
 
 function resetChanges() {
   sessionChanges.clear();
+  if (navChangesEl) navChangesEl.classList.add("hidden");
   renderChanges();
 }
 
@@ -83,6 +85,12 @@ function renderChanges() {
 
     const counts = document.createElement("span");
     counts.className = "change-counts";
+    if (c.count > 1) {
+      const times = document.createElement("span");
+      times.className = "change-times";
+      times.textContent = `${c.count} edits `;
+      counts.appendChild(times);
+    }
     const add = document.createElement("span");
     add.className = "add";
     add.textContent = `+${c.adds}`;
@@ -92,22 +100,30 @@ function renderChanges() {
     counts.append(add, document.createTextNode(" "), del);
     row.appendChild(counts);
 
-    row.addEventListener("click", () => row.classList.toggle("open"));
+    makeRowExpandable(row);
     changesListEl.appendChild(row);
 
     const detail = document.createElement("div");
     detail.className = "change-diff tool-detail";
-    for (const line of c.diff.split("\n")) {
-      if (line.startsWith("--- ") || line.startsWith("+++ ")) continue;
-      const el = document.createElement("div");
-      el.className = "diff-line";
-      if (line.startsWith("@@")) el.classList.add("hunk");
-      else if (line.startsWith("+")) el.classList.add("add");
-      else if (line.startsWith("-")) el.classList.add("del");
-      else el.classList.add("ctx");
-      el.textContent = line || " ";
-      detail.appendChild(el);
-    }
+    c.diffs.forEach((diff, idx) => {
+      if (c.diffs.length > 1) {
+        const header = document.createElement("div");
+        header.className = "diff-line hunk";
+        header.textContent = `── edit ${idx + 1} of ${c.diffs.length} ──`;
+        detail.appendChild(header);
+      }
+      for (const line of diff.split("\n")) {
+        if (line.startsWith("--- ") || line.startsWith("+++ ")) continue;
+        const el = document.createElement("div");
+        el.className = "diff-line";
+        if (line.startsWith("@@")) el.classList.add("hunk");
+        else if (line.startsWith("+")) el.classList.add("add");
+        else if (line.startsWith("-")) el.classList.add("del");
+        else el.classList.add("ctx");
+        el.textContent = line || " ";
+        detail.appendChild(el);
+      }
+    });
     changesListEl.appendChild(detail);
   }
 }

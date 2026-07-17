@@ -106,8 +106,9 @@ function completeSlashCommand(cmd) {
 // Composer submit (normal prompt + slash-command interception)
 // ---------------------------------------------------------------------------
 
-function resetLocalViewForClear() {
+function resetLocalViewForClear(preserveTasks = false) {
   if (streamEl) streamEl.textContent = "";
+  firstHintEl = null;
   for (const card of agentCards.values()) {
     if (card.intervalId) clearInterval(card.intervalId);
   }
@@ -119,7 +120,7 @@ function resetLocalViewForClear() {
   currentThinkingEl = null;
   clearMessageQueue();
   updateAgentMeter();
-  onTaskListUpdated({ tasks: [] });
+  if (!preserveTasks) onTaskListUpdated({ tasks: [] });
 }
 
 function sendSlashCommand(trimmed) {
@@ -178,10 +179,29 @@ function renderQueueChip() {
 
 /** Actually send one message: a slash command or a user turn. Shared by the
  * immediate path and the queue flush. */
+// Prompt history: ArrowUp in an empty composer recalls what was sent.
+const promptHistory = [];
+let promptHistIdx = -1; // -1 = not browsing
+
 function dispatch(text) {
+  if (text.trim()) {
+    promptHistory.push(text);
+    if (promptHistory.length > 100) promptHistory.shift();
+  }
+  promptHistIdx = -1;
   const trimmed = text.trim();
   if (trimmed.startsWith("/") && !text.includes("\n")) {
     sendSlashCommand(trimmed);
+    return;
+  }
+  // "! <command>" runs a shell command directly; its output lands in the
+  // conversation as context (the engine defers it while a turn is running).
+  if (trimmed.startsWith("!") && !text.includes("\n")) {
+    const cmd = trimmed.slice(1).trim();
+    if (cmd) {
+      appendSysNote(`! ${cmd}`);
+      window.magentra.send({ type: "bang_command", cmd });
+    }
     return;
   }
   appendUserMessage(text);
@@ -264,6 +284,28 @@ promptInputEl.addEventListener("keydown", (e) => {
       // exact match: fall through to the normal Enter handling below, which submits
     }
   }
+  // Prompt history: only from an empty composer (or while already browsing),
+  // so arrows inside a multi-line draft keep moving the caret.
+  if (!slashVisible && e.key === "ArrowUp" && promptHistory.length > 0 &&
+      (promptHistIdx !== -1 || promptInputEl.value === "")) {
+    e.preventDefault();
+    promptHistIdx = promptHistIdx === -1 ? promptHistory.length - 1 : Math.max(0, promptHistIdx - 1);
+    promptInputEl.value = promptHistory[promptHistIdx];
+    autoGrow(promptInputEl);
+    return;
+  }
+  if (!slashVisible && e.key === "ArrowDown" && promptHistIdx !== -1) {
+    e.preventDefault();
+    promptHistIdx++;
+    if (promptHistIdx >= promptHistory.length) {
+      promptHistIdx = -1;
+      promptInputEl.value = "";
+    } else {
+      promptInputEl.value = promptHistory[promptHistIdx];
+    }
+    autoGrow(promptInputEl);
+    return;
+  }
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     sendMessage();
@@ -293,6 +335,10 @@ stopBtnEl.addEventListener("click", hardStop);
 // modal deny ALSO hard-kill the running turn.
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
+  if (shortcutSheetEl && !shortcutSheetEl.classList.contains("hidden")) {
+    toggleShortcutSheet();
+    return;
+  }
   if (slashVisible) {
     // Normally consumed by the composer's own keydown (which stops
     // propagation); this is a safety net if focus wandered.
@@ -331,13 +377,69 @@ function requestClear() {
   }
 }
 clearBtnEl.addEventListener("click", requestClear);
-// Ctrl+L: the terminal-classic clear shortcut (same key on Linux and Windows).
+
+// ---------------------------------------------------------------------------
+// Keyboard power layer. "mod" is Ctrl on Linux/Windows, Cmd on macOS — every
+// shortcut works on all three platforms. `?` shows the cheat sheet.
+// ---------------------------------------------------------------------------
+
+const IS_MAC = /mac/i.test(navigator.platform || "");
+// The cheat sheet spells the real modifier for this platform.
+if (IS_MAC) document.querySelectorAll(".mod-key").forEach((el) => (el.textContent = "Cmd"));
+const isMod = (e) => (IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey);
+const isTypingTarget = (t) =>
+  t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT");
+
+const VIEW_KEYS = { 1: "console", 2: "sessions", 3: "team", 4: "lab", 5: "changes", 6: "settings" };
+
+function toggleShortcutSheet() {
+  if (!shortcutSheetEl) return;
+  const opening = shortcutSheetEl.classList.contains("hidden");
+  shortcutSheetEl.classList.toggle("hidden", !opening);
+  if (opening) openModalA11y(shortcutSheetEl);
+  else closeModalA11y();
+}
+
 window.addEventListener("keydown", (e) => {
-  if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "l") {
+  // Approval modal focused: single-key answer (buttons also spell these out).
+  if (!deleteModalEl.classList.contains("hidden") && !isMod(e)) {
+    const k = e.key.toLowerCase();
+    if (k === "y" || k === "a") {
+      e.preventDefault();
+      resolvePermission("allow_once");
+      return;
+    }
+    if (k === "n" || k === "d") {
+      e.preventDefault();
+      resolvePermission("deny");
+      return;
+    }
+    return;
+  }
+  if (isMod(e) && !e.shiftKey && !e.altKey) {
+    const k = e.key.toLowerCase();
+    if (k === "l") {
+      e.preventDefault();
+      requestClear();
+      return;
+    }
+    if (k === "k") {
+      e.preventDefault();
+      promptInputEl.focus();
+      return;
+    }
+    if (VIEW_KEYS[e.key] && workspaceOpen) {
+      e.preventDefault();
+      showView(VIEW_KEYS[e.key]);
+      return;
+    }
+  }
+  if (e.key === "?" && !isTypingTarget(e.target)) {
     e.preventDefault();
-    requestClear();
+    toggleShortcutSheet();
   }
 });
+if (shortcutCloseBtnEl) shortcutCloseBtnEl.addEventListener("click", toggleShortcutSheet);
 
 allowBtnEl.addEventListener("click", () => resolvePermission("allow_once"));
 denyBtnEl.addEventListener("click", () => resolvePermission("deny"));
@@ -348,6 +450,7 @@ document.addEventListener("click", (e) => {
 
 function dismissSetupWizard() {
   setupWizardEl.classList.add("hidden");
+  closeModalA11y();
   if (!engineLinked) {
     // The composer is locked (syncActivityUi) — give the stranded user the
     // way back on a banner instead of only a note that scrolls away.

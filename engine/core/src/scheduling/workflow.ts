@@ -152,6 +152,11 @@ export class WorkflowRunner {
       if (meta.agentCalls >= MAX_AGENT_CALLS) {
         throw new Error(`workflow exceeded the ${MAX_AGENT_CALLS} agent-call cap`);
       }
+      if (budget.remaining() <= 0) {
+        throw new Error(
+          `workflow token budget exhausted (${budgetSpent()} output tokens spent of ${budgetTotal})`,
+        );
+      }
       const i = ++meta.agentCalls;
       const agentType = agentOpts?.agentType ?? "general-purpose";
       const description = agentOpts?.label ?? prompt.slice(0, 60);
@@ -216,7 +221,17 @@ export class WorkflowRunner {
       );
     };
 
-    const budget = { total: null, spent: () => 0, remaining: () => Infinity };
+    // Budget wired to the session's real token accounting: the turn's output
+    // ceiling is the total, spent() reads the shared stats ledger (subagents
+    // bill to the same tree). agent() refuses to spawn once it's exhausted.
+    const budgetTotal = session.settings.maxTokensPerTurn;
+    const startOutputTokens = session.usedOutputTokens();
+    const budgetSpent = () => session.usedOutputTokens() - startOutputTokens;
+    const budget = {
+      total: budgetTotal,
+      spent: budgetSpent,
+      remaining: () => Math.max(0, budgetTotal - budgetSpent()),
+    };
 
     // --- Execute --------------------------------------------------------------
 

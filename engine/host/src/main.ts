@@ -58,8 +58,9 @@ function parseArgs(argv: string[]): HostArgs {
       case "--serve":
         break;
       default:
-        // Unknown flags are ignored rather than aborting the session.
-        break;
+        // A typo'd flag silently ignored means a session running with the
+        // WRONG configuration — fail loudly instead.
+        fail(`unknown flag "${argv[i]}" (expected --cwd, --mode, --dangerously-bypass, --serve)`);
     }
   }
 

@@ -113,8 +113,7 @@ function openSetupWizard() {
   if (!setupWizardEl) return;
   setupWizardEl.classList.remove("hidden");
   const meta = WIZ_PRESETS[currentWizPreset] || WIZ_PRESETS.custom;
-  if (meta.local) wizBaseUrlEl.focus();
-  else wizApiKeyEl.focus();
+  openModalA11y(setupWizardEl, meta.local ? wizBaseUrlEl : wizApiKeyEl);
 }
 
 if (window.magentra.onSetupRequired && setupWizardEl) {
@@ -186,6 +185,17 @@ if (wizTestBtnEl) {
       wizTestedOkFor = wizPayloadKey(payload);
       wizStatusEl.textContent = "link established";
       wizStatusEl.className = "ok";
+      // The endpoint just told us its real catalog — replace the preset's
+      // static suggestion list (an Ollama user sees their local models).
+      if (Array.isArray(result.models) && result.models.length > 0 && wizModelsEl) {
+        wizModelsEl.textContent = "";
+        for (const id of result.models.slice(0, 100)) {
+          const opt = document.createElement("option");
+          opt.value = id;
+          wizModelsEl.appendChild(opt);
+        }
+        if (!wizModelEl.value.trim()) wizModelEl.value = result.models[0];
+      }
     } else {
       wizStatusEl.textContent = describeTestFailure(result);
       wizStatusEl.className = "err";
@@ -231,6 +241,7 @@ if (wizStartBtnEl) {
     }
     if (result && result.ok) {
       setupWizardEl.classList.add("hidden");
+      closeModalA11y();
       wizApiKeyEl.value = "";
       wizConnectionChanged();
     } else {

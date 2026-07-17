@@ -1,6 +1,6 @@
 import { exec } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import {
   PROTOCOL_VERSION,
   STATE_DIR_NAME,
@@ -10,6 +10,7 @@ import {
   type PermissionMode,
   type RestoredMessage,
   type SessionSummary,
+  type SlashCommandInfo,
 } from "@magentra/protocol";
 import type { ContentBlock, Msg, Provider } from "@magentra/providers";
 import { AsyncQueue } from "../util/asyncQueue.js";
@@ -55,6 +56,7 @@ import {
   settingsSchema,
   type Settings,
 } from "../config/settings.js";
+import { MODEL_PRICING, contextWindowFor, pricingFor } from "../config/pricing.js";
 import type { Skill } from "../agent/skills.js";
 import type { ToolRegistry } from "../agent/tool.js";
 import { Transcript } from "../state/transcript.js";
@@ -95,6 +97,7 @@ export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTi
   maxIterationsPerTurn: "nextTurn",
   contextWindow: "nextTurn",
   compactionThreshold: "nextTurn",
+  retention: "session",
   // Rates are read at report time (/session, status bar), so a new price applies
   // to the whole session's accumulated usage the moment it is set.
   pricing: "session",
@@ -155,12 +158,16 @@ export class Engine {
   private atlasBuilding = false;
   private readonly scheduler: CronScheduler;
   private readonly hookRunner: HookRunner;
-  private readonly modeEngine: ModeEngine;
-  private readonly modeWarnings: string[];
+  private modeEngine!: ModeEngine;
+  private modeWarnings: string[] = [];
   private team: CrewAgent[];
   private teamWarnings: string[];
   /** Agent ids with a backpack build currently in flight (dedupes launches). */
   private readonly backpackBuilding = new Set<string>();
+  /** The anthropic-without-embeddings-endpoint warning fired (once per engine). */
+  private embedderWarned = false;
+  /** `!` commands received mid-turn, run in order once the engine goes idle. */
+  private readonly pendingBangs: string[] = [];
   /** One Provider per distinct crew endpoint, shared across spawns and sessions. */
   private readonly crewProviders = new Map<string, Provider>();
 
@@ -179,9 +186,6 @@ export class Engine {
       },
     });
     this.hookRunner = new HookRunner({ cwd: this.opts.cwd, hooks: this.opts.settings.hooks });
-    const { modes, warnings } = loadModes(this.opts.cwd);
-    this.modeWarnings = warnings;
-    this.modeEngine = new ModeEngine(modes, this.opts.settings.modes.active);
     const team = loadTeam(this.opts.cwd);
     this.team = team.agents;
     this.teamWarnings = team.warnings;
@@ -197,6 +201,12 @@ export class Engine {
     initialMessages?: Session["messages"],
     stats?: SessionStats,
   ): Session {
+    // SETTING_TIMING.modes says "clear": rebuild the ModeEngine per session so
+    // a modes.active change (or an edited .ma file) actually lands on the next
+    // /clear instead of silently requiring a restart.
+    const { modes, warnings } = loadModes(this.opts.cwd);
+    this.modeWarnings = warnings;
+    this.modeEngine = new ModeEngine(modes, this.opts.settings.modes.active);
     const session = new Session({
       cwd: this.opts.cwd,
       settings: this.opts.settings,
@@ -255,14 +265,63 @@ export class Engine {
   }
 
   start(): void {
+    this.announceSession();
+    // Boot-only work below: /clear and /resume swap sessions via
+    // announceSession() alone, so they never re-launch builds, re-arm
+    // mission loops, or repeat the lab hint.
+    this.publishModelCatalog();
+    this.launchBackpackBuilds();
+    this.rearmContinuousMissions();
+    // A blueprint with no live crew is almost certainly waiting to be applied.
+    if (this.team.length === 0 && findLabFile(this.opts.cwd)) {
+      this.emit({ type: "command_output", text: `🧪 ${LAB_FILE_NAME} found — /lab load builds the whole lab from it.` });
+    }
+  }
+
+  /**
+   * Fetches the endpoint's real model catalog in the background and validates
+   * the configured model against it: a typo'd model warns at startup, not on
+   * the first turn. Best-effort — a catalog-less endpoint changes nothing.
+   */
+  private publishModelCatalog(): void {
+    const provider = this.opts.provider;
+    if (!provider.listModels) return;
+    void provider
+      .listModels()
+      .then((models) => {
+        if (models.length === 0) return;
+        this.emit({ type: "model_catalog", models });
+        if (!models.includes(this.opts.settings.model)) {
+          this.emit({
+            type: "error",
+            message: `Model "${this.opts.settings.model}" is not in the endpoint's catalog (${models.length} models listed). Check the model id — the first turn will likely fail with a 404.`,
+            fatal: false,
+          });
+        }
+      })
+      .catch(() => {
+        // No catalog endpoint (or auth scope) — the picker keeps its defaults.
+      });
+  }
+
+  /**
+   * Everything a NEW current session must tell the frontend (and its
+   * SessionStart hook). Shared by boot, /clear, and /resume.
+   */
+  private announceSession(): void {
+    this.gcStateFiles();
     this.emit({
       type: "session_started",
       v: PROTOCOL_VERSION,
+      commands: SLASH_COMMANDS.map(({ cmd, args, desc }) => ({ cmd, args, desc })),
+      rateCard: buildRateCard(this.opts.settings),
       sessionId: this.session.id,
       cwd: this.opts.cwd,
       model: this.opts.settings.model,
       mode: this.session.permissions.getMode(),
     });
+    this.emit({ type: "task_list_updated", tasks: this.session.tasks.list() });
+    this.emitMissionsUpdated();
     for (const warning of this.modeWarnings) {
       this.emit({ type: "error", message: warning, fatal: false });
     }
@@ -271,12 +330,6 @@ export class Engine {
     }
     this.emitModesUpdated();
     this.emitTeamUpdated();
-    this.launchBackpackBuilds();
-    this.rearmContinuousMissions();
-    // A blueprint with no live crew is almost certainly waiting to be applied.
-    if (this.team.length === 0 && findLabFile(this.opts.cwd)) {
-      this.emit({ type: "command_output", text: `🧪 ${LAB_FILE_NAME} found — /lab load builds the whole lab from it.` });
-    }
     if (this.hookRunner.has("SessionStart")) {
       const session = this.session;
       void this.hookRunner
@@ -369,6 +422,8 @@ export class Engine {
       .catch((err: Error) => this.emit({ type: "error", message: err.message, fatal: false }))
       .finally(() => {
         this.busy = false;
+        this.gcStateFiles();
+        this.flushPendingBangs();
       });
     return true;
   }
@@ -458,6 +513,25 @@ export class Engine {
       case "resume_session":
         this.resumeSession(request.id);
         break;
+      case "delete_session":
+        this.deleteSession(request.id);
+        break;
+      case "rename_session":
+        this.renameSession(request.id, request.label);
+        break;
+      case "archive_session":
+        this.archiveSession(request.id);
+        break;
+      case "stop_background": {
+        const stopped = this.session.background.stop(request.taskId);
+        this.emit({
+          type: "command_output",
+          text: stopped
+            ? `⏹ background task ${request.taskId} stopped.`
+            : `No running background task "${request.taskId}".`,
+        });
+        break;
+      }
       case "plan_decision": {
         const resolve = this.pendingPlanDecision;
         if (resolve) {
@@ -510,20 +584,31 @@ export class Engine {
   }
 
   private emitTeamUpdated(): void {
+    // Depth per card: spend, lessons, and verified work — the same sources
+    // /crew reads, so a card answers "what has this member done and cost".
+    const ledger = loadLedger(this.opts.cwd);
     this.emit({
       type: "team_updated",
-      agents: this.team.map((a) => ({
-        id: a.id,
-        name: a.name,
-        role: a.role,
-        ...(a.model !== undefined ? { model: a.model } : {}),
-        ...(a.provider !== undefined ? { provider: a.provider } : {}),
-        ...(a.baseUrl !== undefined ? { baseUrl: a.baseUrl } : {}),
-        ...(a.emoji !== undefined ? { emoji: a.emoji } : {}),
-        ...(a.color !== undefined ? { color: a.color } : {}),
-        docCount: a.docs.length,
-        ready: this.isBackpackReady(a),
-      })),
+      agents: this.team.map((a) => {
+        const lessons = loadExperience(this.opts.cwd, a.id).lessons;
+        const spend = ledger.members[a.id];
+        return {
+          id: a.id,
+          name: a.name,
+          role: a.role,
+          ...(a.model !== undefined ? { model: a.model } : {}),
+          ...(a.provider !== undefined ? { provider: a.provider } : {}),
+          ...(a.baseUrl !== undefined ? { baseUrl: a.baseUrl } : {}),
+          ...(a.emoji !== undefined ? { emoji: a.emoji } : {}),
+          ...(a.color !== undefined ? { color: a.color } : {}),
+          docCount: a.docs.length,
+          ready: this.isBackpackReady(a),
+          ...(spend ? { spend: formatLedgerEntry(spend) } : {}),
+          lessonsPromoted: lessons.filter((l) => l.status === "promoted").length,
+          lessonsCandidate: lessons.filter((l) => l.status === "candidate").length,
+          tasksCompleted: summarizeRecord(readRecord(this.opts.cwd, a.id)).tasksCompleted,
+        };
+      }),
     });
   }
 
@@ -582,8 +667,22 @@ export class Engine {
   private launchBackpackBuilds(): void {
     const settings = this.opts.settings;
     const apiKey = resolveApiKey(settings);
+    // An Anthropic session without an explicit baseUrl has no OpenAI-compatible
+    // embeddings endpoint — building against the DeepInfra default would send
+    // the Anthropic key to the wrong host. Warn once and build without
+    // embeddings (keyword retrieval still works).
+    const anthropicNoEndpoint = settings.provider === "anthropic" && settings.baseUrl === undefined;
+    if (anthropicNoEndpoint && settings.embeddings.enabled && !this.embedderWarned && this.team.some((a) => a.docs.length > 0)) {
+      this.embedderWarned = true;
+      this.emit({
+        type: "error",
+        message:
+          "Backpack embeddings are disabled: the Anthropic provider has no embeddings endpoint. Set a baseUrl for an OpenAI-compatible embeddings host, or /settings embeddings.enabled false to silence this.",
+        fatal: false,
+      });
+    }
     const embedder: Embedder | undefined =
-      settings.embeddings.enabled && apiKey
+      settings.embeddings.enabled && apiKey && !anthropicNoEndpoint
         ? createEmbedder({
             apiKey,
             baseUrl: settings.baseUrl ?? DEFAULT_OPENAI_BASE_URL,
@@ -635,42 +734,14 @@ export class Engine {
   }
 
   private handleSlash(command: string, args?: string, opts?: { unattended?: boolean }): void {
-    switch (command.replace(/^\//, "")) {
+    // Case-insensitive: the scheduler's prompt regex and users both produce
+    // mixed case ("/Mission run x"); the dispatch must not silently no-op.
+    switch (command.replace(/^\//, "").toLowerCase()) {
       case "help":
-        this.emit({
-          type: "command_output",
-          text: [
-            "Built-in commands:",
-            "  /help            show this help",
-            "  /atlas [force]   map the codebase into .magentra/ATLAS.md (force overwrites hand edits)",
-            "  /clear           start a fresh session (history cleared)",
-            "  /compact         compact the conversation now",
-            "  /session         this session's bill: cost per model, API/wall time, code churn, context now",
-            "  /tasks           show the task list",
-            "  /lab             one-file lab blueprint (magentricks.md): load applies it, save snapshots it",
-            "  /build-crew      design a crew of specialist agents (if none exists yet)",
-            "  /crew            roster + readiness + service-record summary per member",
-            "  /crew export <id> [dest|redact]  pack a member into <id>.crewpack.json (fails closed on secrets)",
-            "  /crew hire <path> [as <id>]      import a crew pack; knowledge arrives ready, lessons re-earn trust",
-            "  /crew record <id>   a member's verified work history (hash-chained)",
-            "  /crew lessons <id>  a member's experience ledger by status",
-            "  /team export [name] [redact]  pack the WHOLE crew + missions into <name>.teampack.json",
-            "  /team hire <path|url>         import a team pack (members validated, missions added)",
-            "  /mission             list the lab's missions (.magentra/missions/*.md)",
-            "  /mission new <id>    write a starter mission file",
-            "  /mission run <id>    send the lab on a mission now (web sweep, tasks, report)",
-            "  /mission start <id>  loop a continuous mission (unattended runs + cooldown) · stop halts",
-            "  /mission schedule <id>    run it on its cron schedule (durable) · unschedule removes",
-            "  /mode <mode>     set permission mode (default|acceptEdits|plan|bypass)",
-            "  /styles [on|off <id>]  list optional .ma styles, or toggle one (session only)",
-            "  /debug <prompt>  reproduce-first debugging mode (off: /debug off)",
-            "  /settings [global] [k v]  show settings, or set one (add global to save to ~/.magentra)",
-            "  /resume <id>     resume a previous session",
-            "  /sessions        list saved sessions",
-            "  ! <command>      run a shell command; output lands in the conversation",
-            "  Esc              interrupt the current turn",
-          ].join("\n"),
-        });
+        this.emit({ type: "command_output", text: renderHelp() });
+        break;
+      case "skills":
+        this.emit({ type: "command_output", text: this.renderSkills() });
         break;
       case "clear":
         // Swapping the session mid-turn would leave the old turn streaming
@@ -684,7 +755,7 @@ export class Engine {
           break;
         }
         this.session = this.createSession();
-        this.start();
+        this.announceSession();
         this.emit({ type: "command_output", text: "Started a fresh session." });
         break;
       case "atlas":
@@ -727,7 +798,7 @@ export class Engine {
         // would be confidently wrong; the raw number is always true).
         this.emit({
           type: "command_output",
-          text: this.session.stats.format(this.opts.settings),
+          text: `${this.session.stats.format(this.opts.settings)}\n${this.extensionLines()}`,
         });
         break;
       case "sessions":
@@ -771,6 +842,48 @@ export class Engine {
       default:
         this.emit({ type: "command_output", text: `Unknown command: /${command}. Try /help.` });
     }
+  }
+
+  /**
+   * `/skills`: what the workspace has plugged into the engine — discovered
+   * skills with their descriptions, plus the loaded hooks/MCP/styles counts.
+   * Extension points must be discoverable in-product, not only in docs.
+   */
+  private renderSkills(): string {
+    const skills = this.opts.skills ?? [];
+    const lines = ["Skills (.magentra/skills/):"];
+    if (skills.length === 0) {
+      lines.push("  (none discovered — add a <name>.md or <name>/SKILL.md file to create one)");
+    } else {
+      for (const skill of skills) lines.push(`  /${skill.name.padEnd(18)} ${skill.description}`);
+    }
+    lines.push("", this.extensionLines());
+    return lines.join("\n");
+  }
+
+  /** Loaded-extension summary lines, shared by /skills and /session. */
+  private extensionLines(): string {
+    const settings = this.opts.settings;
+    const hookCount = Object.values(settings.hooks).reduce(
+      (n, matchers) => n + (matchers ?? []).reduce((m, entry) => m + entry.hooks.length, 0),
+      0,
+    );
+    const mcpCount = Object.keys(settings.mcpServers).length;
+    // Connected = servers that actually contributed tools (mcp__<server>__<tool>).
+    const mcpConnected = new Set(
+      this.opts.registry
+        .list()
+        .map((t) => (t.name.startsWith("mcp__") ? t.name.split("__")[1] : undefined))
+        .filter(Boolean),
+    ).size;
+    const styles = this.modeEngine.list();
+    const activeStyles = styles.filter((m) => m.active).length;
+    return [
+      `  Skills loaded:         ${(this.opts.skills ?? []).length}`,
+      `  Hooks configured:      ${hookCount}`,
+      `  MCP servers:           ${mcpConnected} connected of ${mcpCount} configured`,
+      `  Styles active:         ${activeStyles} of ${styles.length}`,
+    ].join("\n");
   }
 
   /**
@@ -920,6 +1033,7 @@ export class Engine {
       "",
       'Change one with "/settings <key> <value>" — dot-path for nested keys, e.g. /settings search.enabled false.',
       'Prefix with "global" to save to ~/.magentra/settings.json instead of this project, e.g. /settings global apiKey <your-key>.',
+      "retention.sessions caps saved transcripts; retention.tasks caps saved task lists/background outputs. Oldest files are pruned on session start and after foreground work.",
     ].join("\n");
   }
 
@@ -937,6 +1051,7 @@ export class Engine {
       this.session.permissions.setMode(mode);
       this.emit({ type: "mode_changed", mode });
     }
+    if (topKey === "retention") this.gcStateFiles();
     // A passthrough key outside the schema can't reach here (setSetting rejects it),
     // but default to /clear timing rather than crash if one ever does.
     return SETTING_TIMING_NOTE[SETTING_TIMING[topKey] ?? "clear"];
@@ -1338,6 +1453,8 @@ export class Engine {
           outputTokens: session.lastTurnUsage?.outputTokens ?? 0,
         });
         const looping = loadContinuousState(cwd).active[mission.id] !== undefined;
+        // The run just (re)wrote the deliverable — refresh lastRunAt in the UI.
+        this.emitMissionsUpdated();
         if (unattended) {
           this.emit({
             type: "background_notification",
@@ -1414,43 +1531,85 @@ export class Engine {
    * {@link buildMissionPrompt}), loop one continuously (start/stop), or put
    * one on its cron schedule (durable — survives restarts, fires when idle).
    */
+  /**
+   * The mission list as data: file fields plus live state (armed cron job,
+   * running continuous loop, last deliverable write). Feeds both the /mission
+   * text listing and the missions_updated event, so they can never disagree.
+   */
+  private missionSummaries(): {
+    summaries: Extract<CoreEvent, { type: "missions_updated" }>["missions"];
+    warnings: string[];
+    missions: Mission[];
+  } {
+    const { missions, warnings } = loadMissions(this.opts.cwd);
+    const scheduledIds = new Set(
+      this.scheduler
+        .list()
+        .filter((j) => j.source === "cron")
+        .map((j) => /^\/mission run (\S+)$/.exec(j.prompt)?.[1])
+        .filter(Boolean),
+    );
+    const running = loadContinuousState(this.opts.cwd).active;
+    const summaries = missions.map((m) => {
+      const deliverable = missionDeliverablePath(m);
+      let lastRunAt: string | undefined;
+      try {
+        lastRunAt = statSync(join(this.opts.cwd, deliverable)).mtime.toISOString();
+      } catch {
+        /* never ran (or deliverable moved) — no timestamp */
+      }
+      return {
+        id: m.id,
+        name: m.name,
+        ...(m.description !== undefined ? { description: m.description } : {}),
+        keywords: m.keywords,
+        ...(m.schedule !== undefined ? { schedule: m.schedule } : {}),
+        scheduled: scheduledIds.has(m.id),
+        continuous: m.continuous,
+        running: Boolean(running[m.id]),
+        deliverable,
+        ...(lastRunAt !== undefined ? { lastRunAt } : {}),
+      };
+    });
+    return { summaries, warnings, missions };
+  }
+
+  private emitMissionsUpdated(): void {
+    const { summaries, warnings } = this.missionSummaries();
+    this.emit({ type: "missions_updated", missions: summaries, warnings });
+  }
+
   private handleMission(args: string | undefined, unattended = false): void {
     const say = (text: string) => this.emit({ type: "command_output", text });
     const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
     const sub = tokens[0]?.toLowerCase();
-    const { missions, warnings } = loadMissions(this.opts.cwd);
+    const { summaries, warnings, missions } = this.missionSummaries();
 
     if (sub === undefined) {
       const lines: string[] = [];
       if (missions.length === 0) {
         lines.push("No missions yet. /mission new <id> writes a starter file at .magentra/missions/<id>.md.");
       } else {
-        const scheduledIds = new Set(
-          this.scheduler
-            .list()
-            .filter((j) => j.source === "cron")
-            .map((j) => /^\/mission run (\S+)$/.exec(j.prompt)?.[1])
-            .filter(Boolean),
-        );
-        const running = loadContinuousState(this.opts.cwd).active;
-        for (const m of missions) {
+        for (const s of summaries) {
+          const source = missions.find((m) => m.id === s.id);
           const bits = [
-            m.keywords.length > 0 ? `keywords: ${m.keywords.join(", ")}` : "",
-            m.continuous
-              ? running[m.id]
-                ? `🔁 running continuously (cooldown ${m.cooldownSeconds ?? 300}s)`
+            s.keywords.length > 0 ? `keywords: ${s.keywords.join(", ")}` : "",
+            s.continuous
+              ? s.running
+                ? `🔁 running continuously (cooldown ${source?.cooldownSeconds ?? 300}s)`
                 : "continuous-capable (/mission start)"
               : "",
-            m.schedule ? `cron ${m.schedule}${scheduledIds.has(m.id) ? " (scheduled ✓)" : " (not scheduled)"}` : "",
-            m.deliverable ? `→ ${m.deliverable}` : "",
+            s.schedule ? `cron ${s.schedule}${s.scheduled ? " (scheduled ✓)" : " (not scheduled)"}` : "",
+            `→ ${s.deliverable}`,
           ].filter(Boolean);
-          lines.push(`🧪 ${m.id} — ${m.name}${m.description ? `: ${m.description}` : ""}${bits.length ? ` [${bits.join(" · ")}]` : ""}`);
+          lines.push(`🧪 ${s.id} — ${s.name}${s.description ? `: ${s.description}` : ""}${bits.length ? ` [${bits.join(" · ")}]` : ""}`);
         }
         lines.push("");
         lines.push("Run one now with /mission run <id>; /mission start <id> loops a continuous one; /mission schedule <id> automates by cron.");
       }
       lines.push(...warnings.map((w) => `  ✗ ${w}`));
       say(lines.join("\n"));
+      this.emit({ type: "missions_updated", missions: summaries, warnings });
       return;
     }
 
@@ -1468,6 +1627,7 @@ export class Engine {
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, missionTemplate(id));
       say([`🧪 mission scaffold written → ${path}`, "Edit its keywords and charter, then launch it with /mission run " + id + ".", "", "Format reference:", MISSION_FILE_FORMAT.split("\n\n")[2] ?? ""].join("\n"));
+      this.emitMissionsUpdated();
       return;
     }
 
@@ -1504,6 +1664,7 @@ export class Engine {
         `🔁 continuous mission "${mission.id}" started — it runs now, then again after every ~${mission.cooldownSeconds ?? 300}s of idle time until /mission stop ${mission.id}. Runs are unattended: mode ${mission.mode ?? "bypass"}, destructive calls auto-denied${mission.budgetTokens ? `, budget ${mission.budgetTokens} output tokens per run` : ""}. The loop survives restarts.`,
       );
       // The loop is unattended from run one — it must never depend on a human.
+      this.emitMissionsUpdated();
       this.runMission(mission, true);
       return;
     }
@@ -1525,6 +1686,7 @@ export class Engine {
         if (job.source === "wakeup" && job.prompt === prompt) this.scheduler.delete(job.id);
       }
       say(`🔁 continuous mission "${id}" stopped. A run already in flight finishes; no further runs are armed.`);
+      this.emitMissionsUpdated();
       return;
     }
 
@@ -1545,6 +1707,7 @@ export class Engine {
       try {
         const { nextFire } = this.scheduler.create({ cron: mission.schedule, prompt, recurring: true, durable: true });
         say(`⏰ mission "${mission.id}" scheduled: ${mission.schedule}${nextFire ? ` — next fire ~${nextFire.toISOString().slice(0, 16)}Z` : ""} (fires when the session is idle; survives restarts). The mission file is re-read at every fire.`);
+        this.emitMissionsUpdated();
       } catch (err) {
         say(`Cannot schedule "${mission.id}": ${(err as Error).message}`);
       }
@@ -1560,6 +1723,7 @@ export class Engine {
       const jobs = this.scheduler.list().filter((j) => j.prompt === prompt);
       for (const job of jobs) this.scheduler.delete(job.id);
       say(jobs.length > 0 ? `⏰ mission "${id}" unscheduled.` : `Mission "${id}" was not scheduled.`);
+      if (jobs.length > 0) this.emitMissionsUpdated();
       return;
     }
 
@@ -1567,14 +1731,128 @@ export class Engine {
   }
 
   private handleBang(cmd: string): void {
+    // Never inject into a running turn: a user message spliced between an
+    // assistant tool_use and its results corrupts the history. Defer instead.
+    if (this.busy || this.session.isBusy()) {
+      this.pendingBangs.push(cmd);
+      this.emit({ type: "command_output", text: `⏳ ! ${cmd} — queued; runs when the current turn finishes.` });
+      return;
+    }
+    this.runBang(cmd);
+  }
+
+  private flushPendingBangs(): void {
+    while (this.pendingBangs.length > 0 && !this.busy && !this.session.isBusy()) {
+      this.runBang(this.pendingBangs.shift()!);
+    }
+  }
+
+  private runBang(cmd: string): void {
     exec(cmd, { cwd: this.opts.cwd, timeout: 120_000, maxBuffer: 5 * 1024 * 1024 }, (err, stdout, stderr) => {
-      const output = [stdout, stderr].filter(Boolean).join("\n").trim() || "(no output)";
+      let output = [stdout, stderr].filter(Boolean).join("\n").trim() || "(no output)";
+      // Same ceiling as a tool result: a huge build log must not torch the context.
+      const CAP = 40_000;
+      if (output.length > CAP) {
+        output = `${output.slice(0, CAP / 2)}\n[truncated — ${output.length - CAP} more chars omitted from the middle]\n${output.slice(output.length - CAP / 2)}`;
+      }
       const exitCode = err && typeof (err as { code?: unknown }).code === "number" ? (err as { code: number }).code : err ? 1 : 0;
       this.emit({ type: "command_output", text: output });
       this.session.addContextMessage(
         `<bash-input>! ${cmd}</bash-input>\n<bash-output exit-code="${exitCode}">\n${output}\n</bash-output>\n<system-reminder>The user ran this shell command directly; its output above is context, not a request.</system-reminder>`,
       );
     });
+  }
+
+  /**
+   * Rotate append-only workspace state by mtime. Root and subagent transcripts
+   * use the same cap; task-list JSON and background output share the task cap.
+   * The live session and live background outputs are never candidates.
+   */
+  private gcStateFiles(): void {
+    const stateDir = join(this.opts.cwd, STATE_DIR_NAME);
+    const sessionsDir = join(stateDir, "sessions");
+    const tasksDir = join(stateDir, "tasks");
+    const currentSessionFile = `${this.session.id}.jsonl`;
+
+    const removedSessions = this.pruneStateDirectory(
+      sessionsDir,
+      [".jsonl"],
+      this.opts.settings.retention.sessions,
+      new Set([currentSessionFile]),
+    );
+    // A transcript and its session task list are one continuity unit. Do not
+    // leave task JSON behind when its transcript ages out.
+    for (const file of removedSessions) {
+      const taskFile = join(tasksDir, `${file.slice(0, -".jsonl".length)}.json`);
+      try {
+        rmSync(taskFile, { force: true });
+      } catch (err) {
+        this.emit({
+          type: "error",
+          message: `Could not prune ${taskFile}: ${(err as Error).message}`,
+          fatal: false,
+        });
+      }
+    }
+
+    // Children moved here in 3.3. Bound this directory as well so detached
+    // specialist histories do not become the new unbounded store.
+    this.pruneStateDirectory(
+      join(sessionsDir, "subagents"),
+      [".jsonl"],
+      this.opts.settings.retention.sessions,
+      new Set(),
+    );
+
+    const protectedTasks = new Set<string>([`${this.session.id}.json`]);
+    for (const task of this.session.background.list()) {
+      if (task.status === "running") protectedTasks.add(basename(task.outputFile));
+    }
+    this.pruneStateDirectory(
+      tasksDir,
+      [".json", ".output"],
+      this.opts.settings.retention.tasks,
+      protectedTasks,
+    );
+  }
+
+  /** Delete oldest matching files until at most `limit` remain. */
+  private pruneStateDirectory(
+    dir: string,
+    suffixes: string[],
+    limit: number,
+    protectedFiles: Set<string>,
+  ): string[] {
+    let files: { name: string; mtimeMs: number }[];
+    try {
+      files = readdirSync(dir, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && suffixes.some((suffix) => entry.name.endsWith(suffix)))
+        .map((entry) => ({ name: entry.name, mtimeMs: statSync(join(dir, entry.name)).mtimeMs }))
+        .sort((a, b) => b.mtimeMs - a.mtimeMs);
+    } catch {
+      return [];
+    }
+
+    let excess = files.length - limit;
+    if (excess <= 0) return [];
+    const removed: string[] = [];
+    for (let i = files.length - 1; i >= 0 && excess > 0; i--) {
+      const file = files[i]!;
+      if (protectedFiles.has(file.name)) continue;
+      const path = join(dir, file.name);
+      try {
+        rmSync(path, { force: true });
+        removed.push(file.name);
+        excess--;
+      } catch (err) {
+        this.emit({
+          type: "error",
+          message: `Could not prune ${path}: ${(err as Error).message}`,
+          fatal: false,
+        });
+      }
+    }
+    return removed;
   }
 
   private listSessions(): SessionSummary[] {
@@ -1586,37 +1864,69 @@ export class Engine {
       return [];
     }
     return files
-      .map((f) => {
+      .flatMap((f): SessionSummary[] => {
         const path = join(dir, f);
-        const stat = statSync(path);
+        let stat;
+        try {
+          stat = statSync(path);
+        } catch {
+          return [];
+        }
         // The human-readable label a picker shows beside the id — without it a
         // user can only tell sessions apart by timestamp.
         const firstUserMessage = Transcript.firstUserText(path);
-        return {
+        const meta = Transcript.latestMeta(path);
+        const label = typeof meta?.label === "string" ? meta.label : undefined;
+        let model = typeof meta?.model === "string" ? meta.model : undefined;
+        // Transcripts written before the explicit model field can still expose
+        // the latest model from their restored accounting snapshot.
+        if (!model && typeof meta?.stats === "object" && meta.stats !== null) {
+          const byModel = (meta.stats as Record<string, unknown>).byModel;
+          if (typeof byModel === "object" && byModel !== null) {
+            model = Object.keys(byModel).at(-1);
+          }
+        }
+        return [{
           id: f.replace(/\.jsonl$/, ""),
           createdAt: stat.birthtime.toISOString(),
           updatedAt: stat.mtime.toISOString(),
           cwd: this.opts.cwd,
           ...(firstUserMessage !== undefined ? { firstUserMessage } : {}),
-        };
+          ...(model !== undefined ? { model } : {}),
+          ...(label !== undefined ? { label } : {}),
+        }];
       })
       .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
   }
 
   private resumeSession(id: string): void {
-    const file = join(this.opts.cwd, STATE_DIR_NAME, "sessions", `${id}.jsonl`);
+    if (this.busy || this.session.isBusy()) {
+      this.emit({ type: "command_output", text: "⏳ busy — wait for the current turn to finish before resuming another session." });
+      return;
+    }
+    if (id === this.session.id) {
+      this.emit({ type: "command_output", text: `Session ${id} is already active.` });
+      return;
+    }
+    const known = this.listSessions().find((session) => session.id === id);
+    if (!known) {
+      this.emit({ type: "error", message: `Cannot resume ${id}: no such session`, fatal: false });
+      return;
+    }
+    const file = join(this.opts.cwd, STATE_DIR_NAME, "sessions", `${known.id}.jsonl`);
     try {
       const { messages, meta } = Transcript.replay(file);
       // Restore the session's accounting ledger and permission mode from the
       // latest meta snapshot; transcripts that predate meta records (or carry
       // a corrupt one) fall back to fresh stats and the configured mode.
       this.session = this.createSession(id, messages, SessionStats.fromSnapshot(meta?.stats));
+      if (typeof meta?.label === "string") this.session.label = meta.label;
       const mode = meta?.mode;
       if (isPermissionMode(mode)) {
         this.session.permissions.setMode(mode);
         this.emit({ type: "mode_changed", mode });
       }
-      this.start();
+      this.announceSession();
       // Repaint the conversation in the UI. Replaces the old text-only note:
       // the frontend rebuilds the chat from this render-ready snapshot.
       this.emit({ type: "session_restored", sessionId: id, messages: reconstructForDisplay(messages) });
@@ -1626,6 +1936,183 @@ export class Engine {
       this.emit({ type: "error", message: `Cannot resume ${id}: ${reason}`, fatal: false });
     }
   }
+
+  /**
+   * Names a saved session: appended as a `meta` record, so it travels with the
+   * transcript (listSessions prefers meta.label over the first-message label,
+   * and the active session preserves it across future turn-end snapshots).
+   */
+  private renameSession(id: string, label: string): void {
+    const trimmed = label.trim().slice(0, 120);
+    if (!trimmed) {
+      this.emit({ type: "error", message: "Cannot rename: the label is empty.", fatal: false });
+      return;
+    }
+    if (id === this.session.id) {
+      this.session.label = trimmed;
+      // Merge into the latest snapshot: a bare {label} record would otherwise
+      // become the newest meta and hide stats/model/mode from resume.
+      this.session.transcript.append({
+        kind: "meta",
+        data: { ...(Transcript.latestMeta(this.session.transcript.file) ?? {}), label: trimmed },
+      });
+    } else {
+      const known = this.listSessions().find((session) => session.id === id);
+      if (!known) {
+        this.emit({ type: "error", message: `Cannot rename ${id}: no such session`, fatal: false });
+        return;
+      }
+      const file = join(this.opts.cwd, STATE_DIR_NAME, "sessions", `${known.id}.jsonl`);
+      new Transcript(join(this.opts.cwd, STATE_DIR_NAME), known.id).append({
+        kind: "meta",
+        data: { ...(Transcript.latestMeta(file) ?? {}), label: trimmed },
+      });
+    }
+    this.emit({ type: "session_list", sessions: this.listSessions() });
+  }
+
+  /** Moves a saved session out of the resumable listing into sessions/archive/. */
+  private archiveSession(id: string): void {
+    if (id === this.session.id) {
+      this.emit({ type: "command_output", text: "The active session cannot be archived." });
+      return;
+    }
+    const known = this.listSessions().find((session) => session.id === id);
+    if (!known) {
+      this.emit({ type: "error", message: `Cannot archive ${id}: no such session`, fatal: false });
+      return;
+    }
+    const dir = join(this.opts.cwd, STATE_DIR_NAME, "sessions");
+    try {
+      mkdirSync(join(dir, "archive"), { recursive: true });
+      renameSync(join(dir, `${known.id}.jsonl`), join(dir, "archive", `${known.id}.jsonl`));
+    } catch (err) {
+      this.emit({ type: "error", message: `Cannot archive ${id}: ${(err as Error).message}`, fatal: false });
+      return;
+    }
+    this.emit({ type: "session_list", sessions: this.listSessions() });
+    this.emit({
+      type: "command_output",
+      text: `🗄 session ${known.id} archived (moved to .magentra/sessions/archive/ — move it back to restore).`,
+    });
+  }
+
+  private deleteSession(id: string): void {
+    if (id === this.session.id) {
+      this.emit({ type: "command_output", text: "The active session cannot be deleted. Start or resume another session first." });
+      return;
+    }
+    const known = this.listSessions().find((session) => session.id === id);
+    if (!known) {
+      this.emit({ type: "error", message: `Cannot delete ${id}: no such session`, fatal: false });
+      return;
+    }
+    try {
+      rmSync(join(this.opts.cwd, STATE_DIR_NAME, "sessions", `${known.id}.jsonl`));
+    } catch (err) {
+      this.emit({ type: "error", message: `Cannot delete ${id}: ${(err as Error).message}`, fatal: false });
+      return;
+    }
+    try {
+      rmSync(join(this.opts.cwd, STATE_DIR_NAME, "tasks", `${known.id}.json`), { force: true });
+    } catch (err) {
+      this.emit({
+        type: "error",
+        message: `Session ${known.id} was deleted, but its task file could not be removed: ${(err as Error).message}`,
+        fatal: false,
+      });
+    }
+    this.emit({ type: "session_list", sessions: this.listSessions() });
+    this.emit({ type: "command_output", text: `Deleted session ${known.id}.` });
+  }
+}
+
+/**
+ * The single slash-command registry: /help renders from it and session_started
+ * ships it to the frontend palette, so the two can never drift apart. `help`
+ * holds extra sub-usage lines shown only in /help.
+ */
+const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
+  { cmd: "/help", args: "", desc: "show this help" },
+  { cmd: "/atlas", args: "[force]", desc: "map the codebase into .magentra/ATLAS.md (force overwrites hand edits)" },
+  { cmd: "/clear", args: "", desc: "start a fresh session (history cleared)" },
+  { cmd: "/compact", args: "", desc: "compact the conversation now" },
+  { cmd: "/session", args: "", desc: "this session's bill: cost per model, API/wall time, code churn, context now" },
+  { cmd: "/tasks", args: "", desc: "show the task list" },
+  { cmd: "/skills", args: "", desc: "discovered skills + loaded extensions (hooks, MCP servers, styles)" },
+  { cmd: "/lab", args: "[load|save]", desc: "one-file lab blueprint (magentricks.md): load applies it, save snapshots it" },
+  { cmd: "/build-crew", args: "", desc: "design a crew of specialist agents (if none exists yet)" },
+  {
+    cmd: "/crew", args: "[export|hire|record|lessons]", desc: "roster + readiness + service-record summary per member",
+    help: [
+      "  /crew export <id> [dest|redact]  pack a member into <id>.crewpack.json (fails closed on secrets)",
+      "  /crew hire <path> [as <id>]      import a crew pack; knowledge arrives ready, lessons re-earn trust",
+      "  /crew record <id>   a member's verified work history (hash-chained)",
+      "  /crew lessons <id>  a member's experience ledger by status",
+    ],
+  },
+  {
+    cmd: "/team", args: "export|hire", desc: "whole-crew pack: export or hire everything at once",
+    help: [
+      "  /team export [name] [redact]  pack the WHOLE crew + missions into <name>.teampack.json",
+      "  /team hire <path|url>         import a team pack (members validated, missions added)",
+    ],
+  },
+  {
+    cmd: "/mission", args: "[new|run|start|stop|schedule|unschedule <id>]", desc: "list the lab's missions (.magentra/missions/*.md)",
+    help: [
+      "  /mission new <id>    write a starter mission file",
+      "  /mission run <id>    send the lab on a mission now (web sweep, tasks, report)",
+      "  /mission start <id>  loop a continuous mission (unattended runs + cooldown) · stop halts",
+      "  /mission schedule <id>    run it on its cron schedule (durable) · unschedule removes",
+    ],
+  },
+  { cmd: "/mode", args: "<default|acceptEdits|plan|bypass>", desc: "set permission mode" },
+  { cmd: "/styles", args: "[on|off <id>]", desc: "list optional .ma styles, or toggle one (session only)" },
+  { cmd: "/debug", args: "<prompt>", desc: "reproduce-first debugging mode (off: /debug off)" },
+  { cmd: "/settings", args: "[global] [k v]", desc: "show settings, or set one (add global to save to ~/.magentra)" },
+  { cmd: "/resume", args: "<session-id>", desc: "resume a previous session" },
+  { cmd: "/sessions", args: "", desc: "list saved sessions" },
+];
+
+/** The /help text, rendered from the registry plus the non-slash affordances. */
+function renderHelp(): string {
+  const lines = ["Built-in commands:"];
+  for (const spec of SLASH_COMMANDS) {
+    const head = `${spec.cmd}${spec.args ? ` ${spec.args}` : ""}`;
+    lines.push(`  ${head.padEnd(24)} ${spec.desc}`);
+    if (spec.help) lines.push(...spec.help);
+  }
+  lines.push(
+    "  ! <command>      run a shell command; output lands in the conversation",
+    "  Esc              interrupt the current turn",
+    "",
+    "Glossary (crew, backpack, atlas, mission, styles, plan mode, deletion guard): SETTINGS → GLOSSARY in the app.",
+  );
+  return lines.join("\n");
+}
+
+/**
+ * The per-model rate card + context windows shipped in session_started: the
+ * built-in table with user pricing overrides applied, so the frontend never
+ * needs (and must never keep) a pricing copy of its own.
+ */
+function buildRateCard(
+  settings: Settings,
+): Extract<CoreEvent, { type: "session_started" }>["rateCard"] {
+  const card: Extract<CoreEvent, { type: "session_started" }>["rateCard"] = {};
+  for (const model of new Set([...Object.keys(MODEL_PRICING), ...Object.keys(settings.pricing ?? {})])) {
+    const pricing = pricingFor(model, settings);
+    if (!pricing) continue;
+    card[model] = {
+      input: pricing.input,
+      output: pricing.output,
+      ...(pricing.cacheRead !== undefined ? { cacheRead: pricing.cacheRead } : {}),
+      ...(pricing.cacheWrite !== undefined ? { cacheWrite: pricing.cacheWrite } : {}),
+      contextWindow: contextWindowFor(model, settings),
+    };
+  }
+  return card;
 }
 
 /** Narrows a value read from disk to a PermissionMode before trusting it. */

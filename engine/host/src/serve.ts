@@ -18,6 +18,24 @@ export async function runServe(engine: Engine): Promise<void> {
     }
   })();
 
+  // The frontend is gone (stdin EOF) or asked us to stop (SIGTERM): nobody is
+  // listening, so an in-flight turn must be INTERRUPTED, not left to run
+  // headless burning tokens. After the abort settles, drain the buffered
+  // events and stop cleanly.
+  let shuttingDown = false;
+  const shutdown = async (): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    engine.send({ type: "interrupt" });
+    await engine.idle();
+    engine.events.close();
+    await pump;
+    process.exitCode = 0;
+  };
+  process.on("SIGTERM", () => {
+    void shutdown().then(() => process.exit(0));
+  });
+
   for await (const frame of decodeFrames(process.stdin)) {
     if (isRequestLike(frame)) {
       engine.send(frame as FrontendRequest);
@@ -28,15 +46,7 @@ export async function runServe(engine: Engine): Promise<void> {
     }
   }
 
-  // stdin ended — the frontend is gone. Let the in-flight turn (if any) finish
-  // so its events still reach stdout, then close the event queue so the pump
-  // drains whatever is buffered and stops on its own. A turn may enqueue
-  // further user_messages via the cron scheduler; those aren't worth waiting
-  // for, so a single idle() await is enough.
-  await engine.idle();
-  engine.events.close();
-  await pump;
-  process.exitCode = 0;
+  await shutdown();
 }
 
 function isRequestLike(frame: unknown): boolean {

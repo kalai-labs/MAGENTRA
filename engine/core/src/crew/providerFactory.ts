@@ -117,7 +117,7 @@ export function resolveCrewEndpoint(
       provider: kind,
       ...(baseUrl !== undefined ? { baseUrl } : {}),
       apiKey: apiKey ?? "",
-      ...(local ? { numCtx: settings.contextWindow } : {}),
+      ...(local && settings.contextWindow !== undefined ? { numCtx: settings.contextWindow } : {}),
     },
   };
 }

@@ -16,9 +16,9 @@ npm run build
 mkdir C:\labs\demo1
 copy <repo>\.env C:\labs\demo1\.env        # or create .env with DEEPINFRA_API_KEY=...
 
-# 3. Launch Magentra in it
-cd C:\labs\demo1
-node <repo>\packages\cli\bin\magentra.js
+# 3. Launch the desktop app and open the playground in it
+cd <repo>
+npm run app        # then pick C:\labs\demo1 from the landing screen
 ```
 
 Everything below is typed into the Magentra prompt (slash commands), unless
@@ -142,8 +142,8 @@ run is **armed** with a ~90s cooldown.
 - `PS> type .magentra\missions\out\radar\log.jsonl` — one JSON line per run:
   `{"ts":...,"unattended":true,"ok":true,"outputTokens":...}`.
 
-**5. Prove restart survival (optional, +1 min):** quit Magentra (Ctrl+C),
-relaunch it — the console prints `🔁 continuous mission "radar" re-armed`.
+**5. Prove restart survival (optional, +1 min):** quit the app, relaunch it and
+reopen the workspace — the chat prints `🔁 continuous mission "radar" re-armed`.
 
 **6. Stop and schedule instead:** type `/mission stop radar`. Then add
 `schedule: 0 7 * * *` to the frontmatter and type `/mission schedule radar` —
@@ -177,10 +177,10 @@ export would have refused, listing the finding — that's the fail-closed gate;
 
 ```powershell
 PS> mkdir C:\labs\demo2 ; copy C:\labs\demo1\.env C:\labs\demo2\.env
-PS> cd C:\labs\demo2 ; node <repo>\packages\cli\bin\magentra.js
 ```
 
-then type `/team hire C:\labs\demo1\demolab.teampack.json`. Expect:
+then open `C:\labs\demo2` in the desktop app (relaunch `npm run app` and pick it
+from the landing screen) and type `/team hire C:\labs\demo1\demolab.teampack.json`. Expect:
 
 ```
 🤝 team "demolab" hired — 2 members, 1 mission added

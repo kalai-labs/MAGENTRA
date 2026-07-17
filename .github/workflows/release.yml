@@ -89,7 +89,7 @@ jobs:
           - name: linux
             os: ubuntu-latest
             dist: dist:linux
-            upload: app/dist/*.AppImage app/dist/*.tar.gz
+            upload: app/dist/*.AppImage app/dist/*.tar.gz app/dist/*.deb
           - name: windows
             os: windows-latest
             dist: dist:win

@@ -96,12 +96,16 @@ export class PermissionEngine {
       };
     }
     // Deletion guard: a tool call that would delete a file/folder always
-    // requires interactive approval, in every mode (including bypass) and
-    // regardless of allow rules or session allows. It is checked before those
-    // shortcuts (but after deny rules, which the user configured explicitly
-    // to always block the call outright) and never adds a session-allow, so
-    // it re-fires on every subsequent matching call.
-    const deletionSubject = this.deletionGuard ? tool.deletionSubject?.(input) : undefined;
+    // requires interactive approval, in every mode (including bypass). One
+    // exception: an EXPLICIT subject-scoped allow rule in the user's settings
+    // (e.g. `Bash(rm -rf ./tmp/*)`) is a deliberate standing decision about
+    // that exact call shape — it beats the guard, so unattended cleanup
+    // missions can delete their own temp files without re-prompting forever.
+    // Broad grants (bare tool, `Tool(*)`, session allows) never do. The guard
+    // never adds a session-allow, so it re-fires on every other matching call.
+    const explicitlyAllowed = matchesExplicit(this.allow, tool.name, subject);
+    const deletionSubject =
+      this.deletionGuard && !explicitlyAllowed ? tool.deletionSubject?.(input) : undefined;
     if (deletionSubject !== undefined) {
       const res = await this.requestApproval(
         { tool: tool.name, input, description: deletionSubject },
@@ -177,6 +181,21 @@ function matches(rules: ParsedRule[], tool: string, subject: string | undefined)
     if (!rule.pattern) return true;
     return subject !== undefined && rule.pattern.test(subject);
   });
+}
+
+/**
+ * True only for a subject-scoped rule that is not the match-anything wildcard:
+ * the deliberate, narrow kind of grant that may override the deletion guard.
+ */
+function matchesExplicit(rules: ParsedRule[], tool: string, subject: string | undefined): boolean {
+  return rules.some(
+    (rule) =>
+      rule.tool === tool &&
+      rule.pattern !== undefined &&
+      !rule.raw.endsWith("(*)") &&
+      subject !== undefined &&
+      rule.pattern.test(subject),
+  );
 }
 
 function globToRegex(glob: string): RegExp {

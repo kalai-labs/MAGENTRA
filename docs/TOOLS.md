@@ -1,8 +1,8 @@
 # Magentra Tools
 
 This documents every tool registered in the default registry
-(`packages/tools/src/index.ts`, assembled by `createDefaultRegistry()`). Each tool is a
-single module exporting a `ToolDefinition` (`packages/core/src/tool.ts`): a name, a
+(`engine/tools/src/index.ts`, assembled by `createDefaultRegistry()`). Each tool is a
+single module exporting a `ToolDefinition` (`engine/core/src/agent/tool.ts`): a name, a
 description, a zod `inputSchema`, a `permissionClass`, and an async `execute(input, ctx,
 signal)`.
 
@@ -14,14 +14,14 @@ ScheduleWakeup, Skill, Workflow, GraphQuery, CrewRun, BackpackSearch** — plus 
 `mcp__<server>__<tool>` entries wired in from configured MCP servers at startup.
 
 The reference sections below cover the original core set (Read through AskUserQuestion) in
-full detail; for the rest, each tool's module under `packages/tools/src/` carries its
+full detail; for the rest, each tool's module under `engine/tools/src/` carries its
 complete contract in its `ToolDefinition` description and doc comments.
 
 ## Permission model
 
 Every tool declares one of five permission classes, and each tool call is resolved against
 the active permission mode and the user's `allow`/`deny` rules
-(`packages/core/src/permissions.ts`).
+(`engine/core/src/runtime/permissions.ts`).
 
 | Class | Meaning | Examples |
 | --- | --- | --- |
@@ -84,11 +84,14 @@ number, a tab, then the line, starting at line 1 (or at `offset+1`). Lines longe
 characters are clipped with a `[line truncated]` marker. When more lines remain past the
 window, a trailing notice tells the model the next `offset` to use. Image files (`.png`,
 `.jpg`/`.jpeg`, `.gif`, `.webp`) are returned as an image content block rather than text. A
-successful read records the file for freshness checks.
+file whose head contains a NUL byte is refused as binary with an explanatory error (naming
+what Read does handle and pointing at Bash tooling — `file`, `strings`, `unzip -l` — for
+the rest) instead of returning a page of mojibake. A successful read records the file for
+freshness checks.
 
 **Error modes.** Non-absolute path; file does not exist; path is a directory (suggests Glob);
-an empty file returns the note `(the file exists but is empty)` as a normal (non-error)
-result.
+binary file (see above); an empty file returns the note `(the file exists but is empty)` as a
+normal (non-error) result.
 
 ## Write
 
@@ -136,11 +139,12 @@ Filename/path matching by glob pattern. **Permission class:** `read`. Subject: `
 | --- | --- | --- | --- | --- |
 | `pattern` | string | yes | — | Glob, e.g. `**/*.ts` or `src/**/*.{ts,tsx}`. |
 | `path` | string | no | session cwd | Directory to search in. |
+| `dot` | boolean | no | `false` | Also match dotfiles/dot-directories (e.g. `.github/**`). |
 
 **Contract.** Matches file names/paths only (never file contents). Returns absolute paths,
 files only, sorted most-recently-modified first, capped at 1000 with a "narrow the pattern"
-notice when exceeded. `node_modules` and `.git` are ignored, and dotfiles are excluded. An
-empty result (`No files match the pattern.`) is not an error.
+notice when exceeded. `node_modules` and `.git` are ignored, and dotfiles are excluded
+unless `dot: true`. An empty result (`No files match the pattern.`) is not an error.
 
 **Error modes.** An internal glob-engine failure returns `Glob failed: …` as an error.
 
@@ -165,8 +169,10 @@ Content search built on ripgrep. **Permission class:** `read`. Subject: `pattern
 
 **Contract.** Respects `.gitignore` by default. In `content` mode results are grouped under
 file headings and, when `-n` is set, prefixed with line numbers. Output beyond `head_limit`
-is dropped with a "raise head_limit or narrow the pattern" notice. No matches returns `No
-matches found.` (not an error).
+is dropped with a "raise head_limit or narrow the pattern" notice. Blowing ripgrep's 20MB
+capture buffer is treated as a result (too many matches), not a failure: what was captured
+is returned, capped at `head_limit`, with a "narrow the pattern or add a glob filter"
+truncation notice. No matches returns `No matches found.` (not an error).
 
 **Error modes.** A ripgrep failure (exit code > 1, e.g. an invalid regex) returns `ripgrep
 error: …` as an error.
@@ -286,6 +292,8 @@ Each option object:
 | `preview` | string | no | — | Optional preview content shown when focused. |
 
 **Contract.** Emits a `question_request` event and awaits a `question_response` (see the
-question round-trip in `docs/PROTOCOL.md`). The frontend always adds an "Other" free-text
-option automatically, so tools should not include one. The result is returned to the model as
-the user's selections, formatted per question.
+question round-trip in `docs/PROTOCOL.md`). Answers arrive keyed positionally (`"q:<idx>"`,
+so duplicate question texts cannot collide); the question's exact text is accepted as a
+fallback for older frontends. The frontend always adds an "Other" free-text option
+automatically, so tools should not include one. The result is returned to the model as the
+user's selections, formatted per question.

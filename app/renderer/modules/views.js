@@ -8,7 +8,9 @@
 
 const STAGE_VIEWS = {
   console: consoleViewEl,
+  sessions: sessionsViewEl,
   team: teamViewEl,
+  lab: labViewEl,
   changes: changesViewEl,
   settings: settingsViewEl,
 };
@@ -20,9 +22,66 @@ function showView(name) {
   }
   document.body.dataset.view = name;
   navConsoleEl.classList.toggle("active", name === "console");
+  navSessionsEl.classList.toggle("active", name === "sessions");
   teamBtnEl.classList.toggle("active", name === "team");
+  navLabEl.classList.toggle("active", name === "lab");
   navChangesEl.classList.toggle("active", name === "changes");
   navSettingsEl.classList.toggle("active", name === "settings");
+}
+
+// ---------------------------------------------------------------------------
+// Modal accessibility: focus the first control on open, trap Tab inside the
+// dialog (nothing behind the scrim is reachable), restore focus on close.
+// ---------------------------------------------------------------------------
+
+let modalRestoreFocus = null;
+let modalTrapEl = null;
+
+function modalFocusables(modalEl) {
+  return [...modalEl.querySelectorAll("button, input, select, textarea, [tabindex]")].filter(
+    (el) => !el.disabled && el.offsetParent !== null,
+  );
+}
+
+function onModalTrapKeydown(e) {
+  if (e.key !== "Tab" || !modalTrapEl) return;
+  const items = modalFocusables(modalTrapEl);
+  if (items.length === 0) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+function openModalA11y(modalEl, initialFocusEl) {
+  modalRestoreFocus = document.activeElement;
+  modalTrapEl = modalEl;
+  document.addEventListener("keydown", onModalTrapKeydown, true);
+  const target = initialFocusEl || modalFocusables(modalEl)[0];
+  if (target) target.focus();
+}
+
+function closeModalA11y() {
+  if (!modalTrapEl) return;
+  modalTrapEl = null;
+  document.removeEventListener("keydown", onModalTrapKeydown, true);
+  if (modalRestoreFocus && typeof modalRestoreFocus.focus === "function") modalRestoreFocus.focus();
+  modalRestoreFocus = null;
+}
+
+// ---------------------------------------------------------------------------
+// Screen-reader live announcements: batched, meaningful moments only —
+// streaming every text delta would make NVDA/Orca unusable.
+// ---------------------------------------------------------------------------
+
+function announce(text) {
+  if (!srAnnounceEl) return;
+  srAnnounceEl.textContent = text;
 }
 
 // ---------------------------------------------------------------------------

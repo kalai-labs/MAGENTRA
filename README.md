@@ -1,8 +1,25 @@
 # MAGENTRA
 
 An autonomous agent harness. One product: a desktop app (Windows `.exe`, Linux
-AppImage/tar.gz) wrapped around an agent engine that plans, edits code, runs
-commands, and dispatches a crew of specialist sub-agents.
+AppImage/tar.gz, macOS `.dmg`) wrapped around an agent engine that plans, edits
+code, runs commands, and dispatches a crew of specialist sub-agents.
+
+## Install
+
+Every release ships prebuilt binaries on the
+[GitHub Releases](../../releases) page:
+
+- **Windows** — `MAGENTRA-<version>-win-portable.exe`, a portable exe (no
+  installer). It is unsigned, so SmartScreen may object on first run: click
+  **More info → Run anyway**.
+- **Linux** — `MAGENTRA-<version>-linux-x64.tar.gz` or
+  `MAGENTRA-<version>-linux-x64.AppImage`. For the tar.gz: extract it and run
+  `./magentra` — that launcher is a small wrapper that checks whether Chromium
+  can sandbox itself on your system and passes `--no-sandbox` only when it
+  genuinely cannot (e.g. distros that restrict unprivileged user namespaces).
+- **macOS** — `MAGENTRA-<version>-mac-arm64.dmg` (Apple Silicon only). The app
+  is unsigned, so the first launch needs **right-click → Open** instead of a
+  double-click.
 
 ## Layout
 
@@ -53,9 +70,10 @@ npm run app          # launch the desktop app against the built engine
 ```sh
 npm run dist:linux   # AppImage + tar.gz
 npm run dist:win     # portable .exe
+npm run dist:mac     # arm64 .dmg
 ```
 
-Both bundle the engine into a single file and ship a `ripgrep` binary beside it,
+All bundle the engine into a single file and ship a `ripgrep` binary beside it,
 so the artifact needs no `node_modules` at runtime.
 
 ## Versioning

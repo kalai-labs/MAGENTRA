@@ -239,10 +239,12 @@ export class CronScheduler {
       }
 
       job.lastFireKey = this.fireKey(job, now);
-      // Recurring jobs expire 7 days after creation: this fire is the last one.
-      if (now.getTime() >= job.createdAt + SEVEN_DAYS_MS) {
+      // Ephemeral recurring jobs expire 7 days after creation (a forgotten
+      // in-session cron must not fire forever). DURABLE jobs — scheduled
+      // missions the user explicitly armed — never expire: a weekly mission
+      // must survive week 2.
+      if (!job.durable && now.getTime() >= job.createdAt + SEVEN_DAYS_MS) {
         this.jobs.delete(job.id);
-        if (job.durable) this.persist();
       }
     }
   }

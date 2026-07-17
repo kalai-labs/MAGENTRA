@@ -96,7 +96,7 @@ Provide "name" to create a new worktree on branch magentra/<name> (or omit for a
     if (typeof session.setCwd !== "function") {
       return {
         content:
-          "Cannot switch into a worktree: the session cwd hook (setCwd) is not wired. See INTEGRATION-phase3a.md.",
+          "Cannot switch into a worktree: this session's embedder did not wire the cwd hook (setCwd), so the working directory cannot be changed.",
         isError: true,
       };
     }

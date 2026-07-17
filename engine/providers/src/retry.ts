@@ -1,6 +1,16 @@
 export interface RetryOptions {
   maxRetries?: number;
   baseDelayMs?: number;
+  /** Called before each backoff sleep — the UI's window into a retry loop. */
+  onRetry?: (info: RetryInfo) => void;
+}
+
+export interface RetryInfo {
+  /** 1-based attempt number of the retry about to happen. */
+  attempt: number;
+  delayMs: number;
+  /** Human-readable cause: "rate limited", "provider server error", ... */
+  reason: string;
 }
 
 export class ProviderHttpError extends Error {
@@ -14,11 +24,46 @@ export class ProviderHttpError extends Error {
   }
 }
 
-export function isRetryable(err: unknown): err is ProviderHttpError {
-  return (
-    err instanceof ProviderHttpError &&
-    (err.status === 429 || err.status === 408 || err.status >= 500)
-  );
+/** HTTP status of a provider failure — ours or an SDK's (both carry .status). */
+function statusOf(err: unknown): number | undefined {
+  if (err instanceof ProviderHttpError) return err.status;
+  const status = (err as { status?: unknown })?.status;
+  return typeof status === "number" ? status : undefined;
+}
+
+/** Node errno of a network failure (fetch wraps it in `.cause`). */
+function netCodeOf(err: unknown): string | undefined {
+  const code =
+    (err as { code?: unknown })?.code ?? (err as { cause?: { code?: unknown } })?.cause?.code;
+  return typeof code === "string" ? code : undefined;
+}
+
+const RETRYABLE_NET_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "ETIMEDOUT",
+  "EPIPE",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
+export function isRetryable(err: unknown): boolean {
+  const status = statusOf(err);
+  if (status !== undefined) return status === 429 || status === 408 || status >= 500;
+  const code = netCodeOf(err);
+  return code !== undefined && RETRYABLE_NET_CODES.has(code);
+}
+
+/** Short human-readable cause for a retryable failure, for the retry status line. */
+export function retryReason(err: unknown): string {
+  const status = statusOf(err);
+  if (status === 429) return "rate limited";
+  if (status === 408) return "provider timeout";
+  if (typeof status === "number" && status >= 500) return `provider server error (${status})`;
+  const code = netCodeOf(err);
+  if (code !== undefined) return "network error";
+  return "provider error";
 }
 
 /**
@@ -76,8 +121,10 @@ export async function withRetry<T>(
     } catch (err) {
       if (!isRetryable(err) || attempt >= maxRetries) throw err;
       const backoff = base * 2 ** attempt * (0.5 + Math.random() / 2);
-      const delay = Math.max(err.retryAfterMs ?? 0, backoff);
+      const retryAfterMs = err instanceof ProviderHttpError ? (err.retryAfterMs ?? 0) : 0;
+      const delay = Math.max(retryAfterMs, backoff);
       attempt++;
+      opts.onRetry?.({ attempt, delayMs: delay, reason: retryReason(err) });
       await sleep(delay, signal);
     }
   }

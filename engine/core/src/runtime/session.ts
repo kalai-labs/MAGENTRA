@@ -37,6 +37,7 @@ import {
 import { areaFacts, graphSummary, planAtlasAreas, projectName } from "../knowledge/atlasPlan.js";
 import { loadOrBuildGraph, type GraphData } from "../knowledge/graph.js";
 import { loadStandards } from "../knowledge/standards.js";
+import { contextWindowFor } from "../config/pricing.js";
 import { BackgroundManager } from "../scheduling/background.js";
 import { FileState } from "./fileState.js";
 import type { HookRunner } from "../agent/hooks.js";
@@ -194,6 +195,8 @@ export class Session {
   private unattended = false;
   /** Usage totals of the most recently completed turn (undefined before the first turn ends). */
   lastTurnUsage: Usage | undefined;
+  /** User-assigned session name (rename_session); persisted in the meta snapshot. */
+  label: string | undefined;
   /** True once the empty-task-list plan-first reminder has fired and the list has stayed empty since. */
   private planReminderFired = false;
   /** True once the missing-atlas reminder has fired for this session. */
@@ -323,9 +326,13 @@ export class Session {
       addSessionAllow: (tool, subject) => this.permissions.addSessionAllow(tool, subject),
       requestPlanDecision: () => this.requestPlanDecision(),
       settings: this.settings,
+      usedOutputTokens: () => this.stats.totalUsage().outputTokens,
       stateDir: this.stateDir,
       setCwd: (dir: string) => {
         this.cwd = dir;
+        // The UI must show when the session operates inside a worktree —
+        // edits landing in an unexpected tree read as data loss.
+        this.emit({ type: "cwd_changed", cwd: dir, worktree: dir !== this.opts.cwd });
       },
       worktreeBaseRef: opts.settings.worktree.baseRef,
       ...(opts.skills !== undefined ? { skills: opts.skills } : {}),
@@ -1141,6 +1148,10 @@ export class Session {
           );
         }
         this.pushMessage({ role: "user", content: this.withReminders(results) });
+        // Mid-turn compaction: a long tool loop must squeeze the window when it
+        // fills instead of dying on a provider context error at the next call.
+        // (maybeCompact self-gates on the threshold, so this is cheap.)
+        await this.maybeCompact();
       }
     } catch (err) {
       // If the turn died between an assistant tool_use and its results, the
@@ -1180,12 +1191,14 @@ export class Session {
       this.busy = false;
       this.abortController = undefined;
       this.lastTurnUsage = turnUsage;
+      const totalCostUsd = this.stats.totalCost(this.settings);
       this.emit({
         type: "turn_finished",
         turnId,
         stopReason,
         usage: turnUsage,
         contextTokens: this.stats.contextTokens,
+        ...(totalCostUsd !== undefined ? { totalCostUsd } : {}),
       });
       // Snapshot the tree-wide ledger + mode so /resume restores real
       // accounting instead of a $0.00 session. Children share the root's
@@ -1193,7 +1206,12 @@ export class Session {
       if (!this.opts.child) {
         this.transcript.append({
           kind: "meta",
-          data: { stats: this.stats.snapshot(), mode: this.permissions.getMode() },
+          data: {
+            stats: this.stats.snapshot(),
+            mode: this.permissions.getMode(),
+            model: this.settings.model,
+            ...(this.label !== undefined ? { label: this.label } : {}),
+          },
         });
       }
     }
@@ -1225,6 +1243,9 @@ export class Session {
       tools: this.toolSchemas(),
       maxTokens: this.settings.maxTokensPerResponse,
       signal,
+      // A silent backoff looks like a frozen spinner — narrate every retry.
+      onRetry: (info) =>
+        this.emit({ type: "retry_status", attempt: info.attempt, delayMs: info.delayMs, reason: info.reason }),
     });
 
     for await (const event of stream) {
@@ -1378,7 +1399,7 @@ export class Session {
             ...(description !== undefined ? { description } : {}),
           });
           try {
-            const result = await tool.execute(input, this.toolContext(), signal);
+            const result = await tool.execute(input, { ...this.toolContext(), callId: call.id }, signal);
             this.observeReproRun(tool.name, input, result.isError === true);
             const truncated = truncateResult(result, tool.outputByteLimit ?? DEFAULT_OUTPUT_LIMIT);
             if (this.hooks?.has("PostToolUse")) {
@@ -1527,16 +1548,17 @@ export class Session {
 
   /** Summarize the oldest span when the context estimate crosses the threshold. */
   async maybeCompact(force = false): Promise<boolean> {
-    const threshold = this.settings.contextWindow * this.settings.compactionThreshold;
+    const window = contextWindowFor(this.settings.model, this.settings);
+    const threshold = window * this.settings.compactionThreshold;
     if (!force && this.stats.contextTokens < threshold) return false;
-    if (this.messages.length < 8) return false;
 
-    // Keep roughly the last 6 messages, but never split a tool_use from its
-    // tool_result: a tail that opens with tool_results whose tool_use was
+    // Keep the most recent messages (a shorter tail under /compact force, so a
+    // small history can still be squeezed), but never split a tool_use from
+    // its tool_result: a tail that opens with tool_results whose tool_use was
     // summarized away is a history every provider rejects, bricking the
     // session. Tool pairs are adjacent, so walking the boundary back to a
     // message with no tool_result blocks guarantees each pair lands whole.
-    let splitIdx = this.messages.length - 6;
+    let splitIdx = this.messages.length - (force ? 2 : 6);
     while (splitIdx > 0 && this.messages[splitIdx]!.content.some((b) => b.type === "tool_result")) {
       splitIdx--;
     }
@@ -1544,25 +1566,8 @@ export class Session {
     const head = this.messages.slice(0, splitIdx);
     const tail = this.messages.slice(splitIdx);
 
-    const summarySignal = new AbortController().signal;
-    let summaryText = "";
-    const stream = this.provider.stream({
-      model: this.settings.smallModel ?? this.settings.model,
-      system:
-        "Summarize this coding-agent conversation so work can continue seamlessly in a fresh context. Structure the summary as: 1) task state and goal, 2) decisions made and why, 3) files read or modified (with paths), 4) open items and next steps. Be specific; keep every detail a continuation would need.",
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: serializeForSummary(head) }],
-        },
-      ],
-      tools: [],
-      maxTokens: 2000,
-      signal: summarySignal,
-    });
-    for await (const event of stream) {
-      if (event.type === "text_delta") summaryText += event.text;
-    }
+    const before = this.stats.contextTokens;
+    const summaryText = await this.summarizeForCompaction(head);
 
     const summaryMessage =
       `<system-reminder>Earlier conversation was compacted. Summary of the compacted span:\n\n${summaryText}\n\nContinue the work; do not wrap up early on account of the compaction.</system-reminder>`;
@@ -1571,7 +1576,69 @@ export class Session {
     // The window was just emptied; the next response reports its true new size.
     // (Cost/usage totals stay — compaction does not un-bill what was spent.)
     this.stats.contextTokens = 0;
+    // An automatic (threshold) compaction must not be silent — mid-turn it
+    // would otherwise look like the agent quietly forgot the conversation.
+    if (!force) {
+      this.emit({
+        type: "command_output",
+        text: `🗜 context compacted automatically (${before} tokens — over ${Math.round(this.settings.compactionThreshold * 100)}% of the ${window}-token window)`,
+      });
+    }
     return true;
+  }
+
+  /**
+   * Summarizes the compacted head, chunking the input so the summary call can
+   * never itself overflow the summarizer's window: each chunk is folded into a
+   * rolling summary that carries forward what earlier chunks established.
+   */
+  private async summarizeForCompaction(head: Msg[]): Promise<string> {
+    // ~4 chars/token: keep each summarizer prompt well inside even a small
+    // (128k-token) window, leaving room for the rolling summary + reply.
+    const MAX_CHUNK_CHARS = 200_000;
+    const serialized = head.map((m) => serializeForSummary([m]));
+    const chunks: string[] = [];
+    let current = "";
+    for (const piece of serialized) {
+      // A single oversized message still becomes its own (hard-sliced) chunk.
+      if (current && current.length + piece.length > MAX_CHUNK_CHARS) {
+        chunks.push(current);
+        current = "";
+      }
+      current += (current ? "\n" : "") + piece;
+      while (current.length > MAX_CHUNK_CHARS) {
+        chunks.push(current.slice(0, MAX_CHUNK_CHARS));
+        current = current.slice(MAX_CHUNK_CHARS);
+      }
+    }
+    if (current) chunks.push(current);
+
+    let summary = "";
+    for (const chunk of chunks) {
+      const input = summary
+        ? `Summary of the conversation so far:\n${summary}\n\nNext span of the conversation:\n${chunk}`
+        : chunk;
+      summary = await this.runSummarizer(input);
+    }
+    return summary;
+  }
+
+  private async runSummarizer(text: string): Promise<string> {
+    const summarySignal = new AbortController().signal;
+    let summaryText = "";
+    const stream = this.provider.stream({
+      model: this.settings.smallModel ?? this.settings.model,
+      system:
+        "Summarize this coding-agent conversation so work can continue seamlessly in a fresh context. Structure the summary as: 1) task state and goal, 2) decisions made and why, 3) files read or modified (with paths), 4) open items and next steps. Be specific; keep every detail a continuation would need.",
+      messages: [{ role: "user", content: [{ type: "text", text }] }],
+      tools: [],
+      maxTokens: 2000,
+      signal: summarySignal,
+    });
+    for await (const event of stream) {
+      if (event.type === "text_delta") summaryText += event.text;
+    }
+    return summaryText;
   }
 }
 

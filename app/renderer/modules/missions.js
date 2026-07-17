@@ -1,9 +1,9 @@
-// Mission rail (live task list) and .ma style chips.
+// Task rail (live task list) and .ma style chips.
 // Loaded as a classic script in index.html — all renderer modules share one
 // global scope, in the order the page lists them.
 
 // ---------------------------------------------------------------------------
-// Mission rail: live task list
+// Task rail: live task list
 // ---------------------------------------------------------------------------
 
 const TASK_GLYPHS = { pending: "○", in_progress: "◐", completed: "●" };
@@ -175,9 +175,21 @@ function createStyleRow(mode) {
   if (mode.core) {
     rowEl.title = suspended ? `core quality mode — suspended by ${mode.suspendedBy}` : "core quality mode — always on";
   } else {
+    // Keyboard-reachable toggle: styles must be manageable without a mouse.
+    rowEl.tabIndex = 0;
+    rowEl.setAttribute("role", "switch");
+    rowEl.setAttribute("aria-checked", mode.active ? "true" : "false");
+    rowEl.setAttribute("aria-label", `${mode.id} style`);
     rowEl.addEventListener("click", (e) => {
       e.stopPropagation();
       toggleMode(mode.id);
+    });
+    rowEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleMode(mode.id);
+      }
     });
   }
 
@@ -202,7 +214,7 @@ function renderStylesPanel() {
 
   const campaignsTitleEl = document.createElement("div");
   campaignsTitleEl.className = "panel-group-title";
-  campaignsTitleEl.textContent = "CAMPAIGNS";
+  campaignsTitleEl.textContent = "FEATURED STYLES";
   panelEl.appendChild(campaignsTitleEl);
 
   for (const heroId of HERO_MODE_IDS) {
@@ -212,7 +224,7 @@ function renderStylesPanel() {
 
   const disciplinesTitleEl = document.createElement("div");
   disciplinesTitleEl.className = "panel-group-title";
-  disciplinesTitleEl.textContent = "DISCIPLINES";
+  disciplinesTitleEl.textContent = "ALL STYLES";
   panelEl.appendChild(disciplinesTitleEl);
 
   for (const mode of modes) {
@@ -250,3 +262,129 @@ function onModesUpdated(event) {
   }
   pendingModesNote = false;
 }
+
+// ---------------------------------------------------------------------------
+// Missions view (research lab): list mission files with live state, and run
+// them without knowing the slash syntax — every button routes through the
+// exact /mission handlers the terminal uses.
+// ---------------------------------------------------------------------------
+
+let labMissions = [];
+let labWarnings = [];
+
+function sendMissionCommand(args) {
+  window.magentra.send({ type: "slash_command", command: "mission", args });
+}
+
+function missionActionButton(label, title, args, opts = {}) {
+  const btn = document.createElement("button");
+  btn.className = "lab-btn" + (opts.danger ? " danger" : "");
+  btn.textContent = label;
+  btn.title = title;
+  btn.disabled = Boolean(opts.disabled);
+  btn.addEventListener("click", () => {
+    sendMissionCommand(args);
+    if (opts.toConsole) showView("console");
+  });
+  return btn;
+}
+
+function renderMissions() {
+  if (!labListEl) return;
+  labListEl.textContent = "";
+  const runningCount = labMissions.filter((m) => m.running).length;
+  labEmptyEl.classList.toggle("hidden", labMissions.length > 0 || labWarnings.length > 0);
+  labSubEl.textContent = `${labMissions.length} mission${labMissions.length === 1 ? "" : "s"}${runningCount ? ` · ${runningCount} running` : ""}`;
+  dockLabCountEl.textContent = String(runningCount);
+  dockLabCountEl.classList.toggle("hidden", runningCount === 0);
+
+  for (const m of labMissions) {
+    const row = document.createElement("div");
+    row.className = "lab-row" + (m.running ? " running" : "");
+
+    const main = document.createElement("div");
+    main.className = "lab-main";
+
+    const title = document.createElement("div");
+    title.className = "lab-title";
+    title.textContent = `🧪 ${m.name}`;
+    const idEl = document.createElement("span");
+    idEl.className = "lab-id";
+    idEl.textContent = m.id;
+    title.appendChild(idEl);
+    main.appendChild(title);
+
+    if (m.description) {
+      const desc = document.createElement("div");
+      desc.className = "lab-desc";
+      desc.textContent = m.description;
+      main.appendChild(desc);
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "lab-meta";
+    meta.textContent = [
+      m.keywords.length ? `keywords: ${m.keywords.join(", ")}` : null,
+      m.schedule ? `cron ${m.schedule} ${m.scheduled ? "· scheduled ✓" : "· not scheduled"}` : null,
+      m.running ? "🔁 running continuously" : m.continuous ? "continuous-capable" : null,
+      m.lastRunAt ? `last run ${formatSessionDate(m.lastRunAt)}` : "never run",
+      `→ ${m.deliverable}`,
+    ].filter(Boolean).join("  ·  ");
+    main.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "lab-actions";
+    actions.appendChild(missionActionButton("RUN", "Run this mission now (streams into the console)", `run ${m.id}`, { disabled: busy, toConsole: true }));
+    if (m.continuous) {
+      actions.appendChild(
+        m.running
+          ? missionActionButton("STOP", "Halt the continuous loop", `stop ${m.id}`, { danger: true })
+          : missionActionButton("START", "Loop this mission: run, cool down, run again", `start ${m.id}`, { disabled: busy, toConsole: true }),
+      );
+    }
+    if (m.schedule) {
+      actions.appendChild(
+        m.scheduled
+          ? missionActionButton("UNSCHEDULE", "Remove the cron schedule", `unschedule ${m.id}`)
+          : missionActionButton("SCHEDULE", `Arm the cron schedule (${m.schedule})`, `schedule ${m.id}`),
+      );
+    }
+
+    row.appendChild(main);
+    row.appendChild(actions);
+    labListEl.appendChild(row);
+  }
+
+  for (const warning of labWarnings) {
+    const w = document.createElement("div");
+    w.className = "lab-warning";
+    w.textContent = `✗ ${warning}`;
+    labListEl.appendChild(w);
+  }
+}
+
+function onMissionsUpdated(event) {
+  labMissions = Array.isArray(event.missions) ? event.missions : [];
+  labWarnings = Array.isArray(event.warnings) ? event.warnings : [];
+  renderMissions();
+}
+
+function resetLabView() {
+  labMissions = [];
+  labWarnings = [];
+  navLabEl.classList.add("hidden");
+  navLabEl.classList.remove("active");
+  renderMissions();
+}
+
+navLabEl.addEventListener("click", () => showView("lab"));
+labCloseBtnEl.addEventListener("click", () => showView("console"));
+labNewBtnEl.addEventListener("click", () => {
+  const id = window.prompt("Mission id (lowercase letters, digits, - or _) — becomes .magentra/missions/<id>.md:");
+  if (!id) return;
+  if (!/^[a-z0-9_-]+$/.test(id)) {
+    appendSysNote(`mission: "${id}" is not a valid id (lowercase letters, digits, - or _)`);
+    return;
+  }
+  sendMissionCommand(`new ${id}`);
+});

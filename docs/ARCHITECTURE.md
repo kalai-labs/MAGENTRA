@@ -1,8 +1,8 @@
 # Magentra — Architecture
 
-Magentra is a headless agentic coding engine plus a terminal frontend. The core is
+Magentra is a headless agentic coding engine plus a desktop frontend. The core is
 UI-agnostic: it emits typed events and consumes typed requests over a versioned protocol,
-so a terminal REPL today and a VS Code fork tomorrow are both thin clients of the same
+so the Electron app today and a VS Code fork tomorrow are both thin clients of the same
 engine.
 
 This document is the build-time alignment artifact. It is kept current as phases land.
@@ -10,54 +10,47 @@ This document is the build-time alignment artifact. It is kept current as phases
 ## Package layout
 
 ```
-packages/
+engine/
 ├── protocol/    # typed event/request schema + NDJSON framing + product branding constants
-├── providers/   # Provider interface, AnthropicProvider, FakeProvider
+├── providers/   # Provider interface, AnthropicProvider, OpenAI-compatible provider, FakeProvider
 ├── core/        # Session, agent loop, permission engine, prompt assembly,
 │                # context/compaction, transcript store, settings, subagent spawner
 ├── tools/       # every built-in tool, one module each, registered via a registry
-└── cli/         # terminal frontend: full-screen matrix TUI (tui/), readline
-                 # REPL fallback, and `magentra --serve` stdio mode
+└── host/        # headless process: runs the engine and speaks NDJSON over stdio
+
+app/             # the desktop app (Electron) — the engine's only frontend today
 ```
 
-### CLI frontends
+### Frontends
 
-`cli` ships two human-facing presentations of the one event protocol, chosen at
-startup in `main.ts`:
+The engine has exactly one process boundary: `engine/host`, a headless binary that
+speaks the protocol as NDJSON over stdio (`--cwd <workspace> [--mode …]
+[--dangerously-bypass]`). The desktop app (`app/`) spawns exactly that process per
+open workspace and renders the event stream:
 
-- **Matrix TUI** (`src/tui/`) — the default on an interactive, colour-capable
-  TTY. A hand-rolled full-screen ANSI interface (alternate screen buffer, raw-mode
-  line editor, digital-rain splash, green-phosphor theme). Pure logic is isolated
-  from I/O for unit testing: `ansi.ts` (palette + escape primitives), `wrap.ts`
-  (ANSI-aware wrapping), `keys.ts` (keypress decoder), `lineEditor.ts`, `rain.ts`
-  (deterministic with an injected RNG), `statusBar.ts`, and `render.ts` (events →
-  transcript lines). `screen.ts` and `tui.ts` hold the terminal I/O and the
-  event-loop wiring; `tui.ts` restores the terminal on every exit path (quit,
-  SIGINT/SIGTERM, uncaught exception).
-- **Readline REPL** (`src/repl.ts`) — the non-TTY fallback (pipes/CI), and also
-  used when `TERM=dumb` or `NO_COLOR` is set. Same event stream, no escape codes.
-
-Both share `src/shared.ts` — input-line classification and the y/a/n permission,
-plan, and question answer parsers — so the two frontends can never drift on those
-semantics. Mid-turn permission/question/plan prompts are serialized through the
-same async mutex in both; the engine protocol is identical either way.
+- `app/main.js` — Electron main process: window, the engine child process, IPC.
+- `app/main/` — pure pieces of the main process (config, logging).
+- `app/preload.js` — the contextBridge surface the renderer may touch.
+- `app/renderer/` — the UI; `modules/` are classic scripts loaded in order.
 
 Dependency direction (strict, enforced by TS project references):
 
 ```
-protocol  ←  providers  ←  core  ←  tools  ←  cli
+protocol  ←  providers  ←  core  ←  tools  ←  host
 ```
 
 - `protocol` has zero dependencies. It defines the seam a future IDE consumes.
 - `core` never imports from `tools`; tools are injected at startup via the registry.
   This keeps the engine embeddable with any tool subset (subagents use restricted sets).
-- `cli` is the only package allowed to touch stdin/stdout for user interaction.
+- `host` is the only package allowed to touch stdin/stdout for user interaction.
   `core` has no `console.log` for user output — everything flows through events.
+- `app` is plain JavaScript outside the TS build; it talks to the engine only
+  through the host's stdio stream.
 
 ## Data flow
 
 ```
- user input (REPL / stdio JSON / in-process API)
+ user input (desktop app / stdio NDJSON / in-process API)
         │  FrontendRequest {user_message | permission_response | interrupt | ...}
         ▼
  ┌─────────────────────────── core: Session ───────────────────────────┐
@@ -83,7 +76,7 @@ protocol  ←  providers  ←  core  ←  tools  ←  cli
  └──────────────────────────────────────────────────────────────────────┘
         │  CoreEvent {text_delta | tool_call_started | file_edited | ...}
         ▼
- frontend renders (terminal markdown / future IDE inline diffs)
+ frontend renders (desktop app markdown / future IDE inline diffs)
 ```
 
 Background work (Bash `run_in_background`, monitors, background subagents, cron) runs
@@ -96,19 +89,25 @@ Versioned (`PROTOCOL_VERSION = 1`), defined once in `@magentra/protocol`, docume
 `docs/PROTOCOL.md`. Transports:
 
 1. **In-process**: `Engine` exposes `events` (async iterable / emitter) and `send(request)`.
-2. **stdio**: `magentra --serve` frames the same objects as newline-delimited JSON.
+2. **stdio**: the `engine/host` binary frames the same objects as newline-delimited JSON;
+   the desktop app spawns it per workspace.
 
-Rule: if the CLI can do it, it does it through this protocol. The CLI holds no private
-references into core internals.
+Rule: if the desktop app can do it, it does it through this protocol. The app holds no
+private references into core internals.
 
-Core → frontend events: `session_started`, `turn_started`, `text_delta`,
-`thinking_delta`, `tool_call_started`, `tool_call_finished`, `permission_request`,
+Core → frontend events: `session_started` (with the slash-command registry in
+`commands` and the per-model `rateCard`), `turn_started`, `tool_output_delta`,
+`retry_status`, `text_delta`, `thinking_delta`, `tool_call_started`,
+`tool_call_finished`, `agent_spawned`, `agent_finished`, `permission_request`,
 `question_request`, `plan_ready`, `task_list_updated`, `file_edited` (unified diff),
-`background_notification`, `mode_changed`, `session_list`, `turn_finished`, `error`.
+`background_notification`, `mode_changed`, `command_output`, `session_list`,
+`turn_finished`, `error`, `modes_updated`, `team_updated`, `backpack_progress`,
+`session_restored`, `model_catalog`, `cwd_changed`, `missions_updated`.
 
 Frontend → core requests: `user_message`, `permission_response`, `question_response`,
-`plan_decision`, `interrupt`, `set_mode`, `slash_command`, `bang_command`,
-`resume_session`, `list_sessions`.
+`plan_decision`, `interrupt`, `set_mode`, `set_deletion_guard`, `slash_command`,
+`bang_command`, `resume_session`, `delete_session`, `stop_background`,
+`rename_session`, `archive_session`, `list_sessions`, `set_modes`, `reload_team`.
 
 ## Core concepts
 
@@ -157,13 +156,13 @@ the model these come from the harness, not the user.
 
 ### Modes (`.ma` styles): core vs optional
 
-Ten built-in `.ma` styles shape how the agent works (directives, shared vocab, turn
+Eleven built-in `.ma` styles shape how the agent works (directives, shared vocab, turn
 injections, tool gates, checklists); the full format is in `docs/MA-FORMAT.md`. Seven
 are **core** quality modes — `headlights`, `prover`, `deepmodule`, `surgeon`,
 `sentinel`, `obvious`, `lexicon` — always active in every session and non-disableable;
 this is the product's killer feature. The single source of truth is `CORE_MODE_IDS` in
-`packages/core/src/modes.ts`. The other three (`grill`, `entropy`, `reshape`) are
-**optional**, toggled per session via `settings.modes.active` (optional ids only,
+`engine/core/src/ma/modes.ts`. The other four (`grill`, `entropy`, `reshape`, `debug`)
+are **optional**, toggled per session via `settings.modes.active` (optional ids only,
 default `[]`) or the `set_modes` request. The `ModeEngine` unions core in, resolves
 `@conflicts` (core always wins), and refuses any attempt to drop a core mode with a
 one-line `command_output` message. `ModeSummary.core` lets frontends render locked chips.
@@ -216,8 +215,12 @@ recent tail verbatim. Full JSONL transcript is never rewritten — compaction is
 ### State on disk
 
 - `.magentra/` in the workspace: `sessions/*.jsonl` (append-only transcripts, one
-  message per line), `settings.json`, `tasks/` (background task output), `plans/`,
-  `worktrees/`, `skills/`, `scheduled_tasks.json`.
+  record per line: `message`, `system_prompt`, `permission`, `compaction`, `meta`),
+  `sessions/subagents/` (child-session transcripts), `settings.json`, `tasks/`
+  (persisted task lists + background task output), `plans/`, `worktrees/`, `skills/`,
+  `modes/` (workspace styles), `missions/` (+ `missions/out/` run reports and logs),
+  `team/` (crew files, `docs/`, `backpacks/`, `experience/`), `debug/` (repro
+  scripts), `tmp/`, `scheduled_tasks.json`, `ATLAS.md`, `LEXICON.md`.
 - `~/.magentra/`: global `settings.json`, global `skills/`.
 - Env vars override file config; project settings override global; zod-validated with
   warn-on-unknown-keys.
@@ -230,21 +233,22 @@ Permission classes: `read` | `mutate` | `execute` | `network` | `interact`. Read
 calls in one assistant turn run concurrently; mutating ones run sequentially in call
 order. Field names match the reference schemas exactly.
 
-Currently shipped (registered in `createDefaultRegistry`): the Phase-1 set — Read, Write,
-Edit, Glob, Grep, Bash, TaskCreate/TaskUpdate/TaskList/TaskGet, AskUserQuestion. The later
-phases below are the roadmap, not yet in the source tree. Per-tool field tables and behavior
-live in `docs/TOOLS.md`.
+Currently shipped (registered in `createDefaultRegistry` in `engine/tools/src/index.ts`):
+everything below except the team tools. Per-tool field tables and behavior live in
+`docs/TOOLS.md`.
 
-- **Phase 1**: Read, Write, Edit, Glob, Grep, Bash (+ background tasks),
+- **Phase 1** (shipped): Read, Write, Edit, Glob, Grep, Bash (+ background tasks),
   TaskCreate/TaskUpdate/TaskList/TaskGet, AskUserQuestion.
-- **Phase 2**: Agent (subagents: `general-purpose`, `explore`, `plan`; no recursion in
-  v1), WebFetch, WebSearch, EnterPlanMode/ExitPlanMode, Monitor, TaskStop/TaskOutput.
-- **Phase 3**: Skill (+ skills loader + built-in slash commands), hooks
+- **Phase 2** (shipped): Agent (subagents: `general-purpose`, `explore`, `plan`; no
+  recursion in v1), WebFetch, WebSearch, EnterPlanMode/ExitPlanMode, Monitor,
+  TaskStop/TaskOutput.
+- **Phase 3** (shipped): Skill (+ skills loader + built-in slash commands), hooks
   (PreToolUse/PostToolUse/UserPromptSubmit/SessionStart/Stop), MCP stdio client
-  (`mcp__<server>__<tool>`), EnterWorktree/ExitWorktree, CronCreate/Delete/List,
-  ScheduleWakeup, PushNotification.
-- **Phase 4 (stretch)**: Workflow (node:vm sandbox, journal + resume), SendMessage,
-  TeamCreate/TeamDelete.
+  (`mcp__<server>__<tool>`, wired in `engine/core/src/integrations/mcp.ts`),
+  EnterWorktree/ExitWorktree, CronCreate/Delete/List, ScheduleWakeup, PushNotification.
+- **Phase 4**: Workflow (node:vm sandbox, journal + resume — shipped), plus the crew
+  tools CrewRun, BackpackSearch, GraphQuery (shipped). SendMessage and
+  TeamCreate/TeamDelete remain unbuilt.
 
 ## Dependencies (one-line justifications)
 
@@ -252,24 +256,23 @@ live in `docs/TOOLS.md`.
 - `zod` — runtime validation of tool inputs, settings, and protocol frames.
 - `fast-glob` — battle-tested glob engine for the Glob tool.
 - `@vscode/ripgrep` — ships a prebuilt `rg` binary so Grep works with zero user setup.
-- `vitest` — test runner with first-class TS/ESM support.
 - `typescript`, `@types/node` — build/type tooling only.
+- `electron`, `electron-builder`, `esbuild` — desktop app shell and packaging (app/ only).
 
 Everything else (NDJSON framing, diffing, REPL, process management, cron parsing,
 JSONL store) is hand-rolled: small, boring, dependency-free.
 
 ## Testing strategy
 
-All loop logic runs against `FakeProvider` + a temp-dir workspace. Phase-1 suite:
-loop termination, parallel tool calls, invalid-input self-correction, permission deny
-path, edit-uniqueness failures, output truncation, iteration cap, transcript replay.
-The stdio protocol has a contract test that drives a full turn over `magentra --serve`
-— that test is what the future VS Code integration relies on.
+Loop logic is designed to run against `FakeProvider` (scripted turns, no network) + a
+temp-dir workspace. No engine test framework is wired up yet; the only automated tests
+in the tree today cover the version tool (`npm run test:version`). Per-feature test
+status is tracked honestly in `FEATURES.md`.
 
 Development happens on Windows but Linux/macOS are the support targets; Windows-specific
 gaps are documented, not engineered around.
 
-## Phase plan
+## Phase plan (historical — phases 1–3 have landed; of phase 4, the team tools remain)
 
 1. **Working agent** — providers, protocol, core loop, permissions, Phase-1 tools,
    readline CLI, FakeProvider suite. Gate: rename-across-repo demo with approval
@@ -287,7 +290,7 @@ Each phase ends with green tests, a runnable CLI demo, updated docs, and a git c
 
 ## Reference material
 
-The seven files under `core_markdowns/` are architectural reference for tool contracts
-and behaviors (schemas normative; `cc_f5.md` wins conflicts). Their prose is another
+Tool contracts and behaviors follow external reference schemas studied during design
+(the reference files themselves are not kept in this repo). Their prose is another
 vendor's — no verbatim text from them ships in Magentra prompts, tool descriptions, or
 docs.

@@ -28,8 +28,18 @@ export const settingsSchema = z
     /** Output-token budget per turn (input/context tokens are not counted — they are dominated by per-iteration context re-sends). */
     maxTokensPerTurn: z.number().int().positive().default(200_000),
     maxIterationsPerTurn: z.number().int().positive().default(50),
-    contextWindow: z.number().int().positive().default(160_000),
+    /** Explicit override; when absent the engine uses the known window for the model (128k fallback). */
+    contextWindow: z.number().int().positive().optional(),
     compactionThreshold: z.number().min(0.1).max(1).default(0.8),
+    /** Bounds append-only workspace state; pruning runs whenever a root session starts. */
+    retention: z
+      .object({
+        /** Top-level transcripts and legacy/subagent transcripts, newest first. */
+        sessions: z.number().int().positive().default(100),
+        /** Persisted task lists and background-task output files, newest first. */
+        tasks: z.number().int().positive().default(100),
+      })
+      .default({ sessions: 100, tasks: 100 }),
     /**
      * Per-model rate card, $ per 1M tokens, overriding the built-in table in
      * pricing.ts (so a self-hosted or brand-new model can be priced without a

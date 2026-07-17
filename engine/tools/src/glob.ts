@@ -11,6 +11,10 @@ const inputSchema = z.object({
     .describe(
       "The directory to search in. Omit it to use the current working directory — never pass \"undefined\" or \"null\".",
     ),
+  dot: z
+    .boolean()
+    .optional()
+    .describe("Set true to also match dotfiles/dot-directories (e.g. .github/**); default false."),
 });
 
 export const globTool: ToolDefinition<z.infer<typeof inputSchema>> = {
@@ -32,7 +36,7 @@ export const globTool: ToolDefinition<z.infer<typeof inputSchema>> = {
         cwd,
         absolute: true,
         onlyFiles: true,
-        dot: false,
+        dot: input.dot ?? false,
         suppressErrors: true,
         ignore: ["**/node_modules/**", "**/.git/**"],
       });
@@ -55,7 +59,7 @@ export const globTool: ToolDefinition<z.infer<typeof inputSchema>> = {
     const capped = withTimes.slice(0, 1000);
     const suffix =
       withTimes.length > capped.length
-        ? `\n[${withTimes.length - capped.length} more matches not shown — narrow the pattern]`
+        ? `\n[truncated — ${withTimes.length - capped.length} more matches; narrow the pattern]`
         : "";
     return { content: capped.map((m) => m.file).join("\n") + suffix };
   },

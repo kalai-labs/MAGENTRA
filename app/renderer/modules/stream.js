@@ -87,6 +87,12 @@ function trimStream() {
   while (streamEl.children.length > STREAM_MAX_NODES - 400) {
     streamEl.removeChild(streamEl.firstChild);
   }
+  const notice = document.createElement("div");
+  notice.className = "sys-note trim-notice";
+  notice.textContent = currentSessionId
+    ? `older messages trimmed — full log in \`.magentra/sessions/${currentSessionId}.jsonl\``
+    : "older messages trimmed — full log remains in `.magentra/sessions/`";
+  streamEl.insertBefore(notice, streamEl.firstChild);
   for (const [id, row] of toolRows) {
     if (!row.rowEl.isConnected) toolRows.delete(id);
   }
@@ -178,13 +184,55 @@ function createToolRow(tool, description, input) {
   // Every row is click-to-expand, cinematic included: the choreography is the
   // default look, but a user must always be able to open a row and see the
   // exact command and result — that is the whole basis of trusting the agent.
-  rowEl.classList.add("expandable");
-  rowEl.addEventListener("click", () => rowEl.classList.toggle("open"));
+  makeRowExpandable(rowEl);
 
   return { rowEl, detailEl, glyphEl };
 }
 
+/** Click-or-keyboard expandable row: focusable, Enter/Space toggles. */
+function makeRowExpandable(rowEl) {
+  rowEl.classList.add("expandable");
+  rowEl.tabIndex = 0;
+  rowEl.setAttribute("role", "button");
+  rowEl.setAttribute("aria-expanded", "false");
+  const toggle = () => {
+    rowEl.classList.toggle("open");
+    rowEl.setAttribute("aria-expanded", rowEl.classList.contains("open") ? "true" : "false");
+  };
+  rowEl.addEventListener("click", toggle);
+  rowEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggle();
+    }
+  });
+}
+
+/** Live tail: incremental tool output renders under its row while it runs. */
+function onToolOutputDelta(event) {
+  const row = toolRows.get(event.id);
+  if (!row || !row.rowEl.isConnected) return;
+  if (!row.tailEl) {
+    row.tailEl = document.createElement("pre");
+    row.tailEl.className = "tool-tail";
+    row.rowEl.insertAdjacentElement("afterend", row.tailEl);
+  }
+  // Keep only the last few lines — the full output lands in the detail on finish.
+  const combined = (row.tailText || "") + event.text;
+  row.tailText = combined.length > 4000 ? combined.slice(-4000) : combined;
+  const lines = row.tailText.split("\n").filter((l) => l.trim() !== "");
+  withAutoScroll(() => {
+    row.tailEl.textContent = lines.slice(-3).join("\n");
+  });
+}
+
 function finishToolRow(row, isError, resultPreview) {
+  // The live tail's job is done — the detail now holds the full output.
+  if (row.tailEl) {
+    row.tailEl.remove();
+    row.tailEl = null;
+    row.tailText = "";
+  }
   row.rowEl.classList.remove("running");
   row.rowEl.classList.add(isError ? "err" : "ok");
   row.glyphEl.textContent = isError ? "✗" : "✓"; // ✗ / ✓
@@ -289,6 +337,7 @@ function getOrCreateAgentCard(event) {
     ledEl,
     titleEl,
     agentDesc: event.agentDesc || "AGENT",
+    background: Boolean(event.background),
     running: true,
     intervalId,
     lastRowErr: false,
@@ -307,7 +356,11 @@ function finalizeCard(card) {
   card.cardEl.classList.add(card.lastRowErr ? "failed" : "done");
 }
 
+/** Turn-end sweep. Background agents detach from the turn — they stay live
+ * until their own agent_finished/background exit arrives. */
 function finalizeAllAgentCards() {
-  for (const card of agentCards.values()) finalizeCard(card);
+  for (const card of agentCards.values()) {
+    if (!card.background) finalizeCard(card);
+  }
   updateAgentMeter();
 }

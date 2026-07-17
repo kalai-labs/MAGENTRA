@@ -130,7 +130,8 @@ names cut cognitive load and prevent whole classes of bugs.
   which meaning wins, then update the lexicon.
 
 ::vocab
-mission: the current task list — the plan of record with a verification task at the end
+task list: the plan of record — the current tasks with a verification task at the end
+mission: a saved directive file in .magentra/missions/ that can be run, looped, or scheduled
 directive: a user instruction given to the agent
 style: a .ma file that shapes how the agent works
 lexicon: the shared vocabulary file at .magentra/LEXICON.md
@@ -164,7 +165,7 @@ feedback it can give you. Improving the code improves the loop.
 - Never take on a task that is too big. Before starting any task, ask
   whether it fits within a few verified steps; if you cannot see a task's
   end from its start, splitting it IS the first step — decompose it in the
-  mission (TaskUpdate) before its first edit, never mid-flight when already
+  task list (TaskUpdate) before its first edit, never mid-flight when already
   lost.
 - Work in small verified cycles: write ONE failing test that pins the next
   behavior, run it and watch it fail, write the minimal code to pass, run it

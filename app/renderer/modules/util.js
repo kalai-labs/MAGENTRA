@@ -18,6 +18,22 @@ function withAutoScroll(mutate) {
   const wasNear = isNearBottom();
   mutate();
   if (wasNear) scrollToBottom();
+  syncScrollPill();
+}
+
+// "↓ latest" escape pill: content is streaming below the fold whenever the
+// user has scrolled up — one click returns to the live edge.
+function syncScrollPill() {
+  if (!scrollPillEl) return;
+  scrollPillEl.classList.toggle("hidden", isNearBottom());
+}
+
+if (typeof scrollPillEl !== "undefined" && scrollPillEl) {
+  scrollPillEl.addEventListener("click", () => {
+    scrollToBottom();
+    syncScrollPill();
+  });
+  transcriptEl.addEventListener("scroll", syncScrollPill);
 }
 
 function timeString() {

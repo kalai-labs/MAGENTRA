@@ -52,15 +52,37 @@ const draftTeamBtnEl = document.getElementById("draftTeamBtn");
 const teamReloadBtnEl = document.getElementById("teamReloadBtn");
 const teamCloseBtnEl = document.getElementById("teamCloseBtn");
 const teamRosterEl = document.getElementById("teamRoster");
+const teamHireBtnEl = document.getElementById("teamHireBtn");
 
 // dock nav / stage views
 const navConsoleEl = document.getElementById("navConsole");
+const navSessionsEl = document.getElementById("navSessions");
 const navMissionEl = document.getElementById("navMission");
 const dockMissionCountEl = document.getElementById("dockMissionCount");
 const navSettingsEl = document.getElementById("navSettings");
 const consoleViewEl = document.getElementById("consoleView");
 const settingsViewEl = document.getElementById("settingsView");
 const settingsCloseBtnEl = document.getElementById("settingsCloseBtn");
+const scrollPillEl = document.getElementById("scrollPill");
+const srAnnounceEl = document.getElementById("srAnnounce");
+const shortcutSheetEl = document.getElementById("shortcutSheet");
+const jobsChipEl = document.getElementById("jobsChip");
+const shortcutCloseBtnEl = document.getElementById("shortcutCloseBtn");
+const navLabEl = document.getElementById("navLab");
+const dockLabCountEl = document.getElementById("dockLabCount");
+const labViewEl = document.getElementById("labView");
+const labListEl = document.getElementById("labList");
+const labSubEl = document.getElementById("labSub");
+const labEmptyEl = document.getElementById("labEmpty");
+const labNewBtnEl = document.getElementById("labNewBtn");
+const labCloseBtnEl = document.getElementById("labCloseBtn");
+const sessionsViewEl = document.getElementById("sessionsView");
+const sessionsListEl = document.getElementById("sessionsList");
+const sessionsSubEl = document.getElementById("sessionsSub");
+const sessionsEmptyEl = document.getElementById("sessionsEmpty");
+const sessionsRefreshBtnEl = document.getElementById("sessionsRefreshBtn");
+const sessionsSearchEl = document.getElementById("sessionsSearch");
+const sessionsCloseBtnEl = document.getElementById("sessionsCloseBtn");
 
 // settings: appearance controls
 const setFontEl = document.getElementById("setFont");
@@ -84,6 +106,7 @@ const setConnStatusEl = document.getElementById("setConnStatus");
 const setTestBtnEl = document.getElementById("setTestBtn");
 const setSaveBtnEl = document.getElementById("setSaveBtn");
 const setVersionEl = document.getElementById("setVersion");
+const openLogsBtnEl = document.getElementById("openLogsBtn");
 
 // first-run setup wizard
 const setupWizardEl = document.getElementById("setupWizard");

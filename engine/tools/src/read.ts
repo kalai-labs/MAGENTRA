@@ -24,14 +24,14 @@ function numberLines(text: string, start: number, limit: number): { numbered: st
   const numbered = slice
     .map((line, idx) => {
       const clipped =
-        line.length > MAX_LINE_LENGTH ? line.slice(0, MAX_LINE_LENGTH) + " [line truncated]" : line;
+        line.length > MAX_LINE_LENGTH ? line.slice(0, MAX_LINE_LENGTH) + " [truncated — line continues]" : line;
       return `${String(start + idx + 1).padStart(6)}\t${clipped}`;
     })
     .join("\n");
   const shownEnd = start + slice.length;
   const notice =
     lines.length > shownEnd
-      ? `\n\n[showing lines ${start + 1}-${shownEnd} of ${lines.length}; call Read with offset=${shownEnd} to continue]`
+      ? `\n\n[truncated — ${lines.length - shownEnd} more lines; call Read with offset=${shownEnd} to continue]`
       : "";
   return { numbered, notice };
 }
@@ -111,6 +111,16 @@ export const readTool: ToolDefinition<z.infer<typeof inputSchema>> = {
         ctx.session.fileState.recordRead(path);
         return { content: `${header}\n${numbered}${notice}` };
       }
+    }
+
+    // Binary detection: a NUL byte in the head means this is not text — say so
+    // honestly instead of returning a page of mojibake.
+    const headBuf = readFileSync(path).subarray(0, 8192);
+    if (headBuf.includes(0)) {
+      return {
+        content: `${basename(path)} looks like a binary file (${stat.size} bytes). Read handles text, images (${Object.keys(IMAGE_TYPES).join("/")}), and documents (${[...DOC_EXTS].join("/")}) — use Bash tooling (file, strings, unzip -l …) to inspect other binaries.`,
+        isError: true,
+      };
     }
 
     const raw = readFileSync(path, "utf8");

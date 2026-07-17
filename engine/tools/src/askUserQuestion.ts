@@ -30,9 +30,13 @@ Use it only when you are stuck on a decision that genuinely belongs to the user 
   permissionClass: "interact",
   execute: async (input, ctx) => {
     const answers = await ctx.session.askUser(input.questions);
-    const lines = Object.entries(answers).map(
-      ([question, selected]) => `${question}\n-> ${selected.join(", ")}`,
-    );
+    // Frontends key answers positionally ("q:<idx>") so duplicate question
+    // texts can't collide; the question-text key remains as a fallback for
+    // older frontends.
+    const lines = input.questions.map((q, idx) => {
+      const selected = answers[`q:${idx}`] ?? answers[q.question] ?? [];
+      return `${q.question}\n-> ${selected.length > 0 ? selected.join(", ") : "(no answer)"}`;
+    });
     return { content: `The user answered:\n${lines.join("\n\n")}` };
   },
   inputSchema,

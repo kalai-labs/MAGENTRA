@@ -61,13 +61,25 @@ export const grepTool: ToolDefinition<z.infer<typeof inputSchema>> = {
         args,
         { cwd: ctx.cwd, maxBuffer: 20 * 1024 * 1024, signal },
         (err, stdout, stderr) => {
+          // Blowing the buffer is a RESULT (too many matches), not a failure:
+          // return what was captured, truncated honestly.
+          if (err && (err as NodeJS.ErrnoException).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+            const lines = stdout.trimEnd().split("\n");
+            const capped = lines.slice(0, input.head_limit);
+            resolve({
+              content:
+                capped.join("\n") +
+                "\n[truncated — output exceeded the 20MB buffer; narrow the pattern or add a glob filter]",
+            });
+            return;
+          }
           const code = err ? ((err as { code?: number }).code ?? 2) : 0;
           if (code === 0) {
             const lines = stdout.trimEnd().split("\n");
             const capped = lines.slice(0, input.head_limit);
             const suffix =
               lines.length > capped.length
-                ? `\n[${lines.length - capped.length} more lines — raise head_limit or narrow the pattern]`
+                ? `\n[truncated — ${lines.length - capped.length} more lines; raise head_limit or narrow the pattern]`
                 : "";
             resolve({ content: capped.join("\n") + suffix });
           } else if (code === 1) {

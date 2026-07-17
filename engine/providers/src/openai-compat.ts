@@ -71,10 +71,20 @@ export class OpenAICompatProvider implements Provider {
         return res;
       },
       req.signal,
-      { maxRetries: this.opts.maxRetries },
+      { maxRetries: this.opts.maxRetries, ...(req.onRetry ? { onRetry: req.onRetry } : {}) },
     );
 
     yield* this.parseSse(response, req.signal);
+  }
+
+  /** GET /models — the endpoint's real catalog for the UI's model picker. */
+  async listModels(): Promise<string[]> {
+    const res = await fetch(`${this.opts.baseUrl}/models`, {
+      headers: this.opts.apiKey ? { authorization: `Bearer ${this.opts.apiKey}` } : {},
+    });
+    if (!res.ok) throw new ProviderHttpError(res.status, `GET /models returned ${res.status}`);
+    const body = (await res.json()) as { data?: { id?: unknown }[] };
+    return (body.data ?? []).map((m) => m.id).filter((id): id is string => typeof id === "string");
   }
 
   private async *parseSse(

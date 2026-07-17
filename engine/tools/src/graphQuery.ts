@@ -49,7 +49,7 @@ function resolveSeeds(g: GraphData, cwd: string, input: Input): string[] {
 
 function cap(lines: string[]): string {
   if (lines.length <= MAX_LINES) return lines.join("\n");
-  return lines.slice(0, MAX_LINES).join("\n") + `\n[${lines.length - MAX_LINES} more lines omitted]`;
+  return lines.slice(0, MAX_LINES).join("\n") + `\n[truncated — ${lines.length - MAX_LINES} more lines; narrow the query]`;
 }
 
 export const graphQueryTool: ToolDefinition<Input> = {

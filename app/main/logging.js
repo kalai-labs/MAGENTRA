@@ -28,14 +28,39 @@ let currentLogFile = null;
 let preWorkspaceLogBuffer = [];
 let pendingLogQueue = [];
 let logFlushTimer = null;
+let fallbackLogFile = null;
+let fallbackLogDir = null;
 
-function redactShallow(data) {
-  if (!data || typeof data !== "object" || Array.isArray(data)) return data;
-  const out = { ...data };
-  for (const k of Object.keys(out)) {
-    if (k === "env" || SENSITIVE_KEY_RE.test(k)) {
-      out[k] = "[redacted]";
-    }
+/** Arms the userData/logs mirror; call once at app startup, before any workspace opens. */
+function initFallbackLog(userDataDir) {
+  try {
+    fallbackLogDir = path.join(userDataDir, "logs");
+    fs.mkdirSync(fallbackLogDir, { recursive: true });
+    pruneOldLogs(fallbackLogDir);
+    fallbackLogFile = path.join(fallbackLogDir, `desktop-${SESSION_TIMESTAMP}.log`);
+  } catch (err) {
+    console.error("Failed to init fallback log:", err);
+  }
+}
+
+/** The folder "Open logs" should reveal: workspace logs when open, else userData/logs. */
+function activeLogsDir() {
+  if (currentLogFile) return path.dirname(currentLogFile);
+  return fallbackLogDir;
+}
+
+// Recursive with a depth cap: a secret nested inside {config:{auth:{apiKey}}}
+// must not survive just because it sat two levels down. Beyond the cap the
+// value is stringified-truncated rather than trusted.
+const REDACT_MAX_DEPTH = 4;
+
+function redact(data, depth = 0) {
+  if (!data || typeof data !== "object") return data;
+  if (depth >= REDACT_MAX_DEPTH) return "[depth capped]";
+  if (Array.isArray(data)) return data.map((v) => redact(v, depth + 1));
+  const out = {};
+  for (const [k, v] of Object.entries(data)) {
+    out[k] = k === "env" || SENSITIVE_KEY_RE.test(k) ? "[redacted]" : redact(v, depth + 1);
   }
   return out;
 }
@@ -78,7 +103,7 @@ function enqueueLogLine(line) {
 }
 
 function logEvent(ch, data) {
-  const entry = { ts: new Date().toISOString(), ch, data: redactShallow(data) };
+  const entry = { ts: new Date().toISOString(), ch, data: redact(data) };
   let line;
   try {
     line = JSON.stringify(entry);
@@ -89,6 +114,16 @@ function logEvent(ch, data) {
     line = line.slice(0, 2048) + "…[truncated]";
   }
   enqueueLogLine(line);
+  // App-level channels also mirror to userData/logs so a crash BEFORE any
+  // workspace opens still leaves a findable log. Low-frequency, so a direct
+  // append is fine.
+  if (fallbackLogFile && (ch === "sys" || ch === "renderer")) {
+    try {
+      fs.appendFileSync(fallbackLogFile, line + "\n", "utf8");
+    } catch {
+      // the mirror is best-effort
+    }
+  }
 }
 
 function pruneOldLogs(logsDir) {
@@ -155,8 +190,10 @@ function setLogWorkspace(workspace) {
 
 module.exports = {
   formatTimestamp,
-  redactShallow,
+  redact,
   logEvent,
   setLogWorkspace,
   flushLog,
+  initFallbackLog,
+  activeLogsDir,
 };

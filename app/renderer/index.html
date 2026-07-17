@@ -7,37 +7,45 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-view="console">
-  <canvas id="rain"></canvas>
-  <div id="crt"></div>
+  <canvas id="rain" aria-hidden="true"></canvas>
+  <div id="crt" aria-hidden="true"></div>
+  <div id="srAnnounce" class="sr-only" aria-live="polite"></div>
 
   <!-- ── left dock: the only navigation chrome ─────────────────────────── -->
   <nav id="dock">
     <div id="logo" title="MAGENTRA">
       <span class="logo-mark">▮</span><span class="logo-text">MAGENTRA</span>
     </div>
-    <button class="dock-btn active" id="navConsole" title="Console">
+    <button class="dock-btn active" id="navConsole" title="Console" aria-label="Console">
       <span class="dock-glyph">▤</span><span class="dock-label">CONSOLE</span>
     </button>
-    <button class="dock-btn hidden" id="teamBtn" title="Crew designer">
+    <button class="dock-btn hidden" id="navSessions" title="Saved sessions" aria-label="Saved sessions">
+      <span class="dock-glyph">◫</span><span class="dock-label">SESSIONS</span>
+    </button>
+    <button class="dock-btn hidden" id="teamBtn" title="Crew designer" aria-label="Crew designer">
       <span class="dock-glyph team-glyph">◪</span><span class="dock-label">CREW</span>
     </button>
-    <button class="dock-btn hidden" id="navMission" title="Mission tracker">
-      <span class="dock-glyph">◒</span><span class="dock-label">MISSION</span>
+    <button class="dock-btn hidden" id="navMission" title="Task list" aria-label="Task list">
+      <span class="dock-glyph">◒</span><span class="dock-label">TASKS</span>
       <span id="dockMissionCount" class="dock-badge hidden">0</span>
     </button>
-    <button class="dock-btn hidden" id="navChanges" title="Changes this session">
+    <button class="dock-btn hidden" id="navLab" title="Research-lab missions" aria-label="Research-lab missions">
+      <span class="dock-glyph">🧪</span><span class="dock-label">MISSIONS</span>
+      <span id="dockLabCount" class="dock-badge hidden">0</span>
+    </button>
+    <button class="dock-btn hidden" id="navChanges" title="Changes this session" aria-label="Changes this session">
       <span class="dock-glyph">±</span><span class="dock-label">CHANGES</span>
       <span id="dockChangesCount" class="dock-badge hidden">0</span>
     </button>
     <div class="dock-spacer"></div>
-    <button class="dock-btn" id="navSettings" title="Settings">
+    <button class="dock-btn" id="navSettings" title="Settings" aria-label="Settings">
       <span class="dock-glyph">⚙</span><span class="dock-label">SETTINGS</span>
     </button>
   </nav>
 
   <!-- ── single status strip ───────────────────────────────────────────── -->
   <header id="topbar">
-    <button id="workspaceBtn" title="Choose workspace folder">
+    <button id="workspaceBtn" title="Choose workspace folder" aria-label="Choose workspace folder">
       <span class="ws-glyph">◳</span><span id="workspacePath">select workspace</span>
     </button>
     <div id="modeChips" title="Styles (.ma)"></div>
@@ -78,7 +86,7 @@
     <section id="consoleView" class="stage-view">
       <main id="transcript">
         <div id="emptyState">
-          <pre class="empty-logo">
+          <pre class="empty-logo" aria-hidden="true">
 ▄▄  ▄▄  ▄▄▄  ▄▄▄▄ ▄▄▄▄ ▄▄  ▄ ▄▄▄▄▄ ▄▄▄▄  ▄▄▄
 ██▀▄▀██ ██▄█ ██▄▄ ██▄▄ ██▀▄█   █   ██▄█ ██▄█
 ██   ██ ██ █ ██▄█ ██▄▄ ██ ▀█   █   ██ █ ██ █</pre>
@@ -87,6 +95,8 @@
           <div id="recentList" class="recent-list hidden"></div>
         </div>
       </main>
+
+      <button id="scrollPill" class="hidden" title="Jump to the latest output" aria-label="Jump to the latest output">↓ latest</button>
 
       <div id="nowLine" class="hidden">
         <div class="now-inner">
@@ -100,11 +110,12 @@
         <div class="composer-inner">
           <div id="slashPop" class="hidden"></div>
           <div id="queueChip" class="hidden"></div>
+          <div id="jobsChip" class="hidden"></div>
           <textarea id="promptInput" rows="1" placeholder="Enter directive…" spellcheck="false" disabled></textarea>
           <div class="composer-actions">
-            <button id="clearBtn" title="Clear chat and start a fresh session (Ctrl+L)" disabled>CLEAR ⌫</button>
+            <button id="clearBtn" title="Clear chat and start a fresh session (Ctrl+L)" disabled aria-label="Clear chat and start a fresh session (Ctrl+L)">CLEAR ⌫</button>
             <button id="sendBtn" disabled>SEND ⏎</button>
-            <button id="stopBtn" class="hidden" title="Hard stop — kills the turn, all agents, and any background work (Esc)">STOP ✕</button>
+            <button id="stopBtn" class="hidden" title="Hard stop — kills the turn, all agents, and any background work (Esc)" aria-label="Hard stop — kills the turn, all agents, and any background work (Esc)">STOP ✕</button>
           </div>
         </div>
         <div id="hintLine">
@@ -120,9 +131,10 @@
       <div class="team-head view-head">
         <span class="team-title view-title">◪ CREW</span>
         <span id="teamCount" class="team-sub view-sub">no agents</span>
-        <button id="draftTeamBtn">✨ DRAFT MY TEAM</button>
-        <button id="teamReloadBtn" class="view-tool" title="Reload team files">⟳</button>
-        <button id="teamCloseBtn" class="view-tool" title="Back to console">✕</button>
+        <button id="draftTeamBtn">✨ DRAFT MY CREW</button>
+        <button id="teamHireBtn" title="Import a crew/team pack from a file or URL (unsigned — hire only from trusted sources)" aria-label="Hire from pack">⇩ HIRE PACK</button>
+        <button id="teamReloadBtn" class="view-tool" title="Reload crew files" aria-label="Reload crew files">⟳</button>
+        <button id="teamCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
       </div>
       <div id="teamRoster"></div>
       <p class="team-hint">Agents live in <code>.magentra/team/*.md</code> — edit files directly or drop documents onto a card to fill its backpack.</p>
@@ -132,17 +144,40 @@
       <div class="view-head">
         <span class="view-title">± CHANGES</span>
         <span id="changesSub" class="view-sub">no edits yet</span>
-        <button id="changesCloseBtn" class="view-tool" title="Back to console">✕</button>
+        <button id="changesCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
       </div>
       <div id="changesList"></div>
       <p id="changesEmpty" class="changes-empty">No edits yet this session. Files the agent writes appear here as diffs.</p>
+    </section>
+
+    <section id="sessionsView" class="stage-view hidden">
+      <div class="view-head">
+        <span class="view-title">◫ SESSIONS</span>
+        <span id="sessionsSub" class="view-sub">saved conversations</span>
+        <input id="sessionsSearch" type="text" placeholder="search…" spellcheck="false" aria-label="Search sessions" />
+        <button id="sessionsRefreshBtn" class="view-tool" title="Refresh sessions" aria-label="Refresh sessions">⟳</button>
+        <button id="sessionsCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
+      </div>
+      <div id="sessionsList"></div>
+      <p id="sessionsEmpty" class="sessions-empty">No saved conversations in this workspace yet.</p>
+    </section>
+
+    <section id="labView" class="stage-view hidden">
+      <div class="view-head">
+        <span class="view-title">🧪 MISSIONS</span>
+        <span id="labSub" class="view-sub">standing investigations under .magentra/missions/</span>
+        <button id="labNewBtn" class="view-tool" title="Write a starter mission file" aria-label="Write a starter mission file">＋</button>
+        <button id="labCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
+      </div>
+      <div id="labList"></div>
+      <p id="labEmpty" class="sessions-empty">No missions yet. ＋ writes a starter file you can edit, or ask the agent to draft one.</p>
     </section>
 
     <section id="settingsView" class="stage-view hidden">
       <div class="view-head">
         <span class="view-title">⚙ SETTINGS</span>
         <span class="view-sub">appearance · activity · connection</span>
-        <button id="settingsCloseBtn" class="view-tool" title="Back to console">✕</button>
+        <button id="settingsCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
       </div>
 
       <div class="set-grid">
@@ -152,10 +187,14 @@
           <div class="set-row">
             <span class="set-label">Typeface</span>
             <select id="setFont">
-              <option value='"Cascadia Mono", Consolas, monospace' selected>Cascadia Mono</option>
-              <option value='"Cascadia Code", "Cascadia Mono", Consolas, monospace'>Cascadia Code</option>
-              <option value='Consolas, "Courier New", monospace'>Consolas</option>
-              <option value='"Courier New", Courier, monospace'>Courier New</option>
+              <option value='"Cascadia Mono", "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace' selected>Cascadia Mono</option>
+              <option value='"Cascadia Code", "Cascadia Mono", "JetBrains Mono", Consolas, monospace'>Cascadia Code</option>
+              <option value='"JetBrains Mono", "Cascadia Mono", "DejaVu Sans Mono", monospace'>JetBrains Mono</option>
+              <option value='"Ubuntu Mono", "DejaVu Sans Mono", "Liberation Mono", monospace'>Ubuntu Mono</option>
+              <option value='"DejaVu Sans Mono", "Liberation Mono", "Noto Sans Mono", monospace'>DejaVu Sans Mono</option>
+              <option value='Consolas, "Liberation Mono", "Courier New", monospace'>Consolas</option>
+              <option value='"Courier New", Courier, "Nimbus Mono PS", monospace'>Courier New</option>
+              <option value='monospace'>System monospace</option>
             </select>
           </div>
 
@@ -172,10 +211,10 @@
           <div class="set-row">
             <span class="set-label">Theme</span>
             <div class="swatches" id="setTheme">
-              <button class="swatch on" data-theme="phosphor" title="Matrix terminal — dark">PHOSPHOR</button>
-              <button class="swatch" data-theme="glacier" title="Winter — light, snowfall">GLACIER</button>
-              <button class="swatch" data-theme="dusk" title="Night observatory — dark, stars">DUSK</button>
-              <button class="swatch" data-theme="paper" title="Print — light, maximum readability">PAPER</button>
+              <button class="swatch on" data-theme="phosphor" title="Matrix terminal — dark" aria-label="Matrix terminal — dark">PHOSPHOR</button>
+              <button class="swatch" data-theme="glacier" title="Winter — light, snowfall" aria-label="Winter — light, snowfall">GLACIER</button>
+              <button class="swatch" data-theme="dusk" title="Night observatory — dark, stars" aria-label="Night observatory — dark, stars">DUSK</button>
+              <button class="swatch" data-theme="paper" title="Print — light, maximum readability" aria-label="Print — light, maximum readability">PAPER</button>
             </div>
           </div>
 
@@ -206,7 +245,7 @@
               <button class="seg-btn" data-detail="engineer">ENGINEER</button>
             </div>
           </div>
-          <p class="set-note">Cinematic shows the mission as choreography. Engineer exposes every operation and its raw output.</p>
+          <p class="set-note">Cinematic shows the work as choreography. Engineer exposes every operation and its raw output.</p>
         </div>
 
         <div class="set-card">
@@ -225,7 +264,7 @@
               <button class="seg-btn" data-commands="ask">ASK ALWAYS</button>
             </div>
           </div>
-          <p class="set-note">ASK ALWAYS pauses for approval before consequential commands — never for reading. ALLOW lets the agent delete files without a prompt when you ask for it or the mission requires it.</p>
+          <p class="set-note">ASK ALWAYS pauses for approval before consequential commands — never for reading. ALLOW lets the agent delete files without a prompt when you ask for it or the task requires it.</p>
           <div class="set-row">
             <span class="set-label">Web search</span>
             <div class="seg" id="setWebSearch">
@@ -243,7 +282,7 @@
             <span class="set-label">API key</span>
             <div class="key-wrap">
               <input id="setApiKey" type="password" spellcheck="false" placeholder="●●●●●●●●" />
-              <button id="setKeyReveal" title="Reveal">◉</button>
+              <button id="setKeyReveal" title="Reveal" aria-label="Reveal">◉</button>
             </div>
           </div>
           <div class="set-row"><span class="set-label">Model</span><input id="setModelDefault" type="text" spellcheck="false" placeholder="deepseek-ai/DeepSeek-V4-Flash" /></div>
@@ -256,44 +295,85 @@
           <p class="set-note">Credentials are written to <code>.env</code> in the current workspace. They never leave this machine.</p>
         </div>
 
+        <div class="set-card" id="glossaryCard">
+          <div class="set-card-title">GLOSSARY</div>
+          <dl class="glossary">
+            <dt>crew</dt><dd>a bench of specialist agents saved as <code>.magentra/team/*.md</code> files; the orchestrator dispatches them on tasks. One agent is a <em>member</em>.</dd>
+            <dt>backpack</dt><dd>a member's document knowledge — drop files on its card and they are indexed for retrieval during that member's runs.</dd>
+            <dt>lessons</dt><dd>knowledge a member earns from verified work: candidates ride on probation and are promoted only after repeated confirmation.</dd>
+            <dt>atlas</dt><dd>the whole-design map of this workspace at <code>.magentra/ATLAS.md</code>; <code>/atlas</code> builds or refreshes it.</dd>
+            <dt>mission</dt><dd>a saved directive file under <code>.magentra/missions/</code> that the lab runs on demand, on a loop, or on a cron schedule (MISSIONS in the dock).</dd>
+            <dt>task list</dt><dd>the live plan of record in the TASKS rail — the current work items, ending with a verification task.</dd>
+            <dt>styles</dt><dd><code>.ma</code> files that shape how the agent works; core styles are always on, optional ones toggle per session via the chips or <code>/styles</code>.</dd>
+            <dt>plan mode</dt><dd>a read-only mode: the agent proposes a plan you approve before it may edit anything.</dd>
+            <dt>deletion guard</dt><dd>destructive commands always ask first — in every permission mode — unless Deletions is set to ALLOW above.</dd>
+            <dt>session</dt><dd>one conversation with its own transcript, cost ledger, and task list, saved under <code>.magentra/sessions/</code> (SESSIONS in the dock resumes them).</dd>
+          </dl>
+        </div>
+
         <div class="set-card">
           <div class="set-card-title">ABOUT</div>
           <p class="set-note"><span class="logo-mark">▮</span> MAGENTRA <span id="setVersion"></span> — autonomous agent harness.</p>
+          <div class="set-actions">
+            <button id="openLogsBtn" title="Reveal the session log files for bug reports" aria-label="Reveal the session log files for bug reports">OPEN LOGS FOLDER ▸</button>
+          </div>
         </div>
       </div>
     </section>
 
   </div>
 
-  <!-- ── mission rail (overlay, right) ──────────────────────────────────── -->
+  <!-- ── task rail (overlay, right) ─────────────────────────────────────── -->
   <aside id="taskRail" class="hidden">
     <div class="rail-head">
-      <span class="rail-title">◒ MISSION</span>
+      <span class="rail-title">◒ TASKS</span>
       <span id="taskProgress">0/0</span>
-      <button id="taskCollapse" title="Collapse">▸</button>
+      <button id="taskCollapse" title="Collapse" aria-label="Collapse">▸</button>
     </div>
     <div class="rail-bar"><div id="taskBarFill"></div></div>
     <div id="taskList"></div>
   </aside>
-  <button id="taskTab" class="hidden" title="Show mission">◒ <span id="taskTabCount">0/0</span></button>
+  <button id="taskTab" class="hidden" title="Show tasks" aria-label="Show tasks">◒ <span id="taskTabCount">0/0</span></button>
 
   <!-- ── deletion guard ─────────────────────────────────────────────────── -->
-  <div id="deleteModal" class="hidden">
+  <!-- ── keyboard cheat sheet (?) ───────────────────────────────────────── -->
+  <div id="shortcutSheet" class="hidden" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
     <div class="modal-box">
-      <div class="modal-title">⚠ APPROVAL REQUIRED</div>
+      <div class="modal-title">⌨ KEYBOARD SHORTCUTS</div>
+      <dl class="shortcut-list">
+        <dt>Enter / Shift+Enter</dt><dd>send · newline</dd>
+        <dt>↑ (empty composer)</dt><dd>recall prompt history</dd>
+        <dt>Esc</dt><dd>close topmost panel · interrupt the running turn</dd>
+        <dt><span class="mod-key">Ctrl</span>+L</dt><dd>clear chat (fresh session)</dd>
+        <dt><span class="mod-key">Ctrl</span>+K</dt><dd>focus the composer</dd>
+        <dt><span class="mod-key">Ctrl</span>+1…6</dt><dd>console · sessions · crew · missions · changes · settings</dd>
+        <dt>Y / N</dt><dd>allow · deny in the approval dialog</dd>
+        <dt>Tab</dt><dd>reach tool rows, diffs, and styles; Enter/Space toggles</dd>
+        <dt>/</dt><dd>command palette in the composer</dd>
+        <dt>?</dt><dd>this sheet</dd>
+      </dl>
+      <div class="modal-actions">
+        <button id="shortcutCloseBtn">CLOSE (Esc)</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="deleteModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
+    <div class="modal-box">
+      <div class="modal-title" id="deleteModalTitle">⚠ APPROVAL REQUIRED</div>
       <p class="modal-sub">The agent wants to run:</p>
       <pre id="deleteSubject"></pre>
       <div class="modal-actions">
-        <button id="denyBtn">DENY (Esc)</button>
-        <button id="allowBtn">ALLOW ONCE</button>
+        <button id="denyBtn">DENY (N / Esc)</button>
+        <button id="allowBtn">ALLOW ONCE (Y)</button>
       </div>
     </div>
   </div>
 
   <!-- ── first-run wizard ───────────────────────────────────────────────── -->
-  <div id="setupWizard" class="hidden">
+  <div id="setupWizard" class="hidden" role="dialog" aria-modal="true" aria-label="Engine setup">
     <div class="wiz-box">
-      <button id="wizCloseBtn" class="wiz-close" title="Not now (Esc)">✕</button>
+      <button id="wizCloseBtn" class="wiz-close" title="Not now (Esc)" aria-label="Not now (Esc)">✕</button>
       <div class="wiz-title"><span class="logo-mark">▮</span> LINK YOUR ENGINE</div>
       <p class="wiz-sub">This workspace has no credentials yet. Choose a provider and Magentra will write a local <code>.env</code> for it.</p>
 

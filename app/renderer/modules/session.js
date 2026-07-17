@@ -6,7 +6,33 @@
 // Workspace / model / composer wiring
 // ---------------------------------------------------------------------------
 
+function resetWorkspaceState() {
+  busy = false;
+  backgroundJobs.clear();
+  backgroundJobMeta.clear();
+  renderBackgroundJobs();
+  stopNowLine();
+  clearPermissionState();
+  resetLocalViewForClear();
+  resetChanges();
+  resetTeamView();
+  resetLabView();
+  resetSessionMeter();
+  sessionSummaries = [];
+  currentSessionId = null;
+  sessionModel = "";
+  renderSessions();
+  engineErrorBannerShown = false;
+  promptInputEl.value = "";
+  promptInputEl.style.height = "auto";
+  showView("console");
+}
+
 function enterActiveState(workspace) {
+  const workspaceChanged = activeWorkspace !== workspace;
+  if (activeWorkspace !== null && workspaceChanged) resetWorkspaceState();
+  if (workspaceChanged) openSessionPickerAfterList = true;
+  activeWorkspace = workspace;
   if (!streamEl) {
     if (emptyStateEl && emptyStateEl.parentNode) {
       emptyStateEl.parentNode.removeChild(emptyStateEl);
@@ -17,6 +43,8 @@ function enterActiveState(workspace) {
   }
   workspacePathEl.textContent = workspace;
   workspaceOpen = true;
+  navSessionsEl.classList.remove("hidden");
+  navLabEl.classList.remove("hidden");
   sendBtnEl.disabled = false;
   clearBtnEl.disabled = false;
   syncActivityUi();
@@ -95,31 +123,56 @@ function dismissFirstUseHint() {
   }
 }
 
-// $/1M tokens: [cached, in, out], ctx = context window label.
-const MODEL_PRICING = {
-  "openai/gpt-oss-120b": { in: 0.039, out: 0.17, ctx: "128K" },
-  "deepseek-ai/DeepSeek-V4-Flash": { cached: 0.018, in: 0.09, out: 0.18, ctx: "1M" },
-  "Qwen/Qwen3-14B": { in: 0.12, out: 0.24, ctx: "40K" },
-  "google/gemma-4-26B-A4B-it": { in: 0.07, out: 0.34, ctx: "256K" },
-  "google/gemma-4-31B-it": { in: 0.13, out: 0.38, ctx: "256K" },
-  "deepseek-ai/DeepSeek-V3.2": { cached: 0.13, in: 0.26, out: 0.38, ctx: "160K" },
-  "Qwen/Qwen3.6-35B-A3B": { in: 0.15, out: 0.95, ctx: "256K" },
-  "Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo": { cached: 0.1, in: 0.3, out: 1.0, ctx: "262K" },
-  "MiniMaxAI/MiniMax-M2.5": { cached: 0.03, in: 0.15, out: 1.15, ctx: "192K" },
-  "XiaomiMiMo/MiMo-V2.5": { cached: 0.08, in: 0.4, out: 2.0, ctx: "256K" },
-  "zai-org/GLM-5": { cached: 0.12, in: 0.6, out: 2.08, ctx: "198K" },
-  "moonshotai/Kimi-K2.5": { cached: 0.07, in: 0.45, out: 2.25, ctx: "256K" },
-  "deepseek-ai/DeepSeek-V4-Pro": { cached: 0.1, in: 1.3, out: 2.6, ctx: "1M" },
-  "zai-org/GLM-5.2": { cached: 0.18, in: 0.93, out: 3.0, ctx: "1M" },
-  "moonshotai/Kimi-K2.7-Code": { cached: 0.15, in: 0.74, out: 3.5, ctx: "256K" },
-  "moonshotai/Kimi-K2.6": { cached: 0.15, in: 0.75, out: 3.5, ctx: "256K" },
-};
+// The engine ships its rate card ($/1M) + context windows in session_started —
+// the renderer keeps NO pricing copy of its own (it drifted when it did).
+let modelRateCard = {};
+
+/** Rebuild the model picker from the endpoint's real catalog (model_catalog
+ * event). The hardcoded options in index.html are only the pre-catalog
+ * default; an Ollama user then sees their local models here. */
+function onModelCatalog(event) {
+  const models = Array.isArray(event.models) ? event.models : [];
+  if (models.length === 0 || !modelSelectEl) return;
+  const current = customModelEl && !customModelEl.classList.contains("hidden")
+    ? "__custom__"
+    : modelSelectEl.value;
+  modelSelectEl.textContent = "";
+  for (const id of models) {
+    const opt = document.createElement("option");
+    opt.value = id;
+    const p = modelRateCard[id];
+    opt.textContent = p ? `${shortModelLabel(id)} — $${p.input} / $${p.output}` : shortModelLabel(id);
+    modelSelectEl.appendChild(opt);
+  }
+  // The active model may be absent from the catalog (typo, gated model):
+  // keep it selectable rather than silently switching the session.
+  const active = sessionModel || current;
+  if (active && active !== "__custom__" && !models.includes(active)) {
+    const opt = document.createElement("option");
+    opt.value = active;
+    opt.textContent = `${shortModelLabel(active)} (not in catalog)`;
+    modelSelectEl.appendChild(opt);
+  }
+  const customOpt = document.createElement("option");
+  customOpt.value = "__custom__";
+  customOpt.textContent = "Custom…";
+  modelSelectEl.appendChild(customOpt);
+  modelSelectEl.value = current === "__custom__" ? "__custom__" : active || models[0];
+}
+
+function shortModelLabel(id) {
+  const idx = id.indexOf("/");
+  return idx === -1 ? id : id.slice(idx + 1);
+}
 
 function modelHintText(model) {
-  const p = MODEL_PRICING[model];
+  const p = modelRateCard[model];
   if (!p) return model;
-  const cached = p.cached !== undefined ? `$${p.cached} cached · ` : "";
-  return `${model} · ${cached}$${p.in} in · $${p.out} out /1M · ${p.ctx} ctx`;
+  const cached = p.cacheRead !== undefined ? `$${p.cacheRead} cached · ` : "";
+  const ctx = p.contextWindow >= 1_000_000
+    ? `${(p.contextWindow / 1_000_000).toFixed(0)}M`
+    : `${Math.round(p.contextWindow / 1000)}K`;
+  return `${model} · ${cached}$${p.input} in · $${p.output} out /1M · ${ctx} ctx`;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,32 +192,10 @@ function modelHintText(model) {
 
 let contextTokens = 0;
 let sessionModel = ""; // the model this session runs on (from session_started)
-const usageByModel = new Map(); // model -> {input, output, cacheRead, cacheWrite}
-
-function recordTurnUsage(model, usage) {
-  const e = usageByModel.get(model) ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-  e.input += usage.inputTokens ?? 0;
-  e.output += usage.outputTokens ?? 0;
-  e.cacheRead += usage.cacheReadTokens ?? 0;
-  e.cacheWrite += usage.cacheWriteTokens ?? 0;
-  usageByModel.set(model, e);
-}
-
-/** Session cost so far, or null when no model used has a rate card (never a fake $0). */
-function sessionCost() {
-  let total = 0;
-  let priced = false;
-  for (const [model, u] of usageByModel) {
-    const p = MODEL_PRICING[model];
-    if (!p) continue;
-    priced = true;
-    // Cache classes fall back to the input rate when unpriced by the provider.
-    const cacheRate = p.cached ?? p.in;
-    total +=
-      (u.input * p.in + u.output * p.out + u.cacheRead * cacheRate + u.cacheWrite * cacheRate) / 1_000_000;
-  }
-  return priced ? total : null;
-}
+// Whole-session cost, PRICED BY THE ENGINE (turn_finished.totalCostUsd) — it
+// bills every model in the tree at its own rate, so crew runs on other models
+// attribute correctly. null until the engine reports a priced figure.
+let sessionCostUsd = null;
 
 function formatTokensShort(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -181,15 +212,14 @@ function updateSessionMeter() {
   if (!hintUsageEl) return;
   const parts = [];
   if (contextTokens > 0) parts.push(`ctx ${formatTokensShort(contextTokens)}`);
-  const cost = sessionCost();
-  if (cost !== null) parts.push(formatUsdShort(cost));
+  if (sessionCostUsd !== null) parts.push(formatUsdShort(sessionCostUsd));
   hintUsageEl.textContent = parts.join(" · ");
   hintUsageEl.classList.toggle("hidden", parts.length === 0);
 }
 
 function resetSessionMeter() {
   contextTokens = 0;
-  usageByModel.clear();
+  sessionCostUsd = null;
   updateSessionMeter();
 }
 
@@ -259,4 +289,10 @@ async function boot() {
       // ignore — version display is best-effort
     }
   }
+}
+
+if (openLogsBtnEl && window.magentra.openLogs) {
+  openLogsBtnEl.addEventListener("click", () => {
+    window.magentra.openLogs().catch(() => {});
+  });
 }

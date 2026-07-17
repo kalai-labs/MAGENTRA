@@ -180,25 +180,29 @@ Goal: quitting the app or switching contexts loses nothing.
   Done when: `/sessions` lists only top-level sessions, each with a human label.
   *Done: new `SessionOptions.child` flag (set at the single spawn site) routes child transcripts to `sessions/subagents/`; the non-recursive listing and resume path exclude them with no filtering logic, and children skip the 3.2 meta snapshot (root owns the shared ledger). Resume of an unknown/child id now says "no such session" instead of a raw ENOENT. Limitation: subagent transcripts written before this change remain in `sessions/` (no reliable marker) — 3.7 GC is the place to age them out.*
 
-- [ ] **3.4 Sessions drawer in the UI**
+- [x] **3.4 Sessions drawer in the UI**
   Files: `app/renderer/modules/landing.js` (handle the currently-unhandled `session_list` event), new UI on the landing page + dock, `app/main.js`/`preload.js` if new IPC is needed.
   List (label, date, model), click-to-resume (sends `resume_session`), delete with confirm. Rename/search can follow later in Phase 8.
   Done when: reopening the app → two clicks to a fully repainted previous conversation.
+  *Done: SESSIONS dock view lists label/date/model per saved session (model persisted in the 3.2 `meta` record; `Transcript.latestMeta` tail-reads it so listing stays cheap). Click resumes over the existing `resume_session`; DELETE confirms then sends the new `delete_session` request (engine refuses the active session, removes transcript + task file, re-emits `session_list`). Resume guards added engine-side: busy, already-active, unknown-id. The drawer auto-opens after a workspace opens when older sessions exist. Docs updated (PROTOCOL/ARCHITECTURE). Verified: 16/16 engine protocol checks + drawer DOM checks.*
 
-- [ ] **3.5 Workspace switch resets the console**
+- [x] **3.5 Workspace switch resets the console**
   Files: `app/renderer/modules/session.js` (~:9-23), `app/renderer/modules/events.js`, `app/renderer/modules/crew.js`.
   Clear stream, changes, crew, mission rail, and permission queue when the workspace changes.
   Done when: opening workspace B never shows workspace A's transcript or diffs.
+  *Done: main.js emits a synthesized `workspace_changed` renderer event before the replacement engine can speak (invoke-response path races a fast boot); `enterActiveState` detects the switch and runs `resetWorkspaceState` — stream, queue, permission state, changes, crew view (`resetTeamView`), session meter, session list, composer draft.*
 
-- [ ] **3.6 Transcript trim notice**
+- [x] **3.6 Transcript trim notice**
   Files: `app/renderer/modules/stream.js` (~:59-74).
   When trimming, insert a sys-note: "older messages trimmed — full log in `.magentra/sessions/<id>.jsonl`".
   Done when: the trim is announced instead of silent.
+  *Done: `trimStream` inserts a `.trim-notice` sys-note naming the current session's transcript path (generic wording when no session id yet).*
 
-- [ ] **3.7 Session/task file GC**
+- [x] **3.7 Session/task file GC**
   Files: `engine/core/src/runtime/engine.ts` or state layer.
   Cap/rotate `.magentra/sessions/` and `.magentra/tasks/` (e.g. keep newest N, configurable).
   Done when: old files are pruned; setting documented in `/settings`.
+  *Done: `retention.sessions`/`retention.tasks` settings (default 100 each, documented in `/settings` help); `gcStateFiles` runs on session start, after foreground work, and when retention changes. Prunes oldest-by-mtime; protects the live transcript and running background outputs; removes a pruned transcript's task JSON with it; bounds `sessions/subagents/` under the same cap. Verified with a real Engine over the protocol.*
 
 ---
 

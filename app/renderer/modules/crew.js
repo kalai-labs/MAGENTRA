@@ -1,9 +1,9 @@
-// Crew designer (TEAM view) and its card context menu.
+// Crew designer (CREW view) and its card menu.
 // Loaded as a classic script in index.html — all renderer modules share one
 // global scope, in the order the page lists them.
 
 // ---------------------------------------------------------------------------
-// Crew designer (TEAM view)
+// Crew designer (CREW view)
 // ---------------------------------------------------------------------------
 
 const DRAFT_TEAM_PROMPT =
@@ -76,6 +76,17 @@ function createCrewCard(agent) {
   nameEl.className = "crew-name";
   nameEl.textContent = agent.name || agent.id;
 
+  // Visible, keyboard-reachable menu button — right-click stays as a shortcut.
+  const menuBtnEl = document.createElement("button");
+  menuBtnEl.className = "crew-menu-btn";
+  menuBtnEl.title = "Member actions";
+  menuBtnEl.setAttribute("aria-label", `Actions for ${agent.name || agent.id}`);
+  menuBtnEl.textContent = "⋯";
+  menuBtnEl.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openCrewCtxMenu(e, agent.id, agent.name || agent.id);
+  });
+
   const modelEl = document.createElement("span");
   modelEl.className = "crew-model";
   modelEl.textContent = modelShortName(agent.model);
@@ -89,12 +100,27 @@ function createCrewCard(agent) {
   headEl.appendChild(emojiEl);
   headEl.appendChild(nameEl);
   headEl.appendChild(modelEl);
+  headEl.appendChild(menuBtnEl);
   cardEl.appendChild(headEl);
 
   const roleEl = document.createElement("div");
   roleEl.className = "crew-role";
   roleEl.textContent = agent.role || "";
   cardEl.appendChild(roleEl);
+
+  // Depth line: what this member has done and cost, at a glance.
+  const statsEl = document.createElement("div");
+  statsEl.className = "crew-stats";
+  const tasksDone = agent.tasksCompleted || 0;
+  const promoted = agent.lessonsPromoted || 0;
+  const candidates = agent.lessonsCandidate || 0;
+  const parts = [
+    tasksDone > 0 ? `${tasksDone} task${tasksDone === 1 ? "" : "s"} done` : "no work history yet",
+    promoted + candidates > 0 ? `${promoted} lesson${promoted === 1 ? "" : "s"} (+${candidates} on probation)` : null,
+    agent.spend || null,
+  ].filter(Boolean);
+  statsEl.textContent = parts.join(" · ");
+  cardEl.appendChild(statsEl);
 
   const blurbEl = document.createElement("div");
   blurbEl.className = "crew-blurb";
@@ -210,13 +236,24 @@ function openCrewCtxMenu(e, agentId, displayName) {
   });
   menuEl.appendChild(addDocEl);
 
+  const exportEl = document.createElement("button");
+  exportEl.className = "ctx-item";
+  exportEl.textContent = "⇪ EXPORT PACK";
+  exportEl.title = "Pack this member into <id>.crewpack.json (refuses to export secrets)";
+  exportEl.addEventListener("click", () => {
+    window.magentra.send({ type: "slash_command", command: "crew", args: `export ${agentId}` });
+    showView("console");
+    closeCtxMenu();
+  });
+  menuEl.appendChild(exportEl);
+
   const sepEl = document.createElement("div");
   sepEl.className = "ctx-sep";
   menuEl.appendChild(sepEl);
 
   const dismissEl = document.createElement("button");
   dismissEl.className = "ctx-item danger";
-  dismissEl.textContent = "✕ DISMISS AGENT";
+  dismissEl.textContent = "✕ DISMISS MEMBER";
   dismissEl.addEventListener("click", async () => {
     try {
       const result = await window.magentra.removeAgent(agentId);
@@ -234,6 +271,12 @@ function openCrewCtxMenu(e, agentId, displayName) {
   const menuRect = menuEl.getBoundingClientRect();
   let left = e.clientX;
   let top = e.clientY;
+  // Keyboard activation reports 0,0 — anchor to the invoking element instead.
+  if (!left && !top && e.target && e.target.getBoundingClientRect) {
+    const anchor = e.target.getBoundingClientRect();
+    left = anchor.left;
+    top = anchor.bottom + 4;
+  }
   if (left + menuRect.width > window.innerWidth) left = window.innerWidth - menuRect.width - 4;
   if (top + menuRect.height > window.innerHeight) top = window.innerHeight - menuRect.height - 4;
   if (left < 4) left = 4;
@@ -297,6 +340,17 @@ function onTeamUpdated(event) {
   teamSeenFirstUpdate = true;
 }
 
+function resetTeamView() {
+  closeCtxMenu();
+  teamAgents = [];
+  teamProgress.clear();
+  teamSeenFirstUpdate = false;
+  teamBtnEl.classList.add("hidden");
+  teamBtnEl.classList.remove("has-team", "active");
+  teamCountEl.textContent = "no agents";
+  teamRosterEl.textContent = "";
+}
+
 function onBackpackProgress(event) {
   if (!event.agentId) return;
   teamProgress.set(event.agentId, {
@@ -313,6 +367,19 @@ teamCloseBtnEl.addEventListener("click", () => showView("console"));
 navSettingsEl.addEventListener("click", () => showView("settings"));
 settingsCloseBtnEl.addEventListener("click", () => showView("console"));
 teamReloadBtnEl.addEventListener("click", () => window.magentra.reloadTeam());
+if (teamHireBtnEl) {
+  teamHireBtnEl.addEventListener("click", () => {
+    const source = window.prompt(
+      "Path or URL of a .crewpack.json (one member) or .teampack.json (whole crew).\n" +
+        "Packs are tamper-EVIDENT, not forge-proof: records are hash-chained but unsigned — hire only from sources you trust.",
+    );
+    if (!source || !source.trim()) return;
+    const path = source.trim();
+    const command = path.includes("teampack") ? "team" : "crew";
+    window.magentra.send({ type: "slash_command", command, args: `hire ${path}` });
+    showView("console");
+  });
+}
 draftTeamBtnEl.addEventListener("click", () => {
   showView("console");
   promptInputEl.value = DRAFT_TEAM_PROMPT;

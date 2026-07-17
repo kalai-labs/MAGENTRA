@@ -16,12 +16,12 @@ const inputSchema = z.object({
 
 export const webFetchTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "WebFetch",
-  description: `Fetches a URL, converts the page to readable text, and answers your prompt about it using a small model.
+  description: `Fetches a URL, converts the page to readable text, and answers your prompt about it using a separate digest model (settings.smallModel when set, else the session model).
 
 - http:// URLs are upgraded to https:// before fetching.
 - Same-host redirects are followed automatically; a redirect to a DIFFERENT host is NOT followed — the tool returns the redirect target so you can decide whether to re-call WebFetch with it.
 - Page content is cached for 15 minutes, so repeated fetches of the same URL are cheap.
-- The answer is produced by a separate small-model call over the page text; for the raw page, ask for a verbatim excerpt.`,
+- The answer is produced by a separate digest-model call over the page text; for the raw page, ask for a verbatim excerpt.`,
   permissionClass: "network",
   permissionSubject: (input) => input.url,
   describeInput: (input) => `WebFetch ${input.url}`,
@@ -32,7 +32,10 @@ export const webFetchTool: ToolDefinition<z.infer<typeof inputSchema>> = {
     } catch {
       return { content: `Invalid URL: ${input.url}`, isError: true };
     }
-    if (start.protocol === "http:") start.protocol = "https:";
+    // Loopback servers (dev servers, local APIs) rarely speak TLS — upgrading
+    // them just breaks the fetch, so only remote hosts get the https upgrade.
+    const isLoopback = /^(localhost|127(\.\d{1,3}){3}|\[::1\])$/i.test(start.hostname);
+    if (start.protocol === "http:" && !isLoopback) start.protocol = "https:";
     if (start.protocol !== "https:") {
       return { content: `Unsupported URL scheme "${start.protocol}"; only http/https are supported.`, isError: true };
     }
@@ -135,5 +138,7 @@ export function htmlToText(html: string): string {
     .replace(/ *\n */g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-  return text.length > MAX_TEXT_CHARS ? text.slice(0, MAX_TEXT_CHARS) + "\n[...content truncated...]" : text;
+  return text.length > MAX_TEXT_CHARS
+    ? text.slice(0, MAX_TEXT_CHARS) + `\n[truncated — ${text.length - MAX_TEXT_CHARS} more chars; fetch a more specific page for the rest]`
+    : text;
 }

@@ -1,4 +1,4 @@
-import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readSync } from "node:fs";
+import { appendFileSync, closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ContentBlock, Msg } from "@magentra/providers";
 
@@ -135,6 +135,43 @@ export class Transcript {
         if (text === "" || text.startsWith("<system-reminder>")) continue;
         const oneLine = text.replace(/\s+/g, " ");
         return oneLine.length > maxChars ? `${oneLine.slice(0, maxChars - 1)}…` : oneLine;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Latest metadata snapshot from the tail of a transcript. Session listings
+   * need the last-used model, but must not parse every line of every potentially
+   * large transcript merely to paint a drawer.
+   */
+  static latestMeta(file: string): Record<string, unknown> | undefined {
+    const TAIL_BYTES = 64 * 1024;
+    let tail: string;
+    try {
+      const fd = openSync(file, "r");
+      try {
+        const size = fstatSync(fd).size;
+        const start = Math.max(0, size - TAIL_BYTES);
+        const buf = Buffer.alloc(size - start);
+        const bytes = readSync(fd, buf, 0, buf.length, start);
+        tail = buf.toString("utf8", 0, bytes);
+        if (start > 0) tail = tail.slice(tail.indexOf("\n") + 1);
+      } finally {
+        closeSync(fd);
+      }
+    } catch {
+      return undefined;
+    }
+    const lines = tail.split("\n");
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (!line) continue;
+      try {
+        const record = JSON.parse(line) as TranscriptRecord;
+        if (record.kind === "meta") return record.data;
+      } catch {
+        // A damaged line does not make older intact metadata unusable.
       }
     }
     return undefined;

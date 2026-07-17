@@ -10,19 +10,25 @@ import type { AnyToolDefinition, ToolDefinition, ToolResult } from "../agent/too
  */
 
 const PROTOCOL_VERSION = "2025-06-18";
+/** Handshake/list calls: a server that can't answer these fast is broken. */
 const REQUEST_TIMEOUT_MS = 10_000;
+/** tools/call default: real MCP tools legitimately run long (builds, queries). */
+const CALL_TIMEOUT_MS = 60_000;
 
 /** Config for a single stdio MCP server, parsed from settings.mcpServers[name]. */
 export interface McpServerConfig {
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  /** tools/call timeout in milliseconds (default 60000); handshake stays at 10s. */
+  timeoutMs?: number;
 }
 
 export const mcpServerConfigSchema: z.ZodType<McpServerConfig> = z.object({
   command: z.string().min(1),
   args: z.array(z.string()).optional(),
   env: z.record(z.string(), z.string()).optional(),
+  timeoutMs: z.number().int().positive().optional(),
 });
 
 interface JsonRpcResponse {
@@ -73,12 +79,16 @@ export class McpClient {
     );
   }
 
+  /** tools/call timeout for this server (configurable per server). */
+  private callTimeoutMs = CALL_TIMEOUT_MS;
+
   static async connect(name: string, config: McpServerConfig): Promise<McpClient> {
     const child = spawn(config.command, config.args ?? [], {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...(config.env ?? {}) },
     });
     const client = new McpClient(name, child as ChildProcessWithoutNullStreams);
+    if (config.timeoutMs !== undefined) client.callTimeoutMs = config.timeoutMs;
     await client.initialize();
     return client;
   }
@@ -118,6 +128,7 @@ export class McpClient {
       "tools/call",
       { name, arguments: args ?? {} },
       signal,
+      this.callTimeoutMs,
     )) as { content?: unknown[]; isError?: boolean } | undefined;
 
     const parts = Array.isArray(result?.content) ? result.content : [];
@@ -190,14 +201,19 @@ export class McpClient {
     }
   }
 
-  private request(method: string, params: unknown, signal?: AbortSignal): Promise<unknown> {
+  private request(
+    method: string,
+    params: unknown,
+    signal?: AbortSignal,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+  ): Promise<unknown> {
     if (this.failure) return Promise.reject(this.failure);
     const id = ++this.nextId;
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`MCP request "${method}" timed out after ${REQUEST_TIMEOUT_MS}ms`));
-      }, REQUEST_TIMEOUT_MS);
+        reject(new Error(`MCP request "${method}" timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
       if (typeof timer.unref === "function") timer.unref();
 
       const onAbort = (): void => {
@@ -247,25 +263,32 @@ export class McpClient {
  * Schema for the provider (via zodToJsonSchema). So we set `inputSchema` to a
  * permissive `z.record(z.string(), z.unknown())` (accepts any object at
  * validation time) AND attach the server's real JSON Schema on the documented
- * extra property `rawInputSchema`. See INTEGRATION-phase3a.md — session
- * toolSchemas() should prefer `rawInputSchema` when present so the model sees
- * the real parameter shape.
+ * extra property `rawInputSchema`. The session's toolSchemas() prefers
+ * `rawInputSchema` when present, so the model sees the real parameter shape.
  */
-export async function createMcpTools(mcpServers: Record<string, unknown>): Promise<AnyToolDefinition[]> {
+export async function createMcpTools(
+  mcpServers: Record<string, unknown>,
+): Promise<{ tools: AnyToolDefinition[]; warnings: string[] }> {
   const tools: AnyToolDefinition[] = [];
+  const warnings: string[] = [];
   for (const [serverName, rawConfig] of Object.entries(mcpServers ?? {})) {
     const parsed = mcpServerConfigSchema.safeParse(rawConfig);
-    if (!parsed.success) continue; // skip malformed server entries silently
+    if (!parsed.success) {
+      warnings.push(`MCP server "${serverName}": invalid config (needs { command, args?, env?, timeoutMs? }) — skipped.`);
+      continue;
+    }
     let client: McpClient;
     try {
       client = await McpClient.connect(serverName, parsed.data);
-    } catch {
-      continue; // server failed to start / handshake; contribute no tools
+    } catch (err) {
+      warnings.push(`MCP server "${serverName}" failed to start: ${(err as Error).message}`);
+      continue;
     }
     let listed: McpToolInfo[];
     try {
       listed = await client.listTools();
-    } catch {
+    } catch (err) {
+      warnings.push(`MCP server "${serverName}" connected but tools/list failed: ${(err as Error).message}`);
       client.close();
       continue;
     }
@@ -273,7 +296,7 @@ export async function createMcpTools(mcpServers: Record<string, unknown>): Promi
       tools.push(makeMcpTool(client, serverName, info));
     }
   }
-  return tools;
+  return { tools, warnings };
 }
 
 function makeMcpTool(client: McpClient, serverName: string, info: McpToolInfo): AnyToolDefinition {

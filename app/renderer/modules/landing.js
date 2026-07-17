@@ -46,12 +46,132 @@ if (window.magentra.onRecentWorkspaces) {
   window.magentra.onRecentWorkspaces(renderRecentList);
 }
 
+// Saved sessions reuse the engine's existing list/resume protocol. The row's
+// main button resumes; destructive removal is a separate confirmed action.
+function requestSessionList() {
+  if (!workspaceOpen) return;
+  window.magentra.send({ type: "list_sessions" });
+}
+
+function formatSessionDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "unknown date";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function sessionDisplayName(session) {
+  return session.label || session.firstUserMessage || "Untitled session";
+}
+
+function renderSessions() {
+  if (!sessionsListEl) return;
+  sessionsListEl.textContent = "";
+  const filter = (sessionsSearchEl && sessionsSearchEl.value.trim().toLowerCase()) || "";
+  const shown = sessionSummaries.filter(
+    (s) => !filter || sessionDisplayName(s).toLowerCase().includes(filter) || s.id.includes(filter),
+  );
+  sessionsEmptyEl.classList.toggle("hidden", sessionSummaries.length > 0);
+  sessionsSubEl.textContent = filter
+    ? `${shown.length} of ${sessionSummaries.length} saved conversations`
+    : `${sessionSummaries.length} saved conversation${sessionSummaries.length === 1 ? "" : "s"}`;
+
+  for (const session of shown) {
+    const active = session.id === currentSessionId;
+    const row = document.createElement("div");
+    row.className = "session-row" + (active ? " active" : "");
+
+    const resumeBtn = document.createElement("button");
+    resumeBtn.className = "session-resume";
+    resumeBtn.disabled = active || busy;
+
+    const label = document.createElement("span");
+    label.className = "session-label";
+    label.textContent = sessionDisplayName(session);
+
+    const meta = document.createElement("span");
+    meta.className = "session-meta";
+    meta.textContent = [formatSessionDate(session.updatedAt), session.model || "model not recorded"]
+      .filter(Boolean)
+      .join(" · ");
+
+    const id = document.createElement("span");
+    id.className = "session-id";
+    id.textContent = active ? `${session.id} · ACTIVE` : session.id;
+
+    resumeBtn.append(label, meta, id);
+    resumeBtn.addEventListener("click", () => {
+      window.magentra.send({ type: "resume_session", id: session.id });
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "session-actions";
+
+    const renameBtn = document.createElement("button");
+    renameBtn.className = "session-delete session-rename";
+    renameBtn.title = "Rename session";
+    renameBtn.textContent = "RENAME";
+    renameBtn.addEventListener("click", () => {
+      const next = window.prompt("Session name:", sessionDisplayName(session));
+      if (next === null || !next.trim()) return;
+      window.magentra.send({ type: "rename_session", id: session.id, label: next.trim() });
+    });
+
+    const archiveBtn = document.createElement("button");
+    archiveBtn.className = "session-delete session-rename";
+    archiveBtn.title = active
+      ? "The active session cannot be archived"
+      : "Move out of this list into .magentra/sessions/archive/";
+    archiveBtn.textContent = "ARCHIVE";
+    archiveBtn.disabled = active;
+    archiveBtn.addEventListener("click", () => {
+      window.magentra.send({ type: "archive_session", id: session.id });
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "session-delete";
+    deleteBtn.title = active ? "The active session cannot be deleted" : "Delete session";
+    deleteBtn.textContent = "DELETE";
+    deleteBtn.disabled = active;
+    deleteBtn.addEventListener("click", () => {
+      const name = sessionDisplayName(session);
+      if (!window.confirm(`Delete saved session “${name}”? This cannot be undone.`)) return;
+      window.magentra.send({ type: "delete_session", id: session.id });
+    });
+
+    actions.append(renameBtn, archiveBtn, deleteBtn);
+    row.append(resumeBtn, actions);
+    sessionsListEl.appendChild(row);
+  }
+}
+
+function onSessionList(event) {
+  sessionSummaries = Array.isArray(event.sessions) ? event.sessions : [];
+  renderSessions();
+  if (openSessionPickerAfterList) {
+    openSessionPickerAfterList = false;
+    if (sessionSummaries.some((session) => session.id !== currentSessionId)) showView("sessions");
+  }
+}
+
+navSessionsEl.addEventListener("click", () => {
+  showView("sessions");
+  requestSessionList();
+});
+sessionsRefreshBtnEl.addEventListener("click", requestSessionList);
+sessionsCloseBtnEl.addEventListener("click", () => showView("console"));
+if (sessionsSearchEl) sessionsSearchEl.addEventListener("input", renderSessions);
+
 // Repaint a resumed conversation from the engine's render-ready snapshot. The
 // engine already paired tool calls with results and stripped scaffolding, so
 // this just replays it through the same DOM builders a live turn uses.
 function onSessionRestored(event) {
   if (!streamEl) return;
-  resetLocalViewForClear(); // clear the current view + tool/agent maps
+  // session_started already repainted the resumed task list; clear only the
+  // conversation-local DOM/maps here so that restored tasks stay visible.
+  resetLocalViewForClear(true);
   for (const m of event.messages || []) {
     if (m.role === "user") {
       appendUserMessage(m.text);
@@ -83,9 +203,15 @@ function onSessionRestored(event) {
     }
   }
   appendSysNote(`resumed — ${(event.messages || []).length} messages restored`);
+  showView("console");
 }
 
 function onSessionStarted(event) {
+  currentSessionId = event.sessionId;
+  // Adopt the engine's slash-command registry and rate card so the palette
+  // and the model hints can never drift from what the engine actually does.
+  if (Array.isArray(event.commands) && event.commands.length > 0) SLASH_COMMANDS = event.commands;
+  if (event.rateCard && typeof event.rateCard === "object") modelRateCard = event.rateCard;
   appendSysNote(`session ${event.sessionId} · model ${event.model}`);
   // A fresh session (boot, or /clear) is a fresh bill and an empty window.
   sessionModel = event.model;
@@ -97,6 +223,7 @@ function onSessionStarted(event) {
   // A running session is the proof the credentials work — unlock the composer.
   engineLinked = true;
   syncActivityUi();
+  if (openSessionPickerAfterList || document.body.dataset.view === "sessions") requestSessionList();
 }
 
 /**
@@ -117,11 +244,12 @@ function syncActivityUi() {
   // SEND hides only during a turn — background work leaves the composer usable.
   sendBtnEl.classList.toggle("hidden", busy);
   setStatusLed(working ? "busy" : "idle");
-  document.body.classList.toggle("busy", busy);
   // A model change restarts the engine; block it mid-turn at the source rather
   // than racing a confirm dialog against a running turn.
   if (modelSelectEl) modelSelectEl.disabled = busy;
   if (customModelEl) customModelEl.disabled = busy;
+  renderSessions();
+  renderMissions();
 
   if (!workspaceOpen) return; // landing page: composer stays disabled regardless
   // Clearing mid-turn would swap the engine's session out from under it.
@@ -156,23 +284,58 @@ function onTurnStarted() {
  * the only way the UI learns the engine is busy without a turn — turn_started
  * never fires for it.
  */
+const backgroundJobMeta = new Map(); // taskId -> description
+
 function onBackgroundNotification(event) {
   if (!event || typeof event.taskId !== "string") return;
-  if (event.kind === "start") backgroundJobs.add(event.taskId);
-  else backgroundJobs.delete(event.taskId); // "exit" and anything else terminal
+  if (event.kind === "start") {
+    backgroundJobs.add(event.taskId);
+    const desc = event.payload && event.payload.description;
+    backgroundJobMeta.set(event.taskId, typeof desc === "string" ? desc : event.taskId);
+  } else {
+    backgroundJobs.delete(event.taskId); // "exit" and anything else terminal
+    backgroundJobMeta.delete(event.taskId);
+  }
+  renderBackgroundJobs();
   syncActivityUi();
+}
+
+/** Running background jobs, each with its own stop — under the composer so
+ * detached work is always visible and individually killable. */
+function renderBackgroundJobs() {
+  if (!jobsChipEl) return;
+  jobsChipEl.textContent = "";
+  jobsChipEl.classList.toggle("hidden", backgroundJobMeta.size === 0);
+  for (const [taskId, description] of backgroundJobMeta) {
+    const row = document.createElement("span");
+    row.className = "job-row";
+    const label = document.createElement("span");
+    label.textContent = `⏳ ${description}`;
+    label.title = taskId;
+    const stopBtn = document.createElement("button");
+    stopBtn.className = "job-stop";
+    stopBtn.textContent = "STOP";
+    stopBtn.title = `Stop background task ${taskId}`;
+    stopBtn.addEventListener("click", () => {
+      window.magentra.send({ type: "stop_background", taskId });
+    });
+    row.append(label, stopBtn);
+    jobsChipEl.appendChild(row);
+  }
 }
 
 function onTurnFinished(event) {
   busy = false;
   syncActivityUi();
   promptInputEl.focus();
+  announce("The agent finished its turn.");
 
   if (event) {
     // contextTokens = how full the window is NOW (engine-computed, cache-aware).
-    // usage = what this turn BILLED (cumulative) — two different quantities.
+    // totalCostUsd = the engine's own whole-session bill (every model in the
+    // tree at its own rate) — the renderer never prices tokens itself.
     contextTokens = event.contextTokens ?? contextTokens;
-    if (event.usage) recordTurnUsage(sessionModel || "unknown", event.usage);
+    if (typeof event.totalCostUsd === "number") sessionCostUsd = event.totalCostUsd;
     updateSessionMeter();
   }
 
@@ -351,12 +514,15 @@ function showNextPermission() {
     safeStringify(input);
   deleteSubjectEl.textContent = subject;
   deleteModalEl.classList.remove("hidden");
+  openModalA11y(deleteModalEl);
+  announce(`Approval required: ${subject}`);
 }
 
 function resolvePermission(decision) {
   if (!activePermission) return;
   window.magentra.respondPermission(activePermission.id, decision);
   deleteModalEl.classList.add("hidden");
+  closeModalA11y();
   activePermission = null;
   showNextPermission();
 }
@@ -368,6 +534,7 @@ function clearPermissionState() {
   permissionQueue = [];
   activePermission = null;
   deleteModalEl.classList.add("hidden");
+  closeModalA11y();
 }
 
 /** The engine process is gone: nothing it owed the UI (turn end, background
@@ -375,6 +542,8 @@ function clearPermissionState() {
  * process can never leave the composer locked. */
 function onEngineGone() {
   backgroundJobs.clear();
+  backgroundJobMeta.clear();
+  renderBackgroundJobs();
   clearPermissionState();
   // Drop queued follow-ups first: onTurnFinished would otherwise flush one into
   // the dead engine.
@@ -388,7 +557,7 @@ const RECOMMENDED_SUFFIX = "(Recommended)";
 function onQuestionRequest(event) {
   if (!streamEl) return;
 
-  (event.questions || []).forEach((q) => {
+  (event.questions || []).forEach((q, qIdx) => {
     const multi = q.multiSelect === true;
     const cardEl = document.createElement("div");
     cardEl.className = "question-card";
@@ -422,7 +591,8 @@ function onQuestionRequest(event) {
       window.magentra.send({
         type: "question_response",
         id: event.id,
-        answers: { [q.question]: values },
+        // Keyed by position, not question text — duplicate texts must not collide.
+        answers: { [`q:${qIdx}`]: values },
       });
       cardEl.classList.add("answered");
     }
@@ -438,6 +608,12 @@ function onQuestionRequest(event) {
       const btn = document.createElement("button");
       btn.className = "q-opt" + (isRecommended ? " recommended" : "");
       btn.textContent = shownLabel;
+      if (isRecommended) {
+        const recEl = document.createElement("span");
+        recEl.className = "q-rec";
+        recEl.textContent = "★ recommended";
+        btn.appendChild(recEl);
+      }
       if (opt.description) {
         const descEl = document.createElement("span");
         descEl.className = "q-opt-desc";
@@ -596,15 +772,48 @@ function onPlanReady(event) {
 
 function handleEngineEvent(event) {
   switch (event.type) {
+    case "workspace_changed":
+      enterActiveState(event.workspace);
+      break;
     case "session_started":
       onSessionStarted(event);
       break;
     case "session_restored":
       onSessionRestored(event);
       break;
+    case "session_list":
+      onSessionList(event);
+      break;
     case "turn_started":
       onTurnStarted();
       break;
+    case "tool_output_delta":
+      onToolOutputDelta(event);
+      break;
+    case "model_catalog":
+      onModelCatalog(event);
+      break;
+    case "cwd_changed": {
+      // Show when the session operates inside a worktree, and where.
+      if (event.worktree) {
+        const short = String(event.cwd || "").split(/[\\/]/).slice(-2).join("/");
+        workspacePathEl.textContent = `${activeWorkspace || ""} ⇒ ${short}`;
+        workspaceBtnEl.classList.add("in-worktree");
+        workspaceBtnEl.title = `Session is working inside a worktree: ${event.cwd}`;
+        appendSysNote(`⌥ session cwd → ${event.cwd} (worktree)`);
+      } else {
+        workspacePathEl.textContent = activeWorkspace || event.cwd;
+        workspaceBtnEl.classList.remove("in-worktree");
+        workspaceBtnEl.title = "Choose workspace folder";
+        appendSysNote("⌥ session cwd back at the workspace root");
+      }
+      break;
+    }
+    case "retry_status": {
+      const secs = Math.max(1, Math.round((event.delayMs || 0) / 1000));
+      showNowOverride(`${event.reason} — retrying in ${secs}s (attempt ${event.attempt})`);
+      break;
+    }
     case "background_notification":
       onBackgroundNotification(event);
       break;
@@ -631,6 +840,7 @@ function handleEngineEvent(event) {
       break;
     case "question_request":
       onQuestionRequest(event);
+      announce("The agent is asking you a question.");
       break;
     case "plan_ready":
       onPlanReady(event);
@@ -650,6 +860,9 @@ function handleEngineEvent(event) {
     case "team_updated":
       onTeamUpdated(event);
       break;
+    case "missions_updated":
+      onMissionsUpdated(event);
+      break;
     case "backpack_progress":
       onBackpackProgress(event);
       break;
@@ -661,6 +874,7 @@ function handleEngineEvent(event) {
       break;
     case "error":
       appendSysError(event.message);
+      announce(`Error: ${event.message}`);
       if (event.fatal) {
         setStatusLed("error");
         showEngineErrorBanner(event.message, looksCredentialError(event.message) ? "credential" : "crash");

@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { withRetry } from "./retry.js";
 import type {
   ContentBlock,
   Msg,
@@ -16,30 +17,53 @@ export interface AnthropicOptions {
 
 export class AnthropicProvider implements Provider {
   private readonly client: Anthropic;
+  private readonly maxRetries: number;
 
   constructor(opts: AnthropicOptions = {}) {
+    this.maxRetries = opts.maxRetries ?? 4;
     this.client = new Anthropic({
       ...(opts.apiKey ? { apiKey: opts.apiKey } : {}),
       ...(opts.baseUrl ? { baseURL: opts.baseUrl } : {}),
-      maxRetries: opts.maxRetries ?? 4,
+      // Retries run through our withRetry below so they are visible to the
+      // UI (onRetry); the SDK's own invisible loop would hide them.
+      maxRetries: 0,
     });
   }
 
   async *stream(req: StreamRequest): AsyncIterable<ProviderEvent> {
-    const stream = await this.client.messages.create(
-      {
-        model: req.model,
-        max_tokens: req.maxTokens,
-        system: req.system || undefined,
-        messages: req.messages.map(toAnthropicMessage),
-        tools: req.tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          input_schema: t.inputSchema as Anthropic.Tool["input_schema"],
-        })),
-        stream: true,
-      },
-      { signal: req.signal },
+    // Prompt caching: one breakpoint after the system prompt (covers tools +
+    // system) and one on the last message, so the whole conversation prefix
+    // is a cache read on the next request. Cache usage flows into the
+    // existing 4-class accounting via cache_read/creation tokens below.
+    const messages = req.messages.map(toAnthropicMessage);
+    const lastMsg = messages[messages.length - 1];
+    const lastBlock = Array.isArray(lastMsg?.content)
+      ? lastMsg.content[lastMsg.content.length - 1]
+      : undefined;
+    if (lastBlock && typeof lastBlock === "object") {
+      (lastBlock as { cache_control?: unknown }).cache_control = { type: "ephemeral" };
+    }
+    const stream = await withRetry(
+      () =>
+        this.client.messages.create(
+          {
+            model: req.model,
+            max_tokens: req.maxTokens,
+            system: req.system
+              ? [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }]
+              : undefined,
+            messages,
+            tools: req.tools.map((t) => ({
+              name: t.name,
+              description: t.description,
+              input_schema: t.inputSchema as Anthropic.Tool["input_schema"],
+            })),
+            stream: true,
+          },
+          { signal: req.signal },
+        ),
+      req.signal,
+      { maxRetries: this.maxRetries, ...(req.onRetry ? { onRetry: req.onRetry } : {}) },
     );
 
     // block index -> tool_use id, so stop events can be attributed
@@ -91,6 +115,12 @@ export class AnthropicProvider implements Provider {
       }
     }
     yield { type: "message_end", stopReason, usage };
+  }
+
+  /** The Anthropic model catalog, for the UI's model picker. */
+  async listModels(): Promise<string[]> {
+    const page = await this.client.models.list();
+    return page.data.map((m) => m.id);
   }
 
   async countTokens(req: Omit<StreamRequest, "signal" | "maxTokens">): Promise<number> {

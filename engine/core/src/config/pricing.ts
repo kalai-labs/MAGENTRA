@@ -57,6 +57,38 @@ export function pricingFor(model: string, settings?: Settings): ModelPricing | u
 }
 
 /**
+ * Known context-window sizes (tokens), matched by substring of the model id so
+ * dated/suffixed variants resolve too. Deliberately conservative where a
+ * family ships multiple window sizes.
+ */
+const MODEL_CONTEXT_WINDOWS: [pattern: string, tokens: number][] = [
+  ["claude-", 200_000],
+  ["DeepSeek-V4", 160_000],
+  ["DeepSeek-V3", 128_000],
+  ["gpt-oss", 128_000],
+  ["Qwen3-Coder-480B", 256_000],
+  ["Qwen3", 128_000],
+  ["gemma-4", 128_000],
+  ["MiniMax", 200_000],
+  ["MiMo", 128_000],
+  ["GLM-5", 200_000],
+  ["Kimi-K2", 256_000],
+];
+
+/**
+ * The context window compaction should plan around: an explicit
+ * `settings.contextWindow` always wins (local models and odd endpoints), else
+ * the known size for this model, else a conservative 128k.
+ */
+export function contextWindowFor(model: string, settings?: Settings): number {
+  if (settings?.contextWindow !== undefined) return settings.contextWindow;
+  for (const [pattern, tokens] of MODEL_CONTEXT_WINDOWS) {
+    if (model.toLowerCase().includes(pattern.toLowerCase())) return tokens;
+  }
+  return 128_000;
+}
+
+/**
  * Dollar cost of `usage` at `pricing`, billing each of the four token classes at
  * its own rate. Returns undefined when the model has no rate card, so callers
  * can print counts without inventing a number.

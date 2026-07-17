@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { loadBackpackIndex, type ToolDefinition } from "@magentra/core";
 import type { TaskItem } from "@magentra/protocol";
+import { resolveTaskId } from "./tasks.js";
 
 const inputSchema = z.object({
   taskId: z.string().describe("The id of an owned task to run its crew specialist on."),
@@ -26,7 +27,10 @@ INDEPENDENT tasks (no blocked-by between them, different owners or different fil
   describeInput: (input) => `CrewRun task #${input.taskId}`,
   execute: async (input, ctx) => {
     const team = ctx.session.team ?? [];
-    const task = ctx.session.tasks.get(input.taskId);
+    // Same tolerant id forms TaskUpdate accepts ("3", "#3", "task 3") — a
+    // weak model that echoes the display form must not be bounced here.
+    const taskId = resolveTaskId(ctx.session.tasks.list(), input.taskId);
+    const task = taskId !== undefined ? ctx.session.tasks.get(taskId) : undefined;
     if (!task) {
       return { content: `No task with id ${input.taskId}.`, isError: true };
     }

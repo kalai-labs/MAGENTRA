@@ -4,8 +4,7 @@ Magentra crew members are not prompt files. They are **employees**: they learn f
 carry a tamper-evident service record, and can be exported, moved between projects, or handed to
 another user — arriving with their knowledge and their CV intact.
 
-This document covers the three subsystems and the commands. Design rationale and the research
-evidence live in `.magentra/prd/crew-hirable-killer-feature.md`.
+This document covers the three subsystems and the commands.
 
 ## 1. Experience — how a member learns (probation → promotion)
 

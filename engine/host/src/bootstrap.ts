@@ -79,13 +79,18 @@ export async function bootstrapEngine(opts: BootstrapOptions): Promise<Bootstrap
           baseUrl,
           apiKey: apiKey ?? "",
           // Tells a local server which context window to load the model with.
-          ...(isLocalEndpoint ? { numCtx: settings.contextWindow } : {}),
+          ...(isLocalEndpoint && settings.contextWindow !== undefined ? { numCtx: settings.contextWindow } : {}),
         },
   );
 
   const registry = createDefaultRegistry();
-  for (const tool of await createMcpTools(settings.mcpServers)) {
+  const mcp = await createMcpTools(settings.mcpServers);
+  for (const tool of mcp.tools) {
     registry.register(tool);
+  }
+  // A typo'd MCP server must produce a visible warning, not silently vanish.
+  for (const message of mcp.warnings) {
+    warnings.push({ source: "mcp", message });
   }
 
   const engine = new Engine({

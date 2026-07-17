@@ -31,10 +31,26 @@ function readConfig() {
     // Migrate a legacy single `workspace` into the recent list once. No
     // workspace is active until the user opens one from the start page.
     if (workspace && !recent.includes(workspace)) recent = [workspace, ...recent];
+    // Window state: validated loosely here; createWindow re-clamps to a live
+    // display before applying, so a stale multi-monitor layout can't hide the app.
+    const win = parsed.window;
+    const windowState =
+      win && typeof win === "object" &&
+      Number.isFinite(win.width) && Number.isFinite(win.height)
+        ? {
+            width: Math.max(700, Math.round(win.width)),
+            height: Math.max(480, Math.round(win.height)),
+            ...(Number.isFinite(win.x) && Number.isFinite(win.y)
+              ? { x: Math.round(win.x), y: Math.round(win.y) }
+              : {}),
+            maximized: win.maximized === true,
+          }
+        : null;
     return {
       workspace: null,
       model: typeof parsed.model === "string" ? parsed.model : DEFAULT_MODEL,
       recentWorkspaces: recent.slice(0, MAX_RECENT_WORKSPACES),
+      ...(windowState ? { window: windowState } : {}),
     };
   } catch {
     return { workspace: null, model: DEFAULT_MODEL, recentWorkspaces: [] };

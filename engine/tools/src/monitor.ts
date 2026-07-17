@@ -7,8 +7,12 @@ const DEFAULT_TIMEOUT = 300_000;
 const MIN_TIMEOUT = 1_000;
 const MAX_TIMEOUT = 3_600_000;
 const BATCH_WINDOW_MS = 200;
-const NOISE_LIMIT = 60;
+// High enough that a busy build log (hundreds of lines/min) survives; the
+// auto-stop only catches genuine floods (a stray `yes`, a tight print loop).
+const NOISE_LIMIT = 600;
 const NOISE_WINDOW_MS = 60_000;
+/** A batch larger than this is summarized in the reminder instead of pasted whole. */
+const BATCH_REMINDER_CAP = 20;
 
 const inputSchema = z.object({
   command: z.string().describe("The shell command to run and watch; each line it prints to stdout becomes an event."),
@@ -63,8 +67,15 @@ export const monitorTool: ToolDefinition<z.infer<typeof inputSchema>> = {
             kind: "monitor_events",
             payload: { lines },
           });
+          // A build log can flush hundreds of lines — summarize big batches
+          // in the context reminder (head + tail); the full stream is in the
+          // task output file.
+          const body =
+            lines.length > BATCH_REMINDER_CAP
+              ? [...lines.slice(0, 5), `… ${lines.length - 15} more lines …`, ...lines.slice(-10)].join("\n")
+              : lines.join("\n");
           ctx.session.remind(
-            `<task-notification>Monitor ${info.id} ("${input.description}") reported ${lines.length} event line(s):\n${lines.join("\n")}</task-notification>`,
+            `<task-notification>Monitor ${info.id} ("${input.description}") reported ${lines.length} event line(s):\n${body}</task-notification>`,
           );
         };
 
