@@ -30,6 +30,121 @@ function showView(name) {
 }
 
 // ---------------------------------------------------------------------------
+// In-app menu bar. The OS title bar (and its native menu) is gone — the top
+// strip carries the app's own FILE / SESSION / VIEW / HELP menus, themed like
+// everything else. Actions reference functions from later-loaded modules;
+// that is safe because they only run on click.
+// ---------------------------------------------------------------------------
+
+const MENU_BAR = [
+  {
+    label: "FILE",
+    items: [
+      { label: "Open Workspace…", action: () => handleChooseWorkspace() },
+      { label: "Open Logs Folder", action: () => window.magentra.openLogs() },
+      { sep: true },
+      { label: "Quit", action: () => window.close() },
+    ],
+  },
+  {
+    label: "SESSION",
+    items: [
+      { label: "New Session", hint: "Ctrl+L", needsWorkspace: true, action: () => requestClear() },
+      { label: "Saved Sessions…", hint: "Ctrl+2", needsWorkspace: true, action: () => { showView("sessions"); requestSessionList(); } },
+      { sep: true },
+      { label: "Compact Context", needsWorkspace: true, action: () => sendSlashCommand("/compact") },
+      { label: "Session Bill", needsWorkspace: true, action: () => { showView("console"); sendSlashCommand("/session"); } },
+      { label: "Interrupt Turn", hint: "Esc", needsWorkspace: true, action: () => hardStop() },
+    ],
+  },
+  {
+    label: "VIEW",
+    items: [
+      { label: "Console", hint: "Ctrl+1", action: () => showView("console") },
+      { label: "Sessions", hint: "Ctrl+2", needsWorkspace: true, action: () => { showView("sessions"); requestSessionList(); } },
+      { label: "Crew", hint: "Ctrl+3", needsWorkspace: true, action: () => showView("team") },
+      { label: "Missions", hint: "Ctrl+4", needsWorkspace: true, action: () => showView("lab") },
+      { label: "Changes", hint: "Ctrl+5", needsWorkspace: true, action: () => showView("changes") },
+      { label: "Settings", hint: "Ctrl+6", action: () => { showView("settings"); void loadConnectionCard(); } },
+    ],
+  },
+  {
+    label: "HELP",
+    items: [
+      { label: "Keyboard Shortcuts", hint: "?", action: () => toggleShortcutSheet() },
+      { label: "All Commands (/help)", needsWorkspace: true, action: () => { showView("console"); sendSlashCommand("/help"); } },
+      { label: "Glossary", action: () => showView("settings") },
+    ],
+  },
+];
+
+let openMenuEl = null; // the open dropdown panel, if any
+
+function closeOpenMenu() {
+  if (!openMenuEl) return false;
+  openMenuEl.remove();
+  openMenuEl = null;
+  for (const btn of menuBarEl.querySelectorAll(".menu-btn")) btn.classList.remove("open");
+  return true;
+}
+
+function openMenu(menu, btn) {
+  closeOpenMenu();
+  const panel = document.createElement("div");
+  panel.className = "menu-panel";
+  panel.setAttribute("role", "menu");
+  for (const item of menu.items) {
+    if (item.sep) {
+      const sep = document.createElement("div");
+      sep.className = "menu-sep";
+      panel.appendChild(sep);
+      continue;
+    }
+    const row = document.createElement("button");
+    row.className = "menu-item";
+    row.setAttribute("role", "menuitem");
+    row.disabled = Boolean(item.needsWorkspace) && !workspaceOpen;
+    const labelEl = document.createElement("span");
+    labelEl.textContent = item.label;
+    row.appendChild(labelEl);
+    if (item.hint) {
+      const hintEl = document.createElement("span");
+      hintEl.className = "menu-hint";
+      hintEl.textContent = item.hint;
+      row.appendChild(hintEl);
+    }
+    row.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeOpenMenu();
+      item.action();
+    });
+    panel.appendChild(row);
+  }
+  btn.classList.add("open");
+  btn.appendChild(panel);
+  openMenuEl = panel;
+}
+
+for (const menu of MENU_BAR) {
+  const btn = document.createElement("button");
+  btn.className = "menu-btn";
+  btn.textContent = menu.label;
+  btn.setAttribute("aria-haspopup", "menu");
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (btn.classList.contains("open")) closeOpenMenu();
+    else openMenu(menu, btn);
+  });
+  // Hovering across the bar while a menu is open switches menus, like every
+  // native menu bar.
+  btn.addEventListener("mouseenter", () => {
+    if (openMenuEl && !btn.classList.contains("open")) openMenu(menu, btn);
+  });
+  menuBarEl.appendChild(btn);
+}
+document.addEventListener("click", () => closeOpenMenu());
+
+// ---------------------------------------------------------------------------
 // Modal accessibility: focus the first control on open, trap Tab inside the
 // dialog (nothing behind the scrim is reachable), restore focus on close.
 // ---------------------------------------------------------------------------

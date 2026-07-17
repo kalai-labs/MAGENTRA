@@ -335,6 +335,7 @@ stopBtnEl.addEventListener("click", hardStop);
 // modal deny ALSO hard-kill the running turn.
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
+  if (closeOpenMenu()) return; // an open menu is the topmost surface
   if (shortcutSheetEl && !shortcutSheetEl.classList.contains("hidden")) {
     toggleShortcutSheet();
     return;

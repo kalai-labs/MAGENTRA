@@ -141,6 +141,15 @@ function saveUiSettings() {
   }
 }
 
+// Window-controls overlay tint per theme (panel background + primary ink),
+// kept in step with the theme blocks in styles.css.
+const THEME_TITLEBAR = {
+  phosphor: { color: "#0a100d", symbolColor: "#b8cbc0" },
+  glacier: { color: "#f6fafc", symbolColor: "#33495c" },
+  dusk: { color: "#121522", symbolColor: "#b8bed4" },
+  paper: { color: "#faf6ec", symbolColor: "#43392b" },
+};
+
 function applyUiSettings() {
   document.documentElement.dataset.theme = uiSettings.theme;
   document.documentElement.dataset.rain = uiSettings.rain;
@@ -148,11 +157,18 @@ function applyUiSettings() {
   document.documentElement.dataset.detail = uiSettings.detail;
   document.documentElement.style.setProperty("--font-user", uiSettings.font);
   document.documentElement.style.setProperty("--fs-base", uiSettings.size + "px");
+  // Keep the native min/max/close overlay in the theme's colors.
+  const titleBar = THEME_TITLEBAR[uiSettings.theme];
+  if (titleBar && window.magentra && window.magentra.setTitleBarTheme) {
+    window.magentra.setTitleBarTheme(titleBar);
+  }
 }
 
 // Applied immediately at load, before any engine events can render UI, so the
 // very first paint already reflects the user's saved preferences.
 applyUiSettings();
+// macOS reserves the dock's top corner for the inset traffic lights.
+if (/mac/i.test(navigator.platform || "")) document.body.classList.add("platform-mac");
 
 function syncSegGroup(containerEl, settingKey) {
   if (!containerEl) return;

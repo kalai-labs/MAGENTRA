@@ -244,7 +244,11 @@ html[data-theme="paper"] #rain { display: none; }
   margin-bottom: 14px;
   user-select: none;
   line-height: 1;
+  /* Frameless window: the logo corner is a natural grab point too. */
+  -webkit-app-region: drag;
 }
+/* macOS hiddenInset traffic lights sit over the dock's top corner. */
+body.platform-mac #dock { padding-top: 30px; }
 .logo-mark {
   color: var(--acc);
   text-shadow: 0 0 12px var(--acc-glow);
@@ -306,7 +310,11 @@ html[data-theme="paper"] #rain { display: none; }
 /* not a bar: an invisible layer whose controls float as individual pills */
 #topbar {
   position: fixed;
-  top: 0; left: var(--dock-w); right: 0;
+  top: 0; left: var(--dock-w);
+  /* With the OS title bar hidden, the native min/max/close controls overlay
+     the top-right corner — keep the strip's content clear of them. Falls back
+     to `right: 0` when no overlay is active. */
+  right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
   height: var(--strip-h);
   z-index: 5;
   display: flex;
@@ -314,8 +322,53 @@ html[data-theme="paper"] #rain { display: none; }
   gap: 10px;
   padding: 0 14px;
   pointer-events: none;
+  /* The strip doubles as the window drag handle (no OS title bar anymore). */
+  -webkit-app-region: drag;
 }
-#topbar > * { pointer-events: auto; }
+#topbar > * { pointer-events: auto; -webkit-app-region: no-drag; }
+
+/* in-app menu bar — replaces the native File/Edit strip */
+#menuBar { display: flex; align-items: stretch; height: 100%; }
+.menu-btn {
+  position: relative;
+  border: none;
+  background: none;
+  padding: 0 10px;
+  color: var(--text-dim);
+  font-size: max(0.72rem, 10px);
+  letter-spacing: 0.08em;
+}
+.menu-btn:hover, .menu-btn.open { color: var(--text-hi); background: color-mix(in srgb, var(--acc) 8%, transparent); }
+.menu-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 9;
+  min-width: 220px;
+  padding: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px var(--shadow-pop);
+  text-align: left;
+}
+.menu-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: max(0.8rem, 10px);
+  text-align: left;
+}
+.menu-item:not(:disabled):hover { background: color-mix(in srgb, var(--acc) 10%, transparent); color: var(--text-hi); }
+.menu-item:disabled { color: var(--text-dim); opacity: 0.5; cursor: default; }
+.menu-hint { color: var(--text-dim); font-size: max(0.7rem, 10px); }
+.menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
 
 #workspaceBtn {
   display: flex;

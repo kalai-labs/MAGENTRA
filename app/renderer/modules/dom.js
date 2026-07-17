@@ -13,6 +13,7 @@
 const transcriptEl = document.getElementById("transcript");
 const emptyStateEl = document.getElementById("emptyState");
 const workspaceBtnEl = document.getElementById("workspaceBtn");
+const menuBarEl = document.getElementById("menuBar");
 const workspacePathEl = document.getElementById("workspacePath");
 const pickFolderBtnEl = document.getElementById("pickFolderBtn");
 const agentMeterEl = document.getElementById("agentMeter");

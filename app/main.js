@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { spawn } = require("node:child_process");
@@ -648,11 +648,23 @@ function rememberWindowState() {
   }, 400);
 }
 
+// The default titlebar colors (phosphor theme); the renderer re-tints the
+// overlay via app:titleBarTheme whenever the user switches themes.
+const TITLEBAR_HEIGHT = 36;
+const DEFAULT_TITLEBAR = { color: "#0a100d", symbolColor: "#b8cbc0", height: TITLEBAR_HEIGHT };
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1240,
     height: 820,
     ...savedWindowBounds(),
+    // Hide the OS title bar — the app's own top strip becomes the drag region,
+    // so no foreign gray band sits above the themed UI. Windows/Linux get the
+    // native window controls overlaid top-right; macOS keeps its inset
+    // traffic lights (the dock reserves room for them).
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hiddenInset" }
+      : { titleBarStyle: "hidden", titleBarOverlay: DEFAULT_TITLEBAR }),
     // The responsive floor the stylesheet is built for — below this, panels
     // would clip horizontally rather than wrap.
     minWidth: 700,
@@ -978,6 +990,23 @@ ipcMain.handle("app:info", () => ({
   version: require("./package.json").magentraVersion || app.getVersion(),
 }));
 
+// Theme switches re-tint the window-controls overlay so the min/max/close
+// strip never clashes with the app theme. Colors are validated as hex —
+// nothing else from the renderer reaches a native API.
+ipcMain.on("app:titleBarTheme", (_evt, theme) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (typeof mainWindow.setTitleBarOverlay !== "function") return; // macOS: no overlay
+  const hex = (v) => (typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : null);
+  const color = hex(theme && theme.color);
+  const symbolColor = hex(theme && theme.symbolColor);
+  if (!color || !symbolColor) return;
+  try {
+    mainWindow.setTitleBarOverlay({ color, symbolColor, height: TITLEBAR_HEIGHT });
+  } catch {
+    // overlay unsupported on this platform/session — the default stands
+  }
+});
+
 // Diagnostics must be reachable from the UI: reveal the live log folder
 // (workspace logs when one is open, else the pre-workspace userData mirror).
 ipcMain.handle("app:openLogs", () => {
@@ -1215,6 +1244,10 @@ async function checkForUpdates() {
 }
 
 app.whenReady().then(() => {
+  // The in-app menu bar (renderer #menuBar) replaces the native menu in
+  // packaged builds — no Alt-flash of a foreign File/Edit strip. Development
+  // keeps Electron's default menu for its devtools/reload accelerators.
+  if (app.isPackaged && process.platform !== "darwin") Menu.setApplicationMenu(null);
   // Arm the userData/logs mirror first: a crash on the landing page (before
   // any workspace opens) must still leave a log a user can find from the UI.
   initFallbackLog(app.getPath("userData"));
