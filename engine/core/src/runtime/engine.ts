@@ -322,6 +322,20 @@ export class Engine {
     });
     this.emit({ type: "task_list_updated", tasks: this.session.tasks.list() });
     this.emitMissionsUpdated();
+    // A tiny explicit contextWindow shadowing a model's real one causes
+    // constant compaction (the 4096-on-a-160k-model trap). One storage, one
+    // resolver — and a loud warning when the override looks like a leftover.
+    const override = this.opts.settings.contextWindow;
+    if (override !== undefined) {
+      const modelWindow = contextWindowFor(this.opts.settings.model);
+      if (override < modelWindow / 2) {
+        this.emit({
+          type: "error",
+          message: `contextWindow is overridden to ${override} tokens, but ${this.opts.settings.model} supports ~${Math.round(modelWindow / 1000)}K — expect constant compaction. Clear it with /settings contextWindow auto (the override exists for local servers only).`,
+          fatal: false,
+        });
+      }
+    }
     for (const warning of this.modeWarnings) {
       this.emit({ type: "error", message: warning, fatal: false });
     }
@@ -1035,6 +1049,7 @@ export class Engine {
       'Change one with "/settings <key> <value>" — dot-path for nested keys, e.g. /settings search.enabled false.',
       'Prefix with "global" to save to ~/.magentra/settings.json instead of this project, e.g. /settings global apiKey <your-key>.',
       "retention.sessions caps saved transcripts; retention.tasks caps saved task lists/background outputs. Oldest files are pruned on session start and after foreground work.",
+      'An optional key returns to its default with "auto" — e.g. /settings contextWindow auto restores the model-aware window.',
     ].join("\n");
   }
 
@@ -2110,7 +2125,9 @@ function buildRateCard(
       output: pricing.output,
       ...(pricing.cacheRead !== undefined ? { cacheRead: pricing.cacheRead } : {}),
       ...(pricing.cacheWrite !== undefined ? { cacheWrite: pricing.cacheWrite } : {}),
-      contextWindow: contextWindowFor(model, settings),
+      // The MODEL's intrinsic window (no settings override): the card describes
+      // models; the override is a session concern the engine applies itself.
+      contextWindow: contextWindowFor(model),
     };
   }
   return card;

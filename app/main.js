@@ -3,6 +3,7 @@
 const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
+const os = require("node:os");
 const { spawn } = require("node:child_process");
 
 const {
@@ -878,8 +879,25 @@ ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
     }
     settings.model = model;
     // Context size: engine compaction window + `num_ctx` for local servers.
+    // An EMPTY field must clear a previous override — a stale tiny window
+    // shadowing the model's real one causes constant compaction.
     if (contextWindow !== undefined) {
       settings.contextWindow = contextWindow;
+    } else {
+      delete settings.contextWindow;
+      // The engine merges project settings over ~/.magentra/settings.json —
+      // a leftover in the GLOBAL layer would silently win right back, so the
+      // clear must reach it too (best-effort).
+      try {
+        const globalPath = path.join(os.homedir(), ".magentra", "settings.json");
+        const globalSettings = JSON.parse(fs.readFileSync(globalPath, "utf8"));
+        if (globalSettings && typeof globalSettings === "object" && "contextWindow" in globalSettings) {
+          delete globalSettings.contextWindow;
+          fs.writeFileSync(globalPath, JSON.stringify(globalSettings, null, 2), "utf8");
+        }
+      } catch {
+        // no global settings file — nothing to clear
+      }
     }
 
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");

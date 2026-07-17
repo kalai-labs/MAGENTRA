@@ -219,6 +219,11 @@ function onSessionStarted(event) {
   // The rate card arrives with this event — repaint the footer hint so the
   // running model shows its prices/window from the very first session.
   if (hintModelEl && event.model) hintModelEl.textContent = modelHintText(event.model);
+  // Settings → Context size: show the window the engine will actually use
+  // when the field is left on auto.
+  if (setContextEl && event.model && modelRateCard[event.model]) {
+    setContextEl.placeholder = `auto (${Math.round(modelRateCard[event.model].contextWindow / 1000)}K for this model)`;
+  }
   appendSysNote(`session ${event.sessionId} · model ${event.model}`);
   // A fresh session (boot, or /clear) is a fresh bill and an empty window.
   sessionModel = event.model;

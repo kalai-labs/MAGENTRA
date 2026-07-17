@@ -152,6 +152,10 @@ export function projectSettingsPath(cwd: string): string {
  * Env vars that override a settings key, and the dot-path they land on. Single
  * source of truth for both {@link applyEnvOverrides} and source attribution.
  */
+// NOTE: contextWindow deliberately has NO env override. The window has exactly
+// one storage (the `contextWindow` settings key) and one resolver
+// (contextWindowFor) — a second write path was how a stale tiny window ended
+// up shadowing a model's real one.
 const ENV_OVERRIDES: ReadonlyArray<{ env: string; path: string; numeric?: boolean }> = [
   { env: "MAGENTRA_PROVIDER", path: "provider" },
   { env: "MAGENTRA_MODEL", path: "model" },
@@ -161,7 +165,6 @@ const ENV_OVERRIDES: ReadonlyArray<{ env: string; path: string; numeric?: boolea
   { env: "MAGENTRA_PERMISSION_MODE", path: "permissionMode" },
   { env: "MAGENTRA_MAX_ITERATIONS", path: "maxIterationsPerTurn", numeric: true },
   { env: "MAGENTRA_MAX_TOKENS_PER_TURN", path: "maxTokensPerTurn", numeric: true },
-  { env: "MAGENTRA_CONTEXT_WINDOW", path: "contextWindow", numeric: true },
 ];
 
 /**
@@ -307,6 +310,17 @@ export function setSettingPath(target: Record<string, unknown>, dotPath: string,
   node[parts[parts.length - 1]!] = value;
 }
 
+/** Removes a (possibly nested) key so an optional setting can fall back to its default. */
+export function deleteSettingPath(target: Record<string, unknown>, dotPath: string): void {
+  const parts = dotPath.split(".");
+  let node: Record<string, unknown> | undefined = target;
+  for (let i = 0; i < parts.length - 1 && node; i++) {
+    const next: unknown = node[parts[i]!];
+    node = next !== null && typeof next === "object" && !Array.isArray(next) ? (next as Record<string, unknown>) : undefined;
+  }
+  if (node) delete node[parts[parts.length - 1]!];
+}
+
 /** Coerce a string argument to boolean/number where it plainly reads as one; otherwise leave it a string. */
 export function coerceSettingValue(raw: string): string | number | boolean {
   if (raw === "true") return true;
@@ -353,7 +367,22 @@ export function setSetting(
       : projectSettingsPath(cwd);
   const discard: SettingsWarning[] = [];
   const candidate: Record<string, unknown> = structuredClone(readJson(file, discard) ?? {});
-  setSettingPath(candidate, dotPath, value);
+  // "auto" unsets the key: the schema default (or model-aware resolution, for
+  // contextWindow) takes over again. It must clear EVERY layer — settings
+  // merge project over global, so a value left in the other file would
+  // silently win right back.
+  const unset = rawValue === "auto";
+  if (unset) {
+    for (const layer of [globalSettingsPath(), projectSettingsPath(cwd)]) {
+      if (layer === file || !existsSync(layer)) continue;
+      const other: Record<string, unknown> = structuredClone(readJson(layer, discard) ?? {});
+      deleteSettingPath(other, dotPath);
+      writeFileSync(layer, `${JSON.stringify(other, null, 2)}\n`, { mode: 0o600 });
+    }
+    deleteSettingPath(candidate, dotPath);
+  } else {
+    setSettingPath(candidate, dotPath, value);
+  }
 
   const parsed = settingsSchema.safeParse(candidate);
   if (!parsed.success) {

@@ -43,7 +43,7 @@ file — never the shareable project file — and the file is written mode `0600
 | `maxTokensPerResponse` | `8192` | `max_tokens` for a single model response. |
 | `maxTokensPerTurn` | `200000` | Output-token budget per user turn; hitting it ends the turn with an explanatory message. Input/context tokens are not counted (they are dominated by per-iteration context re-sends). |
 | `maxIterationsPerTurn` | `50` | Loop-safety cap on model↔tool round-trips per user turn. |
-| `contextWindow` | *(unset)* | Explicit context-size override. When absent the engine uses a built-in per-model window table (`MODEL_CONTEXT_WINDOWS` in `engine/core/src/config/pricing.ts` — e.g. `claude-`→200k, `Qwen3`→128k, falling back to a conservative 128k). An explicit value always wins, and is also sent as `num_ctx` so a local endpoint loads the model with that window. |
+| `contextWindow` | *(unset)* | Explicit context-size override — **for local servers only**. When absent the engine uses a built-in per-model window table (`MODEL_CONTEXT_WINDOWS` in `engine/core/src/config/pricing.ts` — e.g. `claude-`→200k, `Qwen3`→128k, falling back to a conservative 128k). An explicit value always wins, and is also sent as `num_ctx` so a local endpoint loads the model with that window. Clear it with `/settings contextWindow auto` (or save the Settings → Connection card with the field empty); the engine warns at session start when an override sits far below the model's real window. |
 | `compactionThreshold` | `0.8` | Fraction of the effective context window (0.1–1) at which the conversation is compacted (oldest span summarized, recent tail kept verbatim). |
 
 ## Retention
@@ -134,7 +134,10 @@ Env vars override both settings files (single source of truth: `ENV_OVERRIDES` i
 | `MAGENTRA_PERMISSION_MODE` | `permissionMode` |
 | `MAGENTRA_MAX_ITERATIONS` | `maxIterationsPerTurn` |
 | `MAGENTRA_MAX_TOKENS_PER_TURN` | `maxTokensPerTurn` |
-| `MAGENTRA_CONTEXT_WINDOW` | `contextWindow` |
+
+`contextWindow` deliberately has **no** env override: the window has exactly one
+storage (the `contextWindow` settings key) and one resolver, so a stale value in a
+second channel can never shadow a model's real window.
 
 ## The STANDARDS.md convention
 

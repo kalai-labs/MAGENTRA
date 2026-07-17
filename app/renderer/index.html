@@ -287,7 +287,8 @@
             </div>
           </div>
           <div class="set-row"><span class="set-label">Model</span><input id="setModelDefault" type="text" spellcheck="false" placeholder="deepseek-ai/DeepSeek-V4-Flash" /></div>
-          <div class="set-row"><span class="set-label">Context size</span><input id="setContext" type="number" min="256" step="256" placeholder="4096 (local models)" /></div>
+          <div class="set-row"><span class="set-label">Context size</span><input id="setContext" type="number" min="256" step="256" placeholder="auto (model-aware)" /></div>
+          <p class="set-note">Leave empty: the engine uses the model's real window automatically. Set a number ONLY for local servers (it becomes <code>num_ctx</code>); saving with the field empty clears any old override.</p>
           <div class="set-actions">
             <span id="setConnStatus"></span>
             <button id="setTestBtn">TEST</button>
@@ -412,7 +413,7 @@
         <datalist id="wizModels"></datalist>
       </label>
       <label class="wiz-field" id="wizContextField" hidden><span>CONTEXT SIZE</span>
-        <input id="wizContext" type="number" min="256" step="256" value="4096" spellcheck="false" />
+        <input id="wizContext" type="number" min="256" step="256" placeholder="auto — set e.g. 8192 for local servers" spellcheck="false" />
       </label>
 
       <div class="wiz-actions">
