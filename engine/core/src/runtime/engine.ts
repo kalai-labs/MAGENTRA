@@ -602,6 +602,7 @@ export class Engine {
           ...(a.emoji !== undefined ? { emoji: a.emoji } : {}),
           ...(a.color !== undefined ? { color: a.color } : {}),
           docCount: a.docs.length,
+          docs: a.docs,
           ready: this.isBackpackReady(a),
           ...(spend ? { spend: formatLedgerEntry(spend) } : {}),
           lessonsPromoted: lessons.filter((l) => l.status === "promoted").length,

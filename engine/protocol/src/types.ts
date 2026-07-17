@@ -238,6 +238,8 @@ export type CoreEvent =
         emoji?: string;
         color?: string;
         docCount: number;
+        /** Workspace-relative paths of the member's backpack documents. */
+        docs: string[];
         /** Backpack readiness: a distilled brief exists, or every doc reached at least the "noted" phase. */
         ready: boolean;
         /** Ledger spend summary ("12.3k in / 4.1k out over 7 runs"); absent when the member has never run. */

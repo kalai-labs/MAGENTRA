@@ -75,6 +75,54 @@ function closeModalA11y() {
 }
 
 // ---------------------------------------------------------------------------
+// Text prompt modal. Electron does not implement window.prompt (it throws),
+// so every "ask the user for one string" flow goes through this instead.
+// Resolves with the entered string, or null on cancel/Escape.
+// ---------------------------------------------------------------------------
+
+let promptModalResolve = null;
+
+function settlePromptModal(value) {
+  if (!promptModalResolve) return;
+  const resolve = promptModalResolve;
+  promptModalResolve = null;
+  promptModalEl.classList.add("hidden");
+  closeModalA11y();
+  resolve(value);
+}
+
+function showPromptModal({ title, hint = "", value = "", placeholder = "" }) {
+  // A second prompt while one is open cancels the first — never two resolvers.
+  settlePromptModal(null);
+  promptModalTitleEl.textContent = title;
+  promptModalHintEl.textContent = hint;
+  promptModalHintEl.classList.toggle("hidden", hint === "");
+  promptModalInputEl.value = value;
+  promptModalInputEl.placeholder = placeholder;
+  promptModalEl.classList.remove("hidden");
+  openModalA11y(promptModalEl, promptModalInputEl);
+  promptModalInputEl.select();
+  return new Promise((resolve) => {
+    promptModalResolve = resolve;
+  });
+}
+
+if (promptModalOkEl) {
+  promptModalOkEl.addEventListener("click", () => settlePromptModal(promptModalInputEl.value));
+  promptModalCancelEl.addEventListener("click", () => settlePromptModal(null));
+  promptModalInputEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      settlePromptModal(promptModalInputEl.value);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation(); // the global Escape chain must not also fire
+      settlePromptModal(null);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Screen-reader live announcements: batched, meaningful moments only —
 // streaming every text delta would make NVDA/Orca unusable.
 // ---------------------------------------------------------------------------

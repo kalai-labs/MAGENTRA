@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld("magentra", {
   getAppInfo: () => ipcRenderer.invoke("app:info"),
   openExternal: (url) => ipcRenderer.send("app:openExternal", url),
   openLogs: () => ipcRenderer.invoke("app:openLogs"),
+  connectionInfo: () => ipcRenderer.invoke("connection:info"),
+  revealKey: () => ipcRenderer.invoke("connection:revealKey"),
   getPathForFile: (file) => {
     try {
       return webUtils.getPathForFile(file);

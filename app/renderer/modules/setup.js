@@ -96,6 +96,13 @@ if (wizKeyHintEl) {
   });
 }
 
+// TEST-before-IGNITE state. Declared BEFORE the load-time applyWizPreset call
+// below: applyWizPreset runs wizConnectionChanged, and touching these while
+// still in their temporal dead zone threw at script load — killing every
+// listener declared after it (TEST, SAVE, IGNITE all went dead).
+let wizTestedOkFor = null;
+let wizIgniteArmed = false;
+
 // The datalist and key hint are preset-driven — populate them for the default
 // preset now, not only after the first preset click.
 applyWizPreset(currentWizPreset);
@@ -151,12 +158,10 @@ function describeTestFailure(result) {
 }
 
 // IGNITE without a successful TEST commits an unverified connection — the
-// engine then fails on the first prompt instead. Track whether the current
+// engine then fails on the first prompt instead. wizTestedOkFor/wizIgniteArmed
+// (declared above the load-time applyWizPreset call) track whether the current
 // field values have passed TEST; the first untested IGNITE warns, a second
 // deliberately proceeds anyway (offline setup stays possible).
-let wizTestedOkFor = null;
-let wizIgniteArmed = false;
-
 function wizPayloadKey(payload) {
   return JSON.stringify([payload.baseUrl, payload.apiKey, payload.model, payload.provider]);
 }
@@ -269,8 +274,53 @@ function isLocalUrl(baseUrl) {
   }
 }
 
+// The card reflects what is saved, refreshed every time settings opens (the
+// wizard or another surface may have changed the connection meanwhile).
+if (navSettingsEl) {
+  navSettingsEl.addEventListener("click", () => void loadConnectionCard());
+}
+
+// Whether the current workspace has a key saved in .env (connection:info).
+// The key field itself stays empty until revealed — SAVE/TEST with an empty
+// field then mean "keep/use the saved key", never "wipe it".
+let savedKeyExists = false;
+
+/** Fill the connection card from what is actually saved for this workspace. */
+async function loadConnectionCard() {
+  if (!window.magentra.connectionInfo || !setBaseUrlEl) return;
+  let info = null;
+  try {
+    info = await window.magentra.connectionInfo();
+  } catch {
+    return;
+  }
+  if (!info) return;
+  savedKeyExists = info.hasKey === true;
+  if (info.baseUrl && !setBaseUrlEl.value) setBaseUrlEl.value = info.baseUrl;
+  if (info.model && setModelDefaultEl && !setModelDefaultEl.value) setModelDefaultEl.value = info.model;
+  if (info.contextWindow && setContextEl && !setContextEl.value) setContextEl.value = info.contextWindow;
+  setApiKeyEl.placeholder = savedKeyExists ? "●●●●●●●● saved — ◉ reveals" : "no key saved yet";
+}
+
 if (setKeyRevealEl) {
-  setKeyRevealEl.addEventListener("click", () => {
+  setKeyRevealEl.addEventListener("click", async () => {
+    // Reveal means reveal: an empty field pulls the actual saved key first
+    // (it is the user's own workspace .env), then the button toggles masking.
+    if (setApiKeyEl.value === "" && window.magentra.revealKey) {
+      try {
+        const res = await window.magentra.revealKey();
+        if (res && res.key) {
+          setApiKeyEl.value = res.key;
+          setApiKeyEl.type = "text";
+          return;
+        }
+        setConnStatusEl.textContent = "no key saved for this workspace yet";
+        setConnStatusEl.className = "";
+        return;
+      } catch {
+        // fall through to the plain toggle
+      }
+    }
     setApiKeyEl.type = setApiKeyEl.type === "password" ? "text" : "password";
   });
 }
@@ -281,19 +331,25 @@ if (setTestBtnEl) {
     setConnStatusEl.className = "";
     if (!window.magentra.testConnection) return;
     const baseUrl = setBaseUrlEl.value.trim();
+    const typedKey = setApiKeyEl.value.trim();
+    setTestBtnEl.disabled = true;
     let result = null;
     try {
       result = await window.magentra.testConnection({
         baseUrl,
-        apiKey: setApiKeyEl.value,
+        apiKey: typedKey,
         model: setModelDefaultEl.value.trim(),
         provider: inferProvider(baseUrl),
+        // Empty field + saved key = "test the connection I have".
+        ...(typedKey === "" && savedKeyExists ? { useSavedKey: true } : {}),
       });
     } catch {
       result = null;
+    } finally {
+      setTestBtnEl.disabled = false;
     }
     if (result && result.ok) {
-      setConnStatusEl.textContent = "link established";
+      setConnStatusEl.textContent = "link established ✓";
       setConnStatusEl.className = "ok";
     } else {
       setConnStatusEl.textContent = describeTestFailure(result);
@@ -304,10 +360,11 @@ if (setTestBtnEl) {
 
 if (setSaveBtnEl) {
   setSaveBtnEl.addEventListener("click", async () => {
-    const apiKey = setApiKeyEl.value;
+    const apiKey = setApiKeyEl.value.trim();
     const baseUrl = setBaseUrlEl.value.trim();
     const local = isLocalUrl(baseUrl);
-    if (!apiKey.trim() && !local) {
+    const keepSaved = apiKey === "" && savedKeyExists;
+    if (apiKey === "" && !local && !keepSaved) {
       setConnStatusEl.textContent = "key required";
       setConnStatusEl.className = "err";
       return;
@@ -320,6 +377,7 @@ if (setSaveBtnEl) {
         apiKey,
         model: setModelDefaultEl.value.trim(),
         provider: inferProvider(baseUrl),
+        ...(keepSaved ? { useSavedKey: true } : {}),
         ...(setContextEl && setContextEl.value ? { contextWindow: setContextEl.value } : {}),
       });
     } catch (err) {
@@ -329,7 +387,14 @@ if (setSaveBtnEl) {
     }
     if (result && result.ok) {
       setApiKeyEl.value = "";
-      setConnStatusEl.textContent = local ? "saved to workspace settings" : "written to workspace .env";
+      setApiKeyEl.type = "password";
+      savedKeyExists = savedKeyExists || (apiKey !== "" && !local);
+      setApiKeyEl.placeholder = savedKeyExists ? "●●●●●●●● saved — ◉ reveals" : "no key saved yet";
+      setConnStatusEl.textContent = keepSaved
+        ? "saved (existing key kept) — engine restarted"
+        : local
+          ? "saved to workspace settings — engine restarted"
+          : "written to workspace .env — engine restarted";
       setConnStatusEl.className = "ok";
     } else {
       setConnStatusEl.textContent = (result && result.error) || "failed to write .env";

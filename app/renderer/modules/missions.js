@@ -379,12 +379,17 @@ function resetLabView() {
 
 navLabEl.addEventListener("click", () => showView("lab"));
 labCloseBtnEl.addEventListener("click", () => showView("console"));
-labNewBtnEl.addEventListener("click", () => {
-  const id = window.prompt("Mission id (lowercase letters, digits, - or _) — becomes .magentra/missions/<id>.md:");
-  if (!id) return;
-  if (!/^[a-z0-9_-]+$/.test(id)) {
-    appendSysNote(`mission: "${id}" is not a valid id (lowercase letters, digits, - or _)`);
+labNewBtnEl.addEventListener("click", async () => {
+  const id = await showPromptModal({
+    title: "NEW MISSION",
+    hint: "Mission id — becomes .magentra/missions/<id>.md (lowercase letters, digits, - or _).",
+    placeholder: "lit-scan",
+  });
+  if (!id || !id.trim()) return;
+  const trimmed = id.trim();
+  if (!/^[a-z0-9_-]+$/.test(trimmed)) {
+    appendSysNote(`mission: "${trimmed}" is not a valid id (lowercase letters, digits, - or _)`);
     return;
   }
-  sendMissionCommand(`new ${id}`);
+  sendMissionCommand(`new ${trimmed}`);
 });

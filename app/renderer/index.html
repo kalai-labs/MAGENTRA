@@ -137,7 +137,7 @@
         <button id="teamCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
       </div>
       <div id="teamRoster"></div>
-      <p class="team-hint">Agents live in <code>.magentra/team/*.md</code> — edit files directly or drop documents onto a card to fill its backpack.</p>
+      <p class="team-hint">Agents live in <code>.magentra/team/*.md</code> — edit files directly, or drop documents onto a card: they are indexed into that member's <em>backpack</em>, distilled into a standing brief it carries on every run, and retrieved in full when a task touches them.</p>
     </section>
 
     <section id="changesView" class="stage-view hidden">
@@ -336,6 +336,19 @@
   <button id="taskTab" class="hidden" title="Show tasks" aria-label="Show tasks">◒ <span id="taskTabCount">0/0</span></button>
 
   <!-- ── deletion guard ─────────────────────────────────────────────────── -->
+  <!-- ── text prompt modal (window.prompt is unsupported in Electron) ────── -->
+  <div id="promptModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="promptModalTitle">
+    <div class="modal-box">
+      <div class="modal-title" id="promptModalTitle">INPUT</div>
+      <p class="modal-sub" id="promptModalHint"></p>
+      <input id="promptModalInput" type="text" spellcheck="false" />
+      <div class="modal-actions">
+        <button id="promptModalCancel">CANCEL (Esc)</button>
+        <button id="promptModalOk">OK (⏎)</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── keyboard cheat sheet (?) ───────────────────────────────────────── -->
   <div id="shortcutSheet" class="hidden" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
     <div class="modal-box">

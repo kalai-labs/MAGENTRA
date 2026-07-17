@@ -45,6 +45,7 @@ function enterActiveState(workspace) {
   workspaceOpen = true;
   navSessionsEl.classList.remove("hidden");
   navLabEl.classList.remove("hidden");
+  void loadConnectionCard();
   sendBtnEl.disabled = false;
   clearBtnEl.disabled = false;
   syncActivityUi();

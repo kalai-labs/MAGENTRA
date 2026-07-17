@@ -113,8 +113,12 @@ function renderSessions() {
     renameBtn.className = "session-delete session-rename";
     renameBtn.title = "Rename session";
     renameBtn.textContent = "RENAME";
-    renameBtn.addEventListener("click", () => {
-      const next = window.prompt("Session name:", sessionDisplayName(session));
+    renameBtn.addEventListener("click", async () => {
+      const next = await showPromptModal({
+        title: "RENAME SESSION",
+        hint: `A name for ${session.id} — shown in this list instead of the first message.`,
+        value: sessionDisplayName(session),
+      });
       if (next === null || !next.trim()) return;
       window.magentra.send({ type: "rename_session", id: session.id, label: next.trim() });
     });
@@ -212,6 +216,9 @@ function onSessionStarted(event) {
   // and the model hints can never drift from what the engine actually does.
   if (Array.isArray(event.commands) && event.commands.length > 0) SLASH_COMMANDS = event.commands;
   if (event.rateCard && typeof event.rateCard === "object") modelRateCard = event.rateCard;
+  // The rate card arrives with this event — repaint the footer hint so the
+  // running model shows its prices/window from the very first session.
+  if (hintModelEl && event.model) hintModelEl.textContent = modelHintText(event.model);
   appendSysNote(`session ${event.sessionId} · model ${event.model}`);
   // A fresh session (boot, or /clear) is a fresh bill and an empty window.
   sessionModel = event.model;

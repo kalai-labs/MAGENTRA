@@ -176,6 +176,37 @@ function writeToEngine(frame) {
 
 const API_KEY_ENV_LINE_RE = /^\s*(?:export\s+)?[A-Z0-9_]*API_KEY\s*=\s*\S/;
 
+/**
+ * The API-key lines of a workspace .env, parsed into { VAR: value }. The
+ * workspace .env is the source of truth the app itself manages: startEngine
+ * overlays these onto the child env so a stale key exported in the user's
+ * shell can never shadow the key they just saved (the engine's own .env
+ * loader deliberately lets real env vars win).
+ */
+function readWorkspaceEnvKeys(workspace) {
+  const keys = {};
+  if (!workspace) return keys;
+  try {
+    const content = fs.readFileSync(path.join(workspace, ".env"), "utf8");
+    for (const rawLine of content.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (line === "" || line.startsWith("#")) continue;
+      const eq = line.indexOf("=");
+      if (eq === -1) continue;
+      const name = line.slice(0, eq).replace(/^export\s+/, "").trim();
+      if (!/^[A-Z0-9_]*API_KEY$/.test(name)) continue;
+      let value = line.slice(eq + 1).trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      if (value) keys[name] = value;
+    }
+  } catch {
+    // missing/unreadable .env — nothing to overlay
+  }
+  return keys;
+}
+
 /** Best-effort check for whether a workspace already has API credentials
  * configured, so we know whether to run the engine or trigger the setup
  * wizard instead. Never throws — treats unreadable/missing files as "no". */
@@ -236,6 +267,9 @@ function startEngine(workspace, model) {
 
   const env = {
     ...process.env,
+    // Workspace .env keys beat anything inherited from the shell — see
+    // readWorkspaceEnvKeys for why.
+    ...readWorkspaceEnvKeys(workspace),
     ...entry.env,
     MAGENTRA_MODEL: model || DEFAULT_MODEL,
   };
@@ -697,13 +731,19 @@ function validateCredentialPayload(payload) {
 
   // Local servers (Ollama, LM Studio) need no key; every hosted endpoint does.
   const local = isLocalBaseUrl(baseUrl);
-  if (typeof apiKey !== "string" || (apiKey.length === 0 && !local)) {
+  if (typeof apiKey !== "string") {
     return { ok: false, error: "apiKey is required" };
   }
-  if (apiKey.length > 4096) {
+  // Pasted keys routinely arrive with a trailing newline/space; trimming here
+  // keeps TEST, .env, and the engine all seeing the exact same string.
+  const trimmedKey = apiKey.trim();
+  if (trimmedKey.length === 0 && !local) {
+    return { ok: false, error: "apiKey is required" };
+  }
+  if (trimmedKey.length > 4096) {
     return { ok: false, error: "apiKey is too long" };
   }
-  if (/[\r\n]/.test(apiKey)) {
+  if (/[\r\n]/.test(trimmedKey)) {
     return { ok: false, error: "apiKey must not contain newlines" };
   }
 
@@ -751,7 +791,7 @@ function validateCredentialPayload(payload) {
 
   return {
     ok: true,
-    apiKey,
+    apiKey: trimmedKey,
     model: resolvedModel,
     provider: resolvedProvider,
     baseUrl: resolvedBaseUrl,
@@ -760,6 +800,11 @@ function validateCredentialPayload(payload) {
 }
 
 ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
+  // SAVE with an empty key field keeps the already-saved key: the user is
+  // updating model/URL/context, not the credential.
+  if (payload && typeof payload === "object" && payload.useSavedKey) {
+    payload = { ...payload, apiKey: savedWorkspaceKey() };
+  }
   const validated = validateCredentialPayload(payload);
   if (!validated.ok) return validated;
   const { apiKey, model, provider, baseUrl, contextWindow } = validated;
@@ -838,7 +883,43 @@ ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
   return { ok: true };
 });
 
+/** The saved key for the current workspace (first *_API_KEY line of .env). */
+function savedWorkspaceKey() {
+  const keys = readWorkspaceEnvKeys(currentConfig.workspace);
+  const name = Object.keys(keys)[0];
+  return name ? keys[name] : "";
+}
+
+// What the Settings → Connection card shows on open: the saved endpoint and
+// whether a key exists (never the key itself — that goes through revealKey).
+ipcMain.handle("connection:info", () => {
+  const workspace = currentConfig.workspace;
+  const info = { baseUrl: "", model: currentConfig.model || "", provider: "openai-compat", contextWindow: "", hasKey: false };
+  if (!workspace) return info;
+  info.hasKey = savedWorkspaceKey() !== "";
+  try {
+    const settings = JSON.parse(fs.readFileSync(path.join(workspace, ".magentra", "settings.json"), "utf8"));
+    if (settings && typeof settings === "object") {
+      if (typeof settings.baseUrl === "string") info.baseUrl = settings.baseUrl;
+      if (typeof settings.model === "string") info.model = settings.model;
+      if (settings.provider === "anthropic") info.provider = "anthropic";
+      if (Number.isFinite(settings.contextWindow)) info.contextWindow = String(settings.contextWindow);
+    }
+  } catch {
+    // no settings file yet — defaults stand
+  }
+  return info;
+});
+
+// The actual saved key, on explicit request (the reveal button). It is the
+// user's own workspace .env on their own machine — "reveal" must mean reveal.
+ipcMain.handle("connection:revealKey", () => ({ key: savedWorkspaceKey() }));
+
 ipcMain.handle("setup:testConnection", async (_evt, payload) => {
+  // An empty key field with a saved key means "test the saved connection".
+  if (payload && typeof payload === "object" && payload.useSavedKey) {
+    payload = { ...payload, apiKey: savedWorkspaceKey() };
+  }
   const validated = validateCredentialPayload(payload);
   if (!validated.ok) return validated;
   const { apiKey, provider, baseUrl } = validated;

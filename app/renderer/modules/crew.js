@@ -55,6 +55,9 @@ function setupCrewCardDrop(cardEl, agentId) {
         appendSysNote(`crew: couldn't resolve a path for "${file.name}" — skipped`);
         continue;
       }
+      // Immediate feedback: the card only updates when team_updated arrives,
+      // which can lag behind the drop by a background index build.
+      appendSysNote(`crew: adding "${file.name}" to the backpack — it will be indexed, then distilled into the member's brief`);
       window.magentra.addDoc(agentId, filePath);
     }
   });
@@ -135,19 +138,46 @@ function createCrewCard(agent) {
 
   const titleEl = document.createElement("div");
   titleEl.className = "pack-title";
-  titleEl.textContent = `BACKPACK · ${docCount} docs `;
+  titleEl.textContent = `BACKPACK · ${docCount} doc${docCount === 1 ? "" : "s"} `;
   if (agent.ready) {
     const readyEl = document.createElement("span");
     readyEl.className = "pack-ready";
     readyEl.textContent = "● ready";
+    readyEl.title = "Distilled into the member's brief; retrieved on demand during its runs";
     titleEl.appendChild(readyEl);
   } else if (progress && progress.active) {
     const buildingEl = document.createElement("span");
     buildingEl.className = "pack-building";
     buildingEl.textContent = "◐ indexing";
     titleEl.appendChild(buildingEl);
+  } else if (docCount > 0) {
+    const pendingEl = document.createElement("span");
+    pendingEl.className = "pack-building";
+    pendingEl.textContent = "○ not indexed yet";
+    titleEl.appendChild(pendingEl);
   }
   packEl.appendChild(titleEl);
+
+  // What is actually inside, and what it does — a count alone told the user
+  // nothing about the effect of dropping a document on the card.
+  if (docCount > 0) {
+    const docsEl = document.createElement("ul");
+    docsEl.className = "pack-docs";
+    for (const doc of agent.docs || []) {
+      const li = document.createElement("li");
+      li.textContent = doc.split(/[\\/]/).pop();
+      li.title = doc;
+      docsEl.appendChild(li);
+    }
+    packEl.appendChild(docsEl);
+
+    const effectEl = document.createElement("div");
+    effectEl.className = "pack-effect";
+    effectEl.textContent = agent.ready
+      ? "✓ distilled into this member's standing brief — key points ride along on every run, details are retrieved when relevant (watch for BackpackSearch in its run log)"
+      : "documents are indexed in the background, then distilled into a brief this member carries into every run";
+    packEl.appendChild(effectEl);
+  }
 
   const barEl = document.createElement("div");
   barEl.className = "pack-bar";
@@ -368,11 +398,14 @@ navSettingsEl.addEventListener("click", () => showView("settings"));
 settingsCloseBtnEl.addEventListener("click", () => showView("console"));
 teamReloadBtnEl.addEventListener("click", () => window.magentra.reloadTeam());
 if (teamHireBtnEl) {
-  teamHireBtnEl.addEventListener("click", () => {
-    const source = window.prompt(
-      "Path or URL of a .crewpack.json (one member) or .teampack.json (whole crew).\n" +
+  teamHireBtnEl.addEventListener("click", async () => {
+    const source = await showPromptModal({
+      title: "HIRE FROM PACK",
+      hint:
+        "Path or URL of a .crewpack.json (one member) or .teampack.json (whole crew). " +
         "Packs are tamper-EVIDENT, not forge-proof: records are hash-chained but unsigned — hire only from sources you trust.",
-    );
+      placeholder: "/path/to/reviewer.crewpack.json or https://…",
+    });
     if (!source || !source.trim()) return;
     const path = source.trim();
     const command = path.includes("teampack") ? "team" : "crew";
