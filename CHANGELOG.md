@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.2.4.1 — 2026-07-17
+
+### Refactoring
+
+- refactor the whole app with less bugs ([55935d4](https://github.com/kalai-labs/MAGENTRA/commit/55935d47fb21b54d244c337157dc06d59e09aeca))
+
+[Compare with v0.2.4.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.2.4.0...v0.2.4.1)
+
 ## 0.1.0.0 — 2026-07-14
 
 The first release.
