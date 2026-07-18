@@ -175,6 +175,8 @@ export class Session {
   private readonly registry: ToolRegistry;
   private readonly emit: (event: CoreEvent) => void;
   private readonly reminders: string[] = [];
+  /** Skill turn-start texts already injected into this conversation (cleared on compaction). */
+  private readonly injectedSkillReminders = new Set<string>();
   private readonly dynamicSections = new Map<string, string>();
   private abortController: AbortController | undefined;
   private turnCounter = 0;
@@ -961,7 +963,17 @@ export class Session {
       this.planReminderFired = false;
     }
 
-    for (const text of this.opts.modeEngine?.turnStartInjections() ?? []) this.remind(text);
+    // Skill turn-start injections fire ONCE per conversation, not every turn —
+    // repeating them each turn duplicated the same text into history forever
+    // (~140 tokens/turn with several skills on). The set tracks which texts
+    // are already in context: a skill enabled mid-session injects on the next
+    // turn, and compaction clears the set so the surviving conversation gets
+    // the reminders re-established after the originals were summarized away.
+    for (const text of this.opts.modeEngine?.turnStartInjections() ?? []) {
+      if (this.injectedSkillReminders.has(text)) continue;
+      this.remind(text);
+      this.injectedSkillReminders.add(text);
+    }
 
     // debug.ma: at most one "rerun the repro" verify nudge per turn.
     this.debugVerifyNudgeFired = false;
@@ -1576,6 +1588,9 @@ export class Session {
     // The window was just emptied; the next response reports its true new size.
     // (Cost/usage totals stay — compaction does not un-bill what was spent.)
     this.stats.contextTokens = 0;
+    // The original skill reminders likely lived in the summarized span — let
+    // the next turn re-establish them in the surviving conversation.
+    this.injectedSkillReminders.clear();
     // An automatic (threshold) compaction must not be silent — mid-turn it
     // would otherwise look like the agent quietly forgot the conversation.
     if (!force) {

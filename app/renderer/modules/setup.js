@@ -249,6 +249,7 @@ if (wizStartBtnEl) {
       closeModalA11y();
       wizApiKeyEl.value = "";
       wizConnectionChanged();
+      maybeStartTour();
     } else {
       wizStatusEl.textContent = (result && result.error) || "failed to save connection";
       wizStatusEl.className = "err";

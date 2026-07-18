@@ -44,7 +44,7 @@ land?), not on the model's prose.
 
 ## Agent
 
-- [ ] **System prompt assembly** — env, skills, standards, atlas, `.ma` sections compose in the right order. `pure`
+- [ ] **System prompt assembly** — env, skills, standards, atlas, skill sections compose in the right order. `pure`
 - [ ] **Subagent types** — each type gets its declared toolset and role; a role override replaces the role without touching the toolset. `pure`
 - [ ] **Subagent spawn** — a child runs, streams tagged events, and returns its final text to the parent. `llm`
 - [ ] **Skills** — a markdown skill in `.magentra/skills/` is discovered and its body reaches the model through the `Skill` tool. `fs` + `llm`
@@ -90,13 +90,13 @@ land?), not on the model's prose.
 - [ ] **Crew pack export/import** — a clean member round-trips byte-identically; a member carrying a secret **fails closed** (no file written at all) unless `redact` is passed. `fs`
 - [ ] **`/build-crew`** — designs a crew from the project when none exists. `llm`
 
-## `.ma` disciplines
+## Discipline skills
 
 - [ ] **Mode toggle** — `/styles on|off <id>`; `modes_updated` reflects it. `pure`
-- [ ] **Conflicts** — an optional mode that conflicts with a *core* mode suspends it (`suspendedBy`), and deactivating restores it. `pure`
+- [ ] **Conflicts** — enabling a skill switches off any active skill it `conflicts:` with (most-recent-wins), with an advisory message. `pure`
 - [ ] **Mode gates** — a mode can forbid a tool outright, or require tasks to exist first. `pure`
-- [ ] **Oracle-script debugging (`debug.ma`)** — edits stay locked until a repro script has been *observed failing*; writes into the debug dir are exempt so the script can be authored; a later pass marks the fix verified. `proc` + `llm`
-- [ ] **Custom `.ma` files** — a user-authored mode loads and applies. `fs`
+- [ ] **Oracle-script debugging (the `debug` skill)** — edits stay locked until a repro script has been *observed failing*; writes into the debug dir are exempt so the script can be authored; a later pass marks the fix verified. `proc` + `llm`
+- [ ] **Custom skill files** — a user-authored `.magentra/skills/*.md` discipline loads and applies. `fs`
 
 ## Scheduling
 

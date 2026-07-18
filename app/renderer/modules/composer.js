@@ -108,7 +108,6 @@ function completeSlashCommand(cmd) {
 
 function resetLocalViewForClear(preserveTasks = false) {
   if (streamEl) streamEl.textContent = "";
-  firstHintEl = null;
   for (const card of agentCards.values()) {
     if (card.intervalId) clearInterval(card.intervalId);
   }
@@ -228,7 +227,6 @@ function clearMessageQueue() {
 function sendMessage() {
   const text = promptInputEl.value;
   if (!text.trim() || !engineLinked) return;
-  dismissFirstUseHint();
 
   // Mid-turn: queue instead of dropping the input. It flushes on turn end.
   if (busy) {
@@ -331,9 +329,9 @@ function hardStop() {
 stopBtnEl.addEventListener("click", hardStop);
 
 // Escape, one handler, strict priority: dismiss the topmost surface first
-// (palette → styles panel → wizard → permission modal), and only interrupt
-// the turn when nothing was open. Two competing listeners here once made a
-// modal deny ALSO hard-kill the running turn.
+// (palette → skill wizard → tour → setup wizard → permission modal), and only
+// interrupt the turn when nothing was open. Two competing listeners here once
+// made a modal deny ALSO hard-kill the running turn.
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (closeOpenMenu()) return; // an open menu is the topmost surface
@@ -352,8 +350,12 @@ window.addEventListener("keydown", (e) => {
     hideSlashPop();
     return;
   }
-  if (stylesPanelOpen) {
-    closeStylesPanel();
+  if (skillWizardEl && !skillWizardEl.classList.contains("hidden")) {
+    closeSkillWizard();
+    return;
+  }
+  if (tourActive) {
+    endTour();
     return;
   }
   if (!setupWizardEl.classList.contains("hidden")) {
@@ -400,7 +402,7 @@ const isMod = (e) => (IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
 const isTypingTarget = (t) =>
   t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT");
 
-const VIEW_KEYS = { 1: "console", 2: "sessions", 3: "team", 4: "lab", 5: "changes", 6: "settings" };
+const VIEW_KEYS = { 1: "console", 2: "sessions", 3: "team", 4: "lab", 5: "changes", 6: "settings", 7: "skills" };
 
 function toggleShortcutSheet() {
   if (!shortcutSheetEl) return;
@@ -455,13 +457,10 @@ if (shortcutCloseBtnEl) shortcutCloseBtnEl.addEventListener("click", toggleShort
 allowBtnEl.addEventListener("click", () => resolvePermission("allow_once"));
 denyBtnEl.addEventListener("click", () => resolvePermission("deny"));
 
-document.addEventListener("click", (e) => {
-  if (stylesPanelOpen && !modeChipsEl.contains(e.target)) closeStylesPanel();
-});
-
 function dismissSetupWizard() {
   setupWizardEl.classList.add("hidden");
   closeModalA11y();
+  maybeStartTour();
   if (!engineLinked) {
     // The composer is locked (syncActivityUi) — give the stranded user the
     // way back on a banner instead of only a note that scrolls away.

@@ -1,14 +1,14 @@
 import { execFileSync } from "node:child_process";
 
 /**
- * Support for the /debug reproduce-first debugging mode (debug.ma). The mode
+ * Support for the /debug reproduce-first debugging mode (the debug skill). The mode
  * runs a repro-oracle loop: the model writes a self-checking repro script here,
  * observes it fail (which unlocks editing), then iterates until the same script
  * passes. This module names the script location and builds the one-shot context
  * header the /debug command prepends to the user's bug report.
  */
 
-/** Workspace-relative directory the model owns for the debug repro script (always writable while debug.ma is active). */
+/** Workspace-relative directory the model owns for the debug repro script (always writable while the debug skill is active). */
 export const DEBUG_DIR = ".magentra/debug";
 
 /** Workspace-relative path of the repro script — a PowerShell script on Windows, a shell script elsewhere. */

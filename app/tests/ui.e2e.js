@@ -80,6 +80,9 @@ async function run() {
       theme: "workbench", sidebar: "flex", rain: false, promptDisabled: true,
       recentCount: 1, title: "Start a new conversation", version: "v0.0.0-test",
     });
+    // Keep the auto-starting first-run tour out of the unrelated scenarios;
+    // the dedicated tour test below replays it explicitly via startTour(true).
+    await evaluate(`localStorage.setItem('magentra-tour-done', '1')`);
   });
 
   await test("opening a recent workspace activates composer, sidebar, and inspector", async () => {
@@ -391,14 +394,86 @@ async function run() {
     assert.ok(frames.some((frame) => frame.type === "plan_decision" && frame.approve === true));
   });
 
-  await test("settings, styles, shortcuts, inspector, and setup recovery are functional", async () => {
+  await test("skills view, chips, recommended set, and create-skill wizard are functional", async () => {
     await emit({ type: "modes_updated", modes: [
-      { id: "grill", name: "Grill", description: "Challenge assumptions", active: false, core: false, conflicts: [] },
-      { id: "truth", name: "Truth", description: "Be accurate", active: true, core: true, conflicts: [] },
+      { id: "grill", name: "Grill", description: "Challenge assumptions", why: "Stress-test plans before code", active: false, recommended: false, conflicts: [] },
+      { id: "prover", name: "Prover", description: "Prove every change", why: "Enable when correctness matters", active: false, recommended: true, conflicts: [] },
     ] });
+    // Hero chip toggles a skill through the shared set_modes path.
     await evaluate(`document.querySelector('.mode-chip.hero').click()`);
     await pause();
     assert.ok(modes.some((active) => active.includes("grill")));
+    // The summary chip opens the Skills view; both cards render with badges + why.
+    await evaluate(`document.querySelector('#skillsSummary').click()`);
+    await pause();
+    let state = await evaluate(`(() => ({
+      view: document.body.dataset.view,
+      cards: document.querySelectorAll('.skill-card').length,
+      badges: document.querySelectorAll('.skill-badge').length,
+      whyHidden: document.querySelectorAll('.skill-why.hidden').length,
+    }))()`);
+    assert.deepEqual(state, { view: "skills", cards: 2, badges: 1, whyHidden: 2 });
+    // The ? explainer reveals the why copy.
+    await evaluate(`document.querySelectorAll('.skill-why-btn')[0].click()`);
+    assert.equal(await evaluate(`document.querySelectorAll('.skill-why:not(.hidden)').length`), 1);
+    // A card toggle flips the discipline via set_modes.
+    modes.length = 0;
+    await evaluate(`[...document.querySelectorAll('.skill-card')].find((c) => c.querySelector('.skill-name').textContent === 'Prover').querySelector('.skill-toggle').click()`);
+    await pause();
+    assert.ok(modes.some((active) => active.includes("prover")));
+    // Enable-recommended enables every badged skill at once.
+    await emit({ type: "modes_updated", modes: [
+      { id: "grill", name: "Grill", description: "Challenge assumptions", why: "", active: false, recommended: false, conflicts: [] },
+      { id: "prover", name: "Prover", description: "Prove every change", why: "", active: false, recommended: true, conflicts: [] },
+    ] });
+    modes.length = 0;
+    await evaluate(`document.querySelector('#skillsRecommendBtn').click()`);
+    await pause();
+    assert.ok(modes.some((active) => active.includes("prover")));
+    // Create-skill wizard: describe → generate_skill frame → draft preview → install_skill frame.
+    await evaluate(`document.querySelector('#skillCreateBtn').click()`);
+    assert.equal(await evaluate(`document.querySelector('#skillWizard').classList.contains('hidden')`), false);
+    await evaluate(`(() => {
+      document.querySelector('#skillDescInput').value = 'Always write rollback SQL beside every migration';
+      document.querySelector('#skillWizGenerate').click();
+    })()`);
+    await pause();
+    assert.ok(frames.some((frame) => frame.type === "generate_skill" && frame.kind === "discipline"));
+    await emit({ type: "skill_draft", ok: true, suggestedFilename: "sql-rollback.md", text: "---\\nkind: discipline\\nname: SQL Rollback\\n---\\n\\nAlways pair migrations with rollbacks." });
+    state = await evaluate(`(() => ({
+      step2: !document.querySelector('#skillWizStep2').classList.contains('hidden'),
+      file: document.querySelector('#skillWizFile').textContent,
+      hasText: document.querySelector('#skillDraftText').value.includes('rollbacks'),
+    }))()`);
+    assert.deepEqual(state, { step2: true, file: "sql-rollback.md", hasText: true });
+    await evaluate(`document.querySelector('#skillWizInstall').click()`);
+    await pause();
+    assert.ok(frames.some((frame) => frame.type === "install_skill" && frame.filename === "sql-rollback.md"));
+    assert.equal(await evaluate(`document.querySelector('#skillWizard').classList.contains('hidden')`), true);
+    // Action skills from skills_updated render as on-demand cards.
+    await emit({ type: "skills_updated", skills: [{ name: "sql-review", description: "Review SQL before it runs" }] });
+    assert.equal(await evaluate(`document.querySelectorAll('.skill-card.action').length`), 1);
+    await evaluate(`document.querySelector('#skillsCloseBtn').click()`);
+  });
+
+  await test("the teaching tour walks all eight steps and is replayable", async () => {
+    await evaluate(`startTour(true)`);
+    let state = await evaluate(`(() => ({
+      visible: !document.querySelector('#tourOverlay').classList.contains('hidden'),
+      label: document.querySelector('#tourStepLabel').textContent,
+    }))()`);
+    assert.deepEqual(state, { visible: true, label: "1 / 8" });
+    for (let i = 0; i < 7; i++) await evaluate(`document.querySelector('#tourNext').click()`);
+    assert.equal(await evaluate(`document.querySelector('#tourNext').textContent`), "FINISH ▸");
+    await evaluate(`document.querySelector('#tourNext').click()`);
+    assert.equal(await evaluate(`document.querySelector('#tourOverlay').classList.contains('hidden')`), true);
+    // Esc skips a replayed tour immediately.
+    await evaluate(`startTour(true)`);
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
+    assert.equal(await evaluate(`document.querySelector('#tourOverlay').classList.contains('hidden')`), true);
+  });
+
+  await test("settings, shortcuts, inspector, and setup recovery are functional", async () => {
     await evaluate(`document.querySelector('#navSettings').click()`);
     await pause();
     assert.equal(await evaluate(`document.body.dataset.view`), "settings");

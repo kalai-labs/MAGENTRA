@@ -16,7 +16,9 @@ import type { ContentBlock, Msg, Provider } from "@magentra/providers";
 import { AsyncQueue } from "../util/asyncQueue.js";
 import { CronScheduler } from "../scheduling/cron.js";
 import { HookRunner } from "../agent/hooks.js";
-import { loadModes, ModeEngine } from "../ma/modes.js";
+import { loadModes, ModeEngine, parseSkillMd } from "../ma/modes.js";
+import { parseFrontmatter } from "../config/frontmatter.js";
+import { loadSkills } from "../agent/skills.js";
 import { loadAtlas } from "../knowledge/atlas.js";
 import { buildDebugHeader } from "../ma/debug.js";
 import { buildCrewPrompt, loadTeam, type CrewAgent } from "../crew/team.js";
@@ -319,6 +321,7 @@ export class Engine {
       cwd: this.opts.cwd,
       model: this.opts.settings.model,
       mode: this.session.permissions.getMode(),
+      skills: (this.opts.skills ?? []).map((s) => ({ name: s.name, description: s.description })),
     });
     this.emit({ type: "task_list_updated", tasks: this.session.tasks.list() });
     this.emitMissionsUpdated();
@@ -409,6 +412,156 @@ export class Engine {
           payload: { description: "atlas build" },
         });
       });
+  }
+
+  // ── Create-skill wizard ────────────────────────────────────────────────────
+
+  /**
+   * generate_skill: author a skill .md from the user's plain-language
+   * description with a one-shot subagent, validate it with the real parser,
+   * and retry with the error appended (up to 3 attempts) before giving up.
+   * Emits skill_draft either way — the frontend previews the text or shows
+   * the failure. Runs like the atlas build: backgrounded, stoppable, never
+   * tied to a turn.
+   */
+  private skillGenBusy = false;
+
+  private startSkillGeneration(description: string, kind: "discipline" | "action"): void {
+    if (this.skillGenBusy) {
+      this.emit({ type: "command_output", text: "🧩 a skill generation is already running." });
+      return;
+    }
+    if (typeof description !== "string" || description.trim().length === 0) {
+      this.emit({ type: "skill_draft", ok: false, error: "Describe the skill first — the description was empty." });
+      return;
+    }
+    this.skillGenBusy = true;
+    this.emit({
+      type: "background_notification",
+      taskId: "skill-gen",
+      kind: "start",
+      payload: { description: "generating skill" },
+    });
+    void this.generateSkill(description.trim(), kind)
+      .then((draft) => this.emit({ type: "skill_draft", ...draft }))
+      .catch((err: Error) => this.emit({ type: "skill_draft", ok: false, error: err.message }))
+      .finally(() => {
+        this.skillGenBusy = false;
+        this.emit({
+          type: "background_notification",
+          taskId: "skill-gen",
+          kind: "exit",
+          payload: { description: "generating skill" },
+        });
+      });
+  }
+
+  private async generateSkill(
+    description: string,
+    kind: "discipline" | "action",
+  ): Promise<{ ok: boolean; text?: string; suggestedFilename?: string; error?: string }> {
+    const takenIds = this.modeEngine.list().map((m) => m.id);
+    let feedback = "";
+    let lastError = "";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const raw = await this.session.spawnAgent({
+        agentType: "explore",
+        description: "author a skill file",
+        maxIterations: 4,
+        roleOverride: SKILL_AUTHOR_ROLE,
+        prompt: buildSkillPrompt(description, kind, takenIds) + feedback,
+      });
+      const text = stripCodeFence(raw);
+      const check = this.validateSkillText(text, kind);
+      if (check.ok) return { ok: true, text, suggestedFilename: check.filename };
+      lastError = check.error;
+      feedback = `\n\nYour previous attempt was rejected by the validator:\n${check.error}\nProduce the corrected complete file.`;
+    }
+    return { ok: false, error: `Generation failed validation after 3 attempts: ${lastError}` };
+  }
+
+  /** Validates a candidate skill text for its kind; returns the suggested filename on success. */
+  private validateSkillText(
+    text: string,
+    kind: "discipline" | "action",
+  ): { ok: true; filename: string } | { ok: false; error: string } {
+    const fm = parseFrontmatter(text);
+    if (!fm.present) return { ok: false, error: "the file must open with --- frontmatter" };
+    const declaredKind = (fm.map.kind ?? "action").trim();
+    if (kind === "discipline" && declaredKind !== "discipline") {
+      return { ok: false, error: 'a discipline skill must declare "kind: discipline" in the frontmatter' };
+    }
+    if (kind === "action" && declaredKind === "discipline") {
+      return { ok: false, error: 'an action skill must not declare "kind: discipline"' };
+    }
+    const slugSource = fm.map.id ?? fm.map.name ?? "";
+    const slug = slugSource
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    if (!slug || !/^[a-z]/.test(slug)) {
+      return { ok: false, error: "frontmatter needs a name: (or id:) that yields a [a-z][a-z0-9_-]* slug" };
+    }
+    if (kind === "discipline") {
+      try {
+        parseSkillMd(text, "workspace", slug);
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
+      }
+    } else {
+      if (!fm.map.name || !fm.map.description) {
+        return { ok: false, error: "an action skill needs name: and description: frontmatter keys" };
+      }
+      if (fm.body.trim().length === 0) return { ok: false, error: "the Markdown body (the procedure) is empty" };
+    }
+    return { ok: true, filename: `${slug}.md` };
+  }
+
+  /**
+   * install_skill: re-validate (never trust a stale draft), write into
+   * .magentra/skills/, reload both skill kinds in place so the live session
+   * sees them, auto-enable a discipline, and re-emit the updated lists.
+   */
+  private installSkill(filename: string, text: string): void {
+    if (!/^[a-z][a-z0-9_-]*\.md$/.test(filename)) {
+      this.emit({ type: "error", message: `install_skill: filename "${filename}" must match <slug>.md`, fatal: false });
+      return;
+    }
+    const kind = (parseFrontmatter(text).map.kind ?? "action").trim() === "discipline" ? "discipline" : "action";
+    const check = this.validateSkillText(text, kind);
+    if (!check.ok) {
+      this.emit({ type: "error", message: `install_skill: ${check.error}`, fatal: false });
+      return;
+    }
+    const dir = join(this.opts.cwd, ".magentra", "skills");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, filename), text.endsWith("\n") ? text : text + "\n");
+
+    // Reload both kinds. The action-skill array mutates in place so the live
+    // session's captured reference picks the new skill up on its next request.
+    const reloaded = loadModes(this.opts.cwd);
+    for (const warning of reloaded.warnings) {
+      this.emit({ type: "command_output", text: `⚠ ${warning}` });
+    }
+    this.modeEngine.replaceModes(reloaded.modes);
+    const actions = loadSkills(this.opts.cwd);
+    if (this.opts.skills) {
+      this.opts.skills.length = 0;
+      this.opts.skills.push(...actions);
+    } else {
+      this.opts.skills = actions;
+    }
+    this.emit({ type: "skills_updated", skills: actions.map((s) => ({ name: s.name, description: s.description })) });
+
+    const id = filename.slice(0, -3);
+    if (kind === "discipline") {
+      const active = this.modeEngine.list().filter((m) => m.active).map((m) => m.id);
+      this.applyModes([...new Set([...active, id])]);
+      this.emit({ type: "command_output", text: `🧩 installed and enabled the ${id} skill (.magentra/skills/${filename})` });
+    } else {
+      this.emitModesUpdated();
+      this.emit({ type: "command_output", text: `🧩 installed the ${id} skill (.magentra/skills/${filename}) — the agent can now invoke it on demand` });
+    }
   }
 
   /**
@@ -564,6 +717,12 @@ export class Engine {
       case "reload_team":
         this.reloadTeam();
         break;
+      case "generate_skill":
+        this.startSkillGeneration(request.description, request.kind);
+        break;
+      case "install_skill":
+        this.installSkill(request.filename, request.text);
+        break;
       default:
         // The wire accepts any {type: string} object, so an unknown type can
         // arrive at runtime despite the exhaustive union above. Answer it —
@@ -582,13 +741,13 @@ export class Engine {
   }
 
   /**
-   * The single toggle path for optional .ma styles, shared by the desktop's
-   * `set_modes` request and the terminal's `/styles` command. Applies the
-   * desired active set through the ModeEngine (core forced on, @conflicts
-   * resolved), surfaces every advisory/refusal message as command_output, and
-   * re-emits modes_updated so all frontends stay in sync. Returns those
-   * messages so a caller can tell whether the toggle was refused. Session-only:
-   * the active set lives in memory and is never written to settings.
+   * The single toggle path for discipline skills, shared by the desktop's
+   * `set_modes` request and the terminal's `/skills` command. Applies the
+   * desired active set through the ModeEngine (nothing is locked; `conflicts:`
+   * resolved most-recent-wins), surfaces every advisory message as
+   * command_output, and re-emits modes_updated so all frontends stay in sync.
+   * Session-only: the active set lives in memory and is never written to
+   * settings.
    */
   private applyModes(active: string[]): string[] {
     const { messages } = this.modeEngine.setActive(active);
@@ -756,7 +915,7 @@ export class Engine {
         this.emit({ type: "command_output", text: renderHelp() });
         break;
       case "skills":
-        this.emit({ type: "command_output", text: this.renderSkills() });
+        this.handleSkills(args);
         break;
       case "clear":
         // Swapping the session mid-turn would leave the old turn streaming
@@ -826,8 +985,8 @@ export class Engine {
               .join("\n") || "No saved sessions.",
         });
         break;
-      case "styles":
-        this.handleStyles(args);
+      case "styles": // deprecated alias for /skills
+        this.handleSkills(args);
         break;
       case "debug":
         this.handleDebug(args);
@@ -860,18 +1019,24 @@ export class Engine {
   }
 
   /**
-   * `/skills`: what the workspace has plugged into the engine — discovered
-   * skills with their descriptions, plus the loaded hooks/MCP/styles counts.
+   * The `/skills` listing: every skill in the workspace — discipline skills
+   * (always-on once enabled, freely toggleable, none locked) with their on/off
+   * state, then on-demand action skills, then the loaded-extension summary.
    * Extension points must be discoverable in-product, not only in docs.
    */
   private renderSkills(): string {
-    const skills = this.opts.skills ?? [];
-    const lines = ["Skills (.magentra/skills/):"];
-    if (skills.length === 0) {
-      lines.push("  (none discovered — add a <name>.md or <name>/SKILL.md file to create one)");
-    } else {
-      for (const skill of skills) lines.push(`  /${skill.name.padEnd(18)} ${skill.description}`);
+    const lines = ["Skills (.magentra/skills/) — disciplines shape every turn once enabled; actions run on demand:"];
+    for (const m of this.modeEngine.list()) {
+      const badge = m.recommended ? " ★recommended" : "";
+      lines.push(`  ${m.active ? "[on] " : "[off]"} ${m.id} — ${m.name}${badge} — ${m.description}`);
     }
+    const actions = this.opts.skills ?? [];
+    if (actions.length > 0) {
+      lines.push("  On-demand:");
+      for (const skill of actions) lines.push(`    /${skill.name.padEnd(18)} ${skill.description}`);
+    }
+    lines.push("");
+    lines.push("Toggle a discipline with /skills on <id> or /skills off <id> (this session only — not saved to settings).");
     lines.push("", this.extensionLines());
     return lines.join("\n");
   }
@@ -891,77 +1056,63 @@ export class Engine {
         .map((t) => (t.name.startsWith("mcp__") ? t.name.split("__")[1] : undefined))
         .filter(Boolean),
     ).size;
-    const styles = this.modeEngine.list();
-    const activeStyles = styles.filter((m) => m.active).length;
+    const disciplines = this.modeEngine.list();
+    const activeDisciplines = disciplines.filter((m) => m.active).length;
     return [
       `  Skills loaded:         ${(this.opts.skills ?? []).length}`,
       `  Hooks configured:      ${hookCount}`,
       `  MCP servers:           ${mcpConnected} connected of ${mcpCount} configured`,
-      `  Styles active:         ${activeStyles} of ${styles.length}`,
+      `  Disciplines active:    ${activeDisciplines} of ${disciplines.length}`,
     ].join("\n");
   }
 
   /**
-   * `/styles`: the terminal's way to list optional .ma styles and toggle them
-   * (the desktop uses set_modes chips). With no args it lists core styles
-   * (locked on) and optional styles with their on/off state; `/styles on|off
-   * <id>` builds the desired active set and routes it through {@link applyModes}
-   * — the exact path a desktop set_modes click takes — so core styles can't be
-   * turned off and a style that @conflicts a core one is refused with the
-   * ModeEngine's own message. Toggles are session-only (not persisted).
+   * `/skills`: list every skill, or toggle a discipline (the desktop uses
+   * set_modes / the Skills view). `/skills on|off <id>` builds the desired
+   * active set and routes it through {@link applyModes} — the exact path a
+   * desktop toggle takes. Nothing is locked; a conflict simply switches the
+   * conflicting skill off with an advisory message. Toggles are session-only
+   * (not persisted). `/styles` is a deprecated alias.
    */
-  private handleStyles(args?: string): void {
+  private handleSkills(args?: string): void {
     const tokens = args?.trim().split(/\s+/).filter(Boolean) ?? [];
     if (tokens.length === 0) {
-      this.emit({ type: "command_output", text: this.renderStyles() });
+      this.emit({ type: "command_output", text: this.renderSkills() });
       return;
     }
     const [verb, id] = tokens;
     if ((verb !== "on" && verb !== "off") || !id) {
       this.emit({
         type: "command_output",
-        text: "Usage: /styles [on|off <id>] — run /styles alone to list every style.",
+        text: "Usage: /skills [on|off <id>] — run /skills alone to list every skill.",
       });
       return;
     }
     const summary = this.modeEngine.list().find((m) => m.id === id);
     if (!summary) {
-      const optional = this.modeEngine
-        .list()
-        .filter((m) => !m.core)
-        .map((m) => m.id)
-        .join(", ");
-      this.emit({ type: "command_output", text: `Unknown style "${id}". Optional styles: ${optional}.` });
+      const ids = this.modeEngine.list().map((m) => m.id).join(", ");
+      this.emit({ type: "command_output", text: `Unknown skill "${id}". Disciplines: ${ids}.` });
       return;
     }
-    // Desired = the full current active set (core + active optionals) with the
-    // target added or removed, run through the shared toggle path. Passing the
-    // whole set means an "off <core>" attempt reads as omitting exactly that
-    // core mode, so the ModeEngine returns its own "always on" refusal.
     const active = this.modeEngine.list().filter((m) => m.active).map((m) => m.id);
     const desired = verb === "on" ? [...new Set([...active, id])] : active.filter((x) => x !== id);
-    const messages = this.applyModes(desired);
-    if (messages.length > 0) return; // a refusal (core-locked / conflict) was already surfaced
-    if (summary.core) {
-      this.emit({ type: "command_output", text: `🔒 ${id} is a core style — always on, can't be toggled.` });
-      return;
-    }
+    this.applyModes(desired);
     this.emit({
       type: "command_output",
       text:
         verb === "on"
-          ? `${id} on — ${summary.name} style active`
-          : `${id} off — ${summary.name} style disabled`,
+          ? `${id} on — ${summary.name} skill active`
+          : `${id} off — ${summary.name} skill disabled`,
     });
   }
 
   /**
-   * `/debug <prompt>`: activate the sticky debug.ma style (reproduce-first,
+   * `/debug <prompt>`: activate the sticky debug skill (reproduce-first,
    * oracle-script debugging) and start a turn seeded with the workspace
    * [debug context] header plus the user's bug report. `/debug off` deactivates
    * it; `/debug` with no argument just turns it on and asks for the symptom.
-   * Activation runs through {@link applyModes} — the same path /styles uses — so
-   * core-style locks and @conflicts are respected. Session-only (not persisted).
+   * Activation runs through {@link applyModes} — the same path /skills uses — so
+   * `conflicts:` resolution is respected. Session-only (not persisted).
    */
   private handleDebug(args?: string): void {
     const trimmed = args?.trim() ?? "";
@@ -984,22 +1135,6 @@ export class Engine {
     this.startExclusive("debugging", () =>
       this.session.runTurn(buildDebugHeader(this.opts.cwd) + "\n\n" + trimmed),
     );
-  }
-
-  /** The `/styles` listing: core styles locked on, optional styles with on/off state, plus the toggle hint. */
-  private renderStyles(): string {
-    const modes = this.modeEngine.list();
-    const lines = ["Styles (.ma) — core quality styles are always on; optional ones you can toggle:"];
-    for (const m of modes.filter((x) => x.core)) {
-      const state = m.suspendedBy ? `core, suspended by ${m.suspendedBy}` : "core, always on";
-      lines.push(`  🔒 ${m.id} — ${m.name} (${state})`);
-    }
-    for (const m of modes.filter((x) => !x.core)) {
-      lines.push(`  ${m.active ? "[on] " : "[off]"} ${m.id} — ${m.name} — ${m.description}`);
-    }
-    lines.push("");
-    lines.push("Toggle with /styles on <id> or /styles off <id> (this session only — not saved to settings).");
-    return lines.join("\n");
   }
 
   /** `/settings` lists the effective config; `/settings <key> <value>` persists and applies one. */
@@ -2055,7 +2190,7 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
   { cmd: "/compact", args: "", desc: "compact the conversation now" },
   { cmd: "/session", args: "", desc: "this session's bill: cost per model, API/wall time, code churn, context now" },
   { cmd: "/tasks", args: "", desc: "show the task list" },
-  { cmd: "/skills", args: "", desc: "discovered skills + loaded extensions (hooks, MCP servers, styles)" },
+  { cmd: "/skills", args: "[on|off <id>]", desc: "list skills (disciplines + on-demand), or toggle a discipline (session only)" },
   { cmd: "/lab", args: "[load|save]", desc: "one-file lab blueprint (magentricks.md): load applies it, save snapshots it" },
   { cmd: "/build-crew", args: "", desc: "design a crew of specialist agents (if none exists yet)" },
   {
@@ -2084,7 +2219,7 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
     ],
   },
   { cmd: "/mode", args: "<default|acceptEdits|plan|bypass>", desc: "set permission mode" },
-  { cmd: "/styles", args: "[on|off <id>]", desc: "list optional .ma styles, or toggle one (session only)" },
+  { cmd: "/styles", args: "[on|off <id>]", desc: "deprecated alias for /skills" },
   { cmd: "/debug", args: "<prompt>", desc: "reproduce-first debugging mode (off: /debug off)" },
   { cmd: "/settings", args: "[global] [k v]", desc: "show settings, or set one (add global to save to ~/.magentra)" },
   { cmd: "/resume", args: "<session-id>", desc: "resume a previous session" },
@@ -2103,7 +2238,7 @@ function renderHelp(): string {
     "  ! <command>      run a shell command; output lands in the conversation",
     "  Esc              interrupt the current turn",
     "",
-    "Glossary (crew, backpack, atlas, mission, styles, plan mode, deletion guard): SETTINGS → GLOSSARY in the app.",
+    "Glossary (crew, backpack, atlas, mission, skills, plan mode, deletion guard): SETTINGS → GLOSSARY in the app.",
   );
   return lines.join("\n");
 }
@@ -2248,4 +2383,78 @@ function renderCrewBuildResult(agents: CrewAgent[], warnings: string[]): string 
     lines.push(...crewWarningLines(warnings));
   }
   return lines.join("\n");
+}
+
+// ── Create-skill wizard: authoring prompt ────────────────────────────────────
+
+/** The subagent persona for generate_skill: it writes exactly one file, no commentary. */
+const SKILL_AUTHOR_ROLE = `You are a skill author for the MAGENTRA agent workbench. Your entire final
+response must be EXACTLY the content of one skill .md file — no code fences, no
+commentary before or after it. You may read a few workspace files first if the
+skill should reference real project conventions, but keep it brief.`;
+
+/** The format the generator must produce, per kind — kept in one place so the wizard and validator agree. */
+function buildSkillPrompt(description: string, kind: "discipline" | "action", takenIds: string[]): string {
+  const common = `The user wants a new ${kind} skill. Their description:
+"""
+${description}
+"""
+
+Already-taken skill ids (choose a DIFFERENT short kebab-case id): ${takenIds.join(", ")}.`;
+
+  if (kind === "action") {
+    return `${common}
+
+Produce a Markdown file in this exact shape — slim frontmatter, then the
+procedure as a well-structured Markdown body the agent will follow when the
+skill is invoked:
+
+---
+name: <short-kebab-case-id>
+description: <one line: when the agent should reach for this skill>
+---
+
+<the procedure: clear steps, headings and bullet lists welcome>`;
+  }
+
+  return `${common}
+
+Produce a Markdown file in this exact shape — slim frontmatter (only the keys
+shown; strings only, no YAML nesting), then Markdown sections. Only the section
+headings listed are allowed at the "## " level (use ### or deeper inside text).
+
+---
+kind: discipline
+name: <Display Name>
+description: <one line: what this discipline changes about how the agent works>
+why: <one line: why/when a user should enable it>
+auto: <comma, separated, trigger, keywords>            (optional)
+conflicts: <comma-separated skill ids>                 (optional)
+gate: <Tool[, Tool]> requires <tasks-exist|never|repro-failed>: <refusal message>   (optional, repeatable)
+---
+
+<the directive: the rules the agent must follow while this skill is active —
+this is the main body, before any "## " heading>
+
+## Vocabulary
+- <term>: <definition>          (optional section)
+
+## On turn start
+<a SHORT reminder (2-4 lines) injected once per conversation>   (optional section)
+
+## After an error
+<a SHORT nudge injected when a tool batch fails>                (optional section)
+
+## Planning checklist
+- <item>                        (optional section)
+
+## Wrap-up checklist
+- <item>                        (optional section)`;
+}
+
+/** Models love to wrap file output in a fence despite instructions — unwrap one if present. */
+function stripCodeFence(raw: string): string {
+  const text = raw.trim();
+  const m = /^```(?:markdown|md)?\n([\s\S]*?)\n```$/.exec(text);
+  return m ? m[1]! : text;
 }

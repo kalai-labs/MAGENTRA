@@ -154,18 +154,21 @@ behaviors), environment block, project memory (`MAGENTRA.md`, falling back to
 changes, background completions, plan-mode entry, and hook feedback; the prompt tells
 the model these come from the harness, not the user.
 
-### Modes (`.ma` styles): core vs optional
+### Skills: disciplines and actions
 
-Eleven built-in `.ma` styles shape how the agent works (directives, shared vocab, turn
-injections, tool gates, checklists); the full format is in `docs/MA-FORMAT.md`. Seven
-are **core** quality modes — `headlights`, `prover`, `deepmodule`, `surgeon`,
-`sentinel`, `obvious`, `lexicon` — always active in every session and non-disableable;
-this is the product's killer feature. The single source of truth is `CORE_MODE_IDS` in
-`engine/core/src/ma/modes.ts`. The other four (`grill`, `entropy`, `reshape`, `debug`)
-are **optional**, toggled per session via `settings.modes.active` (optional ids only,
-default `[]`) or the `set_modes` request. The `ModeEngine` unions core in, resolves
-`@conflicts` (core always wins), and refuses any attempt to drop a core mode with a
-one-line `command_output` message. `ModeSummary.core` lets frontends render locked chips.
+Skills are Markdown files under `.magentra/skills/` (full format:
+`docs/SKILLS.md`). A **discipline** shapes every turn while enabled —
+directives, shared vocab, once-per-conversation injections, tool gates,
+checklists; an **action** is an on-demand procedure invoked via the Skill tool.
+Eleven disciplines ship built in; **all are off by default and none are
+locked**. Seven — `headlights`, `prover`, `deepmodule`, `surgeon`, `sentinel`,
+`obvious`, `lexicon` — are badged **Recommended** (`RECOMMENDED_SKILL_IDS` in
+`engine/core/src/ma/modes.ts`) and the desktop offers a one-click enable of the
+set; advisory only. Disciplines are toggled per session via
+`settings.modes.active` (default `[]`), the `set_modes` request, or `/skills
+on|off <id>`. `ModeEngine` resolves `conflicts:` most-recent-wins (enabling a
+skill switches off what it conflicts with, with an advisory message);
+`ModeSummary.recommended`/`why` power the desktop's badges and "?" explainers.
 
 ### Design atlas (first-visit auto-exploration)
 

@@ -62,6 +62,10 @@
       <button class="dock-btn hidden" id="teamBtn" title="Crew" aria-label="Crew">
         <span class="dock-glyph team-glyph">◇</span><span class="dock-label">Crew</span>
       </button>
+      <button class="dock-btn hidden" id="navSkills" title="Skills" aria-label="Skills">
+        <span class="dock-glyph">◈</span><span class="dock-label">Skills</span>
+        <span id="dockSkillsCount" class="dock-badge hidden">0</span>
+      </button>
       <button class="dock-btn hidden" id="navChanges" title="Changes" aria-label="Changes">
         <span class="dock-glyph">±</span><span class="dock-label">Changes</span>
         <span id="dockChangesCount" class="dock-badge hidden">0</span>
@@ -83,7 +87,7 @@
       <span id="workTitleText">Start a new conversation</span>
       <span id="workTitleMeta">Magentra agent workbench</span>
     </div>
-    <div id="modeChips" title="Styles (.ma)"></div>
+    <div id="modeChips" title="Skills"></div>
     <div id="topbar-right">
       <div id="agentMeter" class="hidden" title="Live activity">
         <span class="meter-glyph">⬢</span>
@@ -189,6 +193,18 @@
       </div>
       <div id="teamRoster"></div>
       <p class="team-hint">Agents live in <code>.magentra/team/*.md</code> — edit files directly, or drop documents onto a card: they are indexed into that member's <em>backpack</em>, distilled into a standing brief it carries on every run, and retrieved in full when a task touches them.</p>
+    </section>
+
+    <section id="skillsView" class="stage-view hidden">
+      <div class="view-head">
+        <span class="view-title">◈ SKILLS</span>
+        <span id="skillsSub" class="view-sub">no skills active</span>
+        <button id="skillsRecommendBtn" class="hidden" title="Enable the recommended discipline set">★ ENABLE RECOMMENDED</button>
+        <button id="skillCreateBtn" title="Describe a skill — Magentra writes the file, you approve it">＋ CREATE SKILL</button>
+        <button id="skillsCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
+      </div>
+      <div id="skillsList"></div>
+      <p class="team-hint">Skills live in <code>.magentra/skills/*.md</code>. A <em>discipline</em> shapes every turn while it is enabled; an <em>action</em> is a procedure the agent invokes on demand. Nothing is locked — enable only what the work needs.</p>
     </section>
 
     <section id="changesView" class="stage-view hidden">
@@ -337,7 +353,7 @@
             <dt>atlas</dt><dd>the whole-design map of this workspace at <code>.magentra/ATLAS.md</code>; <code>/atlas</code> builds or refreshes it.</dd>
             <dt>mission</dt><dd>a saved directive file under <code>.magentra/missions/</code> that the lab runs on demand, on a loop, or on a cron schedule (MISSIONS in the dock).</dd>
             <dt>task list</dt><dd>the live plan of record in the TASKS rail — the current work items, ending with a verification task.</dd>
-            <dt>styles</dt><dd><code>.ma</code> files that shape how the agent works; core styles are always on, optional ones toggle per session via the chips or <code>/styles</code>.</dd>
+            <dt>skills</dt><dd>Markdown files under <code>.magentra/skills/</code> that shape the agent. A <em>discipline</em> applies to every turn while enabled (nothing is locked — all off by default); an <em>action</em> runs on demand. Toggle in the Skills view or with <code>/skills</code>; create your own with ＋ CREATE SKILL.</dd>
             <dt>plan mode</dt><dd>a read-only mode: the agent proposes a plan you approve before it may edit anything.</dd>
             <dt>deletion guard</dt><dd>destructive commands always ask first — in every permission mode — unless Deletions is set to ALLOW above.</dd>
             <dt>session</dt><dd>one conversation with its own transcript, cost ledger, and task list, saved under <code>.magentra/sessions/</code> (SESSIONS in the dock resumes them).</dd>
@@ -449,9 +465,9 @@
         <dt>Esc</dt><dd>close topmost panel · interrupt the running turn</dd>
         <dt><span class="mod-key">Ctrl</span>+L</dt><dd>clear chat (fresh session)</dd>
         <dt><span class="mod-key">Ctrl</span>+K</dt><dd>focus the composer</dd>
-        <dt><span class="mod-key">Ctrl</span>+1…6</dt><dd>console · sessions · crew · missions · changes · settings</dd>
+        <dt><span class="mod-key">Ctrl</span>+1…7</dt><dd>console · sessions · crew · missions · changes · settings · skills</dd>
         <dt>Y / N</dt><dd>allow · deny in the approval dialog</dd>
-        <dt>Tab</dt><dd>reach tool rows, diffs, and styles; Enter/Space toggles</dd>
+        <dt>Tab</dt><dd>reach tool rows, diffs, and skill toggles; Enter/Space activates</dd>
         <dt>/</dt><dd>command palette in the composer</dd>
         <dt>?</dt><dd>this sheet</dd>
       </dl>
@@ -469,6 +485,52 @@
       <div class="modal-actions">
         <button id="denyBtn">DENY (N / Esc)</button>
         <button id="allowBtn">ALLOW ONCE (Y)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── create-skill wizard ────────────────────────────────────────────── -->
+  <div id="skillWizard" class="hidden" role="dialog" aria-modal="true" aria-label="Create a skill">
+    <div class="modal-box skill-wiz-box">
+      <div class="modal-title">◈ CREATE A SKILL</div>
+      <div id="skillWizStep1">
+        <p class="modal-sub">Describe what you want in plain language. Magentra writes the skill file; you review and edit it before anything is installed.</p>
+        <div class="seg skill-kind-seg" id="skillKindSeg">
+          <button class="seg-btn on" data-skillkind="discipline">DISCIPLINE — always on</button>
+          <button class="seg-btn" data-skillkind="action">ACTION — on demand</button>
+        </div>
+        <p id="skillKindHint" class="set-note">A discipline shapes every turn while enabled — rules, reminders, even tool gates the engine enforces.</p>
+        <textarea id="skillDescInput" rows="5" spellcheck="false" placeholder="e.g. Before editing any SQL file, require an EXPLAIN plan in the task notes, and always add a rollback statement alongside every migration."></textarea>
+        <div class="modal-actions">
+          <span id="skillWizStatus"></span>
+          <button id="skillWizCancel">CANCEL (Esc)</button>
+          <button id="skillWizGenerate" class="wiz-primary">GENERATE ▸</button>
+        </div>
+      </div>
+      <div id="skillWizStep2" class="hidden">
+        <p class="modal-sub">Review and edit the draft. Installing writes <code id="skillWizFile">skill.md</code> into <code>.magentra/skills/</code><span id="skillWizEnableNote"> and enables it</span>.</p>
+        <textarea id="skillDraftText" rows="16" spellcheck="false"></textarea>
+        <div class="modal-actions">
+          <span id="skillWizStatus2"></span>
+          <button id="skillWizBack">◂ BACK</button>
+          <button id="skillWizInstall" class="wiz-primary">INSTALL ▸</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── first-run teaching tour (spotlight overlay) ────────────────────── -->
+  <div id="tourOverlay" class="hidden" aria-hidden="true">
+    <div id="tourSpot"></div>
+    <div id="tourCard" role="dialog" aria-label="Welcome tour">
+      <div id="tourStepLabel" class="tour-kicker">1 / 8</div>
+      <div id="tourTitle" class="modal-title"></div>
+      <p id="tourCopy" class="modal-sub"></p>
+      <div class="modal-actions tour-actions">
+        <button id="tourSkip">SKIP</button>
+        <span class="tour-spacer"></span>
+        <button id="tourBack">◂ BACK</button>
+        <button id="tourNext" class="wiz-primary">NEXT ▸</button>
       </div>
     </div>
   </div>
@@ -522,6 +584,8 @@
   <script src="modules/views.js"></script>
   <script src="modules/workbench.js"></script>
   <script src="modules/missions.js"></script>
+  <script src="modules/skills.js"></script>
+  <script src="modules/tour.js"></script>
   <script src="modules/stream.js"></script>
   <script src="modules/crew.js"></script>
   <script src="modules/setup.js"></script>

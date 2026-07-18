@@ -227,6 +227,11 @@ function onSessionStarted(event) {
     setContextEl.placeholder = `auto (${Math.round(modelRateCard[event.model].contextWindow / 1000)}K for this model)`;
   }
   appendSysNote(`session ${event.sessionId} · model ${event.model}`);
+  // The on-demand action skills discovered in this workspace ride along here.
+  if (Array.isArray(event.skills)) {
+    actionSkills = event.skills;
+    renderSkillsSurfaces();
+  }
   // A fresh session (boot, or /clear) is a fresh bill and an empty window.
   sessionModel = event.model;
   resetSessionMeter();
@@ -877,6 +882,13 @@ function handleEngineEvent(event) {
       break;
     case "team_updated":
       onTeamUpdated(event);
+      break;
+    case "skills_updated":
+      actionSkills = Array.isArray(event.skills) ? event.skills : [];
+      renderSkillsSurfaces();
+      break;
+    case "skill_draft":
+      onSkillDraft(event);
       break;
     case "missions_updated":
       onMissionsUpdated(event);

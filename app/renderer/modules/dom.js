@@ -179,6 +179,40 @@ const setContextEl = document.getElementById("setContext");
 // startup landing: recent folders
 const recentListEl = document.getElementById("recentList");
 
+// skills view + create-skill wizard + tour
+const navSkillsEl = document.getElementById("navSkills");
+const dockSkillsCountEl = document.getElementById("dockSkillsCount");
+const skillsViewEl = document.getElementById("skillsView");
+const skillsSubEl = document.getElementById("skillsSub");
+const skillsListEl = document.getElementById("skillsList");
+const skillsRecommendBtnEl = document.getElementById("skillsRecommendBtn");
+const skillCreateBtnEl = document.getElementById("skillCreateBtn");
+const skillsCloseBtnEl = document.getElementById("skillsCloseBtn");
+const skillWizardEl = document.getElementById("skillWizard");
+const skillWizStep1El = document.getElementById("skillWizStep1");
+const skillWizStep2El = document.getElementById("skillWizStep2");
+const skillKindSegEl = document.getElementById("skillKindSeg");
+const skillKindHintEl = document.getElementById("skillKindHint");
+const skillDescInputEl = document.getElementById("skillDescInput");
+const skillWizStatusEl = document.getElementById("skillWizStatus");
+const skillWizStatus2El = document.getElementById("skillWizStatus2");
+const skillWizCancelEl = document.getElementById("skillWizCancel");
+const skillWizGenerateEl = document.getElementById("skillWizGenerate");
+const skillWizBackEl = document.getElementById("skillWizBack");
+const skillWizInstallEl = document.getElementById("skillWizInstall");
+const skillWizFileEl = document.getElementById("skillWizFile");
+const skillWizEnableNoteEl = document.getElementById("skillWizEnableNote");
+const skillDraftTextEl = document.getElementById("skillDraftText");
+const tourOverlayEl = document.getElementById("tourOverlay");
+const tourSpotEl = document.getElementById("tourSpot");
+const tourCardEl = document.getElementById("tourCard");
+const tourStepLabelEl = document.getElementById("tourStepLabel");
+const tourTitleEl = document.getElementById("tourTitle");
+const tourCopyEl = document.getElementById("tourCopy");
+const tourSkipEl = document.getElementById("tourSkip");
+const tourBackEl = document.getElementById("tourBack");
+const tourNextEl = document.getElementById("tourNext");
+
 // changes review panel
 const navChangesEl = document.getElementById("navChanges");
 const dockChangesCountEl = document.getElementById("dockChangesCount");

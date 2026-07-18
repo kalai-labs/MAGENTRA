@@ -13,6 +13,7 @@ const STAGE_VIEWS = {
   lab: labViewEl,
   changes: changesViewEl,
   settings: settingsViewEl,
+  skills: skillsViewEl,
 };
 
 function showView(name) {
@@ -27,6 +28,7 @@ function showView(name) {
   navLabEl.classList.toggle("active", name === "lab");
   navChangesEl.classList.toggle("active", name === "changes");
   navSettingsEl.classList.toggle("active", name === "settings");
+  if (navSkillsEl) navSkillsEl.classList.toggle("active", name === "skills");
 }
 
 // ---------------------------------------------------------------------------
@@ -66,12 +68,14 @@ const MENU_BAR = [
       { label: "Missions", hint: "Ctrl+4", needsWorkspace: true, action: () => showView("lab") },
       { label: "Changes", hint: "Ctrl+5", needsWorkspace: true, action: () => showView("changes") },
       { label: "Settings", hint: "Ctrl+6", action: () => { showView("settings"); void loadConnectionCard(); } },
+      { label: "Skills", hint: "Ctrl+7", needsWorkspace: true, action: () => showView("skills") },
     ],
   },
   {
     label: "HELP",
     items: [
       { label: "Keyboard Shortcuts", hint: "?", action: () => toggleShortcutSheet() },
+      { label: "Take the Tour", needsWorkspace: true, action: () => startTour(true) },
       { label: "All Commands (/help)", needsWorkspace: true, action: () => { showView("console"); sendSlashCommand("/help"); } },
       { label: "Glossary", action: () => showView("settings") },
     ],

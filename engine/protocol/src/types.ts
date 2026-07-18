@@ -98,6 +98,8 @@ export type CoreEvent =
         string,
         { input: number; output: number; cacheRead?: number; cacheWrite?: number; contextWindow: number }
       >;
+      /** On-demand action skills discovered in .magentra/skills/ (disciplines arrive via modes_updated). */
+      skills?: { name: string; description: string }[];
     }
   | { type: "turn_started"; turnId: string }
   | {
@@ -206,23 +208,23 @@ export type CoreEvent =
       totalCostUsd?: number;
     }
   | { type: "error"; message: string; fatal: boolean }
+  /** The generate_skill result: a validated draft to preview/edit, or the failure after retries. */
+  | { type: "skill_draft"; ok: boolean; text?: string; suggestedFilename?: string; error?: string }
+  /** On-demand action skills changed (e.g. after install_skill); disciplines re-arrive via modes_updated. */
+  | { type: "skills_updated"; skills: { name: string; description: string }[] }
   | {
       type: "modes_updated";
       modes: {
         id: string;
         name: string;
         description: string;
+        /** Why a user would enable this skill — powers the "?" explainers. */
+        why?: string;
         active: boolean;
         builtin: boolean;
-        /** A core quality mode: always active, locked on, non-deactivatable. */
-        core?: boolean;
+        /** Badged "Recommended" in frontends; advisory only, never forced on. */
+        recommended?: boolean;
         conflicts?: string[];
-        /**
-         * Set on a suspended core mode (active:false): the id of the active
-         * optional style that suspended it. Cleared — field absent — once the
-         * core resumes. Lets a frontend render the locked chip as suspended.
-         */
-        suspendedBy?: string;
       }[];
     }
   | {
@@ -348,7 +350,11 @@ export type FrontendRequest =
   | { type: "archive_session"; id: string }
   | { type: "list_sessions" }
   | { type: "set_modes"; active: string[] }
-  | { type: "reload_team" };
+  | { type: "reload_team" }
+  /** Ask the engine to author a skill .md from a plain-language description (LLM-generated, parser-validated). */
+  | { type: "generate_skill"; description: string; kind: "discipline" | "action" }
+  /** Write a (re-validated) skill file into .magentra/skills/ and reload both skill kinds. */
+  | { type: "install_skill"; filename: string; text: string };
 
 export type Frame =
   | ({ kind: "event" } & CoreEvent)

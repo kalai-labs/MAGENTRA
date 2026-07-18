@@ -113,11 +113,11 @@ Guards against the agent writing a new file that duplicates an existing one.
 | `reuseCheck.blockThreshold` | `0.75` | Similarity at/above which a new-file Write is blocked (gate mode). |
 | `reuseCheck.remindThreshold` | `0.5` | Similarity at/above which a reminder is queued instead of a block. |
 
-## Styles
+## Skills
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `modes.active` | `[]` | Optional `.ma` styles to activate (`grill`, `entropy`, `reshape`, `debug`). The seven core quality modes are always on and need not be listed; a core id here is redundant and ignored. See `docs/MA-FORMAT.md`. |
+| `modes.active` | `[]` | Discipline skills to activate at session start (e.g. `prover`, `sentinel`, `grill`). Every skill is optional and OFF unless listed here or toggled in-session — nothing is locked on. See `docs/SKILLS.md`. |
 
 ## Environment variable overrides
 
@@ -163,7 +163,7 @@ Everything the engine persists in a workspace lives under `.magentra/`:
 | `plans/` | Plans written by plan mode. |
 | `worktrees/` | Git worktrees created by EnterWorktree. |
 | `skills/` | Workspace skills (global ones live in `~/.magentra/skills/`). |
-| `modes/` | Workspace `.ma`/`.md` style files (overlays and overrides). |
+| `skills/` | Workspace skill files — disciplines and on-demand actions (`docs/SKILLS.md`). |
 | `missions/` | Mission files (`<id>.md`), `continuous.json` (running loops), and `out/<id>/` with the default `report.md` plus `log.jsonl` (one JSON line per run). |
 | `team/` | Crew member files (`<id>.md`), plus `docs/`, `backpacks/`, and `experience/` (`<id>.json` lessons, `<id>.record.jsonl` service records). |
 | `debug/` | The `/debug` repro oracle scripts (`repro.sh` / `repro.ps1`). |

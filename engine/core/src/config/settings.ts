@@ -115,9 +115,9 @@ export const settingsSchema = z
     modes: z
       .object({
         /**
-         * Optional modes to activate (grill, entropy, reshape). The seven core
-         * quality modes are always on and need not be listed — see
-         * CORE_MODE_IDS; any core id listed here is redundant and ignored.
+         * Discipline skills to activate at session start. Every skill is
+         * optional and OFF unless listed here (or toggled in-session) — there
+         * are no locked always-on skills.
          */
         active: z.array(z.string()).default([]),
       })

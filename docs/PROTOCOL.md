@@ -392,20 +392,19 @@ Reply to `list_sessions` / `/sessions`.
 
 ### `modes_updated`
 
-Full repaint of the `.ma` style chips: emitted after a `set_modes` request or a
-`/styles on|off` toggle, carrying every style's summary.
+Full repaint of the discipline-skill surfaces: emitted after a `set_modes` request or a
+`/skills on|off` toggle, carrying every discipline's summary.
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `type` | `"modes_updated"` | |
-| `modes` | array | One entry per style: `{ id, name, description, active, builtin, core?, conflicts?, suspendedBy? }`. |
+| `modes` | array | One entry per discipline skill: `{ id, name, description, why?, active, builtin, recommended?, conflicts? }`. |
 
-Per entry: `core` marks an always-on quality mode (locked, non-deactivatable);
-`suspendedBy` appears only on a suspended core (`active: false`) and names the active
-optional style that suspended it — absent again once the core resumes.
+Per entry: `recommended` marks the advisory recommended set (badged in frontends, never forced —
+nothing is locked); `why` powers the per-skill "?" explainers.
 
 ```json
-{"type":"modes_updated","modes":[{"id":"surgeon","name":"Surgeon","description":"Minimal-diff discipline","active":false,"builtin":true,"core":true,"suspendedBy":"entropy"},{"id":"entropy","name":"Entropy","description":"Strategic over tactical","active":true,"builtin":true,"conflicts":["surgeon"]}]}
+{"type":"modes_updated","modes":[{"id":"surgeon","name":"Surgeon","description":"Minimal-diff discipline","why":"Enable for focused fixes in mature code.","active":false,"builtin":true,"recommended":true,"conflicts":[]},{"id":"entropy","name":"Entropy","description":"Strategic over tactical","active":true,"builtin":true,"conflicts":["surgeon"]}]}
 ```
 
 ### `team_updated`
@@ -642,11 +641,11 @@ the frontend in `session_started.commands`.
 `command_output`; `settings <key> <value>` validates the value against the settings schema, persists it
 to the project or global `settings.json`, and applies it live where the running session allows.
 
-`styles` with no args lists the .ma styles as `command_output` — core quality styles (locked always on)
-and the optional ones with their on/off state; `styles on|off <id>` toggles an optional style through the
-same path as the `set_modes` request (core styles cannot be turned off, and a style that `@conflicts` a
-core one is refused with the mode engine's message), then emits `modes_updated`. Toggles are session-only
-and are not persisted to settings.
+`skills` with no args lists every skill as `command_output` — disciplines with their on/off state
+(★ marking the recommended set), then the on-demand actions; `skills on|off <id>` toggles a discipline
+through the same path as the `set_modes` request (nothing is locked; enabling a skill switches off
+anything it `conflicts:` with, with an advisory message), then emits `modes_updated`. `/styles` is a
+deprecated alias. Toggles are session-only and are not persisted to settings.
 
 `build-crew` bootstraps a workspace crew: if `.magentra/team/*.md` already holds valid (or malformed)
 specialist files it reports the roster as `command_output` and stops; otherwise it dispatches a
@@ -763,7 +762,7 @@ successful archive emits a refreshed `session_list`.
 
 ### `set_modes`
 
-Sets the active optional `.ma` styles (core styles are always on and cannot be dropped —
+Sets the active discipline skills (all optional, none locked —
 a request omitting them is refused with a `command_output` message). The engine replies
 with a full `modes_updated` repaint.
 

@@ -294,11 +294,10 @@ if (setWebSearchEl && window.magentra && window.magentra.getWebSearch) {
   });
 }
 
-// .ma style chips state
-let modes = [];
+// skill chips / Skills view state
+let modes = []; // discipline skills, from modes_updated
 let modesReceived = false; // has the first modes_updated arrived (vs. still session-start)
 let pendingModesNote = false; // set on a set_modes click; consumed by the next modes_updated
-let stylesPanelOpen = false; // is the #stylesPanel popover currently open
 
 const HERO_MODE_IDS = ["grill", "reshape"];
 const HERO_MODE_LABELS = { grill: "⚡ grill", reshape: "⟲ reshape" };

@@ -85,5 +85,5 @@ way. Advisory fields (model hint, tool list) are validated against your setup, n
 
 - Team files, mode/style files, lessons, records, packs: all plain markdown/JSON/JSONL — readable,
   diffable, editable with any editor. Style files load from `.magentra/modes/*.md` (canonical) and
-  legacy `*.ma`.
+  the same `.md` skill format.
 - The pack format version is `crewpack: 1`; unknown future fields are preserved on round-trip.

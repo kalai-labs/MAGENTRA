@@ -111,7 +111,8 @@ navMissionEl.addEventListener("click", () => {
 });
 
 // ---------------------------------------------------------------------------
-// .ma style chips
+// Skill chips: quick toggles for the hero skills plus a summary chip that
+// opens the full Skills view (where every discipline lives).
 // ---------------------------------------------------------------------------
 
 function renderModeChips() {
@@ -130,151 +131,28 @@ function renderModeChips() {
 
   const activeCount = modes.filter((m) => m.active).length;
   const summaryEl = document.createElement("button");
-  summaryEl.id = "stylesSummary";
-  summaryEl.className = "mode-chip";
-  summaryEl.textContent = `◈ ${activeCount} styles`;
-  summaryEl.title = "All styles";
-  summaryEl.addEventListener("click", (e) => {
-    e.stopPropagation();
-    stylesPanelOpen = !stylesPanelOpen;
-    renderModeChips();
-  });
+  summaryEl.id = "skillsSummary";
+  summaryEl.className = "mode-chip" + (activeCount > 0 ? " active" : "");
+  summaryEl.textContent = `◈ ${activeCount} skill${activeCount === 1 ? "" : "s"}`;
+  summaryEl.title = "Open the Skills view";
+  summaryEl.addEventListener("click", () => showView("skills"));
   modeChipsEl.appendChild(summaryEl);
-
-  if (stylesPanelOpen) renderStylesPanel();
-}
-
-function createStyleRow(mode) {
-  const frag = document.createDocumentFragment();
-
-  // Core quality modes are always on and cannot be toggled: render them locked.
-  let conflictWithId = null;
-  if (!mode.core && !mode.active && mode.conflicts) {
-    for (const cid of mode.conflicts) {
-      const other = modes.find((m) => m.id === cid);
-      if (other && other.active) {
-        conflictWithId = cid;
-        break;
-      }
-    }
-  }
-  const conflictOther = conflictWithId ? modes.find((m) => m.id === conflictWithId) : null;
-  const blockedByCore = Boolean(conflictOther && conflictOther.core);
-
-  // A core mode is "suspended" while a conflicting optional style is active:
-  // still locked, but pushed off (active:false) until that optional turns off.
-  const suspended = Boolean(mode.core && mode.suspendedBy);
-
-  const rowEl = document.createElement("div");
-  rowEl.className =
-    "style-row" +
-    (mode.active ? " on" : "") +
-    (mode.core ? " locked" : "") +
-    (suspended ? " suspended" : "") +
-    (conflictWithId ? " conflicted" : "");
-
-  const toggleEl = document.createElement("span");
-  toggleEl.className = "style-toggle";
-  toggleEl.textContent = mode.core ? "🔒" : mode.active ? "◉" : "○";
-
-  const nameEl = document.createElement("span");
-  nameEl.className = "style-name";
-  nameEl.textContent = mode.id;
-
-  const descEl = document.createElement("span");
-  descEl.className = "style-desc";
-  descEl.textContent = mode.description;
-
-  rowEl.appendChild(toggleEl);
-  rowEl.appendChild(nameEl);
-  rowEl.appendChild(descEl);
-  if (mode.core) {
-    rowEl.title = suspended ? `core quality mode — suspended by ${mode.suspendedBy}` : "core quality mode — always on";
-  } else {
-    // Keyboard-reachable toggle: styles must be manageable without a mouse.
-    rowEl.tabIndex = 0;
-    rowEl.setAttribute("role", "switch");
-    rowEl.setAttribute("aria-checked", mode.active ? "true" : "false");
-    rowEl.setAttribute("aria-label", `${mode.id} style`);
-    rowEl.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleMode(mode.id);
-    });
-    rowEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleMode(mode.id);
-      }
-    });
-  }
-
-  frag.appendChild(rowEl);
-
-  if (conflictWithId) {
-    const noteEl = document.createElement("div");
-    noteEl.className = "style-conflict-note";
-    noteEl.textContent = blockedByCore
-      ? `activating suspends core mode ${conflictWithId}`
-      : `activating disables ${conflictWithId}`;
-    frag.appendChild(noteEl);
-  }
-
-  return frag;
-}
-
-function renderStylesPanel() {
-  const panelEl = document.createElement("div");
-  panelEl.id = "stylesPanel";
-  panelEl.addEventListener("click", (e) => e.stopPropagation());
-
-  const campaignsTitleEl = document.createElement("div");
-  campaignsTitleEl.className = "panel-group-title";
-  campaignsTitleEl.textContent = "FEATURED STYLES";
-  panelEl.appendChild(campaignsTitleEl);
-
-  for (const heroId of HERO_MODE_IDS) {
-    const mode = modes.find((m) => m.id === heroId);
-    if (mode) panelEl.appendChild(createStyleRow(mode));
-  }
-
-  const disciplinesTitleEl = document.createElement("div");
-  disciplinesTitleEl.className = "panel-group-title";
-  disciplinesTitleEl.textContent = "ALL STYLES";
-  panelEl.appendChild(disciplinesTitleEl);
-
-  for (const mode of modes) {
-    if (HERO_MODE_IDS.includes(mode.id)) continue;
-    panelEl.appendChild(createStyleRow(mode));
-  }
-
-  modeChipsEl.appendChild(panelEl);
-}
-
-function closeStylesPanel() {
-  if (!stylesPanelOpen) return;
-  stylesPanelOpen = false;
-  renderModeChips();
 }
 
 function toggleMode(id) {
   const mode = modes.find((m) => m.id === id);
   if (!mode) return;
-  mode.active = !mode.active; // optimistic; next modes_updated confirms/corrects
-  renderModeChips();
-  const activeIds = modes.filter((m) => m.active).map((m) => m.id);
-  pendingModesNote = true;
-  window.magentra.setModes(activeIds);
+  setSkillActive(id, !mode.active);
 }
 
 function onModesUpdated(event) {
   const isInitial = !modesReceived;
   modesReceived = true;
   modes = event.modes || [];
-  renderModeChips();
+  renderSkillsSurfaces();
   if (pendingModesNote && !isInitial) {
     const activeIds = modes.filter((m) => m.active).map((m) => m.id);
-    appendSysNote(`styles: ${activeIds.join(" + ")}`);
+    appendSysNote(`skills: ${activeIds.length ? activeIds.join(" + ") : "none active"}`);
   }
   pendingModesNote = false;
 }

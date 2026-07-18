@@ -259,7 +259,7 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
 .sidebar-empty { padding: 4px 8px; color: var(--text-faint); font-size: 0.74rem; }
 .sidebar-spacer { flex: 1; min-height: 14px; }
 
-.sidebar-tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 8px 10px; border-top: 1px solid var(--border); }
+.sidebar-tools { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 8px 8px; border-top: 1px solid var(--border); }
 .dock-btn {
   position: relative;
   min-width: 0;
@@ -324,16 +324,6 @@ body.review-open #topbar { right: var(--review-w); }
 .mode-chip:hover { color: var(--text); border-color: var(--border-hi); }
 .mode-chip.active { color: var(--accent-hi); border-color: rgba(56, 217, 210, 0.45); background: var(--accent-soft); }
 .mode-chip.hero.active { color: var(--accent-ink); background: var(--accent); }
-#stylesPanel { position: absolute; top: calc(100% + 10px); right: 0; z-index: 30; width: 330px; max-height: 60vh; overflow: auto; padding: 8px; border: 1px solid var(--border-hi); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); }
-.panel-group-title { margin: 9px 8px 5px; color: var(--text-faint); font-size: 0.65rem; font-weight: 750; letter-spacing: 0.12em; }
-.style-row { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; padding: 7px 8px; border-radius: var(--radius-sm); cursor: pointer; }
-.style-row:hover { background: var(--hover); }
-.style-row.locked { cursor: default; }
-.style-row.on .style-name, .style-toggle { color: var(--accent-hi); }
-.style-row.conflicted, .style-row.suspended { opacity: 0.5; }
-.style-name { color: var(--text); font-size: 0.8rem; }
-.style-desc, .style-conflict-note { grid-column: 2; color: var(--text-faint); font-size: 0.7rem; }
-.style-conflict-note { color: var(--amber); }
 
 #stage { position: fixed; inset: var(--topbar-h) 0 0 var(--sidebar-w); z-index: 2; transition: right 0.18s ease; }
 body.inspector-open #stage { right: var(--inspector-w); }
@@ -465,13 +455,6 @@ h1.md-h { font-size: 1.3rem; } h2.md-h { font-size: 1.16rem; } h3.md-h { font-si
 .agent-card.failed .agent-led::after { content: "×"; color: var(--red); }
 .agent-body { max-height: 180px; overflow: auto; padding: 6px 8px; }
 .agent-body:empty::before { content: "Starting…"; color: var(--text-faint); font-size: 0.74rem; }
-
-.first-hint { position: relative; margin: 12px 0; padding: 13px 38px 11px 14px; border: 1px dashed var(--border-hi); border-radius: var(--radius); }
-.first-hint-title { margin-bottom: 8px; color: var(--text-dim); font-size: 0.68rem; font-weight: 750; letter-spacing: 0.1em; }
-.first-hint-row { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 8px; }
-.first-hint-foot { color: var(--text-faint); font-size: 0.7rem; }
-.first-hint-close { position: absolute; top: 8px; right: 8px; border: 0; background: none; color: var(--text-faint); }
-.first-hint-close:hover { color: var(--text-hi); }
 
 .inline-changes-card { margin: 14px 0; overflow: hidden; border: 1px solid var(--border-hi); border-radius: var(--radius); background: var(--panel); }
 .inline-changes-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 13px; border-bottom: 1px solid var(--border); background: var(--raised); }
@@ -709,6 +692,80 @@ select.composer-select { color-scheme: dark; }
 .pack-bar-fill { height: 100%; background: var(--accent); }
 .crew-add { min-height: 140px; display: flex; align-items: center; justify-content: center; border-style: dashed; color: var(--text-faint); }
 .crew-add:hover { color: var(--accent-hi); border-color: var(--accent); }
+
+/* Skills view: discipline + action cards, badges, ? explainers, toggles. */
+#skillsView { overflow-y: auto; }
+#skillsList { width: 100%; max-width: 1120px; margin: 0 auto; padding: 14px 26px 8px; }
+.skills-group-title { margin: 14px 2px 9px; color: var(--text-faint); font-size: 0.67rem; font-weight: 750; letter-spacing: 0.13em; }
+.skills-group-title:first-child { margin-top: 0; }
+.skills-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.skill-card { display: flex; flex-direction: column; gap: 7px; padding: 12px 13px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+.skill-card.on { border-color: rgba(56, 217, 210, 0.45); }
+.skill-card.action { border-style: dashed; }
+.skill-card-head { display: flex; align-items: center; gap: 8px; }
+.skill-name { min-width: 0; overflow: hidden; color: var(--text-hi); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.skill-badge { flex: none; padding: 2px 7px; border-radius: 999px; color: var(--amber); background: var(--amber-soft); font-size: 0.63rem; font-weight: 700; }
+.skill-source, .skill-kind-tag { flex: none; padding: 2px 7px; border-radius: 999px; color: var(--text-dim); background: var(--raised); font-size: 0.63rem; }
+.skill-why-btn { flex: none; width: 22px; height: 22px; margin-left: auto; border: 1px solid var(--border-hi); border-radius: 50%; background: transparent; color: var(--text-dim); font-size: 0.72rem; font-weight: 700; }
+.skill-why-btn:hover, .skill-why-btn[aria-expanded="true"] { color: var(--accent-hi); border-color: var(--accent); }
+.skill-card.action .skill-kind-tag { margin-left: auto; }
+.skill-toggle { position: relative; flex: none; width: 36px; height: 20px; border: 1px solid var(--border-hi); border-radius: 999px; background: var(--well); transition: background 0.15s, border-color 0.15s; }
+.skill-toggle-knob { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-faint); transition: left 0.15s, background 0.15s; }
+.skill-toggle.on { border-color: var(--accent); background: var(--accent-soft); }
+.skill-toggle.on .skill-toggle-knob { left: 18px; background: var(--accent); }
+.skill-desc { color: var(--text-dim); font-size: 0.78rem; line-height: 1.5; }
+.skill-why { padding: 8px 10px; border-left: 2px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--raised); color: var(--text); font-size: 0.75rem; line-height: 1.5; }
+.skill-conflicts { color: var(--amber); font-size: 0.7rem; }
+.skill-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: auto; }
+.skill-foot code { font-size: 0.68rem; }
+.skill-kind { color: var(--text-faint); font-size: 0.67rem; }
+#skillsRecommendBtn { margin-left: auto; padding: 6px 11px; border: 1px solid var(--amber); border-radius: var(--radius-sm); background: var(--amber-soft); color: var(--amber); font-size: 0.72rem; font-weight: 650; }
+#skillsRecommendBtn:hover { background: rgba(244, 168, 58, 0.22); }
+#skillCreateBtn { padding: 6px 11px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-ink); font-size: 0.72rem; font-weight: 700; }
+#skillCreateBtn:hover { background: var(--accent-hi); }
+#skillsRecommendBtn.hidden + #skillCreateBtn { margin-left: auto; }
+
+/* Create-skill wizard */
+#skillWizard { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--scrim); backdrop-filter: blur(4px); }
+.skill-wiz-box { width: min(680px, 94vw); }
+.skill-kind-seg { margin-bottom: 8px; }
+.skill-kind-seg .seg-btn { flex: 1; padding: 8px 10px; }
+#skillDescInput, #skillDraftText { width: 100%; margin-top: 8px; padding: 10px 11px; resize: vertical; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); color: var(--text-hi); line-height: 1.5; }
+#skillDraftText { font: 0.76rem/1.5 var(--mono); min-height: 300px; }
+#skillWizStatus, #skillWizStatus2 { margin-right: auto; color: var(--amber); font-size: 0.72rem; }
+.wiz-primary { border-color: var(--accent) !important; background: var(--accent) !important; color: var(--accent-ink) !important; font-weight: 700; }
+.wiz-primary:hover { background: var(--accent-hi) !important; }
+
+/* First-run teaching tour: spotlight + card. The spot's giant outer shadow
+   paints the scrim so the highlighted element itself stays un-dimmed; on the
+   spotless wrap-up step the overlay provides the scrim instead. */
+#tourOverlay { position: fixed; inset: 0; z-index: 60; background: transparent; }
+#tourOverlay.no-spot { background: var(--scrim); }
+#tourSpot {
+  position: fixed;
+  z-index: 61;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: 0 0 0 4px rgba(56, 217, 210, 0.18), 0 0 0 9999px var(--scrim);
+  pointer-events: none;
+  transition: left 0.22s ease, top 0.22s ease, width 0.22s ease, height 0.22s ease;
+}
+#tourCard {
+  position: fixed;
+  z-index: 62;
+  padding: 16px 18px;
+  border: 1px solid var(--border-hi);
+  border-radius: 13px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  transition: left 0.22s ease, top 0.22s ease;
+}
+.tour-kicker { margin-bottom: 6px; color: var(--accent-hi); font-size: 0.67rem; font-weight: 750; letter-spacing: 0.1em; font-variant-numeric: tabular-nums; }
+.tour-actions { justify-content: flex-start; }
+.tour-spacer { flex: 1; }
+#tourSkip { border-color: transparent; background: transparent; color: var(--text-faint); }
+#tourSkip:hover { color: var(--text); }
 
 .ctx-menu { position: fixed; z-index: 40; min-width: 185px; padding: 5px; border: 1px solid var(--border-hi); border-radius: var(--radius); background: var(--raised); box-shadow: var(--shadow); }
 .ctx-item { width: 100%; padding: 7px 9px; border: 0; border-radius: 6px; background: none; color: var(--text); text-align: left; font-size: 0.75rem; }
