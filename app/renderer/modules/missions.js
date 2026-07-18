@@ -6,35 +6,66 @@
 // Task rail: live task list
 // ---------------------------------------------------------------------------
 
-const TASK_GLYPHS = { pending: "○", in_progress: "◐", completed: "●" };
+const TASK_GLYPHS = { pending: "○", in_progress: "◉", completed: "✓" };
+
+// One shared ticker keeps the in-progress task's duration chip live; it stops
+// itself when nothing is in progress.
+let taskTickerId = null;
+
+function ensureTaskTicker(anyInProgress) {
+  if (anyInProgress && !taskTickerId) {
+    taskTickerId = setInterval(() => {
+      const liveEls = taskListEl.querySelectorAll(".t-time.live");
+      if (liveEls.length === 0) {
+        clearInterval(taskTickerId);
+        taskTickerId = null;
+        return;
+      }
+      for (const el of liveEls) el.textContent = formatElapsed(Date.now() - Number(el.dataset.start));
+    }, 1000);
+  } else if (!anyInProgress && taskTickerId) {
+    clearInterval(taskTickerId);
+    taskTickerId = null;
+  }
+}
 
 function onTaskListUpdated(event) {
   const tasks = event.tasks || [];
   const total = tasks.length;
   const done = tasks.filter((t) => t.status === "completed").length;
-  const progressText = `${done}/${total}`;
+  const progressText = total > 0 ? `${done}/${total}` : "";
 
   taskProgressEl.textContent = progressText;
-  taskTabCountEl.textContent = progressText;
+  taskTabCountEl.textContent = total > 0 ? progressText : "—";
   taskBarFillEl.style.width = `${total > 0 ? Math.round((done / total) * 100) : 0}%`;
+  if (taskRailBarEl) taskRailBarEl.classList.toggle("hidden", total === 0);
+  if (taskEmptyEl) taskEmptyEl.classList.toggle("hidden", total > 0);
 
   const notCompleted = total - done;
   dockMissionCountEl.textContent = String(notCompleted);
   dockMissionCountEl.classList.toggle("hidden", notCompleted === 0);
   navMissionEl.classList.remove("hidden");
 
-  // detect tasks that just flipped to in_progress, to feed the now-line
+  // Observe status flips: they feed the now-line and the per-task stopwatch
+  // (start on in_progress, freeze on completed).
+  const now = Date.now();
   for (const task of tasks) {
     const prevStatus = taskStatusById.get(task.id);
+    const times = taskTimes.get(task.id) || {};
+    if (task.status === "in_progress" && !times.start) times.start = now;
+    if (task.status === "completed" && times.start && !times.done) times.done = now;
+    taskTimes.set(task.id, times);
     if (task.status === "in_progress" && prevStatus !== "in_progress" && nowVerb === "thinking") {
       setNowActivity("task", task.subject);
     }
   }
   taskStatusById = new Map(tasks.map((t) => [t.id, t.status]));
+  if (total === 0) taskTimes = new Map();
 
   // rebuild the list, preserving engine order
   taskListEl.textContent = "";
   let inProgressEl = null;
+  let anyInProgress = false;
   for (const task of tasks) {
     const itemEl = document.createElement("div");
     itemEl.className = `task-item ${task.status}`;
@@ -48,12 +79,28 @@ function onTaskListUpdated(event) {
     subjectEl.className = "t-subject";
     subjectEl.textContent = task.subject;
 
+    // Duration chip: live stopwatch while in progress, frozen once completed,
+    // absent when the flip was never observed (e.g. a restored session).
+    const timeEl = document.createElement("span");
+    timeEl.className = "t-time";
+    const times = taskTimes.get(task.id) || {};
+    if (task.status === "in_progress" && times.start) {
+      timeEl.classList.add("live");
+      timeEl.dataset.start = String(times.start);
+      timeEl.textContent = formatElapsed(Date.now() - times.start);
+      anyInProgress = true;
+    } else if (task.status === "completed" && times.start && times.done) {
+      timeEl.textContent = formatElapsed(times.done - times.start);
+    }
+
     itemEl.appendChild(glyphEl);
     itemEl.appendChild(subjectEl);
+    itemEl.appendChild(timeEl);
     taskListEl.appendChild(itemEl);
 
     if (task.status === "in_progress") inProgressEl = itemEl;
   }
+  ensureTaskTicker(anyInProgress);
   if (inProgressEl) inProgressEl.scrollIntoView({ block: "nearest" });
 
   if (!railCollapsed && workspaceOpen) openInspector(activeInspectorTab);

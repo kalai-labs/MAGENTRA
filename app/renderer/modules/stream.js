@@ -17,11 +17,12 @@ function finalizeAssistantEl() {
   // renderer throws on some pathological input, the raw text already on screen
   // stays — a message must never vanish over formatting.
   const raw = currentAssistantEl._raw;
+  const body = currentAssistantEl.querySelector(".msg-body") || currentAssistantEl;
   if (typeof raw === "string" && raw.length > 0) {
     try {
       const rendered = renderMarkdown(raw);
-      currentAssistantEl.textContent = "";
-      currentAssistantEl.appendChild(rendered);
+      body.textContent = "";
+      body.appendChild(rendered);
     } catch {
       /* keep the plain live text already rendered */
     }
@@ -61,13 +62,81 @@ function appendSysError(text) {
   return el;
 }
 
+/** Short clock time for message headers ("9:41 AM" style, locale-aware). */
+function messageClock() {
+  return new Intl.DateTimeFormat(undefined, { timeStyle: "short" }).format(new Date());
+}
+
+/** One message card: avatar chip + role + time header, body below. Shared by
+ * user messages, streamed assistant messages, and session restore. */
+function createMessageEl(role) {
+  const el = document.createElement("div");
+  el.className = role === "user" ? "msg-user" : "msg-assistant";
+  const head = document.createElement("div");
+  head.className = "msg-head";
+  const avatar = document.createElement("span");
+  avatar.className = "msg-avatar";
+  avatar.textContent = role === "user" ? "◇" : "M";
+  const name = document.createElement("span");
+  name.className = "msg-role";
+  name.textContent = role === "user" ? "You" : "Magentra";
+  const time = document.createElement("span");
+  time.className = "msg-time";
+  time.textContent = messageClock();
+  head.append(avatar, name, time);
+  const body = document.createElement("div");
+  body.className = "msg-body";
+  el.append(head, body);
+  return { el, body };
+}
+
 function appendUserMessage(text) {
   finalizeAssistantEl();
   if (!streamEl) return;
-  const el = document.createElement("div");
-  el.className = "msg-user";
-  el.textContent = text;
+  const { el, body } = createMessageEl("user");
+  body.textContent = text;
   withAutoScroll(() => streamEl.appendChild(el));
+}
+
+// ---------------------------------------------------------------------------
+// "Agent working" group: one collapsible block per work stretch, collecting
+// the turn's tool rows so the transcript reads mission-log style instead of
+// loose rows. Closes when the model starts answering.
+// ---------------------------------------------------------------------------
+
+function workStream() {
+  if (!streamEl) return streamEl;
+  if (!currentWorkGroup || !currentWorkGroup.el.isConnected) {
+    const el = document.createElement("details");
+    el.className = "work-group";
+    el.open = true;
+    const summary = document.createElement("summary");
+    summary.className = "work-group-head";
+    const glyph = document.createElement("span");
+    glyph.className = "work-group-glyph";
+    glyph.textContent = "✦";
+    const label = document.createElement("span");
+    label.className = "work-group-label";
+    label.textContent = "Agent working";
+    summary.append(glyph, label);
+    const body = document.createElement("div");
+    body.className = "work-group-body";
+    el.append(summary, body);
+    withAutoScroll(() => streamEl.appendChild(el));
+    currentWorkGroup = { el, body, labelEl: label, start: Date.now() };
+  }
+  return currentWorkGroup.body;
+}
+
+/** The model moved on (answering, or the turn ended): stamp the group with
+ * its op count and elapsed time so the finished block reads as evidence. */
+function closeWorkGroup() {
+  if (!currentWorkGroup) return;
+  const { el, body, labelEl, start } = currentWorkGroup;
+  el.classList.add("done");
+  const ops = body.querySelectorAll(".tool-row").length;
+  labelEl.textContent = `Agent worked · ${ops} op${ops === 1 ? "" : "s"} · ${formatElapsed(Date.now() - start)}`;
+  currentWorkGroup = null;
 }
 
 function appendPhaseBanner(text) {
@@ -174,9 +243,16 @@ function createToolRow(tool, description, input) {
     descEl.textContent = " " + (description || compactInput(input));
   }
 
+  // Right-aligned duration chip: ticks while the op runs, freezes on finish —
+  // the transcript doubles as a flight recorder.
+  const timeEl = document.createElement("span");
+  timeEl.className = "tool-time";
+  timeEl.textContent = "0s";
+
   rowEl.appendChild(glyphEl);
   rowEl.appendChild(nameEl);
   rowEl.appendChild(descEl);
+  rowEl.appendChild(timeEl);
 
   const detailEl = document.createElement("pre");
   detailEl.className = "tool-detail";
@@ -186,7 +262,32 @@ function createToolRow(tool, description, input) {
   // exact command and result — that is the whole basis of trusting the agent.
   makeRowExpandable(rowEl);
 
-  return { rowEl, detailEl, glyphEl };
+  const row = { rowEl, detailEl, glyphEl, timeEl, startMs: Date.now() };
+  runningToolRows.add(row);
+  ensureToolTicker();
+  return row;
+}
+
+// One shared 1s ticker updates every running row's duration chip; it stops
+// itself when nothing is running so an idle app burns no timers.
+const runningToolRows = new Set();
+let toolTickerId = null;
+
+function ensureToolTicker() {
+  if (toolTickerId) return;
+  toolTickerId = setInterval(() => {
+    for (const row of runningToolRows) {
+      if (!row.rowEl.isConnected) {
+        runningToolRows.delete(row);
+        continue;
+      }
+      row.timeEl.textContent = formatElapsed(Date.now() - row.startMs);
+    }
+    if (runningToolRows.size === 0) {
+      clearInterval(toolTickerId);
+      toolTickerId = null;
+    }
+  }, 1000);
 }
 
 /** Click-or-keyboard expandable row: focusable, Enter/Space toggles. */
@@ -236,6 +337,8 @@ function finishToolRow(row, isError, resultPreview) {
   row.rowEl.classList.remove("running");
   row.rowEl.classList.add(isError ? "err" : "ok");
   row.glyphEl.textContent = isError ? "✗" : "✓"; // ✗ / ✓
+  runningToolRows.delete(row);
+  if (row.timeEl) row.timeEl.textContent = formatElapsed(Date.now() - row.startMs);
 
   // The result is always available on expand, in both detail modes — hiding it
   // in cinematic left the user unable to inspect what a tool returned.

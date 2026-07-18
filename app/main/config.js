@@ -20,10 +20,11 @@ function configPath() {
 
 const MAX_RECENT_WORKSPACES = 10;
 
-/** Fresh installs open maximized. A stored false means the user deliberately
- * restored/resized the window, so subsequent launches preserve that choice. */
-function shouldStartMaximized(windowState) {
-  return !windowState || windowState.maximized === true;
+/** Every launch opens maximized — the full-screen workbench is the product's
+ * default posture. Saved bounds still matter: they are what the window
+ * restores to when the user un-maximizes during the session. */
+function shouldStartMaximized() {
+  return true;
 }
 
 function readConfig() {

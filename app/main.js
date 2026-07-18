@@ -654,7 +654,7 @@ function rememberWindowState() {
 // Concept A uses one neutral workbench titlebar, also reasserted by the
 // renderer so the native controls stay visually integrated.
 const TITLEBAR_HEIGHT = 36;
-const DEFAULT_TITLEBAR = { color: "#141719", symbolColor: "#d4d9de", height: TITLEBAR_HEIGHT };
+const DEFAULT_TITLEBAR = { color: "#0e1114", symbolColor: "#ced6dd", height: TITLEBAR_HEIGHT };
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -672,7 +672,7 @@ function createWindow() {
     // would clip horizontally rather than wrap.
     minWidth: 700,
     minHeight: 480,
-    backgroundColor: "#111315",
+    backgroundColor: "#0b0e11",
     title: "MAGENTRA",
     autoHideMenuBar: true,
     webPreferences: {
@@ -687,10 +687,10 @@ function createWindow() {
     },
   });
 
-  // A fresh install opens like a professional IDE: maximized, with native
-  // window controls still available. Once the user restores/resizes it, the
-  // persisted `maximized: false` preference is respected on later launches.
-  if (shouldStartMaximized(currentConfig.window)) mainWindow.maximize();
+  // Every launch opens like a professional IDE: maximized, with native window
+  // controls still available. Un-maximizing mid-session restores the saved
+  // bounds; the next launch starts maximized again.
+  if (shouldStartMaximized()) mainWindow.maximize();
   mainWindow.on("resize", rememberWindowState);
   mainWindow.on("move", rememberWindowState);
   mainWindow.on("maximize", rememberWindowState);
@@ -1150,6 +1150,9 @@ ipcMain.handle("settings:setWebSearch", (_evt, enabled) => {
 function openWorkspace(workspace) {
   currentConfig = rememberWorkspace({ ...currentConfig, workspace }, workspace);
   writeConfig(currentConfig);
+  // Keep the sidebar's workspace list current — the opened folder moves to
+  // the top of the recents the renderer shows.
+  sendToRenderer("workspace:recent", currentConfig.recentWorkspaces || []);
   setLogWorkspace(workspace);
   logEvent("sys", { ev: "workspace-changed", workspace });
   // Reset workspace-scoped renderer state before the replacement engine can

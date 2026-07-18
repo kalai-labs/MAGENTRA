@@ -2,7 +2,7 @@
 <html lang="en" data-theme="workbench" data-motion="full" data-detail="engineer">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; font-src 'self';" />
   <title>MAGENTRA</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -23,14 +23,14 @@
       <span class="dock-glyph">＋</span><span class="dock-label">New conversation</span>
     </button>
 
-    <button id="workspaceBtn" class="sidebar-workspace" title="Choose workspace folder" aria-label="Choose workspace folder">
-      <span class="ws-glyph">▱</span>
-      <span class="sidebar-workspace-copy">
-        <span class="sidebar-kicker">WORKSPACE</span>
-        <span id="workspacePath">Open workspace</span>
-      </span>
-      <span class="sidebar-row-action">＋</span>
-    </button>
+    <section class="sidebar-section sidebar-section-workspaces" aria-labelledby="workspacesSidebarTitle">
+      <div class="sidebar-section-head">
+        <span id="workspacesSidebarTitle" class="sidebar-section-title">WORKSPACES</span>
+        <button id="workspaceBtn" class="sidebar-mini" title="Open workspace folder" aria-label="Open workspace folder">＋</button>
+      </div>
+      <div id="sidebarWorkspacesList" class="sidebar-list"></div>
+      <span id="workspacePath" class="sr-only">Open workspace</span>
+    </section>
 
     <section class="sidebar-section" aria-labelledby="sessionsSidebarTitle">
       <div class="sidebar-section-head">
@@ -238,9 +238,9 @@
           <div class="set-row">
             <span class="set-label">Code font</span>
             <select id="setFont">
-              <option value='"Cascadia Mono", "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace' selected>Cascadia Mono</option>
+              <option value='"JetBrains Mono", "Cascadia Mono", "DejaVu Sans Mono", monospace' selected>JetBrains Mono (bundled)</option>
+              <option value='"Cascadia Mono", "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace'>Cascadia Mono</option>
               <option value='"Cascadia Code", "Cascadia Mono", "JetBrains Mono", Consolas, monospace'>Cascadia Code</option>
-              <option value='"JetBrains Mono", "Cascadia Mono", "DejaVu Sans Mono", monospace'>JetBrains Mono</option>
               <option value='"Ubuntu Mono", "DejaVu Sans Mono", "Liberation Mono", monospace'>Ubuntu Mono</option>
               <option value='"DejaVu Sans Mono", "Liberation Mono", "Noto Sans Mono", monospace'>DejaVu Sans Mono</option>
               <option value='Consolas, "Liberation Mono", "Courier New", monospace'>Consolas</option>
@@ -368,10 +368,11 @@
 
     <section id="inspectorTasks" class="inspector-panel" data-panel="tasks">
       <div class="inspector-section-head">
-        <span>Current work</span><span id="taskProgress">0/0</span>
+        <span>Current mission</span><span id="taskProgress"></span>
       </div>
-      <div class="rail-bar"><div id="taskBarFill"></div></div>
+      <div class="rail-bar hidden"><div id="taskBarFill"></div></div>
       <div id="taskList"></div>
+      <p id="taskEmpty" class="inspector-empty">No plan yet. The agent posts its task list here when a run starts.</p>
       <div class="inspector-context">
         <div class="inspector-section-head"><span>Context</span></div>
         <dl>
@@ -381,6 +382,10 @@
           <dt>Permissions</dt><dd id="inspectorPermissions">Ask before changes</dd>
           <dt>Usage</dt><dd id="inspectorUsage">—</dd>
         </dl>
+      </div>
+      <div class="inspector-context" id="crewMini">
+        <div class="inspector-section-head"><span>Crew <span id="crewMiniCount"></span></span></div>
+        <div id="crewMiniList" class="crew-mini-list"></div>
       </div>
     </section>
 

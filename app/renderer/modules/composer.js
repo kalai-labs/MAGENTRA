@@ -118,6 +118,7 @@ function resetLocalViewForClear(preserveTasks = false) {
   currentAgentsRow = null;
   currentAssistantEl = null;
   currentThinkingEl = null;
+  currentWorkGroup = null;
   clearMessageQueue();
   updateAgentMeter();
   if (!preserveTasks) onTaskListUpdated({ tasks: [] });

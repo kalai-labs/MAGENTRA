@@ -15,8 +15,10 @@ async function openWorkspaceByPath(workspace) {
 }
 
 function renderRecentList(list) {
+  recentWorkspaces = Array.isArray(list) ? list : [];
+  renderSidebarWorkspaces();
   if (!recentListEl) return;
-  const recents = Array.isArray(list) ? list : [];
+  const recents = recentWorkspaces;
   recentListEl.textContent = "";
   if (recents.length === 0) {
     recentListEl.classList.add("hidden");
@@ -192,16 +194,17 @@ function onSessionRestored(event) {
       streamEl.appendChild(details);
     }
     if (m.text) {
-      const el = document.createElement("div");
-      el.className = "msg-assistant";
-      el.appendChild(renderMarkdown(m.text));
-      streamEl.appendChild(el);
+      const message = createMessageEl("assistant");
+      message.body.appendChild(renderMarkdown(m.text));
+      streamEl.appendChild(message.el);
     }
     for (const tc of m.toolCalls || []) {
       const row = createToolRow(tc.tool, "", tc.input);
       streamEl.appendChild(row.rowEl);
       streamEl.appendChild(row.detailEl);
       finishToolRow(row, tc.isError, tc.result);
+      // Restored rows carry no timing — a fake "0s" would be a lie.
+      row.timeEl.textContent = "";
     }
   }
   appendSysNote(`resumed — ${(event.messages || []).length} messages restored`);
@@ -270,10 +273,10 @@ function syncActivityUi() {
   // would go into a dead engine).
   promptInputEl.disabled = !engineLinked;
   promptInputEl.placeholder = !engineLinked
-    ? "engine not linked — open SETTINGS → CONNECTION or the setup wizard"
+    ? "Engine not linked — open Settings → Connection or the setup wizard"
     : busy
-      ? "queue a follow-up… (sends when the turn ends)"
-      : "Enter directive…";
+      ? "Queue a follow-up — sends when the turn ends"
+      : "Ask Magentra anything…";
 }
 
 function onTurnStarted() {
@@ -352,6 +355,7 @@ function onTurnFinished(event) {
 
   finalizeThinkingEl();
   finalizeAssistantEl();
+  closeWorkGroup();
 
   finalizeAllAgentCards();
   agentMeterEl.classList.add("hidden");
@@ -367,11 +371,13 @@ function onTurnFinished(event) {
 function onTextDelta(text) {
   if (busy) setNowActivity("responding", "");
   if (!streamEl) return;
-  // The model has moved from reasoning to answering — close the reasoning block.
+  // The model has moved from reasoning to answering — close the reasoning
+  // block and stamp the finished "Agent working" group.
   finalizeThinkingEl();
+  closeWorkGroup();
   if (!currentAssistantEl) {
-    currentAssistantEl = document.createElement("div");
-    currentAssistantEl.className = "msg-assistant";
+    const message = createMessageEl("assistant");
+    currentAssistantEl = message.el;
     // Raw source accumulates here; it streams as plain text for liveness and is
     // re-rendered as Markdown once the message finalizes (finalizeAssistantEl).
     currentAssistantEl._raw = "";
@@ -380,8 +386,8 @@ function onTextDelta(text) {
     const caret = document.createElement("span");
     caret.className = "caret";
     caret.textContent = "▌"; // ▌
-    currentAssistantEl.appendChild(live);
-    currentAssistantEl.appendChild(caret);
+    message.body.appendChild(live);
+    message.body.appendChild(caret);
     withAutoScroll(() => streamEl.appendChild(currentAssistantEl));
   }
   currentAssistantEl._raw += text;
@@ -446,9 +452,10 @@ function onToolCallStarted(event) {
   if (!streamEl) return;
   finalizeAssistantEl();
   const row = createToolRow(event.tool, event.description, event.input);
+  const target = workStream();
   withAutoScroll(() => {
-    streamEl.appendChild(row.rowEl);
-    streamEl.appendChild(row.detailEl);
+    target.appendChild(row.rowEl);
+    target.appendChild(row.detailEl);
   });
   toolRows.set(event.id, row);
   updateAgentMeter();
@@ -809,15 +816,14 @@ function handleEngineEvent(event) {
       if (event.worktree) {
         const short = String(event.cwd || "").split(/[\\/]/).slice(-2).join("/");
         workspacePathEl.textContent = `${pathLeaf(activeWorkspace)} ⇒ ${short}`;
-        workspaceBtnEl.classList.add("in-worktree");
-        workspaceBtnEl.title = `Session is working inside a worktree: ${event.cwd}`;
+        workspaceWorktree = event.cwd;
         appendSysNote(`⌥ session cwd → ${event.cwd} (worktree)`);
       } else {
         workspacePathEl.textContent = pathLeaf(activeWorkspace || event.cwd);
-        workspaceBtnEl.classList.remove("in-worktree");
-        workspaceBtnEl.title = "Choose workspace folder";
+        workspaceWorktree = null;
         appendSysNote("⌥ session cwd back at the workspace root");
       }
+      renderSidebarWorkspaces();
       syncWorkbenchContext();
       break;
     }

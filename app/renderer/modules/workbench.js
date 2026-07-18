@@ -75,6 +75,66 @@ function closeInspector() {
   if (inspectorToggleEl) inspectorToggleEl.classList.remove("active");
 }
 
+/** Sidebar workspace rail: the active folder plus recent ones, one click to
+ * switch. The active row also carries the worktree indicator when the session
+ * has moved its cwd. */
+function renderSidebarWorkspaces() {
+  if (!sidebarWorkspacesListEl) return;
+  sidebarWorkspacesListEl.textContent = "";
+  const shown = recentWorkspaces.slice(0, 5);
+  if (shown.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "sidebar-empty";
+    empty.textContent = "＋ opens a folder";
+    sidebarWorkspacesListEl.appendChild(empty);
+    return;
+  }
+  for (const workspace of shown) {
+    const active = workspaceOpen && workspace === activeWorkspace;
+    const row = document.createElement("button");
+    row.className = "sidebar-workspace-row" + (active ? " active" : "");
+    row.disabled = active || busy;
+    row.title = active && workspaceWorktree ? `Working in worktree: ${workspaceWorktree}` : workspace;
+    const dot = document.createElement("span");
+    dot.className = "sidebar-session-dot";
+    const label = document.createElement("span");
+    label.className = "sidebar-item-label";
+    label.textContent = pathLeaf(workspace);
+    row.append(dot, label);
+    if (active && workspaceWorktree) {
+      const meta = document.createElement("span");
+      meta.className = "sidebar-item-meta worktree";
+      meta.textContent = "⇒ worktree";
+      row.appendChild(meta);
+    }
+    row.addEventListener("click", () => openWorkspaceByPath(workspace));
+    sidebarWorkspacesListEl.appendChild(row);
+  }
+}
+
+/** Bucket an ISO date into the ref design's day groups. */
+function sessionDayGroup(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Earlier";
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(new Date()) - startOfDay(date)) / 86400000);
+  if (diffDays <= 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  return "Earlier";
+}
+
+/** Compact relative age ("2m", "3h", "1d") for sidebar rows. */
+function relativeAgeShort(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const mins = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
 function renderSidebarSessions() {
   if (!sidebarSessionsListEl) return;
   sidebarSessionsListEl.textContent = "";
@@ -87,7 +147,16 @@ function renderSidebarSessions() {
     sidebarSessionsListEl.appendChild(empty);
     return;
   }
+  let lastGroup = null;
   for (const session of sessions) {
+    const group = sessionDayGroup(session.updatedAt);
+    if (group !== lastGroup) {
+      lastGroup = group;
+      const heading = document.createElement("div");
+      heading.className = "sidebar-subhead";
+      heading.textContent = group;
+      sidebarSessionsListEl.appendChild(heading);
+    }
     const row = document.createElement("button");
     row.className = "sidebar-session" + (session.id === currentSessionId ? " active" : "");
     row.disabled = session.id === currentSessionId || busy;
@@ -97,7 +166,10 @@ function renderSidebarSessions() {
     const label = document.createElement("span");
     label.className = "sidebar-item-label";
     label.textContent = sessionDisplayName(session);
-    row.append(dot, label);
+    const meta = document.createElement("span");
+    meta.className = "sidebar-item-meta";
+    meta.textContent = relativeAgeShort(session.updatedAt);
+    row.append(dot, label, meta);
     row.addEventListener("click", () => window.magentra.send({ type: "resume_session", id: session.id }));
     sidebarSessionsListEl.appendChild(row);
   }
@@ -124,15 +196,43 @@ function renderSidebarMissions() {
     label.className = "sidebar-item-label";
     label.textContent = mission.name;
     const meta = document.createElement("span");
-    meta.className = "sidebar-item-meta";
-    meta.textContent = mission.running ? "live" : "";
+    meta.className =
+      "sidebar-item-meta" + (mission.running ? " status-running" : mission.scheduled ? " status-scheduled" : "");
+    meta.textContent = mission.running ? "Running" : mission.scheduled ? "Scheduled" : "";
     row.append(dot, label, meta);
     row.addEventListener("click", () => showView("lab"));
     sidebarMissionsListEl.appendChild(row);
   }
 }
 
+/** Compact crew block at the foot of the Tasks panel (ref layout): every
+ * specialist with its readiness, one click away from the full crew view. */
+function renderCrewMini() {
+  if (!crewMiniListEl) return;
+  crewMiniListEl.textContent = "";
+  if (crewMiniCountEl) crewMiniCountEl.textContent = teamAgents.length ? String(teamAgents.length) : "";
+  const mini = document.getElementById("crewMini");
+  if (mini) mini.classList.toggle("hidden", teamAgents.length === 0);
+  for (const agent of teamAgents.slice(0, 6)) {
+    const row = document.createElement("button");
+    row.className = "crew-mini-row";
+    const glyph = document.createElement("span");
+    glyph.className = "crew-mini-glyph";
+    glyph.textContent = agent.ready ? "◈" : "◇";
+    const name = document.createElement("span");
+    name.className = "crew-mini-name";
+    name.textContent = agent.name || agent.id;
+    const status = document.createElement("span");
+    status.className = "crew-mini-status" + (agent.ready ? " ready" : "");
+    status.textContent = agent.ready ? "Ready" : "Indexing";
+    row.append(glyph, name, status);
+    row.addEventListener("click", () => openInspector("crew"));
+    crewMiniListEl.appendChild(row);
+  }
+}
+
 function renderInspectorCrew() {
+  renderCrewMini();
   if (!inspectorCrewListEl) return;
   inspectorCrewListEl.textContent = "";
   if (inspectorCrewCountEl) inspectorCrewCountEl.textContent = teamAgents.length ? String(teamAgents.length) : "";

@@ -6,6 +6,6 @@ const { shouldStartMaximized } = require("../main/config.js");
 assert.equal(shouldStartMaximized(undefined), true, "a fresh install starts maximized");
 assert.equal(shouldStartMaximized(null), true, "a missing window record starts maximized");
 assert.equal(shouldStartMaximized({ maximized: true }), true, "a maximized window is restored maximized");
-assert.equal(shouldStartMaximized({ maximized: false }), false, "a user-restored window stays restored");
+assert.equal(shouldStartMaximized({ maximized: false }), true, "every launch opens maximized by default");
 
-process.stdout.write("✓ fresh launches maximize and later user window choices persist\n");
+process.stdout.write("✓ every launch opens maximized; saved bounds only shape un-maximize\n");

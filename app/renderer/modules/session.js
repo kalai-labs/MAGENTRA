@@ -56,6 +56,7 @@ function enterActiveState(workspace) {
   sendBtnEl.disabled = false;
   clearBtnEl.disabled = false;
   syncActivityUi();
+  renderSidebarWorkspaces();
   renderSidebarSessions();
   renderSidebarMissions();
   syncWorkbenchContext();

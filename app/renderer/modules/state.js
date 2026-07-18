@@ -47,6 +47,12 @@ const backgroundJobs = new Set();
 // regardless of what else is going on.
 let workspaceOpen = false;
 let activeWorkspace = null;
+// Recent workspace folders (main process pushes updates); shown in the sidebar.
+let recentWorkspaces = [];
+// The session's worktree cwd when it diverges from the workspace root.
+let workspaceWorktree = null;
+// The open "Agent working" group collecting this turn's tool rows.
+let currentWorkGroup = null;
 let currentSessionId = null;
 let sessionSummaries = [];
 // False while the workspace has no working credentials (setup:required fired
@@ -73,6 +79,9 @@ let nowOverrideTimeoutId = null;
 // mission rail (live task list) state
 let railCollapsed = false; // user preference for the rest of the session
 let taskStatusById = new Map(); // id -> last known status, to detect flips to in_progress
+// id -> { start, done } wall-clock ms, observed from status flips — feeds the
+// per-task duration chips (the workbench's flight-recorder instrumentation).
+let taskTimes = new Map();
 
 // ---------------------------------------------------------------------------
 // UI settings (persisted appearance / activity-detail preferences)
@@ -80,7 +89,9 @@ let taskStatusById = new Map(); // id -> last known status, to detect flips to i
 
 const UI_SETTINGS_KEY = "magentra-ui";
 const DEFAULT_UI_SETTINGS = {
-  font: '"Cascadia Mono", "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace',
+  // JetBrains Mono ships with the app (renderer/fonts), so the default always
+  // resolves to the same face on every OS instead of a per-distro fallback.
+  font: '"JetBrains Mono", "Cascadia Mono", "DejaVu Sans Mono", monospace',
   size: "14",
   theme: "workbench",
   motion: "full",
@@ -105,6 +116,15 @@ function loadUiSettings() {
   // atmosphere/theme tokens into the new shell.
   settings.theme = "workbench";
   if (settings.detail === "technical") settings.detail = "engineer";
+  // One-time migration off the old Cascadia default: it fell back to a
+  // per-distro face on machines without it, while the bundled JetBrains Mono
+  // always renders. The flag keeps a later deliberate Cascadia choice intact.
+  if (!settings.fontMigrated) {
+    if (settings.font === '"Cascadia Mono", "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace') {
+      settings.font = DEFAULT_UI_SETTINGS.font;
+    }
+    settings.fontMigrated = true;
+  }
   if (!["12", "13", "14", "15"].includes(settings.size)) settings.size = "14";
   return settings;
 }
@@ -122,7 +142,7 @@ function saveUiSettings() {
 // Window-controls overlay tint per theme (panel background + primary ink),
 // kept in step with the theme blocks in styles.css.
 const THEME_TITLEBAR = {
-  workbench: { color: "#141719", symbolColor: "#d4d9de" },
+  workbench: { color: "#0e1114", symbolColor: "#ced6dd" },
 };
 
 function applyUiSettings() {

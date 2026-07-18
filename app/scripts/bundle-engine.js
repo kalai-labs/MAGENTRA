@@ -151,6 +151,10 @@ async function main() {
     path.join(APP_DIR, "renderer", "index.html"),
     path.join(APP_OUT, "renderer", "index.html"),
   );
+  // Bundled UI fonts ship as-is (woff2 is already compressed).
+  fs.cpSync(path.join(APP_DIR, "renderer", "fonts"), path.join(APP_OUT, "renderer", "fonts"), {
+    recursive: true,
+  });
 
   console.log(`Bundled engine -> ${path.relative(REPO_ROOT, OUT_FILE)}`);
   console.log(`Minified app  -> ${path.relative(REPO_ROOT, APP_OUT)}`);
