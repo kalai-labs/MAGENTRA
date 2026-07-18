@@ -336,6 +336,11 @@ stopBtnEl.addEventListener("click", hardStop);
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (closeOpenMenu()) return; // an open menu is the topmost surface
+  if (closePermissionMenu()) return;
+  if (!reviewDrawerEl.classList.contains("hidden")) {
+    closeReviewDrawer();
+    return;
+  }
   if (shortcutSheetEl && !shortcutSheetEl.classList.contains("hidden")) {
     toggleShortcutSheet();
     return;
@@ -378,6 +383,9 @@ function requestClear() {
   }
 }
 clearBtnEl.addEventListener("click", requestClear);
+navConsoleEl.addEventListener("click", () => {
+  if (workspaceOpen) requestClear();
+});
 
 // ---------------------------------------------------------------------------
 // Keyboard power layer. "mod" is Ctrl on Linux/Windows, Cmd on macOS — every
@@ -431,7 +439,8 @@ window.addEventListener("keydown", (e) => {
     }
     if (VIEW_KEYS[e.key] && workspaceOpen) {
       e.preventDefault();
-      showView(VIEW_KEYS[e.key]);
+      if (e.key === "5") openInspector("changes");
+      else showView(VIEW_KEYS[e.key]);
       return;
     }
   }

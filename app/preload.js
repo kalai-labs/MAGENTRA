@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld("magentra", {
   getConfig: () => ipcRenderer.invoke("config:get"),
   chooseWorkspace: () => ipcRenderer.invoke("workspace:choose"),
   openWorkspace: (workspace) => ipcRenderer.invoke("workspace:open", workspace),
+  openWorkspaceFile: (relPath) => ipcRenderer.invoke("workspace:openFile", relPath),
+  undoChanges: (relPath, diffs) => ipcRenderer.invoke("changes:undo", { relPath, diffs }),
   setModel: (model) => ipcRenderer.invoke("config:setModel", model),
   send: (frame) => ipcRenderer.send("engine:send", frame),
   setModes: (activeIds) => ipcRenderer.send("engine:setModes", activeIds),

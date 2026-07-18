@@ -49,7 +49,6 @@ let workspaceOpen = false;
 let activeWorkspace = null;
 let currentSessionId = null;
 let sessionSummaries = [];
-let openSessionPickerAfterList = false;
 // False while the workspace has no working credentials (setup:required fired
 // and no session_started since): prompts would go into a dead engine, so the
 // composer locks and points at setup instead. An engine CRASH does not clear
@@ -81,27 +80,16 @@ let taskStatusById = new Map(); // id -> last known status, to detect flips to i
 
 const UI_SETTINGS_KEY = "magentra-ui";
 const DEFAULT_UI_SETTINGS = {
-  font: '"Cascadia Mono", Consolas, monospace',
-  size: "17",
-  theme: "phosphor", // phosphor (matrix) | glacier (winter) | dusk (night) | paper (print)
-  rain: "faint",
+  font: '"Cascadia Mono", "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace',
+  size: "14",
+  theme: "workbench",
   motion: "full",
   // Default to the transparent view: a coding agent's trust rests on the user
   // being able to see what each tool actually did. "cinematic" is opt-in.
-  detail: "technical",
+  detail: "engineer",
   deletions: "ask", // "ask" (guard always prompts) | "allow" (deletions run freely)
-  commands: "auto", // "auto" (autonomous) | "ask" (approval before consequential tools)
+  commands: "ask", // "auto" (autonomous) | "ask" (approval before consequential tools)
 };
-
-// Until the user picks a theme themselves, the app follows the OS: light OS →
-// glacier, dark OS → phosphor. A saved `theme` key means an explicit choice.
-let themeExplicit = false;
-
-function osTheme() {
-  return window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
-    ? "glacier"
-    : "phosphor";
-}
 
 function loadUiSettings() {
   let saved = {};
@@ -111,31 +99,21 @@ function loadUiSettings() {
   } catch {
     saved = {};
   }
-  themeExplicit = typeof saved.theme === "string";
   const settings = { ...DEFAULT_UI_SETTINGS, ...saved };
-  if (!themeExplicit) settings.theme = osTheme();
+  // Concept A is a deliberate reset, so legacy atmosphere/theme choices are
+  // migrated into the single workbench visual system instead of leaking old
+  // atmosphere/theme tokens into the new shell.
+  settings.theme = "workbench";
+  if (settings.detail === "technical") settings.detail = "engineer";
+  if (!["12", "13", "14", "15"].includes(settings.size)) settings.size = "14";
   return settings;
 }
 
 let uiSettings = loadUiSettings();
 
-// While the theme is still OS-driven, follow OS switches live; the first
-// explicit pick (a swatch click persists `theme`) ends the tracking.
-if (window.matchMedia) {
-  window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
-    if (themeExplicit) return;
-    uiSettings.theme = osTheme();
-    applyUiSettings();
-    syncUiControlsFromSettings();
-  });
-}
-
 function saveUiSettings() {
   try {
-    // Persist `theme` only once the user picked one — otherwise a font/size
-    // save would freeze the OS-following default into an "explicit" choice.
-    const { theme, ...rest } = uiSettings;
-    localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(themeExplicit ? uiSettings : rest));
+    localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(uiSettings));
   } catch {
     // ignore storage failures (private mode, quota, etc.)
   }
@@ -144,15 +122,11 @@ function saveUiSettings() {
 // Window-controls overlay tint per theme (panel background + primary ink),
 // kept in step with the theme blocks in styles.css.
 const THEME_TITLEBAR = {
-  phosphor: { color: "#0a100d", symbolColor: "#b8cbc0" },
-  glacier: { color: "#f6fafc", symbolColor: "#33495c" },
-  dusk: { color: "#121522", symbolColor: "#b8bed4" },
-  paper: { color: "#faf6ec", symbolColor: "#43392b" },
+  workbench: { color: "#141719", symbolColor: "#d4d9de" },
 };
 
 function applyUiSettings() {
   document.documentElement.dataset.theme = uiSettings.theme;
-  document.documentElement.dataset.rain = uiSettings.rain;
   document.documentElement.dataset.motion = uiSettings.motion;
   document.documentElement.dataset.detail = uiSettings.detail;
   document.documentElement.style.setProperty("--font-user", uiSettings.font);
@@ -177,22 +151,13 @@ function syncSegGroup(containerEl, settingKey) {
   });
 }
 
-function syncSwatchGroup(containerEl, settingKey) {
-  if (!containerEl) return;
-  containerEl.querySelectorAll(".swatch").forEach((btn) => {
-    btn.classList.toggle("on", btn.dataset[settingKey] === uiSettings[settingKey]);
-  });
-}
-
 function syncUiControlsFromSettings() {
   if (setFontEl) setFontEl.value = uiSettings.font;
   syncSegGroup(setSizeEl, "size");
-  syncSegGroup(setRainEl, "rain");
   syncSegGroup(setMotionEl, "motion");
   syncSegGroup(setDetailEl, "detail");
   syncSegGroup(setDeletionsEl, "deletions");
   syncSegGroup(setCommandsEl, "commands");
-  syncSwatchGroup(setThemeEl, "theme");
 }
 
 // Safety toggles reach the engine as frames; only send what actually changed
@@ -224,10 +189,10 @@ const MODE_HINT = {
 };
 
 function renderSafetyHint(mode) {
-  if (!hintAutoEl) return;
   const acting = MODE_HINT[mode] || MODE_HINT.default;
   const deleting = uiSettings.deletions === "allow" ? "deletions allowed" : "deletions always ask";
-  hintAutoEl.textContent = `${acting} · ${deleting}`;
+  if (hintAutoEl) hintAutoEl.textContent = `${acting} · ${deleting}`;
+  if (typeof syncPermissionMenu === "function") syncPermissionMenu(mode);
 }
 
 /** The engine changed permission mode on its own (/mode, plan approve/exit).
@@ -243,6 +208,7 @@ function onModeChanged(event) {
     saveUiSettings();
     syncSegGroup(setCommandsEl, "commands");
   }
+  if (typeof syncPermissionMenu === "function") syncPermissionMenu(mode);
 }
 
 function wireSegGroup(containerEl, settingKey) {
@@ -259,20 +225,6 @@ function wireSegGroup(containerEl, settingKey) {
   });
 }
 
-function wireSwatchGroup(containerEl, settingKey) {
-  if (!containerEl) return;
-  containerEl.querySelectorAll(".swatch").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      containerEl.querySelectorAll(".swatch").forEach((b) => b.classList.remove("on"));
-      btn.classList.add("on");
-      uiSettings[settingKey] = btn.dataset[settingKey];
-      if (settingKey === "theme") themeExplicit = true; // ends OS-following
-      saveUiSettings();
-      applyUiSettings();
-    });
-  });
-}
-
 if (setFontEl) {
   setFontEl.addEventListener("change", () => {
     uiSettings.font = setFontEl.value;
@@ -281,12 +233,10 @@ if (setFontEl) {
   });
 }
 wireSegGroup(setSizeEl, "size");
-wireSegGroup(setRainEl, "rain");
 wireSegGroup(setMotionEl, "motion");
 wireSegGroup(setDetailEl, "detail");
 wireSegGroup(setDeletionsEl, "deletions");
 wireSegGroup(setCommandsEl, "commands");
-wireSwatchGroup(setThemeEl, "theme");
 
 syncUiControlsFromSettings();
 applySafetySettings(false);

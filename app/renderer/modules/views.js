@@ -84,64 +84,68 @@ function closeOpenMenu() {
   if (!openMenuEl) return false;
   openMenuEl.remove();
   openMenuEl = null;
-  for (const btn of menuBarEl.querySelectorAll(".menu-btn")) btn.classList.remove("open");
+  for (const btn of menuBarEl.querySelectorAll(".menu-root")) btn.classList.remove("open");
   return true;
 }
 
-function openMenu(menu, btn) {
+function openMenu(btn) {
   closeOpenMenu();
   const panel = document.createElement("div");
   panel.className = "menu-panel";
   panel.setAttribute("role", "menu");
-  for (const item of menu.items) {
-    if (item.sep) {
-      const sep = document.createElement("div");
-      sep.className = "menu-sep";
-      panel.appendChild(sep);
-      continue;
+  const rect = btn.getBoundingClientRect();
+  panel.style.left = `${Math.max(8, rect.right - 228)}px`;
+  panel.style.top = `${rect.bottom + 5}px`;
+  for (const menu of MENU_BAR) {
+    const group = document.createElement("div");
+    group.className = "menu-group-label";
+    group.textContent = menu.label;
+    panel.appendChild(group);
+    for (const item of menu.items) {
+      if (item.sep) {
+        const sep = document.createElement("div");
+        sep.className = "menu-sep";
+        panel.appendChild(sep);
+        continue;
+      }
+      const row = document.createElement("button");
+      row.className = "menu-item";
+      row.setAttribute("role", "menuitem");
+      row.disabled = Boolean(item.needsWorkspace) && !workspaceOpen;
+      const labelEl = document.createElement("span");
+      labelEl.textContent = item.label;
+      row.appendChild(labelEl);
+      if (item.hint) {
+        const hintEl = document.createElement("span");
+        hintEl.className = "menu-hint";
+        hintEl.textContent = item.hint;
+        row.appendChild(hintEl);
+      }
+      row.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeOpenMenu();
+        item.action();
+      });
+      panel.appendChild(row);
     }
-    const row = document.createElement("button");
-    row.className = "menu-item";
-    row.setAttribute("role", "menuitem");
-    row.disabled = Boolean(item.needsWorkspace) && !workspaceOpen;
-    const labelEl = document.createElement("span");
-    labelEl.textContent = item.label;
-    row.appendChild(labelEl);
-    if (item.hint) {
-      const hintEl = document.createElement("span");
-      hintEl.className = "menu-hint";
-      hintEl.textContent = item.hint;
-      row.appendChild(hintEl);
-    }
-    row.addEventListener("click", (e) => {
-      e.stopPropagation();
-      closeOpenMenu();
-      item.action();
-    });
-    panel.appendChild(row);
   }
   btn.classList.add("open");
-  btn.appendChild(panel);
+  document.body.appendChild(panel);
   openMenuEl = panel;
 }
 
-for (const menu of MENU_BAR) {
-  const btn = document.createElement("button");
-  btn.className = "menu-btn";
-  btn.textContent = menu.label;
-  btn.setAttribute("aria-haspopup", "menu");
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (btn.classList.contains("open")) closeOpenMenu();
-    else openMenu(menu, btn);
-  });
-  // Hovering across the bar while a menu is open switches menus, like every
-  // native menu bar.
-  btn.addEventListener("mouseenter", () => {
-    if (openMenuEl && !btn.classList.contains("open")) openMenu(menu, btn);
-  });
-  menuBarEl.appendChild(btn);
-}
+const menuRootBtn = document.createElement("button");
+menuRootBtn.className = "menu-root";
+menuRootBtn.textContent = "•••";
+menuRootBtn.title = "Application menu";
+menuRootBtn.setAttribute("aria-label", "Application menu");
+menuRootBtn.setAttribute("aria-haspopup", "menu");
+menuRootBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (menuRootBtn.classList.contains("open")) closeOpenMenu();
+  else openMenu(menuRootBtn);
+});
+menuBarEl.appendChild(menuRootBtn);
 document.addEventListener("click", () => closeOpenMenu());
 
 // ---------------------------------------------------------------------------

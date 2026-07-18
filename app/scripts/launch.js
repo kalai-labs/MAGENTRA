@@ -68,5 +68,17 @@ if (!sandboxUsable()) {
 }
 
 const electron = require("electron"); // resolves to the electron binary path
-const child = spawn(electron, args, { stdio: "inherit" });
-child.on("close", (code) => process.exit(code ?? 0));
+const electronEnv = { ...process.env };
+// Engine-development shells may export this globally; it belongs only on the
+// engine child. If inherited here, Electron starts as plain Node and `app` is
+// undefined before a window can be created.
+delete electronEnv.ELECTRON_RUN_AS_NODE;
+const child = spawn(electron, args, { stdio: "inherit", env: electronEnv });
+child.on("error", (error) => {
+  console.error(`Failed to launch Electron: ${error.message}`);
+  process.exit(1);
+});
+child.on("close", (code, signal) => {
+  if (signal) console.error(`Electron stopped by ${signal}`);
+  process.exit(typeof code === "number" ? code : 1);
+});

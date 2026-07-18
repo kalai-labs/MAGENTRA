@@ -13,8 +13,10 @@ const {
   writeConfig,
   rememberWorkspace,
   isLocalBaseUrl,
+  shouldStartMaximized,
 } = require("./main/config.js");
 const { logEvent, setLogWorkspace, flushLog, initFallbackLog, activeLogsDir } = require("./main/logging.js");
+const { resolveWorkspaceFile, undoWorkspaceDiffs } = require("./main/changes.js");
 
 const SMOKE = process.argv.includes("--smoke");
 
@@ -649,10 +651,10 @@ function rememberWindowState() {
   }, 400);
 }
 
-// The default titlebar colors (phosphor theme); the renderer re-tints the
-// overlay via app:titleBarTheme whenever the user switches themes.
+// Concept A uses one neutral workbench titlebar, also reasserted by the
+// renderer so the native controls stay visually integrated.
 const TITLEBAR_HEIGHT = 36;
-const DEFAULT_TITLEBAR = { color: "#0a100d", symbolColor: "#b8cbc0", height: TITLEBAR_HEIGHT };
+const DEFAULT_TITLEBAR = { color: "#141719", symbolColor: "#d4d9de", height: TITLEBAR_HEIGHT };
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -670,7 +672,7 @@ function createWindow() {
     // would clip horizontally rather than wrap.
     minWidth: 700,
     minHeight: 480,
-    backgroundColor: "#050805",
+    backgroundColor: "#111315",
     title: "MAGENTRA",
     autoHideMenuBar: true,
     webPreferences: {
@@ -685,7 +687,10 @@ function createWindow() {
     },
   });
 
-  if (currentConfig.window && currentConfig.window.maximized) mainWindow.maximize();
+  // A fresh install opens like a professional IDE: maximized, with native
+  // window controls still available. Once the user restores/resizes it, the
+  // persisted `maximized: false` preference is respected on later launches.
+  if (shouldStartMaximized(currentConfig.window)) mainWindow.maximize();
   mainWindow.on("resize", rememberWindowState);
   mainWindow.on("move", rememberWindowState);
   mainWindow.on("maximize", rememberWindowState);
@@ -1032,6 +1037,24 @@ ipcMain.handle("app:openLogs", () => {
   if (!dir) return { ok: false };
   flushLog();
   shell.openPath(dir);
+  return { ok: true };
+});
+
+// Open only a validated file inside the active workspace; symlinks are
+// resolved by resolveWorkspaceFile before the native shell sees the path.
+ipcMain.handle("workspace:openFile", async (_evt, relPath) => {
+  const target = resolveWorkspaceFile(currentConfig.workspace, relPath, true);
+  if (!target) return { ok: false, error: "invalid workspace file" };
+  const error = await shell.openPath(target);
+  return error ? { ok: false, error } : { ok: true };
+});
+
+ipcMain.handle("changes:undo", async (_evt, payload) => {
+  const relPath = payload && payload.relPath;
+  const diffs = payload && payload.diffs;
+  const result = await undoWorkspaceDiffs(currentConfig.workspace, relPath, diffs);
+  if (!result.ok) return result;
+  logEvent("sys", { ev: "changes-undone", file: relPath, edits: diffs.length });
   return { ok: true };
 });
 

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="phosphor" data-rain="faint" data-motion="full" data-detail="cinematic">
+<html lang="en" data-theme="workbench" data-motion="full" data-detail="engineer">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:;" />
@@ -7,48 +7,82 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-view="console">
-  <canvas id="rain" aria-hidden="true"></canvas>
-  <div id="crt" aria-hidden="true"></div>
   <div id="srAnnounce" class="sr-only" aria-live="polite"></div>
 
-  <!-- ── left dock: the only navigation chrome ─────────────────────────── -->
-  <nav id="dock">
-    <div id="logo" title="MAGENTRA">
-      <span class="logo-mark">▮</span><span class="logo-text">MAGENTRA</span>
+  <!-- Persistent workbench sidebar: projects and conversations never vanish
+       while the agent is working or while a review surface is open. -->
+  <aside id="sidebar" aria-label="Workspace navigation">
+    <div class="sidebar-brand">
+      <button id="logo" title="MAGENTRA" aria-label="Go to conversation">
+        <span class="logo-mark">M</span><span class="logo-text">MAGENTRA</span>
+      </button>
+      <nav id="menuBar" aria-label="Application menu"></nav>
     </div>
-    <button class="dock-btn active" id="navConsole" title="Console" aria-label="Console">
-      <span class="dock-glyph">▤</span><span class="dock-label">CONSOLE</span>
-    </button>
-    <button class="dock-btn hidden" id="navSessions" title="Saved sessions" aria-label="Saved sessions">
-      <span class="dock-glyph">◫</span><span class="dock-label">SESSIONS</span>
-    </button>
-    <button class="dock-btn hidden" id="teamBtn" title="Crew designer" aria-label="Crew designer">
-      <span class="dock-glyph team-glyph">◪</span><span class="dock-label">CREW</span>
-    </button>
-    <button class="dock-btn hidden" id="navMission" title="Task list" aria-label="Task list">
-      <span class="dock-glyph">◒</span><span class="dock-label">TASKS</span>
-      <span id="dockMissionCount" class="dock-badge hidden">0</span>
-    </button>
-    <button class="dock-btn hidden" id="navLab" title="Research-lab missions" aria-label="Research-lab missions">
-      <span class="dock-glyph">🧪</span><span class="dock-label">MISSIONS</span>
-      <span id="dockLabCount" class="dock-badge hidden">0</span>
-    </button>
-    <button class="dock-btn hidden" id="navChanges" title="Changes this session" aria-label="Changes this session">
-      <span class="dock-glyph">±</span><span class="dock-label">CHANGES</span>
-      <span id="dockChangesCount" class="dock-badge hidden">0</span>
-    </button>
-    <div class="dock-spacer"></div>
-    <button class="dock-btn" id="navSettings" title="Settings" aria-label="Settings">
-      <span class="dock-glyph">⚙</span><span class="dock-label">SETTINGS</span>
-    </button>
-  </nav>
 
-  <!-- ── single status strip ───────────────────────────────────────────── -->
-  <header id="topbar">
-    <nav id="menuBar" aria-label="Application menu"></nav>
-    <button id="workspaceBtn" title="Choose workspace folder" aria-label="Choose workspace folder">
-      <span class="ws-glyph">◳</span><span id="workspacePath">select workspace</span>
+    <button class="sidebar-primary active" id="navConsole" title="New conversation" aria-label="New conversation">
+      <span class="dock-glyph">＋</span><span class="dock-label">New conversation</span>
     </button>
+
+    <button id="workspaceBtn" class="sidebar-workspace" title="Choose workspace folder" aria-label="Choose workspace folder">
+      <span class="ws-glyph">▱</span>
+      <span class="sidebar-workspace-copy">
+        <span class="sidebar-kicker">WORKSPACE</span>
+        <span id="workspacePath">Open workspace</span>
+      </span>
+      <span class="sidebar-row-action">＋</span>
+    </button>
+
+    <section class="sidebar-section" aria-labelledby="sessionsSidebarTitle">
+      <div class="sidebar-section-head">
+        <button id="navSessions" class="sidebar-section-title hidden" title="Saved sessions">
+          <span id="sessionsSidebarTitle">SESSIONS</span>
+        </button>
+        <button id="sidebarSessionsRefresh" class="sidebar-mini hidden" title="Refresh sessions" aria-label="Refresh sessions">↻</button>
+      </div>
+      <div id="sidebarSessionsList" class="sidebar-list"></div>
+    </section>
+
+    <section class="sidebar-section" aria-labelledby="missionsSidebarTitle">
+      <div class="sidebar-section-head">
+        <button id="navLab" class="sidebar-section-title hidden" title="Missions">
+          <span id="missionsSidebarTitle">MISSIONS</span>
+          <span id="dockLabCount" class="sidebar-count hidden">0</span>
+        </button>
+        <button id="sidebarMissionNew" class="sidebar-mini hidden" title="New mission" aria-label="New mission">＋</button>
+      </div>
+      <div id="sidebarMissionsList" class="sidebar-list"></div>
+    </section>
+
+    <div class="sidebar-spacer"></div>
+    <nav id="dock" class="sidebar-tools" aria-label="Workspace tools">
+      <button class="dock-btn hidden" id="navMission" title="Task inspector" aria-label="Task inspector">
+        <span class="dock-glyph">✓</span><span class="dock-label">Tasks</span>
+        <span id="dockMissionCount" class="dock-badge hidden">0</span>
+      </button>
+      <button class="dock-btn hidden" id="teamBtn" title="Crew" aria-label="Crew">
+        <span class="dock-glyph team-glyph">◇</span><span class="dock-label">Crew</span>
+      </button>
+      <button class="dock-btn hidden" id="navChanges" title="Changes" aria-label="Changes">
+        <span class="dock-glyph">±</span><span class="dock-label">Changes</span>
+        <span id="dockChangesCount" class="dock-badge hidden">0</span>
+      </button>
+      <button class="dock-btn" id="navSettings" title="Settings" aria-label="Settings">
+        <span class="dock-glyph">⚙</span><span class="dock-label">Settings</span>
+      </button>
+    </nav>
+    <div class="sidebar-status">
+      <div id="statusLed" class="idle" title="idle"></div>
+      <span id="sidebarStatusText">Ready</span>
+      <span id="sidebarVersion"></span>
+    </div>
+  </aside>
+
+  <!-- Quiet context strip above the active work surface. -->
+  <header id="topbar">
+    <div id="workTitle">
+      <span id="workTitleText">Start a new conversation</span>
+      <span id="workTitleMeta">Magentra agent workbench</span>
+    </div>
     <div id="modeChips" title="Styles (.ma)"></div>
     <div id="topbar-right">
       <div id="agentMeter" class="hidden" title="Live activity">
@@ -57,27 +91,7 @@
         <span class="meter-dot">·</span>
         <span id="toolCount">0</span><span class="meter-label">ops</span>
       </div>
-      <select id="modelSelect" title="Model (price per 1M tokens, in/out)">
-        <option value="openai/gpt-oss-120b">GPT-OSS 120B — $0.04 / $0.17</option>
-        <option value="deepseek-ai/DeepSeek-V4-Flash" selected>DeepSeek V4 Flash — $0.09 / $0.18</option>
-        <option value="Qwen/Qwen3-14B">Qwen3 14B — $0.12 / $0.24</option>
-        <option value="google/gemma-4-26B-A4B-it">Gemma 4 26B — $0.07 / $0.34</option>
-        <option value="google/gemma-4-31B-it">Gemma 4 31B — $0.13 / $0.38</option>
-        <option value="deepseek-ai/DeepSeek-V3.2">DeepSeek V3.2 — $0.26 / $0.38</option>
-        <option value="Qwen/Qwen3.6-35B-A3B">Qwen3.6 35B — $0.15 / $0.95</option>
-        <option value="Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo">Qwen3 Coder 480B — $0.30 / $1.00</option>
-        <option value="MiniMaxAI/MiniMax-M2.5">MiniMax M2.5 — $0.15 / $1.15</option>
-        <option value="XiaomiMiMo/MiMo-V2.5">MiMo V2.5 — $0.40 / $2.00</option>
-        <option value="zai-org/GLM-5">GLM-5 — $0.60 / $2.08</option>
-        <option value="moonshotai/Kimi-K2.5">Kimi K2.5 — $0.45 / $2.25</option>
-        <option value="deepseek-ai/DeepSeek-V4-Pro">DeepSeek V4 Pro — $1.30 / $2.60</option>
-        <option value="zai-org/GLM-5.2">GLM-5.2 — $0.93 / $3.00</option>
-        <option value="moonshotai/Kimi-K2.7-Code">Kimi K2.7 Code — $0.74 / $3.50</option>
-        <option value="moonshotai/Kimi-K2.6">Kimi K2.6 — $0.75 / $3.50</option>
-        <option value="__custom__">Custom…</option>
-      </select>
-      <input id="customModel" class="hidden" type="text" placeholder="provider/model-id" spellcheck="false" />
-      <div id="statusLed" class="idle" title="idle"></div>
+      <button id="inspectorToggle" class="topbar-tool hidden" title="Toggle inspector" aria-label="Toggle inspector">◫</button>
     </div>
   </header>
 
@@ -87,12 +101,10 @@
     <section id="consoleView" class="stage-view">
       <main id="transcript">
         <div id="emptyState">
-          <pre class="empty-logo" aria-hidden="true">
-▄▄  ▄▄  ▄▄▄  ▄▄▄▄ ▄▄▄▄ ▄▄  ▄ ▄▄▄▄▄ ▄▄▄▄  ▄▄▄
-██▀▄▀██ ██▄█ ██▄▄ ██▄▄ ██▀▄█   █   ██▄█ ██▄█
-██   ██ ██ █ ██▄█ ██▄▄ ██ ▀█   █   ██ █ ██ █</pre>
-          <p class="empty-tag">autonomous agent harness</p>
-          <button id="pickFolderBtn">SELECT WORKSPACE ▸</button>
+          <div class="empty-mark" aria-hidden="true">M</div>
+          <h1>Bring a workspace. Leave with reviewed work.</h1>
+          <p class="empty-tag">Magentra plans, edits, verifies, and keeps every decision visible.</p>
+          <button id="pickFolderBtn">Open workspace</button>
           <div id="recentList" class="recent-list hidden"></div>
         </div>
       </main>
@@ -112,18 +124,56 @@
           <div id="slashPop" class="hidden"></div>
           <div id="queueChip" class="hidden"></div>
           <div id="jobsChip" class="hidden"></div>
-          <textarea id="promptInput" rows="1" placeholder="Enter directive…" spellcheck="false" disabled></textarea>
-          <div class="composer-actions">
-            <button id="clearBtn" title="Clear chat and start a fresh session (Ctrl+L)" disabled aria-label="Clear chat and start a fresh session (Ctrl+L)">CLEAR ⌫</button>
-            <button id="sendBtn" disabled>SEND ⏎</button>
-            <button id="stopBtn" class="hidden" title="Hard stop — kills the turn, all agents, and any background work (Esc)" aria-label="Hard stop — kills the turn, all agents, and any background work (Esc)">STOP ✕</button>
+          <textarea id="promptInput" rows="2" placeholder="Ask Magentra anything…" spellcheck="false" disabled></textarea>
+          <div class="composer-toolbar">
+            <button id="attachBtn" class="composer-tool" title="Attach context" aria-label="Attach context">＋</button>
+            <div class="permission-wrap">
+              <button id="permissionMenuBtn" class="composer-select" aria-haspopup="menu" aria-expanded="false">
+                <span class="permission-shield">◇</span><span id="permissionMenuLabel">Ask before changes</span><span class="chevron">⌄</span>
+              </button>
+              <div id="permissionMenu" class="permission-menu hidden" role="menu">
+                <button class="permission-option" data-permission="ask" role="menuitemradio" aria-checked="true">
+                  <span class="permission-radio"></span><span><strong>Ask before changes</strong><small>Review consequential commands before they run.</small></span>
+                </button>
+                <button class="permission-option" data-permission="auto" role="menuitemradio" aria-checked="false">
+                  <span class="permission-radio"></span><span><strong>Autonomous</strong><small>Apply edits automatically; file deletions still follow the deletion guard.</small></span>
+                </button>
+                <button class="permission-option" data-permission="plan" role="menuitemradio" aria-checked="false">
+                  <span class="permission-radio"></span><span><strong>Plan only</strong><small>Read and explain without editing the workspace.</small></span>
+                </button>
+              </div>
+            </div>
+            <select id="modelSelect" class="composer-select" title="Model (price per 1M tokens, in/out)">
+              <option value="openai/gpt-oss-120b">GPT-OSS 120B — $0.04 / $0.17</option>
+              <option value="deepseek-ai/DeepSeek-V4-Flash" selected>DeepSeek V4 Flash — $0.09 / $0.18</option>
+              <option value="Qwen/Qwen3-14B">Qwen3 14B — $0.12 / $0.24</option>
+              <option value="google/gemma-4-26B-A4B-it">Gemma 4 26B — $0.07 / $0.34</option>
+              <option value="google/gemma-4-31B-it">Gemma 4 31B — $0.13 / $0.38</option>
+              <option value="deepseek-ai/DeepSeek-V3.2">DeepSeek V3.2 — $0.26 / $0.38</option>
+              <option value="Qwen/Qwen3.6-35B-A3B">Qwen3.6 35B — $0.15 / $0.95</option>
+              <option value="Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo">Qwen3 Coder 480B — $0.30 / $1.00</option>
+              <option value="MiniMaxAI/MiniMax-M2.5">MiniMax M2.5 — $0.15 / $1.15</option>
+              <option value="XiaomiMiMo/MiMo-V2.5">MiMo V2.5 — $0.40 / $2.00</option>
+              <option value="zai-org/GLM-5">GLM-5 — $0.60 / $2.08</option>
+              <option value="moonshotai/Kimi-K2.5">Kimi K2.5 — $0.45 / $2.25</option>
+              <option value="deepseek-ai/DeepSeek-V4-Pro">DeepSeek V4 Pro — $1.30 / $2.60</option>
+              <option value="zai-org/GLM-5.2">GLM-5.2 — $0.93 / $3.00</option>
+              <option value="moonshotai/Kimi-K2.7-Code">Kimi K2.7 Code — $0.74 / $3.50</option>
+              <option value="moonshotai/Kimi-K2.6">Kimi K2.6 — $0.75 / $3.50</option>
+              <option value="__custom__">Custom…</option>
+            </select>
+            <input id="customModel" class="composer-select hidden" type="text" placeholder="provider/model-id" spellcheck="false" />
+            <span id="hintUsage" class="hint-usage hidden" title="Context in the window now · session cost so far"></span>
+            <div class="composer-actions">
+              <button id="clearBtn" class="composer-tool" title="New conversation (Ctrl+L)" disabled aria-label="New conversation">↺</button>
+              <button id="sendBtn" class="send-btn" disabled title="Send">↑</button>
+              <button id="stopBtn" class="stop-btn hidden" title="Stop all running work (Esc)" aria-label="Stop all running work">■</button>
+            </div>
           </div>
         </div>
         <div id="hintLine">
           <span id="hintModel">deepseek-ai/DeepSeek-V4-Flash</span>
-          <span class="hint-sep">│</span>
-          <span id="hintAuto" class="hint-auto">autonomous · deletions always ask</span>
-          <span id="hintUsage" class="hint-usage hidden" title="Context in the window now · session cost so far (/session for the full bill)"></span>
+          <span id="hintAuto" class="hint-auto">asks before acting · deletions always ask</span>
         </div>
       </footer>
     </section>
@@ -183,10 +233,10 @@
 
       <div class="set-grid">
         <div class="set-card">
-          <div class="set-card-title">APPEARANCE</div>
+          <div class="set-card-title">WORKBENCH</div>
 
           <div class="set-row">
-            <span class="set-label">Typeface</span>
+            <span class="set-label">Code font</span>
             <select id="setFont">
               <option value='"Cascadia Mono", "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace' selected>Cascadia Mono</option>
               <option value='"Cascadia Code", "Cascadia Mono", "JetBrains Mono", Consolas, monospace'>Cascadia Code</option>
@@ -204,27 +254,8 @@
             <div class="seg" id="setSize">
               <button class="seg-btn" data-size="12">S</button>
               <button class="seg-btn" data-size="13">M</button>
-              <button class="seg-btn" data-size="15">L</button>
-              <button class="seg-btn on" data-size="17">XL</button>
-            </div>
-          </div>
-
-          <div class="set-row">
-            <span class="set-label">Theme</span>
-            <div class="swatches" id="setTheme">
-              <button class="swatch on" data-theme="phosphor" title="Matrix terminal — dark" aria-label="Matrix terminal — dark">PHOSPHOR</button>
-              <button class="swatch" data-theme="glacier" title="Winter — light, snowfall" aria-label="Winter — light, snowfall">GLACIER</button>
-              <button class="swatch" data-theme="dusk" title="Night observatory — dark, stars" aria-label="Night observatory — dark, stars">DUSK</button>
-              <button class="swatch" data-theme="paper" title="Print — light, maximum readability" aria-label="Print — light, maximum readability">PAPER</button>
-            </div>
-          </div>
-
-          <div class="set-row">
-            <span class="set-label">Rain</span>
-            <div class="seg" id="setRain">
-              <button class="seg-btn" data-rain="off">OFF</button>
-              <button class="seg-btn on" data-rain="faint">FAINT</button>
-              <button class="seg-btn" data-rain="live">LIVE</button>
+              <button class="seg-btn on" data-size="14">L</button>
+              <button class="seg-btn" data-size="15">XL</button>
             </div>
           </div>
 
@@ -242,11 +273,11 @@
           <div class="set-row">
             <span class="set-label">Detail</span>
             <div class="seg" id="setDetail">
-              <button class="seg-btn on" data-detail="cinematic">CINEMATIC</button>
-              <button class="seg-btn" data-detail="engineer">ENGINEER</button>
+              <button class="seg-btn" data-detail="cinematic">COMPACT</button>
+              <button class="seg-btn on" data-detail="engineer">DETAILED</button>
             </div>
           </div>
-          <p class="set-note">Cinematic shows the work as choreography. Engineer exposes every operation and its raw output.</p>
+          <p class="set-note">Compact groups routine operations. Detailed keeps every expandable operation visible.</p>
         </div>
 
         <div class="set-card">
@@ -261,8 +292,8 @@
           <div class="set-row">
             <span class="set-label">Commands</span>
             <div class="seg" id="setCommands">
-              <button class="seg-btn on" data-commands="auto">AUTONOMOUS</button>
-              <button class="seg-btn" data-commands="ask">ASK ALWAYS</button>
+              <button class="seg-btn" data-commands="auto">AUTONOMOUS</button>
+              <button class="seg-btn on" data-commands="ask">ASK ALWAYS</button>
             </div>
           </div>
           <p class="set-note">ASK ALWAYS pauses for approval before consequential commands — never for reading. ALLOW lets the agent delete files without a prompt when you ask for it or the task requires it.</p>
@@ -325,17 +356,69 @@
 
   </div>
 
-  <!-- ── task rail (overlay, right) ─────────────────────────────────────── -->
-  <aside id="taskRail" class="hidden">
-    <div class="rail-head">
-      <span class="rail-title">◒ TASKS</span>
-      <span id="taskProgress">0/0</span>
-      <button id="taskCollapse" title="Collapse" aria-label="Collapse">▸</button>
+  <!-- Persistent contextual inspector. Its tabs change context without
+       navigating away from the conversation. -->
+  <aside id="taskRail" class="inspector hidden" aria-label="Work inspector">
+    <div class="inspector-tabs" role="tablist" aria-label="Inspector views">
+      <button class="inspector-tab active" data-inspector="tasks" role="tab" aria-selected="true">Tasks</button>
+      <button class="inspector-tab" data-inspector="changes" role="tab" aria-selected="false">Changes <span id="inspectorChangesCount"></span></button>
+      <button class="inspector-tab" data-inspector="crew" role="tab" aria-selected="false">Crew <span id="inspectorCrewCount"></span></button>
+      <button id="taskCollapse" class="inspector-collapse" title="Close inspector" aria-label="Close inspector">»</button>
     </div>
-    <div class="rail-bar"><div id="taskBarFill"></div></div>
-    <div id="taskList"></div>
+
+    <section id="inspectorTasks" class="inspector-panel" data-panel="tasks">
+      <div class="inspector-section-head">
+        <span>Current work</span><span id="taskProgress">0/0</span>
+      </div>
+      <div class="rail-bar"><div id="taskBarFill"></div></div>
+      <div id="taskList"></div>
+      <div class="inspector-context">
+        <div class="inspector-section-head"><span>Context</span></div>
+        <dl>
+          <dt>Workspace</dt><dd id="inspectorWorkspace">—</dd>
+          <dt>Session</dt><dd id="inspectorSession">—</dd>
+          <dt>Model</dt><dd id="inspectorModel">—</dd>
+          <dt>Permissions</dt><dd id="inspectorPermissions">Ask before changes</dd>
+          <dt>Usage</dt><dd id="inspectorUsage">—</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section id="inspectorChanges" class="inspector-panel hidden" data-panel="changes">
+      <div class="inspector-section-head"><span id="inspectorChangesSummary">No changes yet</span></div>
+      <div id="inspectorChangesList" class="inspector-list"></div>
+      <div class="inspector-actions">
+        <button id="reviewAllBtn" disabled>Review all</button>
+        <button id="undoLastBtn" disabled>Undo last</button>
+      </div>
+    </section>
+
+    <section id="inspectorCrew" class="inspector-panel hidden" data-panel="crew">
+      <div class="inspector-section-head"><span>Available specialists</span></div>
+      <div id="inspectorCrewList" class="inspector-list"></div>
+      <button id="openCrewViewBtn" class="inspector-wide-action">Manage crew</button>
+    </section>
   </aside>
-  <button id="taskTab" class="hidden" title="Show tasks" aria-label="Show tasks">◒ <span id="taskTabCount">0/0</span></button>
+  <button id="taskTab" class="inspector-peek hidden" title="Show inspector" aria-label="Show inspector">◫ <span id="taskTabCount">0/0</span></button>
+
+  <!-- Review keeps the workspace and conversation visible while exposing the
+       actual unified diff and reversible actions. -->
+  <aside id="reviewDrawer" class="review-drawer hidden" aria-label="Review changes" aria-hidden="true">
+    <div class="review-head">
+      <div><strong>Review changes</strong><span id="reviewSummary">0 files changed</span></div>
+      <button id="reviewCloseBtn" class="view-tool" title="Close review" aria-label="Close review">✕</button>
+    </div>
+    <div id="reviewFileTabs" class="review-file-tabs" role="tablist" aria-label="Changed files"></div>
+    <div class="review-file-meta">
+      <span id="reviewFileName">Select a file</span><span id="reviewFileCounts"></span>
+    </div>
+    <pre id="reviewDiff" class="review-diff"></pre>
+    <div class="review-actions">
+      <button id="reviewOpenBtn" disabled>Open in editor ↗</button>
+      <button id="reviewUndoBtn" disabled>Undo file</button>
+      <button id="reviewDoneBtn">Done</button>
+    </div>
+  </aside>
 
   <!-- ── deletion guard ─────────────────────────────────────────────────── -->
   <!-- ── text prompt modal (window.prompt is unsupported in Electron) ────── -->
@@ -432,6 +515,7 @@
   <script src="modules/util.js"></script>
   <script src="modules/markdown.js"></script>
   <script src="modules/views.js"></script>
+  <script src="modules/workbench.js"></script>
   <script src="modules/missions.js"></script>
   <script src="modules/stream.js"></script>
   <script src="modules/crew.js"></script>
@@ -440,6 +524,5 @@
   <script src="modules/landing.js"></script>
   <script src="modules/session.js"></script>
   <script src="modules/composer.js"></script>
-  <script src="modules/atmosphere.js"></script>
 </body>
 </html>

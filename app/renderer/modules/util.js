@@ -68,6 +68,9 @@ function compactInput(input) {
 function setStatusLed(state) {
   statusLedEl.className = state;
   statusLedEl.title = state;
+  if (sidebarStatusTextEl) {
+    sidebarStatusTextEl.textContent = state === "busy" ? "Working" : state === "error" ? "Needs attention" : "Ready";
+  }
 }
 
 function looksLikeErrorLine(line) {

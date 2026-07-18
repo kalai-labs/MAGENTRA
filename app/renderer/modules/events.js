@@ -13,6 +13,7 @@
 // relPath -> { diffs: string[], adds, dels, count } — every edit this session,
 // accumulated: a file edited five times shows all five, never just the latest.
 const sessionChanges = new Map();
+const sessionChangeOrder = [];
 
 /** Pull the workspace-relative path and +/- counts out of a unified diff. */
 function parseDiff(diff, fallbackPath) {
@@ -31,6 +32,7 @@ function parseDiff(diff, fallbackPath) {
 
 function onFileEdited(event) {
   const { relPath, adds, dels } = parseDiff(event.diff || "", event.path || "file");
+  sessionChangeOrder.push({ relPath, diff: event.diff || "" });
   const prev = sessionChanges.get(relPath) || { diffs: [], adds: 0, dels: 0, count: 0 };
   sessionChanges.set(relPath, {
     diffs: [...prev.diffs, event.diff || ""],
@@ -44,7 +46,36 @@ function onFileEdited(event) {
 
 function resetChanges() {
   sessionChanges.clear();
+  sessionChangeOrder.length = 0;
   if (navChangesEl) navChangesEl.classList.add("hidden");
+  renderChanges();
+}
+
+function rebuildSessionChanges() {
+  sessionChanges.clear();
+  for (const edit of sessionChangeOrder) {
+    const { relPath, adds, dels } = parseDiff(edit.diff, edit.relPath);
+    const prev = sessionChanges.get(relPath) || { diffs: [], adds: 0, dels: 0, count: 0 };
+    sessionChanges.set(relPath, {
+      diffs: [...prev.diffs, edit.diff],
+      adds: prev.adds + adds,
+      dels: prev.dels + dels,
+      count: prev.count + 1,
+    });
+  }
+}
+
+function discardSessionFileChanges(relPath) {
+  for (let index = sessionChangeOrder.length - 1; index >= 0; index--) {
+    if (sessionChangeOrder[index].relPath === relPath) sessionChangeOrder.splice(index, 1);
+  }
+  rebuildSessionChanges();
+  renderChanges();
+}
+
+function discardLastSessionDiff() {
+  sessionChangeOrder.pop();
+  rebuildSessionChanges();
   renderChanges();
 }
 
@@ -126,9 +157,10 @@ function renderChanges() {
     });
     changesListEl.appendChild(detail);
   }
+  renderInspectorChanges();
 }
 
-if (navChangesEl) navChangesEl.addEventListener("click", () => showView("changes"));
+if (navChangesEl) navChangesEl.addEventListener("click", () => openInspector("changes"));
 if (changesCloseBtnEl) changesCloseBtnEl.addEventListener("click", () => showView("console"));
 
 // ---------------------------------------------------------------------------

@@ -26,6 +26,7 @@
     "version:apply": "node tools/version/bin/magentra-version.mjs apply",
     "version:check": "node tools/version/bin/magentra-version.mjs check",
     "test:version": "node tools/version/bin/run-tests.mjs",
+    "test:ui": "npm run test:main --workspace app && npm run test:ui --workspace app",
     "typecheck:version": "tsc -p tools/version",
     "fetch:rg-win": "npm install --no-save --force --os=win32 --cpu=x64 @vscode/ripgrep-win32-x64"
   },

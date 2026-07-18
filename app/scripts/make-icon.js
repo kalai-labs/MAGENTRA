@@ -2,8 +2,8 @@
 // Generates build/icon.png (512×512): the app icon electron-builder converts
 // per-platform (.ico for Windows, .icns for mac, as-is for Linux). Pure Node —
 // a tiny PNG encoder over zlib — so the icon is reproducible from source and
-// no binary asset has to be hand-maintained. Design: terminal prompt chevron
-// and block cursor in the phosphor accent on the app's dark background.
+// no binary asset has to be hand-maintained. Design: the restrained Concept A
+// "M" mark in workbench turquoise on the app's neutral charcoal surface.
 "use strict";
 
 const path = require("node:path");
@@ -12,9 +12,9 @@ const zlib = require("node:zlib");
 
 const SIZE = 512;
 const RADIUS = 92; // rounded-corner radius of the tile
-const BG = [7, 14, 10, 255]; // near styles.css --bg (phosphor theme)
-const ACC = [49, 224, 140, 255]; // styles.css --acc (phosphor theme)
-const EDGE = [24, 82, 54, 255]; // dim accent for the border ring
+const BG = [24, 27, 30, 255]; // styles.css --panel
+const ACC = [53, 201, 198, 255]; // styles.css --accent
+const EDGE = [58, 66, 73, 255]; // styles.css --border-hi
 
 /** Signed inside-test for the tile's rounded rect, inset by `inset` px. */
 function insideTile(x, y, inset) {
@@ -35,21 +35,21 @@ function segDist(px, py, ax, ay, bx, by) {
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
-// Glyph geometry: chevron ❯ left of center, block cursor ▮ right of it.
-const STROKE = 27; // half-width of the chevron strokes
-const CHEV = [
-  [152, 158, 262, 256],
-  [262, 256, 152, 354],
+// Glyph geometry: one continuous architectural M, matching the renderer mark.
+const STROKE = 21;
+const MARK = [
+  [142, 350, 142, 166],
+  [142, 166, 256, 286],
+  [256, 286, 370, 166],
+  [370, 166, 370, 350],
 ];
-const CURSOR = { x0: 316, x1: 396, y0: 214, y1: 356 };
 
 function pixel(x, y) {
   if (!insideTile(x, y, 0)) return [0, 0, 0, 0];
   if (!insideTile(x, y, 7)) return EDGE; // border ring
-  for (const [ax, ay, bx, by] of CHEV) {
+  for (const [ax, ay, bx, by] of MARK) {
     if (segDist(x, y, ax, ay, bx, by) <= STROKE) return ACC;
   }
-  if (x >= CURSOR.x0 && x <= CURSOR.x1 && y >= CURSOR.y0 && y <= CURSOR.y1) return ACC;
   return BG;
 }
 

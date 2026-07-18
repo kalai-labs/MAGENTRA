@@ -149,15 +149,13 @@ function renderSessions() {
     row.append(resumeBtn, actions);
     sessionsListEl.appendChild(row);
   }
+  renderSidebarSessions();
+  syncWorkbenchContext();
 }
 
 function onSessionList(event) {
   sessionSummaries = Array.isArray(event.sessions) ? event.sessions : [];
   renderSessions();
-  if (openSessionPickerAfterList) {
-    openSessionPickerAfterList = false;
-    if (sessionSummaries.some((session) => session.id !== currentSessionId)) showView("sessions");
-  }
 }
 
 navSessionsEl.addEventListener("click", () => {
@@ -212,6 +210,7 @@ function onSessionRestored(event) {
 
 function onSessionStarted(event) {
   currentSessionId = event.sessionId;
+  syncWorkbenchContext();
   // Adopt the engine's slash-command registry and rate card so the palette
   // and the model hints can never drift from what the engine actually does.
   if (Array.isArray(event.commands) && event.commands.length > 0) SLASH_COMMANDS = event.commands;
@@ -235,7 +234,7 @@ function onSessionStarted(event) {
   // A running session is the proof the credentials work — unlock the composer.
   engineLinked = true;
   syncActivityUi();
-  if (openSessionPickerAfterList || document.body.dataset.view === "sessions") requestSessionList();
+  requestSessionList();
 }
 
 /**
@@ -809,16 +808,17 @@ function handleEngineEvent(event) {
       // Show when the session operates inside a worktree, and where.
       if (event.worktree) {
         const short = String(event.cwd || "").split(/[\\/]/).slice(-2).join("/");
-        workspacePathEl.textContent = `${activeWorkspace || ""} ⇒ ${short}`;
+        workspacePathEl.textContent = `${pathLeaf(activeWorkspace)} ⇒ ${short}`;
         workspaceBtnEl.classList.add("in-worktree");
         workspaceBtnEl.title = `Session is working inside a worktree: ${event.cwd}`;
         appendSysNote(`⌥ session cwd → ${event.cwd} (worktree)`);
       } else {
-        workspacePathEl.textContent = activeWorkspace || event.cwd;
+        workspacePathEl.textContent = pathLeaf(activeWorkspace || event.cwd);
         workspaceBtnEl.classList.remove("in-worktree");
         workspaceBtnEl.title = "Choose workspace folder";
         appendSysNote("⌥ session cwd back at the workspace root");
       }
+      syncWorkbenchContext();
       break;
     }
     case "retry_status": {

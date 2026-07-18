@@ -349,6 +349,7 @@ function renderRoster() {
     window.magentra.createTeamTemplate();
   });
   teamRosterEl.appendChild(addEl);
+  renderInspectorCrew();
 }
 
 function onTeamUpdated(event) {
@@ -379,6 +380,7 @@ function resetTeamView() {
   teamBtnEl.classList.remove("has-team", "active");
   teamCountEl.textContent = "no agents";
   teamRosterEl.textContent = "";
+  renderInspectorCrew();
 }
 
 function onBackpackProgress(event) {

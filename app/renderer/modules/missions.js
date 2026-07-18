@@ -21,7 +21,7 @@ function onTaskListUpdated(event) {
   const notCompleted = total - done;
   dockMissionCountEl.textContent = String(notCompleted);
   dockMissionCountEl.classList.toggle("hidden", notCompleted === 0);
-  navMissionEl.classList.toggle("hidden", total === 0);
+  navMissionEl.classList.remove("hidden");
 
   // detect tasks that just flipped to in_progress, to feed the now-line
   for (const task of tasks) {
@@ -56,42 +56,11 @@ function onTaskListUpdated(event) {
   }
   if (inProgressEl) inProgressEl.scrollIntoView({ block: "nearest" });
 
-  // visibility state machine
-  if (total === 0) {
-    taskRailEl.classList.add("hidden");
-    document.body.classList.remove("rail-open");
-    taskTabEl.classList.add("hidden");
-    return;
-  }
-  if (railCollapsed) {
-    taskTabEl.classList.remove("hidden");
-    return;
-  }
-  taskRailEl.classList.remove("hidden");
-  document.body.classList.add("rail-open");
-  taskTabEl.classList.add("hidden");
+  if (!railCollapsed && workspaceOpen) openInspector(activeInspectorTab);
 }
-
-function collapseMissionRail() {
-  railCollapsed = true;
-  taskRailEl.classList.add("hidden");
-  document.body.classList.remove("rail-open");
-  if (taskListEl.children.length > 0) taskTabEl.classList.remove("hidden");
-}
-
-function expandMissionRail() {
-  railCollapsed = false;
-  taskTabEl.classList.add("hidden");
-  taskRailEl.classList.remove("hidden");
-  document.body.classList.add("rail-open");
-}
-
-taskCollapseEl.addEventListener("click", collapseMissionRail);
-taskTabEl.addEventListener("click", expandMissionRail);
 
 navMissionEl.addEventListener("click", () => {
-  if (railCollapsed) expandMissionRail();
-  else collapseMissionRail();
+  openInspector("tasks");
 });
 
 // ---------------------------------------------------------------------------
@@ -361,6 +330,7 @@ function renderMissions() {
     w.textContent = `✗ ${warning}`;
     labListEl.appendChild(w);
   }
+  renderSidebarMissions();
 }
 
 function onMissionsUpdated(event) {

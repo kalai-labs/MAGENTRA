@@ -54,6 +54,9 @@ jobs:
       - name: Boot the app (smoke)
         run: xvfb-run --auto-servernum npm run smoke --workspace app
 
+      - name: Exercise desktop UI interactions
+        run: xvfb-run --auto-servernum npm run test:ui
+
   types:
     name: Types
     runs-on: ubuntu-latest

@@ -13,7 +13,9 @@
     "dist:linux": "node scripts/bundle-engine.js --target linux && node scripts/dist.js --linux",
     "dist:mac": "node scripts/bundle-engine.js --target mac && node scripts/dist.js --mac",
     "dist:all": "node scripts/bundle-engine.js --target win --target linux && node scripts/dist.js --win --linux",
-    "smoke": "node scripts/launch.js --smoke"
+    "smoke": "node scripts/launch.js --smoke",
+    "test:ui": "node tests/run-ui-tests.js",
+    "test:main": "node tests/changes.test.js && node tests/window.test.js"
   },
   "devDependencies": {
     "electron": "^33.0.0",

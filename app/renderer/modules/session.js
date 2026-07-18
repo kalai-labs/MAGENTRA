@@ -25,13 +25,15 @@ function resetWorkspaceState() {
   engineErrorBannerShown = false;
   promptInputEl.value = "";
   promptInputEl.style.height = "auto";
+  closeReviewDrawer();
+  closeInspector();
+  setWorkbenchTitle();
   showView("console");
 }
 
 function enterActiveState(workspace) {
   const workspaceChanged = activeWorkspace !== workspace;
   if (activeWorkspace !== null && workspaceChanged) resetWorkspaceState();
-  if (workspaceChanged) openSessionPickerAfterList = true;
   activeWorkspace = workspace;
   if (!streamEl) {
     if (emptyStateEl && emptyStateEl.parentNode) {
@@ -41,14 +43,24 @@ function enterActiveState(workspace) {
     streamEl.className = "stream";
     transcriptEl.appendChild(streamEl);
   }
-  workspacePathEl.textContent = workspace;
+  workspacePathEl.textContent = pathLeaf(workspace);
+  workspacePathEl.title = workspace;
   workspaceOpen = true;
   navSessionsEl.classList.remove("hidden");
   navLabEl.classList.remove("hidden");
+  navMissionEl.classList.remove("hidden");
+  sidebarSessionsRefreshEl.classList.remove("hidden");
+  sidebarMissionNewEl.classList.remove("hidden");
+  inspectorToggleEl.classList.remove("hidden");
   void loadConnectionCard();
   sendBtnEl.disabled = false;
   clearBtnEl.disabled = false;
   syncActivityUi();
+  renderSidebarSessions();
+  renderSidebarMissions();
+  syncWorkbenchContext();
+  openInspector("tasks");
+  requestSessionList();
   showFirstUseHint();
 }
 
@@ -216,6 +228,7 @@ function updateSessionMeter() {
   if (sessionCostUsd !== null) parts.push(formatUsdShort(sessionCostUsd));
   hintUsageEl.textContent = parts.join(" · ");
   hintUsageEl.classList.toggle("hidden", parts.length === 0);
+  syncWorkbenchContext();
 }
 
 function resetSessionMeter() {
@@ -236,6 +249,7 @@ function applyModel(model) {
     customModelEl.classList.remove("hidden");
   }
   hintModelEl.textContent = modelHintText(model);
+  syncWorkbenchContext();
 }
 
 async function handleChooseWorkspace() {
@@ -285,6 +299,7 @@ async function boot() {
       const info = await window.magentra.getAppInfo();
       if (info && info.version && setVersionEl) {
         setVersionEl.textContent = "v" + info.version;
+        if (sidebarVersionEl) sidebarVersionEl.textContent = "v" + info.version;
       }
     } catch {
       // ignore — version display is best-effort

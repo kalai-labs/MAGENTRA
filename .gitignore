@@ -7,6 +7,7 @@ coverage/
 # desktop build artifacts
 app/build-resources/
 app/dist/
+app/tests/.tmp/
 
 # workspace state the engine writes
 .magentra/
