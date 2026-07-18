@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.4.0.0 — 2026-07-18
+
+### Features
+
+- UI redesign ([e60a2ad](https://github.com/kalai-labs/MAGENTRA/commit/e60a2ada650f23755147f12a46ff68c9259c2818))
+
+[Compare with v0.3.1.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.3.1.0...v0.4.0.0)
+
 ## 0.1.0.0 — 2026-07-14
 
 The first release.
