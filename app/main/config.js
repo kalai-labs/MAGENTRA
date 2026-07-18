@@ -74,15 +74,34 @@ function rememberWorkspace(config, workspace) {
   return { ...config, recentWorkspaces: [workspace, ...rest].slice(0, MAX_RECENT_WORKSPACES) };
 }
 
-/** True for a loopback OpenAI-compatible endpoint (Ollama, LM Studio, …), which
- *  needs no API key. */
+/** True for a local/LAN OpenAI-compatible endpoint (Ollama, LM Studio, a
+ *  llama.cpp box on the home network, …), which needs no API key and deserves
+ *  a longer connect budget than a hosted API. */
 function isLocalBaseUrl(baseUrl) {
   try {
-    const host = new URL(baseUrl).hostname;
-    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+    const host = new URL(baseUrl).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+    if (host === "::1" || host === "0.0.0.0" || host === "host.docker.internal") return true;
+    if (host.startsWith("127.") || host.startsWith("10.") || host.startsWith("192.168.")) return true;
+    const m = /^172\.(\d{1,3})\./.exec(host);
+    if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return true;
+    return false;
   } catch {
     return false;
   }
+}
+
+/**
+ * Cleans a user-entered base URL: trims, drops trailing slashes, and strips an
+ * accidentally pasted endpoint path. People paste the URL their script calls —
+ * "http://host:1234/v1/chat/completions" — into a field asking for the base;
+ * without this, TEST probes ".../chat/completions/models" and fails.
+ */
+function normalizeBaseUrl(raw) {
+  let url = String(raw ?? "").trim();
+  url = url.replace(/\/+$/, "");
+  url = url.replace(/\/chat\/completions$/i, "").replace(/\/models$/i, "");
+  return url.replace(/\/+$/, "");
 }
 
 function writeConfig(config) {
@@ -114,5 +133,6 @@ module.exports = {
   writeConfig,
   rememberWorkspace,
   isLocalBaseUrl,
+  normalizeBaseUrl,
   shouldStartMaximized,
 };

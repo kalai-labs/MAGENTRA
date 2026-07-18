@@ -13,10 +13,12 @@ const {
   writeConfig,
   rememberWorkspace,
   isLocalBaseUrl,
+  normalizeBaseUrl,
   shouldStartMaximized,
 } = require("./main/config.js");
 const { logEvent, setLogWorkspace, flushLog, initFallbackLog, activeLogsDir } = require("./main/logging.js");
 const { resolveWorkspaceFile, undoWorkspaceDiffs } = require("./main/changes.js");
+const { testEndpoint } = require("./main/connection.js");
 
 const SMOKE = process.argv.includes("--smoke");
 
@@ -795,16 +797,20 @@ function validateCredentialPayload(payload) {
     if (typeof baseUrl !== "string") {
       return { ok: false, error: "invalid baseUrl" };
     }
+    // Users paste the URL their script calls (".../v1/chat/completions") into
+    // the base-URL field; normalize so TEST, .env, and the engine all see the
+    // real base.
+    const normalized = normalizeBaseUrl(baseUrl);
     let parsed;
     try {
-      parsed = new URL(baseUrl);
+      parsed = new URL(normalized);
     } catch {
       return { ok: false, error: "invalid baseUrl" };
     }
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       return { ok: false, error: "invalid baseUrl" };
     }
-    resolvedBaseUrl = baseUrl;
+    resolvedBaseUrl = normalized;
   }
 
   return {
@@ -957,53 +963,18 @@ ipcMain.handle("setup:testConnection", async (_evt, payload) => {
   }
   const validated = validateCredentialPayload(payload);
   if (!validated.ok) return validated;
-  const { apiKey, provider, baseUrl } = validated;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-
-  try {
-    let res;
-    if (provider === "anthropic") {
-      res = await fetch("https://api.anthropic.com/v1/models", {
-        method: "GET",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        signal: controller.signal,
-      });
-    } else {
-      const effectiveBaseUrl = baseUrl || DEEPINFRA_DEFAULT_BASE_URL;
-      res = await fetch(`${effectiveBaseUrl.replace(/\/$/, "")}/models`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-        signal: controller.signal,
-      });
-    }
-    // Both API shapes list models as data[].id — hand them to the wizard so
-    // its model picker reflects the actual endpoint, not a hardcoded preset.
-    let models = [];
-    if (res.ok) {
-      try {
-        const body = await res.json();
-        if (body && Array.isArray(body.data)) {
-          models = body.data.map((m) => m && m.id).filter((id) => typeof id === "string");
-        }
-      } catch {
-        // a catalog is a bonus; the reachability result stands on its own
-      }
-    }
-    return { ok: res.ok, status: res.status, models };
-  } catch (err) {
-    const message =
-      err && err.name === "AbortError" ? "timed out" : err && err.message ? err.message : String(err);
-    return { ok: false, error: message };
-  } finally {
-    clearTimeout(timer);
-  }
+  // testEndpoint tries the URL as given, retries `localhost` as 127.0.0.1
+  // (Windows resolves localhost IPv6-first and stalls on IPv4-only servers),
+  // gives local endpoints a longer budget, and treats a local server without
+  // a /models catalog as reachable-with-a-note rather than a failure.
+  const result = await testEndpoint(validated, DEEPINFRA_DEFAULT_BASE_URL);
+  logEvent("sys", {
+    ev: "connection-test",
+    ok: result.ok,
+    ...(result.status !== undefined ? { status: result.status } : {}),
+    ...(result.error ? { error: result.error } : {}),
+  });
+  return result;
 });
 
 // Packaged builds carry the real 4-part version as `magentraVersion`

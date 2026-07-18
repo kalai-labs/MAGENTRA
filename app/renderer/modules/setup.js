@@ -188,7 +188,8 @@ if (wizTestBtnEl) {
     }
     if (result && result.ok) {
       wizTestedOkFor = wizPayloadKey(payload);
-      wizStatusEl.textContent = "link established";
+      // A note flags a reachable-but-quirky endpoint (e.g. no /models catalog).
+      wizStatusEl.textContent = result.note || "link established";
       wizStatusEl.className = "ok";
       // The endpoint just told us its real catalog — replace the preset's
       // static suggestion list (an Ollama user sees their local models).
@@ -350,7 +351,7 @@ if (setTestBtnEl) {
       setTestBtnEl.disabled = false;
     }
     if (result && result.ok) {
-      setConnStatusEl.textContent = "link established ✓";
+      setConnStatusEl.textContent = result.note || "link established ✓";
       setConnStatusEl.className = "ok";
     } else {
       setConnStatusEl.textContent = describeTestFailure(result);
