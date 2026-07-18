@@ -1,6 +1,6 @@
 {
   "name": "@magentra/protocol",
-  "version": "0.1.0.0",
+  "version": "0.5.2.1",
   "private": true,
   "type": "module",
   "exports": {
