@@ -112,6 +112,13 @@ export const settingsSchema = z
         remindThreshold: z.number().min(0).max(1).default(0.5),
       })
       .default({ mode: "gate", maxHits: 5, blockThreshold: 0.75, remindThreshold: 0.5 }),
+    /**
+     * Skip TLS certificate verification for provider requests — the `verify=False`
+     * escape hatch for self-signed certificates on servers you own (a home-lab
+     * gateway, an LM box behind Caddy). Never enable for endpoints you don't
+     * control: it disables man-in-the-middle protection process-wide.
+     */
+    allowInsecureTls: z.boolean().default(false),
     modes: z
       .object({
         /**

@@ -76,6 +76,12 @@ function applyWizPreset(preset) {
   // Local servers need no key and expose a context-size field instead.
   if (wizApiKeyFieldEl) wizApiKeyFieldEl.hidden = meta.local;
   if (wizContextFieldEl) wizContextFieldEl.hidden = !meta.local;
+  // Custom endpoints: full-URL paste hint + the self-signed TLS opt-in.
+  if (wizBaseUrlHintEl) wizBaseUrlHintEl.hidden = preset !== "custom";
+  if (wizInsecureRowEl) {
+    wizInsecureRowEl.hidden = preset !== "custom";
+    if (preset !== "custom" && wizInsecureEl) wizInsecureEl.checked = false;
+  }
   if (wizKeyHintEl) {
     wizKeyHintEl.hidden = !meta.keyUrl;
     if (meta.keyUrl) wizKeyHintEl.textContent = `get an API key → ${meta.keyUrl.replace(/^https:\/\//, "")}`;
@@ -83,7 +89,9 @@ function applyWizPreset(preset) {
   if (wizNoteEl) {
     wizNoteEl.textContent = meta.local
       ? "No API key needed. Magentra writes the connection to .magentra/settings.json and talks to your local server."
-      : "The key is written to .env beside your code and never leaves this machine.";
+      : preset === "custom"
+        ? "Key optional — leave it empty for keyless servers. TEST fetches the server's model list when it has one."
+        : "The key is written to .env beside your code and never leaves this machine.";
   }
   wizConnectionChanged();
   if (preset === "custom") wizBaseUrlEl.focus();
@@ -143,6 +151,7 @@ function wizPayload() {
     provider: meta.provider,
   };
   if (meta.local && wizContextEl && wizContextEl.value) payload.contextWindow = wizContextEl.value;
+  if (currentWizPreset === "custom" && wizInsecureEl && wizInsecureEl.checked) payload.insecureTls = true;
   return payload;
 }
 
@@ -163,7 +172,7 @@ function describeTestFailure(result) {
 // field values have passed TEST; the first untested IGNITE warns, a second
 // deliberately proceeds anyway (offline setup stays possible).
 function wizPayloadKey(payload) {
-  return JSON.stringify([payload.baseUrl, payload.apiKey, payload.model, payload.provider]);
+  return JSON.stringify([payload.baseUrl, payload.apiKey, payload.model, payload.provider, payload.insecureTls === true]);
 }
 
 function wizConnectionChanged() {
@@ -173,6 +182,7 @@ function wizConnectionChanged() {
 [wizBaseUrlEl, wizApiKeyEl, wizModelEl].forEach((el) => {
   if (el) el.addEventListener("input", wizConnectionChanged);
 });
+if (wizInsecureEl) wizInsecureEl.addEventListener("change", wizConnectionChanged);
 
 if (wizTestBtnEl) {
   wizTestBtnEl.addEventListener("click", async () => {
@@ -187,7 +197,13 @@ if (wizTestBtnEl) {
       result = null;
     }
     if (result && result.ok) {
-      wizTestedOkFor = wizPayloadKey(payload);
+      // TEST probes the normalized base (a pasted ".../chat/completions" is
+      // reduced) — reflect what will actually be saved, and keep the tested-ok
+      // marker valid for the updated field value.
+      if (result.baseUrl && wizBaseUrlEl.value.trim() !== result.baseUrl) {
+        wizBaseUrlEl.value = result.baseUrl;
+      }
+      wizTestedOkFor = wizPayloadKey(wizPayload());
       // A note flags a reachable-but-quirky endpoint (e.g. no /models catalog).
       wizStatusEl.textContent = result.note || "link established";
       wizStatusEl.className = "ok";
@@ -212,7 +228,10 @@ if (wizTestBtnEl) {
 if (wizStartBtnEl) {
   wizStartBtnEl.addEventListener("click", async () => {
     const meta = WIZ_PRESETS[currentWizPreset] || WIZ_PRESETS.custom;
-    if (!meta.local && !wizApiKeyEl.value.trim()) {
+    // A key is mandatory only where it cannot work without one: Anthropic and
+    // the default hosted preset. Custom endpoints are key-optional — a server
+    // that wants one will reject TEST/the first turn with a 401 the user sees.
+    if (!meta.local && currentWizPreset !== "custom" && !wizApiKeyEl.value.trim()) {
       wizStatusEl.textContent = "key required";
       wizStatusEl.className = "err";
       return;
@@ -266,16 +285,6 @@ function inferProvider(baseUrl) {
   return (baseUrl || "").includes("anthropic.com") ? "anthropic" : "openai-compat";
 }
 
-/** A loopback endpoint (Ollama, LM Studio) — keyless. */
-function isLocalUrl(baseUrl) {
-  try {
-    const host = new URL(baseUrl).hostname;
-    return host === "localhost" || host === "127.0.0.1" || host === "::1";
-  } catch {
-    return false;
-  }
-}
-
 // The card reflects what is saved, refreshed every time settings opens (the
 // wizard or another surface may have changed the connection meanwhile).
 if (navSettingsEl) {
@@ -301,6 +310,7 @@ async function loadConnectionCard() {
   if (info.baseUrl && !setBaseUrlEl.value) setBaseUrlEl.value = info.baseUrl;
   if (info.model && setModelDefaultEl && !setModelDefaultEl.value) setModelDefaultEl.value = info.model;
   if (info.contextWindow && setContextEl && !setContextEl.value) setContextEl.value = info.contextWindow;
+  if (setInsecureEl) setInsecureEl.checked = info.allowInsecureTls === true;
   setApiKeyEl.placeholder = savedKeyExists ? "●●●●●●●● saved — ◉ reveals" : "no key saved yet";
 }
 
@@ -342,6 +352,7 @@ if (setTestBtnEl) {
         apiKey: typedKey,
         model: setModelDefaultEl.value.trim(),
         provider: inferProvider(baseUrl),
+        ...(setInsecureEl && setInsecureEl.checked ? { insecureTls: true } : {}),
         // Empty field + saved key = "test the connection I have".
         ...(typedKey === "" && savedKeyExists ? { useSavedKey: true } : {}),
       });
@@ -364,13 +375,9 @@ if (setSaveBtnEl) {
   setSaveBtnEl.addEventListener("click", async () => {
     const apiKey = setApiKeyEl.value.trim();
     const baseUrl = setBaseUrlEl.value.trim();
-    const local = isLocalUrl(baseUrl);
     const keepSaved = apiKey === "" && savedKeyExists;
-    if (apiKey === "" && !local && !keepSaved) {
-      setConnStatusEl.textContent = "key required";
-      setConnStatusEl.className = "err";
-      return;
-    }
+    // Key requirements live in one place — the main process validator; its
+    // error ("apiKey is required for the default hosted endpoint") shows below.
     if (!window.magentra.writeEnv) return;
     let result = null;
     try {
@@ -379,6 +386,7 @@ if (setSaveBtnEl) {
         apiKey,
         model: setModelDefaultEl.value.trim(),
         provider: inferProvider(baseUrl),
+        ...(setInsecureEl && setInsecureEl.checked ? { insecureTls: true } : {}),
         ...(keepSaved ? { useSavedKey: true } : {}),
         ...(setContextEl && setContextEl.value ? { contextWindow: setContextEl.value } : {}),
       });
@@ -390,11 +398,13 @@ if (setSaveBtnEl) {
     if (result && result.ok) {
       setApiKeyEl.value = "";
       setApiKeyEl.type = "password";
-      savedKeyExists = savedKeyExists || (apiKey !== "" && !local);
+      // A key only lands in .env when one was typed; keyless saves (local or
+      // custom endpoints) live entirely in settings.json.
+      savedKeyExists = savedKeyExists || apiKey !== "";
       setApiKeyEl.placeholder = savedKeyExists ? "●●●●●●●● saved — ◉ reveals" : "no key saved yet";
       setConnStatusEl.textContent = keepSaved
         ? "saved (existing key kept) — engine restarted"
-        : local
+        : apiKey === ""
           ? "saved to workspace settings — engine restarted"
           : "written to workspace .env — engine restarted";
       setConnStatusEl.className = "ok";

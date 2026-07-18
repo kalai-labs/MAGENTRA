@@ -335,6 +335,10 @@
           </div>
           <div class="set-row"><span class="set-label">Model</span><input id="setModelDefault" type="text" spellcheck="false" placeholder="deepseek-ai/DeepSeek-V4-Flash" /></div>
           <div class="set-row"><span class="set-label">Context size</span><input id="setContext" type="number" min="256" step="256" placeholder="auto (model-aware)" /></div>
+          <label class="wiz-check set-check">
+            <input type="checkbox" id="setInsecure" />
+            <span>Allow self-signed certificate <small>— only for https servers you own</small></span>
+          </label>
           <p class="set-note">Leave empty: the engine uses the model's real window automatically. Set a number ONLY for local servers (it becomes <code>num_ctx</code>); saving with the field empty clears any old override.</p>
           <div class="set-actions">
             <span id="setConnStatus"></span>
@@ -552,6 +556,11 @@
 
       <label class="wiz-field"><span>BASE URL</span>
         <input id="wizBaseUrl" type="text" spellcheck="false" value="https://api.deepinfra.com/v1/openai" />
+        <span id="wizBaseUrlHint" class="wiz-field-hint" hidden>Paste the exact URL your client calls — even <code>…/v1/chat/completions</code> — Magentra derives the base.</span>
+      </label>
+      <label class="wiz-check" id="wizInsecureRow" hidden>
+        <input type="checkbox" id="wizInsecure" />
+        <span>Allow self-signed certificate <small>— only for https servers you own (the <code>verify=False</code> case)</small></span>
       </label>
       <label class="wiz-field" id="wizApiKeyField"><span>API KEY</span>
         <input id="wizApiKey" type="password" spellcheck="false" placeholder="paste your key — stored only in this workspace" />

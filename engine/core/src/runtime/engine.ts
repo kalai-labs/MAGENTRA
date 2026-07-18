@@ -111,6 +111,7 @@ export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTi
   search: "nextTurn",
   embeddings: "backpackRebuild",
   modes: "clear",
+  allowInsecureTls: "restart",
   reuseCheck: "clear",
 };
 

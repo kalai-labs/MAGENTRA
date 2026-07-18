@@ -106,6 +106,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 code, pre { font-family: var(--mono); }
 code { padding: 1px 5px; border-radius: 4px; color: var(--accent-hi); background: var(--well); font-size: 0.9em; }
 .hidden { display: none !important; }
+/* The HTML hidden attribute must always win — .wiz-field's display:block was
+   silently overriding it, leaving per-preset wizard fields visible. */
+[hidden] { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* -----------------------------------------------------------------------
@@ -818,6 +821,11 @@ select.composer-select { color-scheme: dark; }
 .wiz-field > span { display: block; margin-bottom: 4px; color: var(--text-faint); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em; }
 .wiz-field input { width: 100%; padding: 8px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); }
 .wiz-key-hint { margin-top: 4px; border: 0; background: none; color: var(--accent-hi); font-size: 0.68rem; }
+.wiz-field-hint { display: block; margin-top: 4px; color: var(--text-faint); font-size: 0.68rem; font-weight: 400; letter-spacing: 0; line-height: 1.45; }
+.wiz-check { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 9px; color: var(--text); font-size: 0.76rem; cursor: pointer; }
+.wiz-check input { accent-color: var(--accent); }
+.wiz-check small { color: var(--text-faint); }
+.set-check { padding: 6px 0; margin: 0; }
 #wizStatus { margin-right: auto; color: var(--text-faint); font-size: 0.7rem; }
 #wizStatus.ok { color: var(--green); } #wizStatus.err { color: var(--red); }
 #wizStartBtn { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-weight: 700; }

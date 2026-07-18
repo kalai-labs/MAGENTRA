@@ -44,6 +44,19 @@ export async function bootstrapEngine(opts: BootstrapOptions): Promise<Bootstrap
   const { settings, warnings } = loadSettings(opts.cwd);
   if (opts.mode) settings.permissionMode = opts.mode;
 
+  // The `verify=False` escape hatch for self-signed local/custom endpoints.
+  // Node reads this per TLS connection, so setting it here covers every
+  // provider fetch in this process. Deliberately loud: it disables MITM
+  // protection, so it must never pass silently.
+  if (settings.allowInsecureTls) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    warnings.push({
+      source: "settings",
+      message:
+        "allowInsecureTls is ON — TLS certificate verification is disabled for this engine. Only use with servers you own.",
+    });
+  }
+
   // The Bash tool needs a real bash. On Windows that means Git Bash; the bare
   // "bash" fallback commonly resolves to WSL's launcher (whose /mnt/c view
   // node cannot consume) or to nothing at all — warn at boot, before the first

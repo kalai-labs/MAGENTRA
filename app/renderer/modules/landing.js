@@ -227,6 +227,10 @@ function onSessionStarted(event) {
     setContextEl.placeholder = `auto (${Math.round(modelRateCard[event.model].contextWindow / 1000)}K for this model)`;
   }
   appendSysNote(`session ${event.sessionId} · model ${event.model}`);
+  // Keep the composer's model picker aligned with the engine's actual model —
+  // after a wizard IGNITE, a /clear, or a resume, the user must never have to
+  // re-select what they already configured.
+  if (event.model) applyModel(event.model);
   // The on-demand action skills discovered in this workspace ride along here.
   if (Array.isArray(event.skills)) {
     actionSkills = event.skills;

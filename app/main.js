@@ -13,12 +13,11 @@ const {
   writeConfig,
   rememberWorkspace,
   isLocalBaseUrl,
-  normalizeBaseUrl,
   shouldStartMaximized,
 } = require("./main/config.js");
 const { logEvent, setLogWorkspace, flushLog, initFallbackLog, activeLogsDir } = require("./main/logging.js");
 const { resolveWorkspaceFile, undoWorkspaceDiffs } = require("./main/changes.js");
-const { testEndpoint } = require("./main/connection.js");
+const { testEndpoint, validateCredentialPayload } = require("./main/connection.js");
 
 const SMOKE = process.argv.includes("--smoke");
 
@@ -740,89 +739,6 @@ function createWindow() {
 
 const DEEPINFRA_DEFAULT_BASE_URL = "https://api.deepinfra.com/v1/openai";
 
-/** Shared validation for the setup wizard's writeEnv/testConnection payloads.
- * Never echoes the apiKey back in error messages or logs. */
-function validateCredentialPayload(payload) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return { ok: false, error: "invalid payload" };
-  }
-
-  const { apiKey, model, provider, baseUrl, contextWindow } = payload;
-
-  // Local servers (Ollama, LM Studio) need no key; every hosted endpoint does.
-  const local = isLocalBaseUrl(baseUrl);
-  if (typeof apiKey !== "string") {
-    return { ok: false, error: "apiKey is required" };
-  }
-  // Pasted keys routinely arrive with a trailing newline/space; trimming here
-  // keeps TEST, .env, and the engine all seeing the exact same string.
-  const trimmedKey = apiKey.trim();
-  if (trimmedKey.length === 0 && !local) {
-    return { ok: false, error: "apiKey is required" };
-  }
-  if (trimmedKey.length > 4096) {
-    return { ok: false, error: "apiKey is too long" };
-  }
-  if (/[\r\n]/.test(trimmedKey)) {
-    return { ok: false, error: "apiKey must not contain newlines" };
-  }
-
-  let resolvedContextWindow;
-  if (contextWindow !== undefined && contextWindow !== null && contextWindow !== "") {
-    const n = Number(contextWindow);
-    if (!Number.isInteger(n) || n < 256 || n > 10_000_000) {
-      return { ok: false, error: "invalid context size" };
-    }
-    resolvedContextWindow = n;
-  }
-
-  let resolvedModel = DEFAULT_MODEL;
-  if (model !== undefined && model !== null && model !== "") {
-    if (typeof model !== "string" || model.length > 200) {
-      return { ok: false, error: "invalid model" };
-    }
-    resolvedModel = model;
-  }
-
-  let resolvedProvider = "openai-compat";
-  if (provider !== undefined && provider !== null && provider !== "") {
-    if (provider !== "anthropic" && provider !== "openai-compat") {
-      return { ok: false, error: "invalid provider" };
-    }
-    resolvedProvider = provider;
-  }
-
-  let resolvedBaseUrl = "";
-  if (baseUrl !== undefined && baseUrl !== null && baseUrl !== "") {
-    if (typeof baseUrl !== "string") {
-      return { ok: false, error: "invalid baseUrl" };
-    }
-    // Users paste the URL their script calls (".../v1/chat/completions") into
-    // the base-URL field; normalize so TEST, .env, and the engine all see the
-    // real base.
-    const normalized = normalizeBaseUrl(baseUrl);
-    let parsed;
-    try {
-      parsed = new URL(normalized);
-    } catch {
-      return { ok: false, error: "invalid baseUrl" };
-    }
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return { ok: false, error: "invalid baseUrl" };
-    }
-    resolvedBaseUrl = normalized;
-  }
-
-  return {
-    ok: true,
-    apiKey: trimmedKey,
-    model: resolvedModel,
-    provider: resolvedProvider,
-    baseUrl: resolvedBaseUrl,
-    contextWindow: resolvedContextWindow,
-  };
-}
-
 ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
   // SAVE with an empty key field keeps the already-saved key: the user is
   // updating model/URL/context, not the credential.
@@ -831,7 +747,7 @@ ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
   }
   const validated = validateCredentialPayload(payload);
   if (!validated.ok) return validated;
-  const { apiKey, model, provider, baseUrl, contextWindow } = validated;
+  const { apiKey, model, provider, baseUrl, contextWindow, insecureTls } = validated;
 
   const workspace = currentConfig.workspace;
   if (!workspace) return { ok: false, error: "no workspace" };
@@ -889,6 +805,10 @@ ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
       delete settings.baseUrl;
     }
     settings.model = model;
+    // Self-signed TLS opt-in (the `verify=False` equivalent). Stored only
+    // while true so a later un-check fully clears it.
+    if (insecureTls && provider !== "anthropic") settings.allowInsecureTls = true;
+    else delete settings.allowInsecureTls;
     // Context size: engine compaction window + `num_ctx` for local servers.
     // An EMPTY field must clear a previous override — a stale tiny window
     // shadowing the model's real one causes constant compaction.
@@ -935,7 +855,7 @@ function savedWorkspaceKey() {
 // whether a key exists (never the key itself — that goes through revealKey).
 ipcMain.handle("connection:info", () => {
   const workspace = currentConfig.workspace;
-  const info = { baseUrl: "", model: currentConfig.model || "", provider: "openai-compat", contextWindow: "", hasKey: false };
+  const info = { baseUrl: "", model: currentConfig.model || "", provider: "openai-compat", contextWindow: "", hasKey: false, allowInsecureTls: false };
   if (!workspace) return info;
   info.hasKey = savedWorkspaceKey() !== "";
   try {
@@ -945,6 +865,7 @@ ipcMain.handle("connection:info", () => {
       if (typeof settings.model === "string") info.model = settings.model;
       if (settings.provider === "anthropic") info.provider = "anthropic";
       if (Number.isFinite(settings.contextWindow)) info.contextWindow = String(settings.contextWindow);
+      info.allowInsecureTls = settings.allowInsecureTls === true;
     }
   } catch {
     // no settings file yet — defaults stand

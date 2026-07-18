@@ -6,7 +6,7 @@
 
 const assert = require("node:assert/strict");
 const http = require("node:http");
-const { testEndpoint, candidateBaseUrls } = require("../main/connection.js");
+const { testEndpoint, candidateBaseUrls, validateCredentialPayload } = require("../main/connection.js");
 const { isLocalBaseUrl, normalizeBaseUrl } = require("../main/config.js");
 
 function listen(server) {
@@ -83,6 +83,64 @@ async function main() {
   // Both candidates (localhost + 127.0.0.1) were tried within their budgets.
   assert.ok(Date.now() - started < 5000, "candidate walk must respect per-attempt timeouts");
   blackHole.close();
+
+  // ── validation: custom endpoints are key-optional; defaults are not ──────
+  const customKeyless = validateCredentialPayload({
+    apiKey: "",
+    baseUrl: "https://gw.example/coder/v1/chat/completions",
+    model: "qwen3.6-35b-a3b",
+    provider: "openai-compat",
+    insecureTls: true,
+  });
+  assert.equal(customKeyless.ok, true, "a custom base URL must not demand a key");
+  assert.equal(customKeyless.baseUrl, "https://gw.example/coder/v1", "pasted endpoint path normalizes");
+  assert.equal(customKeyless.insecureTls, true);
+  assert.equal(validateCredentialPayload({ apiKey: "", provider: "openai-compat" }).ok, false,
+    "the default hosted endpoint still requires a key");
+  assert.equal(validateCredentialPayload({ apiKey: "", provider: "anthropic" }).ok, false,
+    "anthropic always requires a key");
+  assert.equal(validateCredentialPayload({ apiKey: "k", baseUrl: "https://x.example/v1" }).insecureTls, false,
+    "insecureTls defaults to false");
+
+  // ── insecureTls: set only around the request, always restored ────────────
+  delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  let seenDuringFetch = null;
+  const envSpyFetch = async () => {
+    seenDuringFetch = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    return { ok: true, status: 200, json: async () => ({ data: [{ id: "m" }] }) };
+  };
+  result = await testEndpoint(
+    { apiKey: "", provider: "openai-compat", baseUrl: "https://gw.example/coder/v1", insecureTls: true },
+    "https://unused.example/v1",
+    { fetchImpl: envSpyFetch },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.baseUrl, "https://gw.example/coder/v1", "the probed base is echoed back");
+  assert.equal(seenDuringFetch, "0", "TLS verification disabled during the insecure test request");
+  assert.equal(process.env.NODE_TLS_REJECT_UNAUTHORIZED, undefined, "and restored right after");
+  seenDuringFetch = null;
+  await testEndpoint(
+    { apiKey: "", provider: "openai-compat", baseUrl: "https://gw.example/coder/v1", insecureTls: false },
+    "https://unused.example/v1",
+    { fetchImpl: envSpyFetch },
+  );
+  assert.equal(seenDuringFetch, undefined, "secure tests never touch the TLS env");
+
+  // ── custom (non-local) endpoint without /models: pass with a note ────────
+  const custom404Fetch = async () => ({ ok: false, status: 404, json: async () => ({}) });
+  result = await testEndpoint(
+    { apiKey: "", provider: "openai-compat", baseUrl: "https://gw.example/coder/v1", insecureTls: false },
+    "https://unused.example/v1",
+    { fetchImpl: custom404Fetch },
+  );
+  assert.equal(result.ok, true, "an explicit base URL earns the no-catalog tolerance");
+  assert.match(result.note, /no \/models catalog/);
+  result = await testEndpoint(
+    { apiKey: "k", provider: "openai-compat", baseUrl: "", insecureTls: false },
+    "https://hosted.example/v1",
+    { fetchImpl: custom404Fetch },
+  );
+  assert.equal(result.ok, false, "a 404 from the default hosted endpoint stays a failure");
 
   // ── connection refused: the real cause reaches the user ──────────────────
   result = await testEndpoint(

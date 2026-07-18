@@ -172,6 +172,10 @@ const wizModelsEl = document.getElementById("wizModels");
 const wizContextFieldEl = document.getElementById("wizContextField");
 const wizContextEl = document.getElementById("wizContext");
 const wizNoteEl = document.getElementById("wizNote");
+const wizBaseUrlHintEl = document.getElementById("wizBaseUrlHint");
+const wizInsecureRowEl = document.getElementById("wizInsecureRow");
+const wizInsecureEl = document.getElementById("wizInsecure");
+const setInsecureEl = document.getElementById("setInsecure");
 
 // connection settings: context size
 const setContextEl = document.getElementById("setContext");

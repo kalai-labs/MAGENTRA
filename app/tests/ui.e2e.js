@@ -29,7 +29,14 @@ function apiResult(name, args) {
     case "connectionInfo": return { baseUrl: "https://api.test/v1", model: MODEL, hasKey: true, contextWindow: 65536 };
     case "revealKey": return { key: "test-key" };
     case "getWebSearch": return true;
-    case "testConnection": return { ok: true, models: [MODEL] };
+    case "testConnection": {
+      // Echo the normalized base like the real main process (a pasted
+      // ".../chat/completions" reduces to the base) so the wizard's
+      // field-rewrite behavior is exercised.
+      const raw = (args[0] && args[0].baseUrl) || "";
+      const baseUrl = raw.replace(/\/+$/, "").replace(/\/(chat\/completions|models)$/i, "");
+      return { ok: true, models: [MODEL], ...(baseUrl ? { baseUrl } : {}) };
+    }
     case "pickDoc": return { ok: true, path: "/tmp/context.md" };
     default: return { ok: true };
   }
@@ -522,6 +529,54 @@ async function run() {
     await pause();
     assert.ok(calls.filter((call) => call.name === "writeEnv").length >= 2);
     assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
+  });
+
+  await test("custom endpoint wizard: pasted URL normalizes, keyless + self-signed works, model stays aligned", async () => {
+    windowRef.webContents.send("test:setup-required", { workspace: WORKSPACE });
+    await pause();
+    await evaluate(`document.querySelector('[data-preset="custom"]').click()`);
+    let state = await evaluate(`(() => ({
+      insecureVisible: !document.querySelector('#wizInsecureRow').hidden,
+      hintVisible: !document.querySelector('#wizBaseUrlHint').hidden,
+    }))()`);
+    assert.deepEqual(state, { insecureVisible: true, hintVisible: true });
+    // Paste the full completions URL a script would use, keyless, self-signed.
+    await evaluate(`(() => {
+      const base = document.querySelector('#wizBaseUrl');
+      base.value = 'https://gw.example/coder/v1/chat/completions';
+      base.dispatchEvent(new Event('input'));
+      document.querySelector('#wizInsecure').checked = true;
+      document.querySelector('#wizInsecure').dispatchEvent(new Event('change'));
+      const model = document.querySelector('#wizModel');
+      model.value = 'qwen3.6-35b-a3b';
+      model.dispatchEvent(new Event('input'));
+      document.querySelector('#wizTestBtn').click();
+    })()`);
+    await pause();
+    const testCall = calls.filter((c) => c.name === "testConnection").pop();
+    assert.equal(testCall.args[0].insecureTls, true);
+    assert.equal(testCall.args[0].apiKey, "");
+    // The field now shows the base that will actually be saved.
+    assert.equal(await evaluate(`document.querySelector('#wizBaseUrl').value`), "https://gw.example/coder/v1");
+    // IGNITE proceeds keyless without an "untested" warning (TEST just passed).
+    await evaluate(`document.querySelector('#wizStartBtn').click()`);
+    await pause();
+    const envCall = calls.filter((c) => c.name === "writeEnv").pop();
+    assert.equal(envCall.args[0].insecureTls, true);
+    assert.equal(envCall.args[0].baseUrl, "https://gw.example/coder/v1");
+    assert.equal(envCall.args[0].model, "qwen3.6-35b-a3b");
+    assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
+    // The engine announces the configured model — the composer picker follows
+    // without the user touching it, even for an id outside the preset list.
+    await emit({ type: "session_started", sessionId: "sess-custom", model: "qwen3.6-35b-a3b", commands: [], rateCard: {} });
+    state = await evaluate(`(() => ({
+      select: document.querySelector('#modelSelect').value,
+      custom: document.querySelector('#customModel').value,
+      customVisible: !document.querySelector('#customModel').classList.contains('hidden'),
+    }))()`);
+    assert.deepEqual(state, { select: "__custom__", custom: "qwen3.6-35b-a3b", customVisible: true });
+    // Restore the default model for the remaining scenarios.
+    await emit({ type: "session_started", sessionId: "sess-restore", model: MODEL, commands: [], rateCard: {} });
   });
 
   await test("responsive workbench collapses navigation and overlays inspector", async () => {
