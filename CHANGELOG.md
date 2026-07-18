@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.5.0.1 — 2026-07-18
+
+### Refactoring
+
+- removed ma format, used md format everywhere ([383249a](https://github.com/kalai-labs/MAGENTRA/commit/383249a4c4f2e6ed1969fb0363ed602bca23d5ef))
+
+[Compare with v0.5.0.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.5.0.0...v0.5.0.1)
+
 ## 0.1.0.0 — 2026-07-14
 
 The first release.
