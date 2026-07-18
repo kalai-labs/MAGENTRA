@@ -119,8 +119,16 @@ async function main() {
     legalComments: "none",
     sourcemap: false,
   });
+  // Every module in app/main/ ships — a hardcoded list here once dropped
+  // main/changes.js from the package, crashing packaged builds at require
+  // time ("Cannot find module './main/changes.js'") while dev runs, which use
+  // the source tree, kept working.
+  const mainModules = fs
+    .readdirSync(path.join(APP_DIR, "main"))
+    .filter((f) => f.endsWith(".js"))
+    .map((f) => path.join(APP_DIR, "main", f));
   await esbuild.build({
-    entryPoints: [path.join(APP_DIR, "main", "config.js"), path.join(APP_DIR, "main", "logging.js")],
+    entryPoints: mainModules,
     outdir: path.join(APP_OUT, "main"),
     bundle: false,
     platform: "node",
