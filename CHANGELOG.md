@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.5.1.0 — 2026-07-18
+
+### Bug fixes
+
+- packaging bug was fixed for windows ([1f84867](https://github.com/kalai-labs/MAGENTRA/commit/1f848679c521db8be12ba198282daa19ce6aab83))
+
+[Compare with v0.5.0.1](https://github.com/kalai-labs/MAGENTRA/compare/v0.5.0.1...v0.5.1.0)
+
 ## 0.1.0.0 — 2026-07-14
 
 The first release.
