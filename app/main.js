@@ -8,6 +8,8 @@ const { spawn } = require("node:child_process");
 
 const {
   DEFAULT_MODEL,
+  DEFAULT_THEME,
+  THEMES,
   configPath,
   readConfig,
   writeConfig,
@@ -652,12 +654,20 @@ function rememberWindowState() {
   }, 400);
 }
 
-// Concept A uses one neutral workbench titlebar, also reasserted by the
-// renderer so the native controls stay visually integrated.
+// Native window chrome per theme, reasserted by the renderer on every theme
+// switch so the controls stay visually integrated. `background` is the window's
+// pre-paint fill and must match the theme's --bg; the other two mirror
+// THEME_TITLEBAR in renderer/modules/state.js.
 const TITLEBAR_HEIGHT = 36;
-const DEFAULT_TITLEBAR = { color: "#0e1114", symbolColor: "#ced6dd", height: TITLEBAR_HEIGHT };
+const THEME_CHROME = {
+  workbench: { color: "#0e1114", symbolColor: "#ced6dd", background: "#0b0e11" },
+  light: { color: "#e7ebf0", symbolColor: "#36424f", background: "#eef1f5" },
+};
+const themeChrome = (name) => THEME_CHROME[name] || THEME_CHROME[DEFAULT_THEME];
 
 function createWindow() {
+  // Last session's theme, so the very first frame is already the right shade.
+  const chrome = themeChrome(currentConfig.theme);
   mainWindow = new BrowserWindow({
     width: 1240,
     height: 820,
@@ -668,12 +678,19 @@ function createWindow() {
     // traffic lights (the dock reserves room for them).
     ...(process.platform === "darwin"
       ? { titleBarStyle: "hiddenInset" }
-      : { titleBarStyle: "hidden", titleBarOverlay: DEFAULT_TITLEBAR }),
+      : {
+          titleBarStyle: "hidden",
+          titleBarOverlay: {
+            color: chrome.color,
+            symbolColor: chrome.symbolColor,
+            height: TITLEBAR_HEIGHT,
+          },
+        }),
     // The responsive floor the stylesheet is built for — below this, panels
     // would clip horizontally rather than wrap.
     minWidth: 700,
     minHeight: 480,
-    backgroundColor: "#0b0e11",
+    backgroundColor: chrome.background,
     title: "MAGENTRA",
     autoHideMenuBar: true,
     webPreferences: {
@@ -910,6 +927,13 @@ ipcMain.handle("app:info", () => ({
 // nothing else from the renderer reaches a native API.
 ipcMain.on("app:titleBarTheme", (_evt, theme) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+  // Remember the choice for the next launch's pre-paint chrome. This runs even
+  // where the overlay is unsupported (macOS), since backgroundColor still is.
+  const name = theme && theme.name;
+  if (THEMES.includes(name) && name !== currentConfig.theme) {
+    currentConfig = { ...currentConfig, theme: name };
+    writeConfig(currentConfig);
+  }
   if (typeof mainWindow.setTitleBarOverlay !== "function") return; // macOS: no overlay
   const hex = (v) => (typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : null);
   const color = hex(theme && theme.color);

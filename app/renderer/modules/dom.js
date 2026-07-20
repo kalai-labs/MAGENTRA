@@ -136,6 +136,7 @@ const sessionsCloseBtnEl = document.getElementById("sessionsCloseBtn");
 
 // settings: appearance controls
 const setFontEl = document.getElementById("setFont");
+const setThemeEl = document.getElementById("setTheme");
 const setSizeEl = document.getElementById("setSize");
 const setMotionEl = document.getElementById("setMotion");
 const setDetailEl = document.getElementById("setDetail");

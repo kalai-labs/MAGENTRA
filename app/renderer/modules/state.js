@@ -88,6 +88,9 @@ let taskTimes = new Map();
 // ---------------------------------------------------------------------------
 
 const UI_SETTINGS_KEY = "magentra-ui";
+// The themes that have a token block in styles.css. Kept in step with the
+// `:root`/`html[data-theme=…]` blocks there and with THEME_TITLEBAR below.
+const THEMES = ["workbench", "light"];
 const DEFAULT_UI_SETTINGS = {
   // JetBrains Mono ships with the app (renderer/fonts), so the default always
   // resolves to the same face on every OS instead of a per-distro fallback.
@@ -111,10 +114,11 @@ function loadUiSettings() {
     saved = {};
   }
   const settings = { ...DEFAULT_UI_SETTINGS, ...saved };
-  // Concept A is a deliberate reset, so legacy atmosphere/theme choices are
-  // migrated into the single workbench visual system instead of leaking old
-  // atmosphere/theme tokens into the new shell.
-  settings.theme = "workbench";
+  // Concept A was a deliberate reset, so the pre-reset atmosphere names are no
+  // longer themes. Anything not in THEMES — a legacy atmosphere, a hand-edited
+  // localStorage value — collapses to the dark default rather than leaving the
+  // shell on a data-theme with no token block behind it.
+  if (!THEMES.includes(settings.theme)) settings.theme = DEFAULT_UI_SETTINGS.theme;
   if (settings.detail === "technical") settings.detail = "engineer";
   // One-time migration off the old Cascadia default: it fell back to a
   // per-distro face on machines without it, while the bundled JetBrains Mono
@@ -143,6 +147,7 @@ function saveUiSettings() {
 // kept in step with the theme blocks in styles.css.
 const THEME_TITLEBAR = {
   workbench: { color: "#0e1114", symbolColor: "#ced6dd" },
+  light: { color: "#e7ebf0", symbolColor: "#36424f" },
 };
 
 function applyUiSettings() {
@@ -154,7 +159,9 @@ function applyUiSettings() {
   // Keep the native min/max/close overlay in the theme's colors.
   const titleBar = THEME_TITLEBAR[uiSettings.theme];
   if (titleBar && window.magentra && window.magentra.setTitleBarTheme) {
-    window.magentra.setTitleBarTheme(titleBar);
+    // The name rides along so main can persist it and paint the next launch's
+    // window in the right shade before the renderer exists.
+    window.magentra.setTitleBarTheme({ name: uiSettings.theme, ...titleBar });
   }
 }
 
@@ -173,6 +180,7 @@ function syncSegGroup(containerEl, settingKey) {
 
 function syncUiControlsFromSettings() {
   if (setFontEl) setFontEl.value = uiSettings.font;
+  syncSegGroup(setThemeEl, "theme");
   syncSegGroup(setSizeEl, "size");
   syncSegGroup(setMotionEl, "motion");
   syncSegGroup(setDetailEl, "detail");
@@ -252,6 +260,7 @@ if (setFontEl) {
     applyUiSettings();
   });
 }
+wireSegGroup(setThemeEl, "theme");
 wireSegGroup(setSizeEl, "size");
 wireSegGroup(setMotionEl, "motion");
 wireSegGroup(setDetailEl, "detail");

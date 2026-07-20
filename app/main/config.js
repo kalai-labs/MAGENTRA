@@ -10,6 +10,14 @@ const { app } = require("electron");
 
 const DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Flash";
 
+// The renderer owns the theme choice (it lives in localStorage with the rest of
+// the UI settings), but main needs the *name* one launch early: the window's
+// pre-paint backgroundColor and the native titlebar overlay are both set before
+// the renderer runs. Mirroring the name here is what stops a dark frame from
+// flashing ahead of a light UI — the one frame the renderer cannot repaint.
+const THEMES = ["workbench", "light"];
+const DEFAULT_THEME = THEMES[0];
+
 // ---------------------------------------------------------------------------
 // Config persistence
 // ---------------------------------------------------------------------------
@@ -56,11 +64,12 @@ function readConfig() {
     return {
       workspace: null,
       model: typeof parsed.model === "string" ? parsed.model : DEFAULT_MODEL,
+      theme: THEMES.includes(parsed.theme) ? parsed.theme : DEFAULT_THEME,
       recentWorkspaces: recent.slice(0, MAX_RECENT_WORKSPACES),
       ...(windowState ? { window: windowState } : {}),
     };
   } catch {
-    return { workspace: null, model: DEFAULT_MODEL, recentWorkspaces: [] };
+    return { workspace: null, model: DEFAULT_MODEL, theme: DEFAULT_THEME, recentWorkspaces: [] };
   }
 }
 
@@ -127,6 +136,8 @@ function writeConfig(config) {
 
 module.exports = {
   DEFAULT_MODEL,
+  DEFAULT_THEME,
+  THEMES,
   MAX_RECENT_WORKSPACES,
   configPath,
   readConfig,
