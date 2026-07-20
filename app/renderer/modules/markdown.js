@@ -109,6 +109,99 @@ function makeCodeBlock(lines, lang) {
   return pre;
 }
 
+/**
+ * Splits one GFM table row into trimmed cells. A pipe escaped as `\|` is
+ * content, not a separator — the only way to put a literal pipe in a cell.
+ */
+function splitTableRow(line) {
+  let s = line.trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|") && !s.endsWith("\\|")) s = s.slice(0, -1);
+
+  const cells = [];
+  let cur = "";
+  for (let k = 0; k < s.length; k++) {
+    if (s[k] === "\\" && s[k + 1] === "|") {
+      cur += "|";
+      k++;
+    } else if (s[k] === "|") {
+      cells.push(cur.trim());
+      cur = "";
+    } else {
+      cur += s[k];
+    }
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
+/**
+ * Per-column alignment when `line` is a table delimiter row (`|---|:--:|`),
+ * else null — which is also what tells the block parser this is not a table.
+ */
+function tableAlignments(line) {
+  if (!line || !line.includes("-")) return null;
+  const cells = splitTableRow(line);
+  const aligns = [];
+  for (const cell of cells) {
+    if (!/^:?-+:?$/.test(cell)) return null;
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    aligns.push(left && right ? "center" : right ? "right" : left ? "left" : "");
+  }
+  return aligns;
+}
+
+/** Builds one table; cells carry inline markdown, so `**x**` and `code` work. */
+function makeTable(headerCells, aligns, bodyRows) {
+  const table = document.createElement("table");
+  table.className = "md-table";
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  headerCells.forEach((cell, idx) => {
+    const th = document.createElement("th");
+    if (aligns[idx]) th.style.textAlign = aligns[idx];
+    renderInline(th, cell);
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const row of bodyRows) {
+    const tr = document.createElement("tr");
+    // Ragged rows are common in generated markdown; pad or drop the overflow
+    // so the table stays rectangular instead of rendering a broken grid.
+    for (let idx = 0; idx < headerCells.length; idx++) {
+      const td = document.createElement("td");
+      if (aligns[idx]) td.style.textAlign = aligns[idx];
+      renderInline(td, row[idx] ?? "");
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+
+  // A wide table must scroll inside its own column rather than stretching the
+  // transcript, which would push the whole conversation sideways.
+  const wrap = document.createElement("div");
+  wrap.className = "md-table-wrap";
+  wrap.appendChild(table);
+  return wrap;
+}
+
+/** True when `lines[i]` starts a GFM table (header row + delimiter beneath). */
+function tableStartsAt(lines, i) {
+  if (i + 1 >= lines.length || !lines[i].includes("|")) return null;
+  const aligns = tableAlignments(lines[i + 1]);
+  if (!aligns) return null;
+  const header = splitTableRow(lines[i]);
+  // GFM requires the delimiter to have exactly as many cells as the header;
+  // holding that line is what keeps ordinary prose containing a "|" out.
+  return aligns.length === header.length ? { header, aligns } : null;
+}
+
 /** Render `md` into a DocumentFragment of block-level elements. */
 function renderMarkdown(md) {
   const frag = document.createDocumentFragment();
@@ -172,6 +265,19 @@ function renderMarkdown(md) {
       continue;
     }
 
+    // table (header row + delimiter row, then rows until a blank/pipe-less line)
+    const table = tableStartsAt(lines, i);
+    if (table) {
+      i += 2;
+      const body = [];
+      while (i < lines.length && lines[i].trim() !== "" && lines[i].includes("|")) {
+        body.push(splitTableRow(lines[i]));
+        i++;
+      }
+      frag.appendChild(makeTable(table.header, table.aligns, body));
+      continue;
+    }
+
     // list (consecutive item lines of the same family)
     const isUl = /^ {0,3}[-*+]\s+/.test(line);
     const isOl = /^ {0,3}\d+[.)]\s+/.test(line);
@@ -200,7 +306,9 @@ function renderMarkdown(md) {
       !/^(#{1,6})\s/.test(lines[i]) &&
       !/^ {0,3}>/.test(lines[i]) &&
       !/^ {0,3}[-*+]\s+/.test(lines[i]) &&
-      !/^ {0,3}\d+[.)]\s+/.test(lines[i])
+      !/^ {0,3}\d+[.)]\s+/.test(lines[i]) &&
+      // a table may follow prose directly, with no blank line between
+      !tableStartsAt(lines, i)
     ) {
       para.push(lines[i]);
       i++;

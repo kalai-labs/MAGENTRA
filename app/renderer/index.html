@@ -316,11 +316,11 @@
           <div class="set-row">
             <span class="set-label">Commands</span>
             <div class="seg" id="setCommands">
-              <button class="seg-btn" data-commands="auto">AUTONOMOUS</button>
-              <button class="seg-btn on" data-commands="ask">ASK ALWAYS</button>
+              <button class="seg-btn on" data-commands="auto">AUTONOMOUS</button>
+              <button class="seg-btn" data-commands="ask">ASK ALWAYS</button>
             </div>
           </div>
-          <p class="set-note">ASK ALWAYS pauses for approval before consequential commands — never for reading. ALLOW lets the agent delete files without a prompt when you ask for it or the task requires it.</p>
+          <p class="set-note">AUTONOMOUS (the default) lets the agent run commands without asking; destructive ones still prompt because of the Deletions guard above. ASK ALWAYS pauses before every consequential command — never for reading. Setting Deletions to ALLOW removes the last prompt, so the agent deletes without asking.</p>
           <div class="set-row">
             <span class="set-label">Web search</span>
             <div class="seg" id="setWebSearch">
@@ -494,8 +494,10 @@
       <div class="modal-title" id="deleteModalTitle">⚠ APPROVAL REQUIRED</div>
       <p class="modal-sub">The agent wants to run:</p>
       <pre id="deleteSubject"></pre>
+      <p id="allowAlwaysHint" class="modal-hint hidden">“Always allow” remembers this exact command for this workspace — anything else still asks.</p>
       <div class="modal-actions">
         <button id="denyBtn">DENY (N / Esc)</button>
+        <button id="allowAlwaysBtn">ALWAYS ALLOW (A)</button>
         <button id="allowBtn">ALLOW ONCE (Y)</button>
       </div>
     </div>

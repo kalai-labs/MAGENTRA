@@ -181,19 +181,26 @@ function onModalTrapKeydown(e) {
   }
 }
 
+// Both focus moves pass preventScroll. Focusing an element normally scrolls it
+// into view, and the element focus returns to on close is often a .tool-row far
+// up the scrollback — restoring it yanked the transcript away from the live
+// edge every time an approval modal closed. The user's scroll position is not
+// the modal's to move; it was already correct when the modal opened.
 function openModalA11y(modalEl, initialFocusEl) {
   modalRestoreFocus = document.activeElement;
   modalTrapEl = modalEl;
   document.addEventListener("keydown", onModalTrapKeydown, true);
   const target = initialFocusEl || modalFocusables(modalEl)[0];
-  if (target) target.focus();
+  if (target) target.focus({ preventScroll: true });
 }
 
 function closeModalA11y() {
   if (!modalTrapEl) return;
   modalTrapEl = null;
   document.removeEventListener("keydown", onModalTrapKeydown, true);
-  if (modalRestoreFocus && typeof modalRestoreFocus.focus === "function") modalRestoreFocus.focus();
+  if (modalRestoreFocus && typeof modalRestoreFocus.focus === "function") {
+    modalRestoreFocus.focus({ preventScroll: true });
+  }
   modalRestoreFocus = null;
 }
 

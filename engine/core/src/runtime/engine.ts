@@ -149,7 +149,16 @@ export class Engine {
     string,
     (res: { decision: PermissionDecision; message?: string }) => void
   >();
-  private readonly pendingQuestions = new Map<string, (answers: Record<string, string[]>) => void>();
+  /**
+   * In-flight AskUserQuestion rounds. A frontend may answer a multi-question
+   * round one card at a time, so answers accumulate here and the tool's promise
+   * only resolves once every question has one — otherwise the first card
+   * answered would settle the round and the rest would report "(no answer)".
+   */
+  private readonly pendingQuestions = new Map<
+    string,
+    { resolve: (answers: Record<string, string[]>) => void; expected: number; answers: Record<string, string[]> }
+  >();
   private pendingPlanDecision:
     | ((res: { approve: boolean; editedPlan?: string; message?: string }) => void)
     | undefined;
@@ -225,11 +234,13 @@ export class Engine {
             tool: req.tool,
             input: req.input,
             ...(req.description !== undefined ? { description: req.description } : {}),
+            ...(req.subject !== undefined ? { subject: req.subject } : {}),
           });
         }),
       askUser: (id, questions) =>
         new Promise((resolve) => {
-          this.pendingQuestions.set(id, resolve);
+          const expected = Array.isArray(questions) ? questions.length : 1;
+          this.pendingQuestions.set(id, { resolve, expected, answers: {} });
           this.emit({ type: "question_request", id, questions: questions as never });
         }),
       requestPlanDecision: () =>
@@ -614,10 +625,20 @@ export class Engine {
         break;
       }
       case "question_response": {
-        const resolve = this.pendingQuestions.get(request.id);
-        if (resolve) {
-          this.pendingQuestions.delete(request.id);
-          resolve(request.answers);
+        const pending = this.pendingQuestions.get(request.id);
+        if (pending) {
+          Object.assign(pending.answers, request.answers);
+          // Positional keys ("q:<idx>") are the contract; a frontend that
+          // answers the whole round in one frame (including older ones keyed
+          // by question text) satisfies the count check instead.
+          const positional = Array.from({ length: pending.expected }, (_, i) => `q:${i}`);
+          const complete =
+            positional.every((key) => key in pending.answers) ||
+            Object.keys(pending.answers).length >= pending.expected;
+          if (complete) {
+            this.pendingQuestions.delete(request.id);
+            pending.resolve(pending.answers);
+          }
         }
         break;
       }
@@ -633,6 +654,13 @@ export class Engine {
           const resolve = this.pendingPlanDecision;
           this.pendingPlanDecision = undefined;
           resolve({ approve: false, message: "interrupted by user" });
+        }
+        // A half-answered question round would otherwise wait forever for the
+        // cards the user is no longer going to fill in. Settle it with whatever
+        // was collected; the tool reports "(no answer)" for the rest.
+        for (const [id, pending] of this.pendingQuestions) {
+          this.pendingQuestions.delete(id);
+          pending.resolve(pending.answers);
         }
         // Say what was actually stopped — a stop button that reports nothing
         // leaves the user unsure whether it worked.

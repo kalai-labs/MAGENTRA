@@ -8,6 +8,8 @@ import { STATE_DIR_NAME } from "@magentra/protocol";
 export const DEFAULT_OPENAI_BASE_URL = "https://api.deepinfra.com/v1/openai";
 
 const permissionRuleSchema = z.string();
+/** One exact-subject grant: `{ tool: "Bash", subject: "rm -rf ./tmp/build" }`. */
+const exactPermissionSchema = z.object({ tool: z.string().min(1), subject: z.string().min(1) });
 
 export const settingsSchema = z
   .object({
@@ -64,8 +66,17 @@ export const settingsSchema = z
       .object({
         allow: z.array(permissionRuleSchema).default([]),
         deny: z.array(permissionRuleSchema).default([]),
+        /**
+         * Exact-subject grants written by the approval prompt's "Always allow".
+         * Deliberately NOT the `allow` glob format: a command containing `*`
+         * (`rm -rf ./tmp/*`) would widen into a pattern matching far more than
+         * the user approved, so these are compared as literal strings only.
+         * Like an explicit `allow` rule, an entry here overrides the deletion
+         * guard — that is the point of the button.
+         */
+        allowExact: z.array(exactPermissionSchema).default([]),
       })
-      .default({ allow: [], deny: [] }),
+      .default({ allow: [], deny: [], allowExact: [] }),
     hooks: z
       .partialRecord(
         z.enum(["PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SessionStart"]),
@@ -411,6 +422,43 @@ export function setSetting(
     }
   }
   return { file, key: dotPath, value };
+}
+
+/**
+ * Appends one exact-subject permission grant to `permissions.allowExact` and
+ * persists it. Writes the project file when the cwd is a workspace, else the
+ * global one — the same layering {@link setSetting} uses, so a grant made in a
+ * workspace stays scoped to that workspace.
+ *
+ * Separate from {@link setSetting} because that writes a single scalar at a dot
+ * path; this has to read the existing array, append, and dedupe. Returns false
+ * when the grant was already present (nothing written).
+ */
+export function addExactPermission(cwd: string, tool: string, subject: string): boolean {
+  const file = existsSync(join(cwd, STATE_DIR_NAME)) ? projectSettingsPath(cwd) : globalSettingsPath();
+  const discard: SettingsWarning[] = [];
+  const candidate: Record<string, unknown> = structuredClone(readJson(file, discard) ?? {});
+  const permissions = (candidate.permissions ??= {}) as Record<string, unknown>;
+  const existing = Array.isArray(permissions.allowExact) ? [...permissions.allowExact] : [];
+  if (existing.some((e) => isSameGrant(e, tool, subject))) return false;
+  existing.push({ tool, subject });
+  permissions.allowExact = existing;
+
+  const parsed = settingsSchema.safeParse(candidate);
+  if (!parsed.success) throw new Error(`Could not save the permission grant: ${parsed.error.message}`);
+
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(candidate, null, 2)}\n`, { mode: 0o600 });
+  return true;
+}
+
+function isSameGrant(entry: unknown, tool: string, subject: string): boolean {
+  return (
+    typeof entry === "object" &&
+    entry !== null &&
+    (entry as { tool?: unknown }).tool === tool &&
+    (entry as { subject?: unknown }).subject === subject
+  );
 }
 
 /**

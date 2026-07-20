@@ -5,6 +5,12 @@ export interface PermissionRequestPayload {
   tool: string;
   input: unknown;
   description?: string;
+  /**
+   * The tool's permission subject for this call. Present only when the tool
+   * defines one, which is exactly when an "always allow" grant can be scoped —
+   * frontends use its presence to decide whether to offer that choice.
+   */
+  subject?: string;
 }
 
 export interface PermissionOutcome {
@@ -23,6 +29,12 @@ interface ParsedRule {
   raw: string;
 }
 
+/** One exact-subject grant, compared as a literal string — never as a glob. */
+export interface ExactGrant {
+  tool: string;
+  subject: string;
+}
+
 /**
  * Resolution order: deny rules > allow rules > mode default. Mode default may
  * resolve to "ask", which round-trips to the frontend via requestApproval.
@@ -36,18 +48,23 @@ export class PermissionEngine {
   private readonly deny: ParsedRule[];
   private readonly allow: ParsedRule[];
   private readonly sessionAllow: ParsedRule[] = [];
+  /** Exact-subject grants: those loaded from settings plus any added this run. */
+  private readonly allowExact: ExactGrant[];
 
   constructor(
     mode: PermissionMode,
-    rules: { allow: string[]; deny: string[] },
+    rules: { allow: string[]; deny: string[]; allowExact?: ExactGrant[] },
     private readonly requestApproval: (
       req: PermissionRequestPayload,
       source: ApprovalSource,
     ) => Promise<{ decision: PermissionDecision; message?: string }>,
+    /** Persists an "always allow" grant. Absent in contexts with nowhere to write. */
+    private readonly persistExact?: (tool: string, subject: string) => void,
   ) {
     this.mode = mode;
     this.allow = rules.allow.map(parseRule);
     this.deny = rules.deny.map(parseRule);
+    this.allowExact = [...(rules.allowExact ?? [])];
   }
 
   getMode(): PermissionMode {
@@ -103,12 +120,18 @@ export class PermissionEngine {
     // missions can delete their own temp files without re-prompting forever.
     // Broad grants (bare tool, `Tool(*)`, session allows) never do. The guard
     // never adds a session-allow, so it re-fires on every other matching call.
-    const explicitlyAllowed = matchesExplicit(this.allow, tool.name, subject);
+    const explicitlyAllowed =
+      matchesExplicit(this.allow, tool.name, subject) || this.matchesExact(tool.name, subject);
     const deletionSubject =
       this.deletionGuard && !explicitlyAllowed ? tool.deletionSubject?.(input) : undefined;
     if (deletionSubject !== undefined) {
       const res = await this.requestApproval(
-        { tool: tool.name, input, description: deletionSubject },
+        {
+          tool: tool.name,
+          input,
+          description: deletionSubject,
+          ...(subject !== undefined ? { subject } : {}),
+        },
         "deletion-guard",
       );
       if (res.decision === "deny") {
@@ -118,10 +141,18 @@ export class PermissionEngine {
           message: `The user declined this destructive tool call${res.message ? `: ${res.message}` : "."} Deletion calls always require approval; adjust your approach instead of retrying the same call.`,
         };
       }
+      // "Always allow" on a destructive prompt grants only this exact subject.
+      // A broad grant here would silently disable the deletion guard for the
+      // whole tool, which is never what one click on one command should mean.
+      if (res.decision === "allow_always") this.grantExact(tool.name, subject);
       return { allowed: true, source: "user" };
     }
 
-    if (matches(this.allow, tool.name, subject) || matches(this.sessionAllow, tool.name, subject)) {
+    if (
+      matches(this.allow, tool.name, subject) ||
+      matches(this.sessionAllow, tool.name, subject) ||
+      this.matchesExact(tool.name, subject)
+    ) {
       return { allowed: true, source: "rule" };
     }
 
@@ -138,7 +169,10 @@ export class PermissionEngine {
               : "This tool is not permitted in the current mode.",
         };
       case "ask": {
-        const res = await this.requestApproval({ tool: tool.name, input, description }, "ask");
+        const res = await this.requestApproval(
+          { tool: tool.name, input, description, ...(subject !== undefined ? { subject } : {}) },
+          "ask",
+        );
         if (res.decision === "deny") {
           return {
             allowed: false,
@@ -146,6 +180,7 @@ export class PermissionEngine {
             message: `The user declined this tool call${res.message ? `: ${res.message}` : "."} Adjust your approach instead of retrying the same call.`,
           };
         }
+        if (res.decision === "allow_always") this.grantExact(tool.name, subject);
         if (res.decision === "allow_session") {
           // "Always allow this session" means the TOOL, not this exact
           // subject — an exact-subject grant re-asks on every new command/path
@@ -157,6 +192,25 @@ export class PermissionEngine {
         }
         return { allowed: true, source: "user" };
       }
+    }
+  }
+
+  /** Literal subject comparison — a `*` in an approved command stays a `*`. */
+  private matchesExact(tool: string, subject: string | undefined): boolean {
+    if (subject === undefined) return false;
+    return this.allowExact.some((g) => g.tool === tool && g.subject === subject);
+  }
+
+  /** Records an "always allow" grant for this run and persists it. */
+  private grantExact(tool: string, subject: string | undefined): void {
+    if (subject === undefined) return; // nothing identifiable to scope the grant to
+    if (!this.matchesExact(tool, subject)) this.allowExact.push({ tool, subject });
+    // A failed write must not turn an approved call into an error: the grant
+    // still holds in memory for this run, it just will not survive a restart.
+    try {
+      this.persistExact?.(tool, subject);
+    } catch {
+      // best-effort persistence
     }
   }
 

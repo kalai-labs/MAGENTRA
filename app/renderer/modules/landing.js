@@ -540,6 +540,12 @@ function showNextPermission() {
     activePermission.description ||
     safeStringify(input);
   deleteSubjectEl.textContent = subject;
+  // "Always allow" is offered only when the engine sent a subject to scope the
+  // grant to. Without one there is nothing durable to remember, and the button
+  // would silently behave like ALLOW ONCE.
+  const grantable = typeof activePermission.subject === "string" && activePermission.subject !== "";
+  if (allowAlwaysBtnEl) allowAlwaysBtnEl.classList.toggle("hidden", !grantable);
+  if (allowAlwaysHintEl) allowAlwaysHintEl.classList.toggle("hidden", !grantable);
   deleteModalEl.classList.remove("hidden");
   openModalA11y(deleteModalEl);
   announce(`Approval required: ${subject}`);
@@ -584,7 +590,31 @@ const RECOMMENDED_SUFFIX = "(Recommended)";
 function onQuestionRequest(event) {
   if (!streamEl) return;
 
-  (event.questions || []).forEach((q, qIdx) => {
+  const questions = event.questions || [];
+  // The engine holds the round open until every question is answered, so a
+  // multi-question round needs to say so — otherwise answering the first card
+  // and seeing nothing happen reads as a hang.
+  const answered = new Set();
+  let progressEl = null;
+  if (questions.length > 1) {
+    progressEl = document.createElement("div");
+    progressEl.className = "question-progress";
+    progressEl.textContent = `0 of ${questions.length} answered — answer all to continue`;
+    // Appended after the cards, not before: the transcript sits at the live
+    // edge, so a counter above three tall cards would be scrolled out of sight
+    // exactly when it is telling the user there is more to answer.
+  }
+  function noteAnswered(qIdx) {
+    answered.add(qIdx);
+    if (!progressEl) return;
+    const done = answered.size === questions.length;
+    progressEl.textContent = done
+      ? `${questions.length} of ${questions.length} answered`
+      : `${answered.size} of ${questions.length} answered — answer all to continue`;
+    progressEl.classList.toggle("complete", done);
+  }
+
+  questions.forEach((q, qIdx) => {
     const multi = q.multiSelect === true;
     const cardEl = document.createElement("div");
     cardEl.className = "question-card";
@@ -615,6 +645,7 @@ function onQuestionRequest(event) {
     // Sends the final answer array and locks the card. One element for single
     // select; every chosen label for multi-select.
     function submitAnswers(values) {
+      if (answered.has(qIdx)) return; // a locked card must not re-answer
       window.magentra.send({
         type: "question_response",
         id: event.id,
@@ -622,6 +653,7 @@ function onQuestionRequest(event) {
         answers: { [`q:${qIdx}`]: values },
       });
       cardEl.classList.add("answered");
+      noteAnswered(qIdx);
     }
 
     const selected = new Set(); // multi-select accumulator
@@ -728,6 +760,8 @@ function onQuestionRequest(event) {
 
     withAutoScroll(() => streamEl.appendChild(cardEl));
   });
+
+  if (progressEl) withAutoScroll(() => streamEl.appendChild(progressEl));
 }
 
 function onPlanReady(event) {

@@ -102,7 +102,11 @@ const DEFAULT_UI_SETTINGS = {
   // being able to see what each tool actually did. "cinematic" is opt-in.
   detail: "engineer",
   deletions: "ask", // "ask" (guard always prompts) | "allow" (deletions run freely)
-  commands: "ask", // "auto" (autonomous) | "ask" (approval before consequential tools)
+  // Autonomous out of the box: the agent acts without asking, and the deletion
+  // guard above stays the gate — it fires even in bypass mode, so destructive
+  // calls (rm, force-push, drop table, terraform destroy, …) still prompt.
+  // Turning `deletions` to "allow" as well is what removes every prompt.
+  commands: "auto", // "auto" (autonomous) | "ask" (approval before consequential tools)
 };
 
 function loadUiSettings() {

@@ -502,6 +502,17 @@ h1.md-h { font-size: 1.3rem; } h2.md-h { font-size: 1.16rem; } h3.md-h { font-si
 .md-code code { padding: 0; color: var(--text-hi); background: none; font-size: 0.82rem; }
 .md-code code[data-lang]::before { content: attr(data-lang); display: block; margin-bottom: 7px; color: var(--text-faint); font-size: 0.65rem; text-transform: uppercase; }
 
+/* Tables scroll inside their own wrapper: a wide one must never widen the
+   transcript column and push the conversation sideways. */
+.md-table-wrap { margin: 10px 0; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.md-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; line-height: 1.5; }
+.md-table th, .md-table td { padding: 7px 11px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+.md-table th { color: var(--text-hi); background: var(--raised); font-weight: 700; font-size: 0.73rem; letter-spacing: 0.03em; white-space: nowrap; }
+.md-table td { color: var(--text); }
+.md-table tbody tr:last-child td { border-bottom: 0; }
+.md-table tbody tr:hover td { background: var(--hover); }
+.md-table code { white-space: nowrap; }
+
 .msg-thinking { margin: 7px 0 7px 10px; padding-left: 10px; border-left: 2px solid var(--border-hi); }
 .msg-thinking > summary { color: var(--text-dim); cursor: pointer; font-size: 0.72rem; }
 .thinking-body { margin-top: 6px; color: var(--text-dim); font-size: 0.78rem; white-space: pre-wrap; }
@@ -581,6 +592,10 @@ h1.md-h { font-size: 1.3rem; } h2.md-h { font-size: 1.16rem; } h3.md-h { font-si
 
 .question-card, .plan-card { max-width: 720px; margin: 10px 0; padding: 13px 14px; border-left: 3px solid var(--accent); }
 .question-card.answered { opacity: 0.65; }
+/* Multi-question rounds stay open until every card is answered — this counter
+   is what tells the user the agent is still waiting rather than stuck. */
+.question-progress { max-width: 720px; margin: 12px 0 0; padding: 5px 2px; color: var(--amber); font-size: 0.71rem; font-weight: 650; }
+.question-progress.complete { color: var(--green); }
 .question-head { margin-bottom: 5px; color: var(--accent-hi); font-size: 0.68rem; font-weight: 750; letter-spacing: 0.08em; }
 .question-text { margin-bottom: 9px; color: var(--text-hi); }
 .question-options { display: flex; flex-direction: column; gap: 5px; }
@@ -916,6 +931,12 @@ select.composer-select { color-scheme: var(--color-scheme); }
 .modal-actions, .wiz-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 13px; }
 .modal-actions button, .wiz-actions button { padding: 8px 12px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); font-size: 0.74rem; }
 #allowBtn { color: var(--amber); border-color: var(--amber); } #denyBtn { color: var(--red); }
+/* The durable grant sits between deny and allow-once: available, not the
+   default reach. Quieter than #allowBtn so one click never feels like the
+   obvious move. */
+#allowAlwaysBtn { color: var(--text-dim); }
+#allowAlwaysBtn:hover { color: var(--text-hi); border-color: var(--border-strong); }
+.modal-hint { margin-top: 9px; color: var(--text-faint); font-size: 0.71rem; line-height: 1.45; }
 .shortcut-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin-top: 10px; }
 .shortcut-list dt { color: var(--text); font-size: 0.75rem; } .shortcut-list dd { color: var(--text-faint); font-size: 0.75rem; }
 .wiz-box { position: relative; width: min(540px, 92vw); }
@@ -937,6 +958,34 @@ select.composer-select { color-scheme: var(--color-scheme); }
 #wizStartBtn { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-weight: 700; }
 #wizStartBtn:hover { background: var(--accent-hi); }
 .wiz-note { margin-top: 10px; color: var(--text-faint); font-size: 0.68rem; line-height: 1.5; }
+
+/* First-run autonomy notice: amber (an advisory, not the red of a failure). */
+.autonomy-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 11px 13px;
+  border: 1px solid rgba(var(--amber-rgb), 0.45);
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+  color: var(--text);
+  font-size: 0.79rem;
+  line-height: 1.5;
+}
+.autonomy-notice strong { color: var(--text-hi); }
+.autonomy-notice-btn {
+  flex: none;
+  align-self: flex-start;
+  padding: 6px 11px;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--amber);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.autonomy-notice-btn:hover { color: var(--accent-ink); background: var(--amber); }
 
 .engine-banner { display: flex; align-items: center; gap: 10px; margin: 10px 0; padding: 11px 12px; border-color: rgba(var(--red-rgb), 0.5); background: var(--red-soft); }
 .engine-banner span { min-width: 0; flex: 1; }

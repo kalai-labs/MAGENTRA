@@ -69,7 +69,13 @@ export interface SessionSummary {
   label?: string;
 }
 
-export type PermissionDecision = "allow_once" | "allow_session" | "deny";
+/**
+ * `allow_session` grants the whole tool until the process exits.
+ * `allow_always` grants ONLY the exact subject (that literal command string),
+ * persisted to the workspace's settings so it survives restarts — the narrow,
+ * durable grant offered on destructive prompts.
+ */
+export type PermissionDecision = "allow_once" | "allow_session" | "allow_always" | "deny";
 
 /** One slash command the engine understands — feeds the frontend palette. */
 export interface SlashCommandInfo {
@@ -172,6 +178,12 @@ export type CoreEvent =
       tool: string;
       input: unknown;
       description?: string;
+      /**
+       * The exact subject an `allow_always` decision would grant. Absent when
+       * the tool defines no permission subject — offer only allow_once/deny
+       * then, since there is nothing durable to scope a grant to.
+       */
+      subject?: string;
     }
   | { type: "question_request"; id: string; questions: Question[] }
   | { type: "plan_ready"; planPath: string; plan: string; allowedPrompts: AllowedPrompt[] }

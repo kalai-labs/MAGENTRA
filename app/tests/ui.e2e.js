@@ -383,9 +383,20 @@ async function run() {
   await test("approval, question, and plan cards send selected decisions", async () => {
     await emit({ type: "permission_request", id: "p1", description: "Remove generated file", input: { command: "rm generated.js" } });
     assert.equal(await evaluate(`document.querySelector('#deleteModal').classList.contains('hidden')`), false);
+    // No subject means nothing durable to grant — "always allow" must stay hidden
+    // rather than silently behaving like a one-off allow.
+    assert.equal(await evaluate(`document.querySelector('#allowAlwaysBtn').classList.contains('hidden')`), true);
     await evaluate(`document.querySelector('#allowBtn').click()`);
     await pause();
     assert.deepEqual(permissions.at(-1), { id: "p1", decision: "allow_once" });
+
+    // With a subject, the durable grant is offered and sends allow_always.
+    await emit({ type: "permission_request", id: "p2", description: "rm -rf ./build", input: { command: "rm -rf ./build" }, subject: "rm -rf ./build" });
+    assert.equal(await evaluate(`document.querySelector('#allowAlwaysBtn').classList.contains('hidden')`), false);
+    await evaluate(`document.querySelector('#allowAlwaysBtn').click()`);
+    await pause();
+    assert.deepEqual(permissions.at(-1), { id: "p2", decision: "allow_always" });
+
     await emit({ type: "question_request", questions: [{
       header: "Scope", question: "Which surface?", multiSelect: false,
       options: [{ label: "Workbench (Recommended)", description: "Use Concept A" }, { label: "Legacy", description: "Keep old shell" }],
@@ -399,6 +410,60 @@ async function run() {
     await evaluate(`document.querySelector('.plan-card .plan-approve').click()`);
     await pause();
     assert.ok(frames.some((frame) => frame.type === "plan_decision" && frame.approve === true));
+  });
+
+  await test("a multi-question round answers every card, and tables render", async () => {
+    const questionCountBefore = await evaluate(`document.querySelectorAll('.question-card').length`);
+    await emit({ type: "question_request", id: "multi", questions: [
+      { header: "One", question: "First?", multiSelect: false, options: [{ label: "1a", description: "" }, { label: "1b", description: "" }] },
+      { header: "Two", question: "Second?", multiSelect: false, options: [{ label: "2a", description: "" }, { label: "2b", description: "" }] },
+      { header: "Three", question: "Third?", multiSelect: false, options: [{ label: "3a", description: "" }, { label: "3b", description: "" }] },
+    ] });
+    const cards = await evaluate(`document.querySelectorAll('.question-card').length`);
+    assert.equal(cards - questionCountBefore, 3);
+    // The engine holds the round open until all three land, so the UI has to
+    // say how many remain instead of looking hung after the first answer.
+    assert.match(await evaluate(`document.querySelector('.question-progress').textContent`), /0 of 3/);
+
+    const answerCard = (n) =>
+      evaluate(`[...document.querySelectorAll('.question-card')].slice(-3)[${n}].querySelector('.q-opt').click()`);
+    const responsesBefore = frames.filter((f) => f.type === "question_response").length;
+    await answerCard(0);
+    await pause();
+    assert.match(await evaluate(`document.querySelector('.question-progress').textContent`), /1 of 3/);
+    await answerCard(1);
+    await answerCard(2);
+    await pause();
+    assert.match(await evaluate(`document.querySelector('.question-progress').textContent`), /3 of 3/);
+    // One response per question, each keyed by its own position.
+    const responses = frames.filter((f) => f.type === "question_response").slice(responsesBefore);
+    assert.equal(responses.length, 3);
+    assert.deepEqual(responses.map((r) => Object.keys(r.answers)[0]).sort(), ["q:0", "q:1", "q:2"]);
+
+    // A locked card must not be answerable twice.
+    await answerCard(0);
+    await pause();
+    assert.equal(frames.filter((f) => f.type === "question_response").length - responsesBefore, 3);
+
+    // GFM tables render as real tables once the turn finalizes.
+    await emit({ type: "text_delta", text: "Results:\n\n| Setting | Default |\n|---|---:|\n| theme | workbench |\n| commands | auto |\n" });
+    await emit({ type: "turn_finished", contextTokens: 10, totalCostUsd: 0, stopReason: "end_turn" });
+    const table = await evaluate(`(() => {
+      const t = document.querySelector('.md-table');
+      if (!t) return null;
+      return {
+        wrapped: Boolean(t.closest('.md-table-wrap')),
+        headers: [...t.querySelectorAll('thead th')].map(e => e.textContent),
+        aligned: t.querySelectorAll('thead th')[1].style.textAlign,
+        rows: [...t.querySelectorAll('tbody tr')].map(r => [...r.querySelectorAll('td')].map(c => c.textContent)),
+      };
+    })()`);
+    assert.deepEqual(table, {
+      wrapped: true,
+      headers: ["Setting", "Default"],
+      aligned: "right",
+      rows: [["theme", "workbench"], ["commands", "auto"]],
+    });
   });
 
   await test("skills view, chips, recommended set, and create-skill wizard are functional", async () => {

@@ -49,6 +49,7 @@ import { SearchLog, evaluateReuseGate, type ReuseGateResult } from "../knowledge
 import { buildSymbolIndex, loadOrBuildSymbolIndex, type SymbolIndexData } from "../knowledge/symbols.js";
 import { SessionStats } from "./sessionStats.js";
 import type { Settings } from "../config/settings.js";
+import { addExactPermission } from "../config/settings.js";
 import { type CrewAgent, CREW_ALWAYS_ALLOWED, crewSection } from "../crew/team.js";
 import { CrewExperience } from "../crew/experience.js";
 import { recordCrewRun } from "../crew/ledger.js";
@@ -296,6 +297,18 @@ export class Session {
         });
         return res;
       },
+        // "Always allow" writes the grant into this workspace's settings, so
+        // the same command stops asking in later sessions too.
+        (tool, subject) => {
+          // The in-memory settings object outlives this session — /clear builds
+          // the next one from it. Without this, a grant would be forgotten
+          // until the app restarted and re-read the file it just wrote.
+          const exact = opts.settings.permissions.allowExact;
+          if (!exact.some((g) => g.tool === tool && g.subject === subject)) {
+            exact.push({ tool, subject });
+          }
+          addExactPermission(this.cwd, tool, subject);
+        },
     );
     this.services = {
       // The tools' emit seam — and the single place a file_edited diff is

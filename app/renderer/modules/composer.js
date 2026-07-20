@@ -416,9 +416,18 @@ window.addEventListener("keydown", (e) => {
   // Approval modal focused: single-key answer (buttons also spell these out).
   if (!deleteModalEl.classList.contains("hidden") && !isMod(e)) {
     const k = e.key.toLowerCase();
-    if (k === "y" || k === "a") {
+    if (k === "y") {
       e.preventDefault();
       resolvePermission("allow_once");
+      return;
+    }
+    // "A" is the durable grant, and only when the modal actually offers it —
+    // it must never fall through to a plain allow, which is what it used to do.
+    if (k === "a") {
+      e.preventDefault();
+      if (allowAlwaysBtnEl && !allowAlwaysBtnEl.classList.contains("hidden")) {
+        resolvePermission("allow_always");
+      }
       return;
     }
     if (k === "n" || k === "d") {
@@ -455,6 +464,7 @@ window.addEventListener("keydown", (e) => {
 if (shortcutCloseBtnEl) shortcutCloseBtnEl.addEventListener("click", toggleShortcutSheet);
 
 allowBtnEl.addEventListener("click", () => resolvePermission("allow_once"));
+if (allowAlwaysBtnEl) allowAlwaysBtnEl.addEventListener("click", () => resolvePermission("allow_always"));
 denyBtnEl.addEventListener("click", () => resolvePermission("deny"));
 
 function dismissSetupWizard() {
