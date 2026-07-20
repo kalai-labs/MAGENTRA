@@ -8,8 +8,15 @@ import { STATE_DIR_NAME } from "@magentra/protocol";
 export const DEFAULT_OPENAI_BASE_URL = "https://api.deepinfra.com/v1/openai";
 
 const permissionRuleSchema = z.string();
-/** One exact-subject grant: `{ tool: "Bash", subject: "rm -rf ./tmp/build" }`. */
-const exactPermissionSchema = z.object({ tool: z.string().min(1), subject: z.string().min(1) });
+/** One "always allow" grant: `{ tool: "Bash", subject: "rm -rf ./tmp/build" }`.
+ *  With `prefix: true` the subject is a command shape ("git push") covering
+ *  every command that starts with it; prefix grants never override the
+ *  deletion guard. */
+const exactPermissionSchema = z.object({
+  tool: z.string().min(1),
+  subject: z.string().min(1),
+  prefix: z.boolean().optional(),
+});
 
 export const settingsSchema = z
   .object({
@@ -61,6 +68,13 @@ export const settingsSchema = z
         }),
       )
       .default({}),
+    /**
+     * Clarify pre-layer: on a genuinely open-ended request ("build a game",
+     * "improve this app"), the main model first asks the user up to three
+     * shape-defining questions before any work starts. Root attended
+     * sessions only; fail-open on any error.
+     */
+    clarify: z.boolean().default(true),
     // permissionMode was removed as a setting (2026-07-20): the permission
     // stance is now the session's OVERDRIVE flag alone. Old settings files
     // that still carry the key load fine — unknown keys are stripped.
@@ -439,14 +453,14 @@ export function setSetting(
  * path; this has to read the existing array, append, and dedupe. Returns false
  * when the grant was already present (nothing written).
  */
-export function addExactPermission(cwd: string, tool: string, subject: string): boolean {
+export function addExactPermission(cwd: string, tool: string, subject: string, prefix = false): boolean {
   const file = existsSync(join(cwd, STATE_DIR_NAME)) ? projectSettingsPath(cwd) : globalSettingsPath();
   const discard: SettingsWarning[] = [];
   const candidate: Record<string, unknown> = structuredClone(readJson(file, discard) ?? {});
   const permissions = (candidate.permissions ??= {}) as Record<string, unknown>;
   const existing = Array.isArray(permissions.allowExact) ? [...permissions.allowExact] : [];
-  if (existing.some((e) => isSameGrant(e, tool, subject))) return false;
-  existing.push({ tool, subject });
+  if (existing.some((e) => isSameGrant(e, tool, subject, prefix))) return false;
+  existing.push({ tool, subject, ...(prefix ? { prefix: true } : {}) });
   permissions.allowExact = existing;
 
   const parsed = settingsSchema.safeParse(candidate);
@@ -457,12 +471,13 @@ export function addExactPermission(cwd: string, tool: string, subject: string): 
   return true;
 }
 
-function isSameGrant(entry: unknown, tool: string, subject: string): boolean {
+function isSameGrant(entry: unknown, tool: string, subject: string, prefix: boolean): boolean {
   return (
     typeof entry === "object" &&
     entry !== null &&
     (entry as { tool?: unknown }).tool === tool &&
-    (entry as { subject?: unknown }).subject === subject
+    (entry as { subject?: unknown }).subject === subject &&
+    ((entry as { prefix?: unknown }).prefix === true) === prefix
   );
 }
 

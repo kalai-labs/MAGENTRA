@@ -532,8 +532,8 @@ Answer to a `permission_request`.
 | --- | --- | --- |
 | `type` | `"permission_response"` | |
 | `id` | string | The id from the `permission_request`. |
-| `decision` | `PermissionDecision` | `allow_once`, `allow_session`, or `deny`. |
-| `message` | string? | Optional note shown to the model on denial. |
+| `decision` | `PermissionDecision` | `allow_once`, `allow_session`, `allow_always`, or `deny`. |
+| `message` | string? | Optional user note, valid with ANY decision: on deny it is folded into the refusal the model reads; on any allow it reaches the model as a system reminder alongside the call's results. |
 
 ```json
 {"type":"permission_response","id":"perm_3b9d","decision":"allow_once"}

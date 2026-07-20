@@ -17,7 +17,7 @@ const TOUR_STEPS = [
   {
     target: "#composer .composer-inner",
     title: "Ask Magentra anything",
-    copy: "Type what you want done — plans, edits, questions. / opens the command palette, Esc stops a running turn, and anything you type mid-turn queues as a follow-up.",
+    copy: "Type what you want done — plans, edits, questions. / opens the command palette, Esc stops a running turn, and anything you type mid-turn joins the running turn to steer it.",
   },
   {
     target: "#overdriveBtn",

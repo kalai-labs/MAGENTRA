@@ -31,7 +31,8 @@ contextBridge.exposeInMainWorld("magentra", {
   setModes: (activeIds) => ipcRenderer.send("test:modes", activeIds),
   interrupt: () => ipcRenderer.send("test:interrupt"),
   restartEngine: () => ipcRenderer.send("test:restart"),
-  respondPermission: (id, decision) => ipcRenderer.send("test:permission", { id, decision }),
+  respondPermission: (id, decision, message) =>
+    ipcRenderer.send("test:permission", message ? { id, decision, message } : { id, decision }),
   addDoc: (agentId, filePath) => api("addDoc", agentId, filePath),
   createTeamTemplate: () => api("createTeamTemplate"),
   reloadTeam: () => ipcRenderer.send("test:reloadTeam"),

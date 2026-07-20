@@ -178,6 +178,12 @@ export type CoreEvent =
        * then, since there is nothing durable to scope a grant to.
        */
       subject?: string;
+      /**
+       * What `allow_always` would remember when broader than the exact
+       * subject: the command's shape (e.g. "mkdir", "git push"). Frontends
+       * surface it so the grant's scope is never a surprise.
+       */
+      grant?: string;
     }
   | { type: "question_request"; id: string; questions: Question[] }
   | { type: "task_list_updated"; tasks: TaskItem[] }

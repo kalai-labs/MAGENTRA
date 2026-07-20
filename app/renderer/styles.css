@@ -979,6 +979,9 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 #allowAlwaysBtn { color: var(--text-dim); }
 #allowAlwaysBtn:hover { color: var(--text-hi); border-color: var(--border-strong); }
 .modal-hint { margin-top: 9px; color: var(--text-faint); font-size: max(10px, 0.71rem); line-height: 1.45; }
+.modal-note { width: 100%; margin-top: 11px; padding: 8px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); color: var(--text-hi); font-size: max(10px, 0.75rem); line-height: 1.45; resize: vertical; outline: 0; font-family: inherit; }
+.modal-note:focus { border-color: rgba(var(--accent-rgb), 0.72); }
+.modal-note::placeholder { color: var(--text-faint); }
 .shortcut-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin-top: 10px; }
 .shortcut-list dt { color: var(--text); font-size: max(10px, 0.75rem); } .shortcut-list dd { color: var(--text-faint); font-size: max(10px, 0.75rem); }
 .wiz-box { position: relative; width: min(540px, 92vw); }

@@ -34,6 +34,7 @@ land?), not on the model's prose.
 - [ ] **Self-verify rung** — the first clean end-attempt injects the completeness+economy self-check (query-shaped evidence, no invented rituals); a silent DONE ends the turn with one visible reply; fires once per turn, re-armed by steering. `llm`
 - [ ] **Stall detector** — three consecutive identical rounds (same calls, same results) force a strategy pivot; after two pivots, the model must ask the user one concrete question. `pure` + `llm`
 - [ ] **Reuse gate reminds, never blocks** — a would-be new-file Write block becomes a reminder; the signal survives, the refusal doesn't. `pure`
+- [ ] **Mid-run steering (both stances)** — typing while a turn runs sends `steer_message`: the text joins the running turn at its next message boundary, re-arms self-verify, refunds pivots; when the turn already ended, it becomes a normal user turn. Slash/bang commands still queue for turn end. `llm`
 - [ ] **Context accounting** — `contextTokens` is the *last* request's whole prompt (input + cacheRead + cacheWrite) plus its reply, and does NOT accumulate across rounds. `pure`
 - [ ] **Usage accounting** — billed usage DOES accumulate, per model, across the session and every subagent. `pure`
 - [ ] **Provider usage normalization** — OpenAI-compatible `prompt_tokens` (whole prompt) minus `cached_tokens` (a subset) yields disjoint classes; Anthropic already reports them disjoint. Getting this wrong double-counts cache. `pure`
@@ -41,6 +42,9 @@ land?), not on the model's prose.
 - [ ] **`/session` report** — cost, API vs wall time, code churn, context now, usage per model. `pure`
 - [ ] **Compaction** — the oldest span is summarized when context crosses the threshold; the summary replaces it and context resets. `llm`
 - [ ] **Permission stances** — exactly two: normal (reads/interactions/file edits allowed, commands ask with once/session/always grants) and OVERDRIVE (everything allowed); deny-rule beats allow-rule beats stance. `pure`
+- [ ] **Approval note** — the approval card takes an optional note with ANY decision: on deny it becomes the refusal reason the model reads; on allow it reaches the model as a reminder with that round's results. `pure` + `llm`
+- [ ] **Command-shape always-allow** — "Always allow" on an ordinary command remembers its shape (`mkdir …` covers all mkdir; `git push`/`npm run build` keep the subcommand/script; compound or substituted commands stay literal); the card states the scope; shape grants persist across sessions and never override the deletion guard. `pure`
+- [ ] **Clarify pre-layer** — a genuinely open-ended request ("build a game", "improve this app") triggers up to three shape-defining multiple-choice questions BEFORE any work, judged by the main model; concrete/trivial/follow-up requests never trigger it; fail-open on any error; root attended turns only; `clarify: false` disables. `llm`
 - [ ] **Deletion guard** — destructive Bash always asks, *in both stances*, until explicitly disabled. Covers `rm`, `mv`, force-push, `DROP TABLE`, … `pure` + `proc`
 - [ ] **Protected state dir** — deleting a folder *named* `.magentra` (or a glob/unparseable command that could hit one) always asks, in both stances; it beats the "allow deletions" setting, explicit allow rules, OVERDRIVE, and never offers "always allow". Deeper paths like `.magentra/worktrees/foo` stay routine. `pure`
 - [ ] **File freshness** — Edit/Write on a file changed on disk since it was read is refused. `fs`
@@ -52,7 +56,6 @@ When ON (composer toggle, `/overdrive on`, or `set_overdrive`), nothing asks: th
 - [ ] **Allow-all stance** — commands, network, everything runs unprompted; only the deletion guard and the `.magentra` protection still ask. `pure`
 - [ ] **Deletion scope-split** — deletions provably inside the workspace skip the guard (rm/del/find/mv with analyzable paths, judged against Bash's tracked cwd); history rewrites, substitution, `~`, root wildcards, out-of-tree paths, and `.magentra` state dirs still ask. `pure`
 - [ ] **Pre-turn snapshot** — a `git stash create` ref is parked before each root turn and reported as `overdriveSnapshot` on `turn_finished` (tracked files only; absent on a clean tree). `fs`
-- [ ] **Mid-run steering** — `steer_message` joins the running turn at its next message boundary, re-arms self-verify, refunds pivots; when the turn already ended, it becomes a normal user turn. `llm`
 - [ ] **Prompt contract** — the OVERDRIVE system-prompt section (plan-first, consequence-thinking, query-shaped evidence, ask-rubric, cleanup license) is present exactly while ON. `pure`
 
 ## Agent

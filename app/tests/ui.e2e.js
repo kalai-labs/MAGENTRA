@@ -267,13 +267,20 @@ async function run() {
     assert.equal(await evaluate(`document.querySelectorAll('.tool-row').length > 0`), true);
     await evaluate(`document.querySelector('.tool-row').click()`);
     assert.equal(await evaluate(`document.querySelector('.tool-row').getAttribute('aria-expanded')`), "true");
+    // Mid-turn plain text steers the running turn immediately — no queue wait.
     await evaluate(`(() => { const input = document.querySelector('#promptInput'); input.value = 'Now verify it'; document.querySelector('#sendBtn').click(); })()`);
+    await pause();
+    assert.ok(frames.some((frame) => frame.type === "steer_message" && frame.text === "Now verify it"));
+    // Commands can't steer, so a slash command typed mid-turn still queues and
+    // flushes when the turn ends.
+    await evaluate(`(() => { const input = document.querySelector('#promptInput'); input.value = '/help'; document.querySelector('#sendBtn').click(); })()`);
     assert.equal(await evaluate(`document.querySelector('#queueChip').classList.contains('hidden')`), false);
     await evaluate(`document.querySelector('#stopBtn').click()`);
     await pause();
     assert.ok(signals.some((signal) => signal.name === "interrupt"));
     await emit({ type: "turn_finished", contextTokens: 4200, totalCostUsd: 0.012, stopReason: "end_turn" });
-    assert.ok(frames.some((frame) => frame.type === "user_message" && frame.text === "Now verify it"));
+    await pause();
+    assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.command === "help"));
     assert.match(await evaluate(`document.querySelector('#inspectorUsage').textContent`), /4\.2k ctx/);
   });
 
@@ -361,22 +368,51 @@ async function run() {
     assert.equal(await evaluate(`document.querySelector('.inline-changes-card') === null`), true);
   });
 
-  await test("approval and question cards send selected decisions", async () => {
+  await test("approval and question cards send selected decisions and notes", async () => {
     await emit({ type: "permission_request", id: "p1", description: "Remove generated file", input: { command: "rm generated.js" } });
     assert.equal(await evaluate(`document.querySelector('#deleteModal').classList.contains('hidden')`), false);
     // No subject means nothing durable to grant — "always allow" must stay hidden
     // rather than silently behaving like a one-off allow.
     assert.equal(await evaluate(`document.querySelector('#allowAlwaysBtn').classList.contains('hidden')`), true);
+    // A note typed on the card rides out with whatever decision is picked.
+    await evaluate(`document.querySelector('#permissionNote').value = 'watch the siblings'`);
     await evaluate(`document.querySelector('#allowBtn').click()`);
     await pause();
-    assert.deepEqual(permissions.at(-1), { id: "p1", decision: "allow_once" });
+    assert.deepEqual(permissions.at(-1), { id: "p1", decision: "allow_once", message: "watch the siblings" });
+    // The note field resets before the next card so nothing leaks across prompts.
+    assert.equal(await evaluate(`document.querySelector('#permissionNote').value`), "");
 
     // With a subject, the durable grant is offered and sends allow_always.
+    // No note this time — the frame must carry no message. Without a `grant`,
+    // the hint promises the EXACT command (deletion-guard prompts).
     await emit({ type: "permission_request", id: "p2", description: "rm -rf ./build", input: { command: "rm -rf ./build" }, subject: "rm -rf ./build" });
     assert.equal(await evaluate(`document.querySelector('#allowAlwaysBtn').classList.contains('hidden')`), false);
+    assert.match(await evaluate(`document.querySelector('#allowAlwaysHint').textContent`), /exact command/);
     await evaluate(`document.querySelector('#allowAlwaysBtn').click()`);
     await pause();
     assert.deepEqual(permissions.at(-1), { id: "p2", decision: "allow_always" });
+
+    // With a `grant`, the hint states the command shape the grant will cover.
+    await emit({ type: "permission_request", id: "p2a", description: "mkdir -p x", input: { command: "mkdir -p x" }, subject: "mkdir -p x", grant: "mkdir" });
+    assert.match(await evaluate(`document.querySelector('#allowAlwaysHint').textContent`), /every “mkdir …” command/);
+    await evaluate(`document.querySelector('#allowAlwaysBtn').click()`);
+    await pause();
+    assert.deepEqual(permissions.at(-1), { id: "p2a", decision: "allow_always" });
+
+    // Fresh card: initial focus must be on the default action, NOT the note
+    // textarea — a bare "y" keystroke resolves the card instead of typing.
+    await emit({ type: "permission_request", id: "p2b", description: "ls", input: { command: "ls" } });
+    assert.equal(await evaluate(`document.activeElement.id`), "allowBtn");
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'y', bubbles: true }))`);
+    await pause();
+    assert.deepEqual(permissions.at(-1), { id: "p2b", decision: "allow_once" });
+
+    // Deny carries the note too (the engine folds it into the refusal).
+    await emit({ type: "permission_request", id: "p3", description: "drop table users", input: { command: "drop table users" } });
+    await evaluate(`document.querySelector('#permissionNote').value = 'use a soft delete instead'`);
+    await evaluate(`document.querySelector('#denyBtn').click()`);
+    await pause();
+    assert.deepEqual(permissions.at(-1), { id: "p3", decision: "deny", message: "use a soft delete instead" });
 
     await emit({ type: "question_request", questions: [{
       header: "Scope", question: "Which surface?", multiSelect: false,

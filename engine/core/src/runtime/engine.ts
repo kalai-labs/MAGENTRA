@@ -102,6 +102,7 @@ export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTi
   // Rates are read at report time (/session, status bar), so a new price applies
   // to the whole session's accumulated usage the moment it is set.
   pricing: "session",
+  clarify: "nextTurn",
   permissions: "clear",
   hooks: "restart",
   mcpServers: "restart",
@@ -236,6 +237,7 @@ export class Engine {
             input: req.input,
             ...(req.description !== undefined ? { description: req.description } : {}),
             ...(req.subject !== undefined ? { subject: req.subject } : {}),
+            ...(req.grant !== undefined ? { grant: req.grant } : {}),
           });
         }),
       askUser: (id, questions) =>

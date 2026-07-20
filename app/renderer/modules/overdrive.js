@@ -67,7 +67,7 @@ function engageOverdrive(fromUser) {
   saveUiSettings();
   applySafetySettings(false); // sends set_overdrive (the changed toggle)
   applyOverdriveShell();
-  syncActivityUi(); // busy placeholder flips to the steering hint
+  syncActivityUi(); // repaint composer/footer for the new safety stance
   if (fromUser) {
     playOverdriveCinematic();
     announce("OVERDRIVE engaged — fully autonomous mode.");

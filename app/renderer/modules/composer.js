@@ -145,9 +145,10 @@ function sendSlashCommand(trimmed) {
   hideSlashPop();
 }
 
-// Messages typed while a turn is running wait here and flush one per turn end
-// (each starts its own turn), so the user can queue follow-ups instead of
-// being locked out of the composer for the whole turn.
+// Slash/bang commands typed while a turn is running wait here and flush one per
+// turn end (each starts its own turn). Plain messages no longer queue — they
+// steer the running turn immediately (see sendMessage) — but commands can't
+// steer, so they still queue.
 const messageQueue = [];
 
 function renderQueueChip() {
@@ -228,19 +229,23 @@ function sendMessage() {
   const text = promptInputEl.value;
   if (!text.trim() || !engineLinked) return;
 
-  // Mid-turn under OVERDRIVE: steer the running turn instead of queueing. The
-  // text joins the turn at its next boundary rather than starting a new one.
-  if (busy && uiSettings.overdrive) {
-    window.magentra.send({ type: "steer_message", text });
-    appendSysNote(`⚡ steering — "${text.replace(/\s+/g, " ").trim().slice(0, 80)}"`);
-    promptInputEl.value = "";
-    autoGrow(promptInputEl);
-    return;
-  }
-  // Mid-turn: queue instead of dropping the input. It flushes on turn end.
   if (busy) {
-    messageQueue.push(text);
-    renderQueueChip();
+    const trimmed = text.trim();
+    const isCommand = (trimmed.startsWith("/") || trimmed.startsWith("!")) && !text.includes("\n");
+    // Commands can't steer a running turn — steer_message carries plain text to
+    // the model, not a slash/bang command — so they still queue for turn end.
+    if (isCommand) {
+      messageQueue.push(text);
+      renderQueueChip();
+      promptInputEl.value = "";
+      autoGrow(promptInputEl);
+      return;
+    }
+    // Mid-turn plain text steers the running turn: it joins the turn at its next
+    // boundary rather than starting a new one. Available in every stance now,
+    // not only OVERDRIVE.
+    window.magentra.send({ type: "steer_message", text });
+    appendSysNote(`↳ steering — "${text.replace(/\s+/g, " ").trim().slice(0, 80)}"`);
     promptInputEl.value = "";
     autoGrow(promptInputEl);
     return;
@@ -427,6 +432,15 @@ function toggleShortcutSheet() {
 window.addEventListener("keydown", (e) => {
   // Approval modal focused: single-key answer (buttons also spell these out).
   if (!deleteModalEl.classList.contains("hidden") && !isMod(e)) {
+    // Typing in the note must not fire the single-key answers. Enter there
+    // triggers the card's default (allow once); Shift+Enter adds a newline.
+    if (e.target === permissionNoteEl) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        resolvePermission("allow_once");
+      }
+      return;
+    }
     const k = e.key.toLowerCase();
     if (k === "y") {
       e.preventDefault();

@@ -278,16 +278,14 @@ function syncActivityUi() {
   if (!workspaceOpen) return; // landing page: composer stays disabled regardless
   // Clearing mid-turn would swap the engine's session out from under it.
   clearBtnEl.disabled = busy;
-  // The composer stays usable during a turn — a message typed now queues and
-  // sends on turn end. It locks only when there are no credentials (a prompt
-  // would go into a dead engine).
+  // The composer stays usable during a turn — a message typed now steers the
+  // running turn (commands still queue for turn end). It locks only when there
+  // are no credentials (a prompt would go into a dead engine).
   promptInputEl.disabled = !engineLinked;
   promptInputEl.placeholder = !engineLinked
     ? "Engine not linked — open Settings → Connection or the setup wizard"
     : busy
-      ? uiSettings.overdrive
-        ? "steering — messages join the running turn"
-        : "Queue a follow-up — sends when the turn ends"
+      ? "Message joins the running turn to steer it…"
       : "Ask Magentra anything…";
 }
 
@@ -548,15 +546,32 @@ function showNextPermission() {
   // would silently behave like ALLOW ONCE.
   const grantable = typeof activePermission.subject === "string" && activePermission.subject !== "";
   if (allowAlwaysBtnEl) allowAlwaysBtnEl.classList.toggle("hidden", !grantable);
-  if (allowAlwaysHintEl) allowAlwaysHintEl.classList.toggle("hidden", !grantable);
+  if (allowAlwaysHintEl) {
+    allowAlwaysHintEl.classList.toggle("hidden", !grantable);
+    // The engine says what "always allow" would remember: a command shape
+    // ("mkdir", "git push") when it can derive one, else this exact command.
+    allowAlwaysHintEl.textContent =
+      typeof activePermission.grant === "string" && activePermission.grant !== ""
+        ? `“Always allow” covers every “${activePermission.grant} …” command in this workspace — other commands still ask.`
+        : "“Always allow” remembers this exact command for this workspace — anything else still asks.";
+  }
+  // Each card starts with a blank note — never carry one card's note onto the next.
+  if (permissionNoteEl) permissionNoteEl.value = "";
   deleteModalEl.classList.remove("hidden");
-  openModalA11y(deleteModalEl);
+  // Initial focus goes to the default action, NOT the note textarea (the
+  // first focusable in DOM order) — otherwise the single-key shortcuts
+  // (Y/A/N) land in the note as typed text. The note is opt-in via Tab/click.
+  openModalA11y(deleteModalEl, allowBtnEl);
   announce(`Approval required: ${subject}`);
 }
 
 function resolvePermission(decision) {
   if (!activePermission) return;
-  window.magentra.respondPermission(activePermission.id, decision);
+  // An optional note rides out with ANY decision — the engine folds it into the
+  // refusal on deny, and delivers it as a system reminder on any allow.
+  const note = permissionNoteEl ? permissionNoteEl.value.trim() : "";
+  window.magentra.respondPermission(activePermission.id, decision, note);
+  if (permissionNoteEl) permissionNoteEl.value = "";
   deleteModalEl.classList.add("hidden");
   closeModalA11y();
   activePermission = null;
@@ -569,6 +584,7 @@ function resolvePermission(decision) {
 function clearPermissionState() {
   permissionQueue = [];
   activePermission = null;
+  if (permissionNoteEl) permissionNoteEl.value = "";
   deleteModalEl.classList.add("hidden");
   closeModalA11y();
 }

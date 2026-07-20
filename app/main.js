@@ -1129,8 +1129,8 @@ ipcMain.on("engine:restart", () => {
   sendToRenderer("engine:restarted", { model: currentConfig.model });
 });
 
-ipcMain.on("engine:permission", (_evt, { id, decision }) => {
-  writeToEngine({ type: "permission_response", id, decision });
+ipcMain.on("engine:permission", (_evt, { id, decision, message }) => {
+  writeToEngine({ type: "permission_response", id, decision, ...(message ? { message } : {}) });
 });
 
 // ---------------------------------------------------------------------------

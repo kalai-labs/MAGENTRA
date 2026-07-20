@@ -236,7 +236,7 @@
     <div class="rung halt"><div class="h"><span>Stall detector — every turn</span><span class="badge halt">PIVOT → ASK</span></div>
       <p>Three consecutive identical rounds (same tool calls, same results) force a strategy pivot; after two spent pivots the model must ask the user one concrete question. Messages: <code>⚡ stall detected — forcing strategy pivot N/2</code> then <code>⚡ still stalled after pivots — asking the user</code> (<code>STALL_PIVOT_TEXT</code> / <code>STALL_ASK_TEXT</code>). This is the brake that replaces the caps on an interactive turn.</p></div>
     <div class="rung keepgoing"><div class="h"><span>What OVERDRIVE alone changes</span><span class="badge go">POLICY + COSMETICS</span></div>
-      <p>The allow-all permission stance; the deletion scope-split (workspace-scoped deletions skip the guard); a pre-turn <code>git stash create</code> snapshot on every root turn; the OVERDRIVE system-prompt section; the status-line chatter; and the frontend identity/cinematic. Mid-run steering is engine-generic — <code>steer_message</code> lands at the next message boundary of the running turn — but the composer only sends it while OVERDRIVE is on.</p></div>
+      <p>The allow-all permission stance; the deletion scope-split (workspace-scoped deletions skip the guard); a pre-turn <code>git stash create</code> snapshot on every root turn; the OVERDRIVE system-prompt section; the status-line chatter; and the frontend identity/cinematic. Mid-run steering is universal now: typing while any turn runs sends <code>steer_message</code>, which lands at the next message boundary of the running turn (slash/bang commands still queue for turn end).</p></div>
   </div>
 
   <h3>Failure and interrupt paths</h3>
@@ -246,7 +246,7 @@
 <!-- ─────────── STOPS ─────────── -->
 <section class="panel" data-panel="stops" hidden>
   <h2>Every way a turn can stop</h2>
-  <p>Twelve distinct mechanisms (removed 2026-07-20: plan mode and its approval gate, the three-way permission modes — now a two-state stance, OVERDRIVE off vs on — and the reuse gate's block mode, which is reminder-only now and no longer a stop at all). The distinction that matters most: <b class="mono">user-facing</b> stops raise a prompt you can see and answer; <b class="mono">silent</b> stops return an error to the <em>model</em> only — from the outside they look like the agent simply refusing or giving up.</p>
+  <p>Thirteen distinct mechanisms (removed 2026-07-20: plan mode and its approval gate, the three-way permission modes — now a two-state stance, OVERDRIVE off vs on — and the reuse gate's block mode, which is reminder-only now. Added the same day: the clarify pre-layer). The distinction that matters most: <b class="mono">user-facing</b> stops raise a prompt you can see and answer; <b class="mono">silent</b> stops return an error to the <em>model</em> only — from the outside they look like the agent simply refusing or giving up.</p>
 
   <div class="chips" id="chips">
     <button class="chip" aria-pressed="true" data-f="all">All</button>
@@ -510,6 +510,7 @@ const STAGES = [
 ];
 
 const STOPS = [
+  { m:"Clarify pre-layer", loc:"session.ts", tr:"the main model judges the incoming request genuinely open-ended (unstated shape AND a wrong guess would force a redo) — then up to 3 multiple-choice questions come before any work", v:"user", d:"<b>on by default</b>", dis:"<code>clarify: false</code> in settings", tags:["user","ondefault"] },
   { m:"Permission ask prompt", loc:"permissions.ts", tr:"stanceDefault(tool) returns \"ask\" — with OVERDRIVE off, a command/network tool (execute etc.) with no allow rule. Reads, interactions and file edits (isFileEdit) are auto-allowed and never ask", v:"user", d:"on when OVERDRIVE off — commands only", dis:"turn OVERDRIVE on (allow-all), add an allow rule, or grant once/session/always at the prompt", tags:["user","ondefault","autonomy"] },
   { m:"Deletion guard", loc:"permissions.ts:123", tr:"tool.deletionSubject() returns a string — Bash destructive patterns, Worktree remove", v:"user", d:"<b>on in both stances, OVERDRIVE included</b>", dis:"the app's \"allow deletions\" toggle, or an exact subject-scoped allow rule — except a folder named .magentra (deletionScope \"protected\"), which always asks in both stances and cannot be waived", tags:["user","ondefault","autonomy"] },
   { m:"AskUserQuestion", loc:"askUserQuestion.ts:31", tr:"the model calls it", v:"user", d:"tool always registered", dis:"no config switch — only unattended mode short-circuits it", tags:["user","autonomy"] },

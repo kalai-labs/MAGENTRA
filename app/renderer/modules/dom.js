@@ -47,6 +47,7 @@ const allowBtnEl = document.getElementById("allowBtn");
 const allowAlwaysBtnEl = document.getElementById("allowAlwaysBtn");
 const allowAlwaysHintEl = document.getElementById("allowAlwaysHint");
 const denyBtnEl = document.getElementById("denyBtn");
+const permissionNoteEl = document.getElementById("permissionNote");
 const nowLineEl = document.getElementById("nowLine");
 const nowSpinnerEl = document.getElementById("nowSpinner");
 const nowTextEl = document.getElementById("nowText");

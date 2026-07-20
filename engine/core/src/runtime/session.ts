@@ -114,6 +114,27 @@ const SELF_VERIFY_TEXT =
 /** The machine-read sentinel a self-verify round answers with when nothing is left to do. */
 const SELF_VERIFY_DONE_RE = /^\s*DONE[.!…]?\s*$/i;
 
+// ── Clarify pre-layer ───────────────────────────────────────────────────────
+// Before acting on an open-ended request ("build a game", "improve this
+// app"), the same main model first judges whether guessing the unstated
+// choices wrong would force a redo — and only then asks the user up to three
+// concrete multiple-choice questions. Strictly fail-open: any inference
+// error, malformed verdict, or interrupt proceeds without clarifying.
+const CLARIFY_SYSTEM = `You are the clarify pre-layer of an autonomous coding agent. You see ONE incoming user request (plus a snippet of the previous exchange for context) and decide: should the agent ask clarifying questions BEFORE starting, or just start?
+
+Reply with STRICT JSON only — no markdown fences, no prose:
+  {"clarify": false}
+or
+  {"clarify": true, "questions": [{"question": "...?", "header": "max 12 chars", "options": [{"label": "...", "description": "..."}, ...], "multiSelect": false}]}
+
+Set clarify=true ONLY when BOTH hold:
+1. The request is genuinely open-ended: the deliverable's core shape is unstated (kind/genre/technology/scope/audience) — e.g. "build a game", "draw me something", "improve this app".
+2. Guessing wrong would waste real work — the user would likely ask for a redo.
+
+Set clarify=false for everything else: concrete tasks naming a target, questions or explanations, conversational messages, follow-ups whose context already fixes the shape, and anything where a sensible default exists and adjusting later is cheap. When unsure, prefer false — asking needlessly is friction.
+
+Questions: at most 3, each one decision-changing (never a detail that could be adjusted later), 2-4 mutually distinct options with a one-line description each; put your recommended option first with " (Recommended)" appended to its label. multiSelect true only when choices genuinely combine.`;
+
 const PLAN_FIRST_REMINDER =
   "The task list is empty. If this request needs more than a couple of steps, first create a plan with TaskCreate — one task per step, the last one a verification task stating the expected end state — before making any edits. Trivial requests can proceed directly.";
 
@@ -334,16 +355,17 @@ export class Session {
         return res;
       },
         // "Always allow" writes the grant into this workspace's settings, so
-        // the same command stops asking in later sessions too.
-        (tool, subject) => {
+        // the same command (or command shape, for prefix grants) stops asking
+        // in later sessions too.
+        (tool, subject, prefix = false) => {
           // The in-memory settings object outlives this session — /clear builds
           // the next one from it. Without this, a grant would be forgotten
           // until the app restarted and re-read the file it just wrote.
           const exact = opts.settings.permissions.allowExact;
-          if (!exact.some((g) => g.tool === tool && g.subject === subject)) {
-            exact.push({ tool, subject });
+          if (!exact.some((g) => g.tool === tool && g.subject === subject && (g.prefix === true) === prefix)) {
+            exact.push({ tool, subject, ...(prefix ? { prefix: true } : {}) });
           }
-          addExactPermission(this.cwd, tool, subject);
+          addExactPermission(this.cwd, tool, subject, prefix);
         },
     );
     this.services = {
@@ -487,11 +509,13 @@ export class Session {
     }
   }
 
-  /** One-shot completion on the small model, no tools; returns concatenated text. */
-  async runInference(opts: { system: string; user: string; maxTokens: number }): Promise<string> {
+  /** One-shot completion with no tools; returns concatenated text. Runs on the
+   *  small model unless `model` overrides it (the clarify pre-layer runs on
+   *  the main model by design). */
+  async runInference(opts: { system: string; user: string; maxTokens: number; model?: string }): Promise<string> {
     let text = "";
     const stream = this.provider.stream({
-      model: this.settings.smallModel ?? this.settings.model,
+      model: opts.model ?? this.settings.smallModel ?? this.settings.model,
       system: opts.system,
       messages: [{ role: "user", content: [{ type: "text", text: opts.user }] }],
       tools: [],
@@ -997,6 +1021,50 @@ export class Session {
     }
   }
 
+  /**
+   * Clarify pre-layer: judges the incoming request with the MAIN model and,
+   * when it is genuinely open-ended, asks the user up to three shape-defining
+   * multiple-choice questions before any work starts. Returns the answers as
+   * a text block to ride with the user message, or undefined to just start.
+   * Strictly fail-open — a broken verdict must never cost the user the turn.
+   */
+  private async maybeClarify(userText: string): Promise<string | undefined> {
+    // Compact recent context so a follow-up ("improve it") is judged with the
+    // preceding exchange in view instead of looking open-ended in isolation.
+    const recent = this.messages
+      .slice(-4)
+      .map((m) => ({ role: m.role, text: assistantText(m) }))
+      .filter((m) => m.text.trim().length > 0)
+      .slice(-2)
+      .map((m) => `${m.role}: ${m.text.length > 400 ? `${m.text.slice(0, 400)}…` : m.text}`)
+      .join("\n");
+    let raw: string;
+    try {
+      raw = await this.runInference({
+        system: CLARIFY_SYSTEM,
+        user: `${recent ? `Previous exchange:\n${recent}\n\n` : ""}Incoming request:\n${userText}`,
+        maxTokens: 600,
+        model: this.settings.model,
+      });
+    } catch {
+      return undefined;
+    }
+    const questions = parseClarifyVerdict(raw);
+    if (questions === undefined) return undefined;
+    this.emit({ type: "command_output", text: "🧭 open-ended request — clarifying before starting" });
+    let answers: Record<string, string[]>;
+    try {
+      answers = await this.opts.askUser(`q_${randomBytes(4).toString("hex")}`, questions);
+    } catch {
+      return undefined;
+    }
+    const lines = questions.map((q, idx) => {
+      const selected = answers[`q:${idx}`] ?? answers[q.question] ?? [];
+      return `${q.question}\n-> ${selected.length > 0 ? selected.join(", ") : "(no answer)"}`;
+    });
+    return `<system-reminder>Clarify pre-layer: before starting, the user answered these questions — honor the answers as requirements. Unanswered questions are yours to decide sensibly:\n\n${lines.join("\n\n")}</system-reminder>`;
+  }
+
   /** Runs one full user turn: model call -> tool calls -> ... -> final text. */
   async runTurn(userText: string): Promise<void> {
     if (this.busy) throw new Error("session is already processing a turn");
@@ -1061,6 +1129,14 @@ export class Session {
 
     this.emit({ type: "turn_started", turnId });
 
+    // Clarify pre-layer: on a genuinely open-ended request, the few
+    // shape-defining questions come BEFORE any work. Root attended turns
+    // only — children report to their parent, unattended runs have no user.
+    let clarification: string | undefined;
+    if (this.settings.clarify && !this.opts.child && !this.unattended) {
+      clarification = await this.maybeClarify(userText);
+    }
+
     // OVERDRIVE safety net: before an uncapped autonomous turn starts, park a
     // dangling stash commit of the working tree so anything an in-workspace
     // deletion later removes stays recoverable. Root sessions only — children
@@ -1080,7 +1156,13 @@ export class Session {
       this.atlasReminderFired = true;
     }
 
-    this.pushMessage({ role: "user", content: this.withReminders([{ type: "text", text: userText }]) });
+    this.pushMessage({
+      role: "user",
+      content: this.withReminders([
+        { type: "text", text: userText },
+        ...(clarification !== undefined ? [{ type: "text" as const, text: clarification }] : []),
+      ]),
+    });
 
     let stopReason: string = "end_turn";
     let stopHookFired = false;
@@ -1608,6 +1690,13 @@ export class Session {
           if (!outcome.allowed) {
             return { content: outcome.message ?? "Permission denied.", isError: true };
           }
+          // A note attached to an APPROVAL rides along with this round's
+          // results — the user let the call run but wants it steered.
+          if (outcome.note !== undefined && outcome.note.trim() !== "") {
+            this.remind(
+              `The user approved this ${tool.name} call but attached a note — read it and adjust your approach accordingly:\n${outcome.note.trim()}`,
+            );
+          }
           this.emit({
             type: "tool_call_started",
             id: call.id,
@@ -1875,6 +1964,51 @@ function finalAssistantText(session: Session): string {
     if (text.trim()) return text;
   }
   return NO_SUBAGENT_TEXT;
+}
+
+/**
+ * Parses the clarify pre-layer's verdict into protocol-shaped questions.
+ * Returns undefined for clarify:false, malformed JSON, or nothing usable —
+ * every failure path means "just start" (fail-open by design).
+ */
+function parseClarifyVerdict(
+  raw: string,
+): Array<{ question: string; header: string; options: Array<{ label: string; description: string }>; multiSelect: boolean }> | undefined {
+  const jsonText = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const rec = parsed as Record<string, unknown>;
+  if (rec.clarify !== true || !Array.isArray(rec.questions)) return undefined;
+  const questions = rec.questions
+    .slice(0, 3)
+    .flatMap((q) => {
+      if (typeof q !== "object" || q === null) return [];
+      const qr = q as Record<string, unknown>;
+      if (typeof qr.question !== "string" || qr.question.trim() === "" || !Array.isArray(qr.options)) return [];
+      const options = qr.options
+        .slice(0, 4)
+        .flatMap((o) => {
+          if (typeof o !== "object" || o === null) return [];
+          const or = o as Record<string, unknown>;
+          if (typeof or.label !== "string" || or.label.trim() === "") return [];
+          return [{ label: or.label, description: typeof or.description === "string" ? or.description : "" }];
+        });
+      if (options.length < 2) return [];
+      return [
+        {
+          question: qr.question,
+          header: typeof qr.header === "string" && qr.header.trim() !== "" ? qr.header.slice(0, 12) : "Clarify",
+          options,
+          multiSelect: qr.multiSelect === true,
+        },
+      ];
+    });
+  return questions.length > 0 ? questions : undefined;
 }
 
 /** Total length of the text blocks in an assistant message (used to detect a bare give-up). */
