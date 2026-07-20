@@ -159,9 +159,6 @@ export class Engine {
     string,
     { resolve: (answers: Record<string, string[]>) => void; expected: number; answers: Record<string, string[]> }
   >();
-  private pendingPlanDecision:
-    | ((res: { approve: boolean; editedPlan?: string; message?: string }) => void)
-    | undefined;
   /** Chain of ALL outstanding exclusive work (turns, /compact, /build-crew); idle() awaits it. */
   private turnPromise: Promise<void> = Promise.resolve();
   /** True while exclusive session work is in flight — set synchronously so a same-tick send is refused. */
@@ -172,6 +169,12 @@ export class Engine {
   private readonly hookRunner: HookRunner;
   private modeEngine!: ModeEngine;
   private modeWarnings: string[] = [];
+  /**
+   * Engine-level memory of the OVERDRIVE toggle so a /clear-created fresh
+   * session inherits it — the UI persists the state and re-sends it on link,
+   * but the engine must not lose it between those two moments.
+   */
+  private overdriveEnabled = false;
   private team: CrewAgent[];
   private teamWarnings: string[];
   /** Agent ids with a backpack build currently in flight (dedupes launches). */
@@ -243,10 +246,6 @@ export class Engine {
           this.pendingQuestions.set(id, { resolve, expected, answers: {} });
           this.emit({ type: "question_request", id, questions: questions as never });
         }),
-      requestPlanDecision: () =>
-        new Promise((resolve) => {
-          this.pendingPlanDecision = resolve;
-        }),
       hookRunner: this.hookRunner,
       modeEngine: this.modeEngine,
       onTeamFilesChanged: () => this.reloadTeam(),
@@ -258,6 +257,7 @@ export class Engine {
       ...(stats ? { stats } : {}),
     });
     session.services.cron = this.scheduler;
+    if (this.overdriveEnabled) session.setOverdrive(true);
     return session;
   }
 
@@ -616,6 +616,12 @@ export class Engine {
       case "user_message":
         this.startExclusive("sending another message", () => this.session.runTurn(request.text));
         break;
+      case "steer_message":
+        // The frontend saw a busy turn; if it ended in the meantime, the
+        // steering text is just the next user message.
+        if (this.session.isBusy()) this.session.steer(request.text);
+        else this.startExclusive("sending another message", () => this.session.runTurn(request.text));
+        break;
       case "permission_response": {
         const resolve = this.pendingPermissions.get(request.id);
         if (resolve) {
@@ -645,16 +651,10 @@ export class Engine {
       case "interrupt": {
         // HARD STOP. Everything in flight, not just the turn: the session cuts
         // the turn, every subagent, any background atlas build, and every
-        // background job. A plan waiting on a decision would otherwise block
-        // forever, so it is resolved as a rejection.
+        // background job.
         const wasBusy = this.busy || this.session.isBusy();
         const wasMapping = this.atlasBuilding;
         this.session.interrupt();
-        if (this.pendingPlanDecision) {
-          const resolve = this.pendingPlanDecision;
-          this.pendingPlanDecision = undefined;
-          resolve({ approve: false, message: "interrupted by user" });
-        }
         // A half-answered question round would otherwise wait forever for the
         // cards the user is no longer going to fill in. Settle it with whatever
         // was collected; the tool reports "(no answer)" for the rest.
@@ -674,6 +674,10 @@ export class Engine {
       case "set_mode":
         this.session.permissions.setMode(request.mode);
         this.emit({ type: "mode_changed", mode: request.mode });
+        break;
+      case "set_overdrive":
+        this.overdriveEnabled = request.enabled;
+        this.session.setOverdrive(request.enabled);
         break;
       case "set_deletion_guard":
         this.session.setDeletionPolicy(!request.enabled);
@@ -726,18 +730,6 @@ export class Engine {
             ? `⏹ background task ${request.taskId} stopped.`
             : `No running background task "${request.taskId}".`,
         });
-        break;
-      }
-      case "plan_decision": {
-        const resolve = this.pendingPlanDecision;
-        if (resolve) {
-          this.pendingPlanDecision = undefined;
-          resolve({
-            approve: request.approve,
-            ...(request.editedPlan !== undefined ? { editedPlan: request.editedPlan } : {}),
-            ...(request.message !== undefined ? { message: request.message } : {}),
-          });
-        }
         break;
       }
       case "set_modes":
@@ -985,13 +977,35 @@ export class Engine {
         });
         break;
       }
+      case "overdrive": {
+        const arg = args?.trim();
+        if (arg === "on" || arg === "off") {
+          const enabled = arg === "on";
+          this.overdriveEnabled = enabled;
+          this.session.setOverdrive(enabled);
+          this.emit({
+            type: "command_output",
+            text: enabled
+              ? "⚡ OVERDRIVE engaged — the turn loop runs uncapped until the query is verifiably handled."
+              : "OVERDRIVE disengaged — standard turn budgets apply.",
+          });
+        } else if (!arg) {
+          this.emit({
+            type: "command_output",
+            text: `OVERDRIVE is ${this.session.isOverdrive() ? "ON" : "OFF"}. Usage: /overdrive on|off`,
+          });
+        } else {
+          this.emit({ type: "command_output", text: "Usage: /overdrive on|off" });
+        }
+        break;
+      }
       case "mode":
-        if (args === "default" || args === "acceptEdits" || args === "plan" || args === "bypass") {
+        if (args === "default" || args === "acceptEdits" || args === "bypass") {
           this.session.permissions.setMode(args);
           this.emit({ type: "mode_changed", mode: args });
           this.emit({ type: "command_output", text: `Permission mode: ${args}` });
         } else {
-          this.emit({ type: "command_output", text: "Usage: /mode default|acceptEdits|plan|bypass" });
+          this.emit({ type: "command_output", text: "Usage: /mode default|acceptEdits|bypass" });
         }
         break;
       case "session":
@@ -2106,6 +2120,12 @@ export class Engine {
         this.session.permissions.setMode(mode);
         this.emit({ type: "mode_changed", mode });
       }
+      // The resumed session's own OVERDRIVE state wins over the engine's
+      // current toggle; transcripts predating the flag leave it untouched.
+      if (typeof meta?.overdrive === "boolean") {
+        this.overdriveEnabled = meta.overdrive;
+        this.session.setOverdrive(meta.overdrive);
+      }
       this.announceSession();
       // Repaint the conversation in the UI. Replaces the old text-only note:
       // the frontend rebuilds the chat from this render-ready snapshot.
@@ -2247,7 +2267,8 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
       "  /mission schedule <id>    run it on its cron schedule (durable) · unschedule removes",
     ],
   },
-  { cmd: "/mode", args: "<default|acceptEdits|plan|bypass>", desc: "set permission mode" },
+  { cmd: "/mode", args: "<default|acceptEdits|bypass>", desc: "set permission mode" },
+  { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous turn loop: no caps, self-verified completion" },
   { cmd: "/styles", args: "[on|off <id>]", desc: "deprecated alias for /skills" },
   { cmd: "/debug", args: "<prompt>", desc: "reproduce-first debugging mode (off: /debug off)" },
   { cmd: "/settings", args: "[global] [k v]", desc: "show settings, or set one (add global to save to ~/.magentra)" },
@@ -2267,7 +2288,7 @@ function renderHelp(): string {
     "  ! <command>      run a shell command; output lands in the conversation",
     "  Esc              interrupt the current turn",
     "",
-    "Glossary (crew, backpack, atlas, mission, skills, plan mode, deletion guard): SETTINGS → GLOSSARY in the app.",
+    "Glossary (crew, backpack, atlas, mission, skills, deletion guard): SETTINGS → GLOSSARY in the app.",
   );
   return lines.join("\n");
 }
@@ -2299,7 +2320,7 @@ function buildRateCard(
 
 /** Narrows a value read from disk to a PermissionMode before trusting it. */
 function isPermissionMode(value: unknown): value is PermissionMode {
-  return value === "default" || value === "acceptEdits" || value === "plan" || value === "bypass";
+  return value === "default" || value === "acceptEdits" || value === "bypass";
 }
 
 /** Concatenated text of a message's text blocks. */

@@ -89,11 +89,11 @@ jobs:
           - name: linux
             os: ubuntu-latest
             dist: dist:linux
-            upload: app/dist/*.AppImage app/dist/*.tar.gz app/dist/*.deb
+            upload: app/dist/*.AppImage app/dist/*.tar.gz app/dist/*.deb app/dist/latest-linux.yml
           - name: windows
             os: windows-latest
             dist: dist:win
-            upload: app/dist/*.exe
+            upload: app/dist/*.exe app/dist/latest.yml
           # macos-latest is arm64; the dmg ships an arm64 app + arm64 ripgrep.
           # Intel macs would need a second (x64) runner — deliberately out of
           # scope until someone asks for it.

@@ -61,7 +61,12 @@ export const settingsSchema = z
         }),
       )
       .default({}),
-    permissionMode: z.enum(["default", "acceptEdits", "plan", "bypass"]).default("default"),
+    // "plan" was removed as a mode (2026-07-20); settings files that still
+    // carry it load as "default" instead of failing the whole settings parse.
+    permissionMode: z.preprocess(
+      (v) => (v === "plan" ? "default" : v),
+      z.enum(["default", "acceptEdits", "bypass"]).default("default"),
+    ),
     permissions: z
       .object({
         allow: z.array(permissionRuleSchema).default([]),

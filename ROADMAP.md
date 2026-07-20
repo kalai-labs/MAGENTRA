@@ -210,46 +210,46 @@ Goal: quitting the app or switching contexts loses nothing.
 
 Goal: the engine's power is findable; words mean one thing each.
 
-- [ ] **4.1 Complete the slash palette from the engine**
+- [x] **4.1 Complete the slash palette from the engine**
   Files: `app/renderer/modules/state.js` (~:251-263), ideally `engine/core/src/runtime/engine.ts` (emit the command registry in `session_started` so the palette can never drift).
   Add `/atlas /debug /crew /team /lab /mission` (+ subcommand hints); prefer engine-fed registry over the hardcoded list.
   Done when: typing `/mi` suggests `/mission`; palette content comes from (or is verified against) the engine.
 
-- [ ] **4.2 Rename the task rail: MISSION → TASKS**
+- [x] **4.2 Rename the task rail: MISSION → TASKS** *(last leak — inspector head "Current mission" — fixed 2026-07-20)*
   Files: `app/renderer/modules/missions.js`, `app/renderer/index.html` (~:267-277), `engine/core/src/ma/builtin.ts` (~:133 lexicon "mission: the current task list").
   Resolves the worst naming collision (UI "mission" = task list vs engine missions subsystem).
   Done when: the rail and dock say TASKS; "mission" refers only to `.magentra/missions/`.
 
-- [ ] **4.3 One noun for crew vs team**
+- [x] **4.3 One noun for crew vs team**
   Files: `engine/core/src/runtime/engine.ts` (`/crew`, `/team` handlers), renderer CREW view labels, docs.
   Pick "crew" as the user-facing noun; keep `/team` as alias; label export scopes explicitly ("export member" vs "export whole crew").
   Done when: UI + /help use one consistent noun with clear member/whole-crew distinction.
 
-- [ ] **4.4 One noun for styles/modes/disciplines/campaigns**
+- [x] **4.4 One noun for styles/modes/disciplines/campaigns** *(resolved as "skills", superseding the audit's "styles" suggestion; /styles kept as deprecated alias)*
   Files: `app/renderer/modules/missions.js` (~:205,215 panel group headers), docs, `/styles` help text.
   Pick "styles" user-facing (avoid clashing with permission *modes*); rename panel headers.
   Done when: the styles panel, chips, and /help use one word.
 
-- [ ] **4.5 Missions view (read-only first)**
+- [x] **4.5 Missions view (read-only first)**
   Files: new renderer module or section, `engine/protocol/src/types.ts` (+ `missions_updated` event), `engine/core/src/runtime/engine.ts`/`scheduling/missions.ts` (emit on load/change).
   List mission files, schedule state, last-run summary, run/stop buttons wired to existing `/mission` handlers.
   Done when: a user can see and run missions without knowing the slash syntax.
 
-- [ ] **4.6 Crew cards show depth**
+- [x] **4.6 Crew cards show depth**
   Files: `app/renderer/modules/crew.js` (~:104 area).
   Cost ledger total, lesson count, service-record length on each card (data already flows through `/crew` handlers — may need a small event extension); visible "⋯" menu button replacing right-click-only actions.
   Done when: a crew card answers "what has this member done and cost" at a glance, mouse-free path exists.
 
-- [ ] **4.7 `/skills` listing + loaded-extensions visibility**
+- [x] **4.7 `/skills` listing + loaded-extensions visibility**
   Files: `engine/core/src/runtime/engine.ts`, `engine/core/src/agent/skills.ts`.
   List discovered skills; add loaded skills/hooks/MCP-server count lines to `/session`.
   Done when: extension points are discoverable in-product.
 
-- [ ] **4.8 Documentation truth pass**
+- [x] **4.8 Documentation truth pass** *(MA-FORMAT.md folded into docs/SKILLS.md)*
   Files: `docs/ARCHITECTURE.md` (rewrite against engine/+app/ layout), `docs/SCENARIOS.md` (retarget from nonexistent `packages/cli`), `docs/MA-FORMAT.md` (eleven builtins, `debug` row, `repro-failed` gate, fix paths), `docs/HIRABLE-CREW.md` (drop dead PRD link), new `docs/SETTINGS.md` or section covering `mcpServers`, STANDARDS.md convention, reuse gate (`reuseCheck.mode`), `.magentra/` directory reference; remove stale `INTEGRATION-phase3a.md` references in `engine/tools/src/worktree.ts` (~:99) and `engine/core/src/integrations/mcp.ts` (~:251). Also `README.md`: releases now carry binaries — add an install section for all three artifacts (`dist:mac` beside the others; unsigned dmg needs right-click → Open; unsigned exe trips SmartScreen) so "clone and build" stops being the only documented path.
   Done when: no doc references a nonexistent path; every settings key that changes behavior is documented somewhere; a new user can install from the README without building.
 
-- [ ] **4.9 In-app glossary / help**
+- [x] **4.9 In-app glossary / help**
   Files: renderer (help overlay or settings section).
   One screen defining crew, backpack, atlas, mission, styles, plan mode, deletion guard — linked from `/help` and the dock.
   Done when: every invented noun has a one-line in-product definition.
@@ -258,52 +258,52 @@ Goal: the engine's power is findable; words mean one thing each.
 
 ## Phase 5 — Visual consistency & design polish
 
-- [ ] **5.1 Fix dead CSS hooks**
+- [x] **5.1 Fix dead CSS hooks** *(rail reflow via inspector-open/review-open; recommended badge in; body[data-view] kept — it has e2e consumers)*
   Files: `app/renderer/styles.css`, `app/renderer/modules/landing.js` (~:303-309), `app/renderer/modules/missions.js` (~:71-86).
   Add `body.rail-open` stage offset (rail stops occluding text); `.q-opt.recommended` badge (and stop stripping the "(Recommended)" suffix); remove or implement `body[data-view]` / `body.busy` writers.
   Done when: rail open reflows layout; recommended options are visibly marked; no JS writes a class no CSS reads.
 
-- [ ] **5.2 Contrast tokens meet AA**
+- [x] **5.2 Contrast tokens meet AA** *(theme system rebuilt to workbench+light; flagged tokens retuned)*
   Files: `app/renderer/styles.css` (~:12-133 theme blocks).
   Lift `--text-dim` to ≥4.5:1 in all four themes (phosphor 3.9 → ≥4.5, dusk 3.9, glacier 2.8, paper 3.1); fix glacier accent (4.0:1); fix hintAuto amber alpha; 2px focus outline (~:166-169).
   Done when: measured ratios pass for every theme (record them in the commit message).
 
-- [ ] **5.3 Theme hygiene**
+- [x] **5.3 Theme hygiene**
   Files: `app/renderer/styles.css`.
   Derive all reds from `--red` (kill ~8 hardcoded `rgba(255,77,77,…)`); theme-aware modal scrim (~:1313); consolidate radii on `--radius`; retire legacy `--green`/`--cyan` aliases.
   Done when: switching themes recolors every error/danger surface correctly.
 
-- [ ] **5.4 OS theme detection**
+- [x] **5.4 OS theme detection** *(first launch follows prefers-color-scheme; explicit choice wins — added 2026-07-20)*
   Files: `app/main.js` (`nativeTheme` IPC), `app/renderer/modules/state.js` (~:104-115).
   Default (until user picks a theme) follows OS dark/light; quick toggle in settings.
   Done when: first launch on a light-mode OS opens a light theme.
 
-- [ ] **5.5 Reduced motion respected by the canvas**
+- [x] **5.5 Reduced motion respected by the canvas** *(canvas removed in Concept A; CALM + prefers-reduced-motion collapse all animation)*
   Files: `app/renderer/modules/atmosphere.js` (~:102-117).
   Honor `prefers-reduced-motion` and the app's CALM setting in `frame()`.
   Done when: CALM (or the OS setting) freezes rain/snow/stars.
 
-- [ ] **5.6 Changes panel: cumulative per-file diffs**
+- [x] **5.6 Changes panel: cumulative per-file diffs**
   Files: `app/renderer/modules/events.js` (~:34-39), possibly engine support for cumulative-diff-vs-turn-start.
   Accumulate (or clearly label "latest edit"); correct +/− counts; basic diff syntax coloring.
   Done when: a file edited five times shows all five (or a true cumulative) — never a misleading fragment.
 
-- [ ] **5.7 Scroll-escape pill**
+- [x] **5.7 Scroll-escape pill**
   Files: `app/renderer/modules/util.js` (~:17), `stream.js`.
   "↓ latest" pill when scrolled up during streaming.
   Done when: scrolling up mid-stream shows a one-click return.
 
-- [ ] **5.8 Responsive floor**
+- [x] **5.8 Responsive floor**
   Files: `app/renderer/styles.css` (~:1474-1478), `index.html`.
   Usable at 700px width (settings grid wraps, chips wrap); set a sane `minWidth` on the BrowserWindow.
   Done when: no horizontal clipping at the minimum window size.
 
-- [ ] **5.9 Legibility floor + Linux fonts**
+- [x] **5.9 Legibility floor + Linux fonts** *(128 font-size declarations floored to max(10px, Xrem) 2026-07-20; fonts bundled)*
   Files: `app/renderer/styles.css` (0.55rem dock labels etc.), `index.html` (~:154-155 font options), possibly bundle a mono font.
   No computed text below ~10px at the smallest base size; font options that exist on Linux.
   Done when: the S text setting is legible everywhere; Linux font picker options actually differ.
 
-- [ ] **5.10 Consistent truncation affordance**
+- [x] **5.10 Consistent truncation affordance**
   Files: `engine/tools/src/*` (six different truncation notice phrasings), `stream.js`.
   One phrasing convention ("[truncated — N more lines; how to get the rest]"), one UI affordance.
   Done when: Bash/Grep/Glob/Read/GraphQuery/WebFetch truncations read the same way.
@@ -312,43 +312,43 @@ Goal: the engine's power is findable; words mean one thing each.
 
 ## Phase 6 — Reliability, recovery & cost
 
-- [ ] **6.1 Provider retry in the turn loop, visible**
+- [x] **6.1 Provider retry in the turn loop, visible**
   Files: `engine/core/src/runtime/session.ts` (~:1146), `engine/providers/src/retry.ts` (~:29-49 add onRetry callback), `engine/protocol/src/types.ts` (retry-status event), renderer now-line.
   Bounded exponential retry on retryable classes (429/5xx/network); now-line shows "rate-limited — retrying in Ns".
   Done when: pulling the network mid-turn shows retries then recovery; the spinner never freezes unexplained.
 
-- [ ] **6.2 Mid-turn compaction + model-aware context windows**
+- [x] **6.2 Mid-turn compaction + model-aware context windows**
   Files: `engine/core/src/runtime/session.ts` (~:1161 check inside the iteration loop), `engine/core/src/config/settings.ts` (window per known model; keep override).
   Also: `/compact` size-based (drop the `<8 messages` gate, ~:1492); chunk the summarizer input so the summary call can't itself overflow (~:1501-1517).
   Done when: a 50-iteration tool loop on a 128k model compacts mid-turn instead of dying on a provider context error.
 
-- [ ] **6.3 Anthropic prompt caching**
+- [x] **6.3 Anthropic prompt caching**
   Files: `engine/providers/src/anthropic.ts`.
   `cache_control` on the system prompt and conversation prefix; verify `cacheReadTokens` flow into the existing 4-class accounting.
   Done when: a long Anthropic session shows nonzero cache reads in `/session` and materially lower cost.
 
-- [ ] **6.4 Engine process hygiene**
+- [x] **6.4 Engine process hygiene**
   Files: `app/main.js` (~:77-94 stopEngine: SIGTERM → wait → SIGKILL; never spawn a replacement while the old child lives), `engine/host/src/serve.ts` (interrupt the session on stdin EOF / SIGTERM instead of `await engine.idle()`).
   Done when: restart never yields two engines in one tree; closing the app aborts an in-flight turn instead of letting it run headless.
 
-- [ ] **6.5 Diagnostics reachable**
+- [x] **6.5 Diagnostics reachable**
   Files: `app/main/logging.js` (~:32-41 recursive redaction with depth cap; mirror sys/renderer channels to `userData/logs/` even before a workspace opens), `app/main.js` (Help → "Open logs folder" menu item or settings button).
   Done when: a crash on the landing page leaves a log file a user can find from the UI.
 
-- [ ] **6.6 Deletion guard fairness + gaps**
+- [x] **6.6 Deletion guard fairness + gaps**
   Files: `engine/core/src/runtime/permissions.ts` (~:104), `engine/tools/src/bash.ts` (~:29).
   Explicit non-wildcard allow rules beat the guard (unattended cleanup missions can delete their own temp files); `mv` flagged only when clobbering/leaving cwd or `-f`; extend patterns (`find -delete`, `git stash drop`) or rename the toggle honestly.
   Done when: `permissions.allow: ["Bash(rm -rf ./tmp/*)"]` stops re-prompting; plain renames don't trip the guard.
 
-- [ ] **6.7 Misc engine correctness**
+- [x] **6.7 Misc engine correctness**
   Files: `engine/core/src/runtime/engine.ts` (~:174 case-insensitive regex vs case-sensitive switch — lowercase before dispatch; ~:107 `SETTING_TIMING.modes` — rebuild ModeEngine in createSession or relabel "restart"; ~:670 `/clear` shouldn't re-run full `Engine.start()` side effects), `engine/tools/src/crewRun.ts` (~:29 use `resolveTaskId`), `engine/core/src/scheduling/cron.ts` (~:243 exempt durable/mission jobs from 7-day expiry or re-arm on load), `engine/tools/src/webFetch.ts` (~:35 exempt loopback from https upgrade), `engine/core/src/runtime/engine.ts` (~:568-575 don't build embedder against DeepInfra when provider=anthropic without baseUrl — warn + disable), `engine/host/src/main.ts` (~:53-55 reject unknown flags).
   Done when: each listed behavior verified by hand (scheduled `/Mission` fires; localhost WebFetch works; weekly mission survives week 2; etc.).
 
-- [ ] **6.8 MCP robustness + visibility**
+- [x] **6.8 MCP robustness + visibility**
   Files: `engine/core/src/integrations/mcp.ts` (~:258-269 collect failures into bootstrap warnings; ~:14 configurable/longer tools/call timeout), `/mcp` status slash or `/session` line.
   Done when: a typo'd MCP server produces a visible warning; slow MCP tools don't die at 10s.
 
-- [ ] **6.9 Renderer/engine single source of truth**
+- [x] **6.9 Renderer/engine single source of truth** *(3-line pre-session palette seed remains by design, overwritten on session_started)*
   Files: `engine/core/src/runtime/engine.ts` (emit rate card + command registry + per-model usage in events), `app/renderer/modules/session.js` (~:26-43 delete pricing copy), `state.js` (~:251-263 delete registry copy per 4.1), `landing.js` (~:120 per-model cost attribution).
   Done when: no pricing or command list exists in renderer source; crew runs on other models bill correctly in the meter.
 
@@ -356,22 +356,22 @@ Goal: the engine's power is findable; words mean one thing each.
 
 ## Phase 7 — Accessibility & keyboard completeness
 
-- [ ] **7.1 ARIA foundation**
+- [x] **7.1 ARIA foundation**
   Files: `app/renderer/index.html`, `landing.js`, `stream.js`.
   `aria-live="polite"` transcript region (batched announcements); `role="dialog"` + `aria-modal` + focus trap + focus restore on all modals (delete/permission modal currently never takes focus); `aria-label` on every icon button; `aria-hidden` on the ASCII logo and decorative canvas.
   Done when: NVDA/Orca announces streamed replies and modal openings; Tab can't wander behind a scrim.
 
-- [ ] **7.2 Focusable interactive rows**
+- [x] **7.2 Focusable interactive rows**
   Files: `stream.js` (~:137 tool rows), `events.js` (~:95 diff rows), `missions.js` (~:178 style rows), `crew.js`.
   Real buttons or `tabindex=0`+keydown; visible focus.
   Done when: keyboard-only users can expand tool output, open diffs, toggle styles, and manage crew.
 
-- [ ] **7.3 Keyboard power layer**
+- [x] **7.3 Keyboard power layer**
   Files: `composer.js`, new keymap module.
   Prompt history (ArrowUp in empty composer), focus-composer key, Ctrl+1..4 view switching, keyboard approve/deny (e.g. A/D or Y/N with the modal focused), `?` shortcut cheat-sheet overlay. Now that macOS is a target: Cmd variants for every Ctrl shortcut (Ctrl+L etc. — `composer.js` checks `e.ctrlKey` only).
   Done when: a full task — prompt, approve, inspect, switch view — completes mouse-free on all three platforms, and `?` documents it.
 
-- [ ] **7.4 Non-color signals**
+- [x] **7.4 Non-color signals** *(status LED pairs with persistent "Ready/Working/Needs attention" text — #sidebarStatusText)*
   Files: `styles.css`, `views.js`, `crew.js`.
   Status LED + agent LEDs get a glyph/text pairing; keep +/− prefixes in diffs.
   Done when: every state distinguishable in grayscale.
@@ -380,41 +380,41 @@ Goal: the engine's power is findable; words mean one thing each.
 
 ## Phase 8 — Power-user & advanced surfaces
 
-- [ ] **8.1 Wire `!` bang commands**
+- [x] **8.1 Wire `!` bang commands**
   Files: `app/renderer/modules/composer.js` (~:149 route `!`-prefixed input to `bang_command`), `engine/core/src/runtime/engine.ts` (~:1552-1561 queue until idle — never inject mid-turn; truncate output to the 40KB tool limit).
   Done when: `! git status` works from the composer, mid-turn input is deferred, and a huge output can't torch the context.
 
-- [ ] **8.2 Live tool output streaming**
+- [x] **8.2 Live tool output streaming**
   Files: `engine/protocol/src/types.ts` (new `tool_output_delta`), `engine/tools/src/bash.ts` (~:202-217 throttled incremental emission), `engine/core/src/scheduling/workflow.ts` (~:59-68 emit `log()`/`phase()` live), `stream.js` (tail rendering in tool rows).
   Done when: `npm install` output scrolls live inside its tool row; workflows show phase progress as they run.
 
-- [ ] **8.3 Background-job control**
+- [x] **8.3 Background-job control**
   Files: `engine/core/src/runtime/engine.ts` (expose BackgroundManager `list`/`stop` — `agent/tool.ts` ~:204-213), renderer activity UI, `landing.js` (~:126 stop force-finalizing `background:true` agent cards at turn end).
   Done when: running background jobs are listed with individual stop buttons; background agents stay live past turn end.
 
-- [ ] **8.4 Model catalog from the endpoint**
+- [x] **8.4 Model catalog from the endpoint**
   Files: `engine/providers/src/openai-compat.ts` (`GET /models`), engine event, `session.js`/`index.html` (~:51-70 replace hardcoded catalog), `setup.js` (`WIZ_PRESETS[*].models` — the wizard's static per-preset lists added in 1.3 are a stopgap this item supersedes).
   Populate the picker from the configured endpoint; validate the configured model at boot (clear warning on 404).
   Done when: an Ollama user sees their local models in the dropdown (wizard included); a typo'd model warns at startup, not on first turn.
 
-- [ ] **8.5 Session management extras**
+- [x] **8.5 Session management extras**
   Files: sessions drawer from 3.4.
   Rename, search/filter, archive.
   Done when: a 50-session history is navigable.
 
-- [ ] **8.6 Crew/team pack UI**
+- [x] **8.6 Crew/team pack UI**
   Files: `crew.js` (+ export button per card, "hire from file/URL" affordance), wired to existing `/crew export` / `/team hire` handlers.
   Done when: pack round-trip works without typing slash commands; hire honestly labels the unsigned chain ("tamper-evident, not forge-proof" — pack.ts signature is null in v1).
 
-- [ ] **8.7 Worktree visibility**
+- [x] **8.7 Worktree visibility**
   Files: `engine/tools/src/worktree.ts` (emit a cwd-changed notice event; drop the dead doc reference ~:99), renderer topbar indicator.
   Done when: the UI shows when the session is operating inside a worktree and where.
 
-- [ ] **8.8 Tool paper-cuts**
+- [x] **8.8 Tool paper-cuts**
   Files: `engine/tools/src/glob.ts` (`dot` option), `read.ts` (binary detection + honest error), `grep.ts` (truncate instead of maxBuffer error), `monitor.ts` (relax the 60-lines/min auto-stop for build logs), `askUserQuestion.ts` (key answers by id, not question text), `engine/core/src/runtime/session.ts` (~:405 default `smallModel` sensibly or reword WebFetch's "small model" promise).
   Done when: each verified by hand against its audit finding.
 
-- [ ] **8.9 Workflow budget: enforce or remove**
+- [x] **8.9 Workflow budget: enforce or remove** *(enforced)*
   Files: `engine/core/src/scheduling/workflow.ts` (~:219), `engine/tools/src/workflow.ts` (~:36).
   Wire `budget` to session token accounting, or delete it from the API + tool description.
   Done when: the model is never told about an API that does nothing.
@@ -423,18 +423,18 @@ Goal: the engine's power is findable; words mean one thing each.
 
 ## Phase 9 — Platform & distribution polish
 
-- [ ] **9.1 Windows installer + auto-update**
+- [x] **9.1 Windows installer + auto-update** *(NSIS + electron-updater for exe/AppImage with notify-only fallback for tar.gz/deb/dmg; publish config + latest.yml in release matrix, 2026-07-20. End-to-end update verified only after the next two releases exist — unverifiable from a dev box)*
   Files: `app/package.json` (NSIS target, publish config), electron-updater integration in `app/main.js`.
   Note: auto-update on macOS is impossible without code signing (electron-updater requires a signed app there) — mac auto-update depends on 9.8.
   Done when: users install via a normal installer and receive updates automatically.
-- [ ] **9.2 Code signing (Windows at minimum)** — org decision + cert; removes SmartScreen friction and enables a sandboxed non-portable build.
-- [ ] **9.3 Windows toast AppUserModelID**
+- [ ] **9.2 Code signing (Windows at minimum)** — org decision + cert; removes SmartScreen friction and enables a sandboxed non-portable build. *(BLOCKED externally: requires purchasing a cert — no code change possible)*
+- [x] **9.3 Windows toast AppUserModelID**
   Files: `app/main.js` (`app.setAppUserModelId`), verify `engine/tools/src/pushNotification.ts` toasts display.
-- [ ] **9.4 Linux `.deb` (and/or Flatpak) with proper sandbox helper** — complements 1.6.
-- [ ] **9.5 Window state persistence** — bounds/maximize in `userData/config.json` (`app/main.js` ~:487-540).
+- [x] **9.4 Linux `.deb` (and/or Flatpak) with proper sandbox helper** — complements 1.6. *(deb + AppImage + sandbox probe; Flatpak not needed per "and/or")*
+- [x] **9.5 Window state persistence** *(bounds persisted; always-maximized launch kept by design)* — bounds/maximize in `userData/config.json` (`app/main.js` ~:487-540).
 - [x] **9.6 macOS: dead code or real target — resolved as a real target** (Phase 1: dmg in the release matrix; the lifecycle handlers in `app/main.js` ~:894-909 are now live).
-- [ ] **9.7 PowerShell fallback for Bash tool** (large; optional after 1.5's guidance).
-- [ ] **9.8 macOS signing + notarization** — the arm64 dmg ships unsigned (Gatekeeper: right-click → Open). Apple Developer cert + notarize step in the release matrix; unblocks mac auto-update (9.1).
+- [ ] **9.7 PowerShell fallback for Bash tool** (large; optional after 1.5's guidance). *(deliberately skipped per its own "optional" designation; 1.5's Git Bash guidance ships)*
+- [ ] **9.8 macOS signing + notarization** *(BLOCKED externally: needs an Apple Developer cert)* — the arm64 dmg ships unsigned (Gatekeeper: right-click → Open). Apple Developer cert + notarize step in the release matrix; unblocks mac auto-update (9.1).
 - [ ] **9.9 Intel mac (x64) dmg** — needs a second (macos-13/x64) runner in the release matrix so the bundled ripgrep matches; only if someone asks.
 
 ---
@@ -443,42 +443,42 @@ Goal: the engine's power is findable; words mean one thing each.
 
 Design confirmed via grilling session 2026-07-20; the decision record lives in project memory (`magentra-overdrive-design`). Non-negotiables baked into every item below: **generic evidence** (never assume builds/tests/linters — evidence is whatever the query calls for), **no separate verifier caller**, **nothing blocks the flow** except a rubric-worthy question to the user. Items are ordered so the engine policy exists and is manually drivable (via a temp slash command) before any UI is built on top.
 
-- [ ] **O.1 Protocol + session flag**
+- [x] **O.1 Protocol + session flag**
   Files: `engine/protocol/src/types.ts` (FrontendRequest `{type:"set_overdrive", enabled}`; CoreEvent `{type:"overdrive_changed", enabled}`), `engine/core/src/runtime/engine.ts` (`send` switch case, plus a `/overdrive` slash for manual driving), `engine/core/src/runtime/session.ts` (an `overdrive: boolean` on the session, included in the transcript meta so `/resume` restores it).
   Done when: `/overdrive on` flips the flag, the event round-trips, and a resumed session comes back with the flag intact.
 
-- [ ] **O.2 Loop policy — lift the stops**
+- [x] **O.2 Loop policy — lift the stops**
   Files: `engine/core/src/runtime/session.ts` (~:1024 iteration cap, ~:1032 token budget — both skipped when overdrive; ~:72 `MAX_AUTO_NUDGES` — deterministic rungs (error-recovery, tasks-incomplete, length-continuation) become unlimited in overdrive), reuse gate call site (~:1387 — treat `gate` as `remind` when overdrive).
   Done when: a turn in overdrive sails past 50 iterations without the `⏸` pause, and a new-file Write near-duplicate produces a reminder, not a refusal.
 
-- [ ] **O.3 Self-verify rung + economy cleanup**
+- [x] **O.3 Self-verify rung + economy cleanup**
   Files: `engine/core/src/runtime/session.ts` (nudge ladder, before the final `break` ~:1154).
   First end-attempt in an overdrive turn injects: re-read the original query; is every part handled; did you create anything the query did not need — if fully done say DONE, else continue (cleanup counts as continuing). Fires once per turn; re-arms only when mid-run steering (O.6) arrives. No new subsystem, no extra caller.
   Done when: a deliberately half-finished reply triggers exactly one self-verify round-trip, and a turn that scattered scratch files cleans them before ending.
 
-- [ ] **O.4 Stall detector → strategy pivots → ask**
+- [x] **O.4 Stall detector → strategy pivots → ask**
   Files: `engine/core/src/runtime/session.ts` (track a per-round progress signature: files touched, task-list changes, latest error text).
   Three consecutive rounds with an identical signature = stall → inject "this approach is not working — abandon it and try a different strategy" (max 2 pivots), then force one concrete AskUserQuestion. Numeric caps stay out; this is the only brake.
   Done when: a command that always fails the same way produces two visible pivots and then a single user question, not an infinite loop.
 
-- [ ] **O.5 Deletion scope-split (non-blocking bias)**
+- [x] **O.5 Deletion scope-split (non-blocking bias)**
   Files: `engine/core/src/runtime/permissions.ts` (~:123 guard path), `engine/tools/src/bash.ts` (~:91 `bashDeletionSubject` — classify the target path in/out of workspace), `engine/core/src/runtime/session.ts` (pre-turn `git stash create` snapshot ref, kept in session state, mentioned in `turn_finished`).
   In overdrive: in-workspace deletions run silently; out-of-workspace targets, git-history rewrites, and workspace-root wildcards still ask. Guard unchanged in every other mode.
   Done when: an overdrive turn deletes its own temp file without a prompt, `rm` outside the workspace still asks, and the snapshot ref can restore a deleted tracked file.
 
-- [ ] **O.6 Prompt policy + mid-run steering**
+- [x] **O.6 Prompt policy + mid-run steering**
   Files: `engine/core/src/runtime/session.ts` (overdrive prompt section: plan-first-no-gate wording, ask-rubric — design-changing / irreversible / outside-workspace only, genericness clause; steering queue consumed at the next message boundary, re-arms O.3), `engine/protocol/src/types.ts` + `app/renderer/modules/composer.js` (busy-state send becomes steering instead of queue-until-turn-end; composer hint text changes).
   Done when: typing mid-turn lands in the running turn at the next boundary and visibly steers it.
 
-- [ ] **O.7 Subagents inherit budgets**
+- [x] **O.7 Subagents inherit budgets**
   Files: `engine/core/src/runtime/session.ts` (spawn opts ~:535 — children of an overdrive session get the lifted iteration/token budgets; the never-ask rule stays).
   Done when: a long child task no longer dies at its own cap mid-overdrive-run.
 
-- [ ] **O.8 UI — toggle, first-enable dialog, cinematic, shell identity**
+- [x] **O.8 UI — toggle, first-enable dialog, cinematic, shell identity**
   Files: `app/renderer/index.html` + `app/renderer/modules/composer.js` (composer toggle), new `app/renderer/modules/overdrive.js` (first-enable dialog: 4–5 plain lines, one danger line, recommended skills pre-checked with one-line whys, none required; ENGAGE), CSS (full-window engage cinematic ~2s, GT-mode energy, honors `prefers-reduced-motion`; `data-overdrive` attr shifts the whole shell's accent while active), `app/renderer/modules/state.js` (persist in uiSettings, re-send on engine link like `set_deletion_guard`; status bar shows ⚡ OVERDRIVE — note bypass already displays as "autonomous", the OVERDRIVE name avoids that collision).
   Done when: one click engages with the animation, the shell visibly wears the mode, the state survives an app restart, and disabling reverts everything.
 
-- [ ] **O.9 Docs**
+- [x] **O.9 Docs**
   Files: `FEATURES.md` (OVERDRIVE section: what lifts, what still asks, the rubric), `docs/query-lifecycle.html` (overdrive branch in the loop tab).
   Done when: a new user can predict from FEATURES.md exactly when OVERDRIVE will and will not interrupt them.
 

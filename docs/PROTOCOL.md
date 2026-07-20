@@ -70,7 +70,7 @@ These structured types appear as fields inside events and requests.
 
 | Type | Definition |
 | --- | --- |
-| `PermissionMode` | `"default" \| "acceptEdits" \| "plan" \| "bypass"` |
+| `PermissionMode` | `"default" \| "acceptEdits" \| "bypass"` |
 | `PermissionDecision` | `"allow_once" \| "allow_session" \| "deny"` |
 | `TaskStatus` | `"pending" \| "in_progress" \| "completed"` |
 | `TaskItem` | `{ id, subject, description, activeForm?, status: TaskStatus, owner?, blocks: string[], blockedBy: string[], metadata? }` |
@@ -265,21 +265,6 @@ Emitted by the `AskUserQuestion` tool (see round-trip below).
 
 ```json
 {"type":"question_request","id":"q_7f21","questions":[{"question":"Which package manager should I use?","header":"Pkg mgr","options":[{"label":"npm","description":"Use the bundled npm"},{"label":"pnpm","description":"Use pnpm workspaces"}],"multiSelect":false}]}
-```
-
-### `plan_ready`
-
-Emitted when plan mode has produced a plan awaiting the user's decision.
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `type` | `"plan_ready"` | |
-| `planPath` | string | Path to the written plan file. |
-| `plan` | string | The plan text. |
-| `allowedPrompts` | `AllowedPrompt[]` | Tool/prompt pairs pre-approved for execution. |
-
-```json
-{"type":"plan_ready","planPath":"/home/me/proj/.magentra/plans/p_1.md","plan":"1. Rename symbol\n2. Update imports\n3. Run tests","allowedPrompts":[{"tool":"Bash","prompt":"npm test"}]}
 ```
 
 ### `task_list_updated`
@@ -580,21 +565,6 @@ Answer to a `question_request`.
 {"type":"question_response","id":"q_7f21","answers":{"q:0":["pnpm"]}}
 ```
 
-### `plan_decision`
-
-Response to `plan_ready`.
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `type` | `"plan_decision"` | |
-| `approve` | boolean | Approve and exit plan mode, or reject. |
-| `editedPlan` | string? | An edited plan to use in place of the emitted one. |
-| `message` | string? | Optional note passed back to the model (e.g. why the plan was rejected). |
-
-```json
-{"type":"plan_decision","approve":true}
-```
-
 ### `interrupt`
 
 Aborts the in-flight turn. No fields beyond `type`. The abort propagates through the provider
@@ -614,7 +584,7 @@ Changes the permission mode; the engine echoes a `mode_changed` event.
 | `mode` | `PermissionMode` |
 
 ```json
-{"type":"set_mode","mode":"plan"}
+{"type":"set_mode","mode":"acceptEdits"}
 ```
 
 ### `set_deletion_guard`
@@ -821,20 +791,6 @@ the mode default resolves to "ask" does a `permission_request` reach the fronten
 ```
 core → { "type":"question_request","id":"q_7f21","questions":[ … ] }
 front→ { "type":"question_response","id":"q_7f21","answers":{"q:0":["pnpm"]} }
-```
-
-### Plan round-trip
-
-1. In plan mode, only read-only tools run; the agent researches and drafts a plan.
-2. The engine emits `plan_ready` with the plan text, its file path, and any `allowedPrompts`
-   the agent proposes to run during execution.
-3. The frontend shows the plan and replies with `plan_decision`:
-   - `approve: true` (optionally with an `editedPlan`) — leave plan mode and execute.
-   - `approve: false` — stay in plan mode / discard.
-
-```
-core → { "type":"plan_ready","planPath":"…/plans/p_1.md","plan":"1. …","allowedPrompts":[{"tool":"Bash","prompt":"npm test"}] }
-front→ { "type":"plan_decision","approve":true }
 ```
 
 ## No back doors

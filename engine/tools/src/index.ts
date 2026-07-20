@@ -9,7 +9,6 @@ import { taskCreateTool, taskGetTool, taskListTool, taskUpdateTool } from "./tas
 import { askUserQuestionTool } from "./askUserQuestion.js";
 import { agentTool } from "./agent.js";
 import { taskOutputTool, taskStopTool } from "./taskControl.js";
-import { enterPlanModeTool, exitPlanModeTool } from "./planMode.js";
 import { webFetchTool } from "./webFetch.js";
 import { webSearchTool } from "./webSearch.js";
 import { monitorTool } from "./monitor.js";
@@ -37,8 +36,6 @@ export {
   agentTool,
   taskStopTool,
   taskOutputTool,
-  enterPlanModeTool,
-  exitPlanModeTool,
   webFetchTool,
   webSearchTool,
   monitorTool,
@@ -84,8 +81,6 @@ export function createDefaultRegistry(): ToolRegistry {
     agentTool,
     taskStopTool,
     taskOutputTool,
-    enterPlanModeTool,
-    exitPlanModeTool,
     webFetchTool,
     webSearchTool,
     monitorTool,

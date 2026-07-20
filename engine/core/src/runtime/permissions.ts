@@ -45,6 +45,9 @@ export class PermissionEngine {
    *  The desktop's "Allow deletions" setting turns this off, after which
    *  deletions resolve through the ordinary rules/mode path like any call. */
   private deletionGuard = true;
+  /** OVERDRIVE: deletions provably scoped inside the workspace skip the guard
+   *  (the flow must not block); everything unprovable still asks. */
+  private overdrive = false;
   private readonly deny: ParsedRule[];
   private readonly allow: ParsedRule[];
   private readonly sessionAllow: ParsedRule[] = [];
@@ -83,6 +86,10 @@ export class PermissionEngine {
     this.deletionGuard = enabled;
   }
 
+  setOverdrive(enabled: boolean): void {
+    this.overdrive = enabled;
+  }
+
   /** Adds a session-scoped allow rule. Subject "*" or undefined matches any subject. */
   addSessionAllow(tool: string, subject?: string): void {
     this.sessionAllow.push(
@@ -104,6 +111,8 @@ export class PermissionEngine {
     input: unknown,
     subject: string | undefined,
     description: string | undefined,
+    /** The tool's deletion-scope verdict for this call, when computed. */
+    deletionScope?: "workspace" | "unknown" | "protected",
   ): Promise<PermissionOutcome> {
     if (matches(this.deny, tool.name, subject)) {
       return {
@@ -122,15 +131,30 @@ export class PermissionEngine {
     // never adds a session-allow, so it re-fires on every other matching call.
     const explicitlyAllowed =
       matchesExplicit(this.allow, tool.name, subject) || this.matchesExact(tool.name, subject);
+    // OVERDRIVE scope-split: a deletion whose every target provably resolves
+    // inside the workspace runs without asking — an autonomous run must be
+    // able to clean its own temp files and redo its own work. Only the
+    // provable case skips; "unknown" (out-of-tree paths, history rewrites,
+    // substitution, root wildcards) keeps the always-ask guard even here.
+    const overdriveScoped = this.overdrive && deletionScope === "workspace";
+    // Protected target — a `.magentra` state directory (settings, sessions,
+    // transcripts). Deleting it always asks, in every mode: it beats the
+    // "allow deletions" off-switch, explicit allow rules, and OVERDRIVE.
+    const protectedTarget = deletionScope === "protected";
     const deletionSubject =
-      this.deletionGuard && !explicitlyAllowed ? tool.deletionSubject?.(input) : undefined;
+      protectedTarget || (this.deletionGuard && !explicitlyAllowed && !overdriveScoped)
+        ? tool.deletionSubject?.(input)
+        : undefined;
     if (deletionSubject !== undefined) {
       const res = await this.requestApproval(
         {
           tool: tool.name,
           input,
           description: deletionSubject,
-          ...(subject !== undefined ? { subject } : {}),
+          // No subject on a protected deletion: its presence is what lets the
+          // frontend offer "always allow", and deleting MAGENTRA's own state
+          // dir must be confirmed every single time.
+          ...(subject !== undefined && !protectedTarget ? { subject } : {}),
         },
         "deletion-guard",
       );
@@ -144,7 +168,8 @@ export class PermissionEngine {
       // "Always allow" on a destructive prompt grants only this exact subject.
       // A broad grant here would silently disable the deletion guard for the
       // whole tool, which is never what one click on one command should mean.
-      if (res.decision === "allow_always") this.grantExact(tool.name, subject);
+      // A protected deletion never records a grant at all — it must re-ask.
+      if (res.decision === "allow_always" && !protectedTarget) this.grantExact(tool.name, subject);
       return { allowed: true, source: "user" };
     }
 
@@ -163,10 +188,7 @@ export class PermissionEngine {
         return {
           allowed: false,
           source: "mode",
-          message:
-            this.mode === "plan"
-              ? "Plan mode is active: only read-only tools may run. Record intended changes in the plan file instead."
-              : "This tool is not permitted in the current mode.",
+          message: "This tool is not permitted in the current mode.",
         };
       case "ask": {
         const res = await this.requestApproval(
@@ -186,8 +208,7 @@ export class PermissionEngine {
           // subject — an exact-subject grant re-asks on every new command/path
           // and reads as broken. Safe to be broad: the deletion guard is
           // checked BEFORE allow rules, so destructive calls still ask.
-          // (Targeted subject-scoped grants still exist via addSessionAllow —
-          // plan approval uses them.)
+          // (Targeted subject-scoped grants still exist via addSessionAllow.)
           this.sessionAllow.push({ tool: tool.name, raw: tool.name });
         }
         return { allowed: true, source: "user" };
@@ -217,7 +238,6 @@ export class PermissionEngine {
   private modeDefault(tool: AnyToolDefinition): "allow" | "deny" | "ask" {
     if (this.mode === "bypass") return "allow";
     if (tool.permissionClass === "read" || tool.permissionClass === "interact") return "allow";
-    if (this.mode === "plan") return "deny";
     if (this.mode === "acceptEdits" && tool.isFileEdit) return "allow";
     return "ask";
   }

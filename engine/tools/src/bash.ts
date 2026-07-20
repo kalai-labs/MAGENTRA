@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { createWriteStream, existsSync } from "node:fs";
+import { isAbsolute, join, resolve as pathResolve, sep as pathSep } from "node:path";
 import { z } from "zod";
 import type { SessionServices, ToolDefinition, ToolResult } from "@magentra/core";
 
@@ -98,6 +99,130 @@ export function bashDeletionSubject(command: string): string | undefined {
   return flagged ? command : undefined;
 }
 
+// ── OVERDRIVE deletion scope ────────────────────────────────────────────────
+// Classifies a deletion-flagged command as provably-in-workspace or unknown.
+// Conservative by construction: git history rewrites, SQL/infra teardown,
+// shell substitution, unparseable segments, bare/root wildcards, and any
+// target that does not resolve strictly inside the workspace all yield
+// "unknown" (which keeps the always-ask guard). Only plain rm/del/find/mv
+// forms whose every target lands inside the workspace yield "workspace".
+
+/** Substitution or expansion the static classifier cannot see through. */
+const UNANALYZABLE = /[$`]|\$\(|<\(|>\(/;
+
+/** The multi-word destructive phrases as one test, mirroring DELETION_PATTERN. */
+const DELETION_PHRASE_PATTERN = new RegExp(`\\b(?:${DELETION_PHRASES.join("|")})\\b(?=\\s|$)`, "i");
+
+/** File-deleting commands whose plain path arguments we can classify. */
+const PATH_DELETERS = new Set(["rm", "rmdir", "rd", "del", "erase", "unlink", "rimraf", "shred", "trash", "remove-item"]);
+
+/** Strip one layer of surrounding quotes. */
+function unquote(token: string): string {
+  const m = /^(["'])(.*)\1$/.exec(token);
+  return m ? m[2]! : token;
+}
+
+/** True when `p` resolves strictly inside `root` (never the root itself). */
+function insideWorkspace(p: string, base: string, root: string): boolean {
+  const abs = pathResolve(isAbsolute(p) ? p : join(base, p));
+  const normRoot = pathResolve(root);
+  return abs !== normRoot && abs.startsWith(normRoot + pathSep);
+}
+
+/**
+ * The deletion targets of one command, or undefined when any part of it is
+ * not statically analyzable. Splits on shell separators; each segment either
+ * contributes its paths or (if it is a deleter we cannot parse) poisons the
+ * whole command to undefined. Non-deleting segments are ignored.
+ */
+export function bashDeletionTargets(command: string): string[] | undefined {
+  if (UNANALYZABLE.test(command)) return undefined;
+  // Any of the non-path destructive shapes (history rewrite, SQL, kubectl,
+  // git clean/rm/reset, checkout --, branch -D) → not path-classifiable.
+  if (
+    GIT_BRANCH_FORCE_DELETE.test(command) ||
+    GIT_CHECKOUT_DISCARD.test(command) ||
+    DELETION_PHRASE_PATTERN.test(command)
+  ) {
+    return undefined;
+  }
+  const targets: string[] = [];
+  for (const segment of command.split(/[|;&]+/)) {
+    const tokens = segment.trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) continue;
+    const head = tokens[0]!.toLowerCase();
+    if (PATH_DELETERS.has(head)) {
+      const paths = tokens.slice(1).filter((t) => !t.startsWith("-")).map(unquote);
+      if (paths.length === 0) return undefined;
+      targets.push(...paths);
+    } else if (head === "find" && /\s-delete\b/i.test(segment)) {
+      // The first non-flag argument after `find` is the search root.
+      const dir = tokens.slice(1).find((t) => !t.startsWith("-"));
+      if (!dir) return undefined;
+      targets.push(unquote(dir));
+    } else if ((head === "mv" || head === "move-item") && mvIsDestructive(segment)) {
+      targets.push(...tokens.slice(1).filter((t) => !t.startsWith("-")).map(unquote));
+    } else if (DELETION_PATTERN.test(segment) || FIND_DELETE.test(segment)) {
+      // A destructive shape this parser does not model (e.g. `del` buried
+      // mid-segment, xargs) — refuse to classify the whole command.
+      return undefined;
+    }
+  }
+  return targets.length > 0 ? targets : undefined;
+}
+
+// `.magentra` directories hold MAGENTRA's own state (settings, sessions,
+// transcripts, worktrees). Deleting one is never routine autonomous cleanup,
+// so any deletion that targets a folder NAMED .magentra — or that we cannot
+// rule out targeting one — classifies as "protected": the guard then asks the
+// user in every mode, beating the "allow deletions" setting, explicit allow
+// rules, and OVERDRIVE's workspace scope-split.
+const MAGENTRA_MENTION = /\.magentra\b/i;
+
+/** True when the target IS a .magentra directory (or empties one via `/*`). */
+function isMagentraStateDir(raw: string): boolean {
+  let p = raw.replace(/[\\/]+$/, "");
+  // `.magentra/*` or `.magentra/**` wipes the directory's entire contents —
+  // treat it the same as deleting the directory itself.
+  const wipe = /^(.*)[\\/]\*{1,2}$/.exec(p);
+  if (wipe) p = wipe[1]!;
+  const seg = p.split(/[\\/]/).pop() ?? "";
+  return seg.toLowerCase() === ".magentra";
+}
+
+/** ToolDefinition.deletionScope for Bash — see bashDeletionTargets. */
+export function bashDeletionScope(
+  command: string,
+  shellCwd: string,
+  workspace: string,
+): "workspace" | "unknown" | "protected" {
+  const targets = bashDeletionTargets(command);
+  // Unparseable command that mentions .magentra at all: we cannot prove the
+  // state dir is safe, so protect it (a false positive only prompts once).
+  if (!targets) return MAGENTRA_MENTION.test(command) ? "protected" : "unknown";
+  if (targets.some(isMagentraStateDir)) return "protected";
+  for (const raw of targets) {
+    const globIdx = raw.search(/[*?[]/);
+    const literal = globIdx === -1 ? raw : raw.slice(0, globIdx);
+    if (globIdx !== -1) {
+      // A glob whose literal tail could still expand to `.magentra`
+      // (e.g. `rm -rf .magentr*`, `rm -rf tmp/.*`) is protected too.
+      const lastSeg = literal.split(/[\\/]/).pop() ?? "";
+      if (lastSeg.startsWith(".") && ".magentra".startsWith(lastSeg.toLowerCase())) {
+        return "protected";
+      }
+    }
+    if (raw.startsWith("~")) return "unknown";
+    // A wildcard is judged by its literal prefix: `tmp/*` → `tmp/`, which must
+    // itself be a real directory inside the workspace. A bare `*` (or one at
+    // the workspace root) has prefix "" and fails the inside check.
+    if (!literal || !insideWorkspace(literal.replace(/[\\/]+$/, "") || literal, shellCwd, workspace)) {
+      return "unknown";
+    }
+  }
+  return "workspace";
+}
+
 // Persistent working directory per session (directory changes survive across
 // calls; env vars and shell functions intentionally do not). Each entry
 // remembers the session cwd it was tracked under (`base`): when the session
@@ -146,6 +271,7 @@ export const bashTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   permissionSubject: (input) => input.command,
   describeInput: (input) => input.description,
   deletionSubject: (input) => bashDeletionSubject(input.command),
+  deletionScope: (input, ctx) => bashDeletionScope(input.command, effectiveCwd(ctx.session, ctx.cwd), ctx.cwd),
   execute: async (input, ctx, signal) => {
     if (/^\s*sleep\s+[\d.]+\s*$/.test(input.command)) {
       return {

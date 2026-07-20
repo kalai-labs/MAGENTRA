@@ -3,6 +3,17 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 const api = (name, ...args) => ipcRenderer.invoke("test:api", { name, args });
+
+// Pin the theme as an explicit saved choice: first-launch theme follows the
+// host OS (prefers-color-scheme), which would make these tests
+// environment-dependent. A saved theme always wins over OS detection.
+try {
+  if (!localStorage.getItem("magentra-ui")) {
+    localStorage.setItem("magentra-ui", JSON.stringify({ theme: "workbench" }));
+  }
+} catch {
+  // storage unavailable — the suite will surface it as theme drift
+}
 const listen = (channel, callback) => {
   const listener = (_event, payload) => callback(payload);
   ipcRenderer.on(channel, listener);

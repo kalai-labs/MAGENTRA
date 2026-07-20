@@ -99,13 +99,13 @@ Core → frontend events: `session_started` (with the slash-command registry in
 `commands` and the per-model `rateCard`), `turn_started`, `tool_output_delta`,
 `retry_status`, `text_delta`, `thinking_delta`, `tool_call_started`,
 `tool_call_finished`, `agent_spawned`, `agent_finished`, `permission_request`,
-`question_request`, `plan_ready`, `task_list_updated`, `file_edited` (unified diff),
+`question_request`, `task_list_updated`, `file_edited` (unified diff),
 `background_notification`, `mode_changed`, `command_output`, `session_list`,
 `turn_finished`, `error`, `modes_updated`, `team_updated`, `backpack_progress`,
 `session_restored`, `model_catalog`, `cwd_changed`, `missions_updated`.
 
 Frontend → core requests: `user_message`, `permission_response`, `question_response`,
-`plan_decision`, `interrupt`, `set_mode`, `set_deletion_guard`, `slash_command`,
+`interrupt`, `set_mode`, `set_deletion_guard`, `slash_command`,
 `bang_command`, `resume_session`, `delete_session`, `stop_background`,
 `rename_session`, `archive_session`, `list_sessions`, `set_modes`, `reload_team`.
 
@@ -243,7 +243,7 @@ everything below except the team tools. Per-tool field tables and behavior live 
 - **Phase 1** (shipped): Read, Write, Edit, Glob, Grep, Bash (+ background tasks),
   TaskCreate/TaskUpdate/TaskList/TaskGet, AskUserQuestion.
 - **Phase 2** (shipped): Agent (subagents: `general-purpose`, `explore`, `plan`; no
-  recursion in v1), WebFetch, WebSearch, EnterPlanMode/ExitPlanMode, Monitor,
+  recursion in v1), WebFetch, WebSearch, Monitor,
   TaskStop/TaskOutput.
 - **Phase 3** (shipped): Skill (+ skills loader + built-in slash commands), hooks
   (PreToolUse/PostToolUse/UserPromptSubmit/SessionStart/Stop), MCP stdio client
@@ -280,7 +280,7 @@ gaps are documented, not engineered around.
 1. **Working agent** — providers, protocol, core loop, permissions, Phase-1 tools,
    readline CLI, FakeProvider suite. Gate: rename-across-repo demo with approval
    prompts, interrupt works, transcript replayable.
-2. **Serious agent** — subagents, plan mode end-to-end (read-only enforcement proven by
+2. **Serious agent** — subagents end-to-end (read-only enforcement proven by
    test), WebFetch/WebSearch, Monitor, background notifications. Gate: explore → plan →
    approve → execute flow.
 3. **Product** — skills/slash commands, hooks, MCP client, worktrees, cron/wakeups,

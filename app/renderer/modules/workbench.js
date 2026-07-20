@@ -446,13 +446,12 @@ async function undoLastChange() {
 const PERMISSION_LABELS = {
   default: "Ask before changes",
   acceptEdits: "Auto-accept edits",
-  plan: "Plan only",
   bypass: "Autonomous",
 };
 
 function syncPermissionMenu(mode) {
   const current = mode || (uiSettings.commands === "ask" ? "default" : "bypass");
-  const selection = current === "default" ? "ask" : current === "plan" ? "plan" : "auto";
+  const selection = current === "default" ? "ask" : "auto";
   if (permissionMenuLabelEl) permissionMenuLabelEl.textContent = PERMISSION_LABELS[current] || PERMISSION_LABELS.default;
   if (inspectorPermissionsEl) inspectorPermissionsEl.textContent = PERMISSION_LABELS[current] || PERMISSION_LABELS.default;
   if (!permissionMenuEl) return;
@@ -471,11 +470,6 @@ function closePermissionMenu() {
 
 function choosePermission(choice) {
   closePermissionMenu();
-  if (choice === "plan") {
-    window.magentra.send({ type: "set_mode", mode: "plan" });
-    renderSafetyHint("plan");
-    return;
-  }
   uiSettings.commands = choice === "ask" ? "ask" : "auto";
   saveUiSettings();
   syncSegGroup(setCommandsEl, "commands");

@@ -231,21 +231,21 @@ async function run() {
   await test("permission, attach, model, and composer controls act on runtime state", async () => {
     await evaluate(`document.querySelector('#teamCloseBtn').click()`);
     const before = frames.length;
-    await evaluate(`document.querySelector('#permissionMenuBtn').click(); document.querySelector('[data-permission="plan"]').click()`);
+    await evaluate(`document.querySelector('#permissionMenuBtn').click(); document.querySelector('[data-permission="ask"]').click()`);
     await pause();
     const permissionState = await evaluate(`(() => ({
       label: document.querySelector('#permissionMenuLabel').textContent,
       hidden: document.querySelector('#permissionMenu').classList.contains('hidden'),
-      planChecked: document.querySelector('[data-permission="plan"]').getAttribute('aria-checked'),
+      askChecked: document.querySelector('[data-permission="ask"]').getAttribute('aria-checked'),
     }))()`);
     assert.ok(
-      frames.slice(before).some((frame) => frame.type === "set_mode" && frame.mode === "plan"),
+      frames.slice(before).some((frame) => frame.type === "set_mode" && frame.mode === "default"),
       `permission click state=${JSON.stringify(permissionState)} frames=${JSON.stringify(frames.slice(before))}`,
     );
-    assert.equal(await evaluate(`document.querySelector('#permissionMenuLabel').textContent`), "Plan only");
-    await evaluate(`document.querySelector('#permissionMenuBtn').click(); document.querySelector('[data-permission="ask"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#permissionMenuLabel').textContent`), "Ask before changes");
+    await evaluate(`document.querySelector('#permissionMenuBtn').click(); document.querySelector('[data-permission="auto"]').click()`);
     await pause();
-    assert.ok(frames.some((frame) => frame.type === "set_mode" && frame.mode === "default"));
+    assert.ok(frames.some((frame) => frame.type === "set_mode" && frame.mode === "bypass"));
     await evaluate(`document.querySelector('#permissionMenuBtn').click(); document.querySelector('[data-permission="auto"]').click()`);
     await pause();
     assert.ok(frames.some((frame) => frame.type === "set_mode" && frame.mode === "bypass"));
@@ -380,7 +380,7 @@ async function run() {
     assert.equal(await evaluate(`document.querySelector('.inline-changes-card') === null`), true);
   });
 
-  await test("approval, question, and plan cards send selected decisions", async () => {
+  await test("approval and question cards send selected decisions", async () => {
     await emit({ type: "permission_request", id: "p1", description: "Remove generated file", input: { command: "rm generated.js" } });
     assert.equal(await evaluate(`document.querySelector('#deleteModal').classList.contains('hidden')`), false);
     // No subject means nothing durable to grant — "always allow" must stay hidden
@@ -405,11 +405,6 @@ async function run() {
     await evaluate(`document.querySelector('.question-card .q-opt').click()`);
     await pause();
     assert.ok(frames.some((frame) => frame.type === "question_response"));
-    await emit({ type: "plan_ready", plan: "1. Inspect\n2. Implement\n3. Verify" });
-    assert.equal(await evaluate(`document.querySelectorAll('.plan-card').length > 0`), true);
-    await evaluate(`document.querySelector('.plan-card .plan-approve').click()`);
-    await pause();
-    assert.ok(frames.some((frame) => frame.type === "plan_decision" && frame.approve === true));
   });
 
   await test("a multi-question round answers every card, and tables render", async () => {
@@ -528,14 +523,14 @@ async function run() {
     await evaluate(`document.querySelector('#skillsCloseBtn').click()`);
   });
 
-  await test("the teaching tour walks all eight steps and is replayable", async () => {
+  await test("the teaching tour walks all nine steps and is replayable", async () => {
     await evaluate(`startTour(true)`);
     let state = await evaluate(`(() => ({
       visible: !document.querySelector('#tourOverlay').classList.contains('hidden'),
       label: document.querySelector('#tourStepLabel').textContent,
     }))()`);
-    assert.deepEqual(state, { visible: true, label: "1 / 8" });
-    for (let i = 0; i < 7; i++) await evaluate(`document.querySelector('#tourNext').click()`);
+    assert.deepEqual(state, { visible: true, label: "1 / 9" });
+    for (let i = 0; i < 8; i++) await evaluate(`document.querySelector('#tourNext').click()`);
     assert.equal(await evaluate(`document.querySelector('#tourNext').textContent`), "FINISH ▸");
     await evaluate(`document.querySelector('#tourNext').click()`);
     assert.equal(await evaluate(`document.querySelector('#tourOverlay').classList.contains('hidden')`), true);

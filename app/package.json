@@ -30,6 +30,13 @@
       "buildResources": "build"
     },
     "afterPack": "scripts/afterPack.js",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "kalai-labs",
+        "repo": "MAGENTRA"
+      }
+    ],
     "files": [
       "package.json",
       {
@@ -121,5 +128,8 @@
         }
       ]
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

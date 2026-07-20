@@ -66,7 +66,7 @@ Bounds append-only workspace state; pruning runs whenever a root session starts.
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `permissionMode` | `"default"` | Startup mode: `default` (mutating tools prompt), `acceptEdits` (file edits auto-approved, Bash still prompts), `plan` (read-only enforcement), `bypass` (explicit opt-in, no prompts). |
+| `permissionMode` | `"default"` | Startup mode: `default` (mutating tools prompt), `acceptEdits` (file edits auto-approved, Bash still prompts), `bypass` (explicit opt-in, no prompts). |
 | `permissions.allow` | `[]` | Rule strings matching tool name + argument glob, e.g. `"Bash(git status*)"`. Auto-approve matching calls. |
 | `permissions.deny` | `[]` | Same syntax; refuse matching calls. Resolution order is **deny > allow > mode default**. |
 
@@ -161,7 +161,6 @@ Everything the engine persists in a workspace lives under `.magentra/`:
 | `sessions/` | Append-only JSONL transcripts, one per session. |
 | `sessions/subagents/` | Transcripts of subagent/crew child sessions. |
 | `tasks/` | Persisted task lists (per session) and background-task output. |
-| `plans/` | Plans written by plan mode. |
 | `worktrees/` | Git worktrees created by EnterWorktree. |
 | `skills/` | Workspace skills (global ones live in `~/.magentra/skills/`). |
 | `skills/` | Workspace skill files — disciplines and on-demand actions (`docs/SKILLS.md`). |

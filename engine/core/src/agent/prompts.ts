@@ -83,9 +83,6 @@ export const SECTION_AUTONOMY = `Working autonomously:
 - Before ending a turn, reread your final paragraph. If it promises work ("I'll…", "next I would…"), do that work now instead. End the turn only when the task is done or blocked on the user.
 - Long context is not a reason to wrap up early; the harness compacts history automatically and work continues across the boundary.`;
 
-export const SECTION_PLAN_MODE = `Plan mode:
-- In plan mode the permission engine enforces read-only operation. Explore, then write your implementation plan into the plan file the harness names. Use AskUserQuestion for genuine approach decisions before finalizing; call ExitPlanMode when the plan file is complete. Do not ask "is the plan okay?" in text — ExitPlanMode is that question.`;
-
 export function behaviorCore(): string {
   return [
     SECTION_IDENTITY,
@@ -97,7 +94,6 @@ export function behaviorCore(): string {
     SECTION_TASKS,
     SECTION_WORKING_METHOD,
     SECTION_AUTONOMY,
-    SECTION_PLAN_MODE,
   ].join("\n\n");
 }
 

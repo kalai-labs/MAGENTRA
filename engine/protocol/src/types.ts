@@ -1,6 +1,6 @@
 export const PROTOCOL_VERSION = 1;
 
-export type PermissionMode = "default" | "acceptEdits" | "plan" | "bypass";
+export type PermissionMode = "default" | "acceptEdits" | "bypass";
 
 export type TaskStatus = "pending" | "in_progress" | "completed";
 
@@ -50,11 +50,6 @@ export interface Question {
   header: string;
   options: QuestionOption[];
   multiSelect: boolean;
-}
-
-export interface AllowedPrompt {
-  tool: string;
-  prompt: string;
 }
 
 export interface SessionSummary {
@@ -186,11 +181,12 @@ export type CoreEvent =
       subject?: string;
     }
   | { type: "question_request"; id: string; questions: Question[] }
-  | { type: "plan_ready"; planPath: string; plan: string; allowedPrompts: AllowedPrompt[] }
   | { type: "task_list_updated"; tasks: TaskItem[] }
   | { type: "file_edited"; path: string; diff: string }
   | { type: "background_notification"; taskId: string; kind: string; payload: unknown }
   | { type: "mode_changed"; mode: PermissionMode }
+  /** OVERDRIVE (fully-autonomous turn-loop policy) was toggled; frontends sync their indicator to this. */
+  | { type: "overdrive_changed"; enabled: boolean }
   | { type: "command_output"; text: string }
   | { type: "session_list"; sessions: SessionSummary[] }
   | {
@@ -212,6 +208,13 @@ export type CoreEvent =
        * arrives as cacheRead.
        */
       contextTokens: number;
+      /**
+       * OVERDRIVE only: the pre-turn `git stash create` ref capturing the
+       * working tree before this uncapped turn ran — the recovery handle for
+       * anything an in-workspace deletion removed. Absent when the tree was
+       * clean, the workspace is not a repo, or OVERDRIVE is off.
+       */
+      overdriveSnapshot?: string;
       /**
        * Whole-session cost so far in USD, priced engine-side per model (crew
        * runs on other models included). Absent when no used model has a rate
@@ -348,11 +351,19 @@ export type FrontendRequest =
       /** Keyed positionally ("q:<idx>"; question text accepted as a legacy fallback); values are the selected option labels (or free text). */
       answers: Record<string, string[]>;
     }
-  | { type: "plan_decision"; approve: boolean; editedPlan?: string; message?: string }
   | { type: "interrupt" }
   | { type: "set_mode"; mode: PermissionMode }
   /** Toggles the always-ask deletion guard (true = guard active, the default). */
   | { type: "set_deletion_guard"; enabled: boolean }
+  /** Toggles OVERDRIVE: the fully-autonomous turn-loop policy (caps lifted, self-verify end check). */
+  | { type: "set_overdrive"; enabled: boolean }
+  /**
+   * Mid-run steering: user text that joins the RUNNING turn at its next
+   * message boundary instead of waiting for the turn to end. Sent by
+   * frontends while a turn is busy; falls back to a normal user turn when
+   * the session turns out to be idle (the busy check races the turn end).
+   */
+  | { type: "steer_message"; text: string }
   | { type: "slash_command"; command: string; args?: string }
   | { type: "bang_command"; cmd: string }
   | { type: "resume_session"; id: string }

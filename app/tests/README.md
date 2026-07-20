@@ -22,7 +22,7 @@ Coverage includes:
 - composer send/queue/stop/history, slash and bang commands,
   attachment mentions, model selection, and all permission modes;
 - reasoning, streaming Markdown, operations, subagents, background jobs, errors,
-  approval questions, and plan decisions;
+  and approval questions;
 - inline changed files, expandable diffs, the review drawer, native open, and
   transactional Undo backed by a real temporary Git repository;
 - settings, connection test/save/reveal, web search, setup wizard, shortcuts,

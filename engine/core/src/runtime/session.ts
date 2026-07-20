@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
@@ -56,7 +57,6 @@ import { recordCrewRun } from "../crew/ledger.js";
 import type { Skill } from "../agent/skills.js";
 import { TaskStore } from "../state/taskStore.js";
 import type {
-  PlanDecisionResult,
   SessionServices,
   SpawnAgentOptions,
   ToolContext,
@@ -82,6 +82,38 @@ const WRAPUP_NUDGE_TEXT =
 
 const LENGTH_CONTINUATION_TEXT =
   "<system-reminder>Your previous response was cut off by the output-token limit. Continue exactly where you left off.</system-reminder>";
+
+// OVERDRIVE stall handling: with every numeric cap lifted, the only brake is
+// noticing that rounds have stopped producing anything new. Three consecutive
+// identical rounds (same tool calls, same results) = a stall; the first two
+// stalls force a strategy pivot, the third forces one concrete question to the
+// user — never a silent surrender, never an infinite burn.
+const OVERDRIVE_PIVOT_TEXT =
+  "<system-reminder>OVERDRIVE stall: your last rounds repeated the same actions with the same results. This approach is not working — abandon it entirely and try a genuinely different strategy (different tool, different angle, different decomposition). Do not re-issue the failing action.</system-reminder>";
+
+const OVERDRIVE_ASK_TEXT =
+  "<system-reminder>OVERDRIVE stall: strategy pivots have not produced progress either. Stop attempting now. Ask the user ONE concrete question with AskUserQuestion: state what you are trying to achieve, what keeps failing and why you think so, and offer the options you see (with your recommendation). If asking is unavailable (you are a subagent), end the turn instead with a clear report of the blocker.</system-reminder>";
+
+// The OVERDRIVE end check. Deliberately generic: it judges only against the
+// user's query — it must never assume builds, tests, or any other ritual, and
+// the model decides what evidence the query itself calls for.
+// The OVERDRIVE system-prompt section. The autonomy contract: plan first,
+// think in consequences, evidence stays query-shaped, ask only rubric-worthy
+// questions, clean up after yourself, do not stop until the query is handled.
+const OVERDRIVE_PROMPT_SECTION = `# OVERDRIVE — fully-autonomous mode
+You own this query end to end: plan, act, verify, deliver — without stopping for routine approval.
+- Plan first: for any multi-step request, lay out the task plan with TaskCreate — one task per step, the last a verification task stating the expected end state — before making changes. Trivial requests: just do them.
+- Think ahead: before each consequential action, weigh its consequences. Prefer the smallest change that truly serves the query; optimize your path and skip ceremony the query does not need.
+- Evidence is query-shaped: verify in whatever way the query itself calls for. Never invent verification rituals (builds, tests, linters) for work that does not ask for them.
+- Ask the user ONLY when the answer changes the design, is irreversible, or reaches outside the workspace — the test: would a reasonable user be upset if you guessed wrong? Everything else you decide yourself and note in your wrap-up.
+- Deletions inside the workspace run without prompting. That is license to clean up after yourself, not to be careless; anything outside the workspace still asks.
+- Do not stop early: the turn ends only when every part of the query is handled and your self-check passes.`;
+
+const OVERDRIVE_SELF_VERIFY_TEXT =
+  "<system-reminder>OVERDRIVE internal self-check — this is NOT a new user message and the user is NOT waiting for another reply. Your entire output for this step must be either the single word DONE or continued work. Nothing else. Do not greet, do not re-answer, do not summarize, do not introduce yourself.\n\nDecide silently: is every part of the user's original query already fully handled (a conversational message with nothing to do counts as handled), and did this turn leave nothing unnecessary behind (scratch files, duplicated helpers, abandoned attempts)?\n- If YES → output exactly: DONE\n- If NO → do the remaining work now (call tools / write the fix / clean up). Whatever you write in this case IS shown to the user; the DONE token never is.\n\nJudge only against the query itself — never invent verification rituals (builds, tests) it did not ask for.</system-reminder>";
+
+/** The machine-read sentinel a self-verify round answers with when nothing is left to do. */
+const SELF_VERIFY_DONE_RE = /^\s*DONE[.!…]?\s*$/i;
 
 const PLAN_FIRST_REMINDER =
   "The task list is empty. If this request needs more than a couple of steps, first create a plan with TaskCreate — one task per step, the last one a verification task stating the expected end state — before making any edits. Trivial requests can proceed directly.";
@@ -110,10 +142,8 @@ export interface SessionOptions {
   /** Overrides the assembled system prompt (used by subagents). */
   systemPromptOverride?: string;
   skills?: Skill[];
-  /** Extra prompt sections appended (e.g. plan-mode instructions). */
+  /** Extra prompt sections appended to the system prompt. */
   extraPromptSections?: string[];
-  /** Blocks awaiting the frontend's plan_decision after a plan_ready event. */
-  requestPlanDecision?: () => Promise<PlanDecisionResult>;
   /**
    * Share an existing PermissionEngine instead of building one (subagents get
    * their parent's): session-allows granted during one specialist run hold for
@@ -196,6 +226,17 @@ export class Session {
    * run; propagated to every child this session spawns.
    */
   private unattended = false;
+  /**
+   * OVERDRIVE: the fully-autonomous turn-loop policy. When on, the per-turn
+   * iteration/token caps and the auto-nudge ceiling are lifted, the reuse gate
+   * only reminds, and a turn may not end until it passes the self-verify rung.
+   * Session-scoped, persisted in the meta snapshot so /resume restores it.
+   */
+  private overdrive = false;
+  /** While true, streamAssistantTurn accumulates text/thinking but does not
+   *  emit it — used to run the OVERDRIVE self-verify round silently so a clean
+   *  "DONE" never reaches the UI as a second message. */
+  private suppressAssistantText = false;
   /** Usage totals of the most recently completed turn (undefined before the first turn ends). */
   lastTurnUsage: Usage | undefined;
   /** User-assigned session name (rename_session); persisted in the meta snapshot. */
@@ -207,7 +248,6 @@ export class Session {
   /** True once the first-turn `/atlas` hint has fired (once per session, never for subagents). */
   private atlasHintFired = false;
   private readonly hooks: HookRunner | undefined;
-  private planFile: string | undefined;
   /** Reuse gate: tokenized record of related searches/queries made this session. */
   private readonly searchLog = new SearchLog();
   /** Reuse gate: target paths already refused once, so the confirm-retry passes. */
@@ -334,12 +374,8 @@ export class Session {
       },
       spawnAgent: (o) => this.spawnAgent(o),
       runInference: (o) => this.runInference(o),
-      setMode: (m) => this.setMode(m),
-      setPlanFile: (p) => this.setPlanFile(p),
-      getPlanFile: () => this.planFile,
       setPromptSection: (k, t) => this.setPromptSection(k, t),
       addSessionAllow: (tool, subject) => this.permissions.addSessionAllow(tool, subject),
-      requestPlanDecision: () => this.requestPlanDecision(),
       settings: this.settings,
       usedOutputTokens: () => this.stats.totalUsage().outputTokens,
       stateDir: this.stateDir,
@@ -383,23 +419,6 @@ export class Session {
     this.transcript.append({ kind: "message", message: msg });
   }
 
-  setMode(mode: PermissionMode): void {
-    this.permissions.setMode(mode);
-    this.emit({ type: "mode_changed", mode });
-  }
-
-  /** Sets (or clears) the plan file the model may Write/Edit while in plan mode. */
-  setPlanFile(path: string | undefined): void {
-    if (this.planFile) {
-      this.permissions.removeSessionAllow(`Write(${this.planFile})`);
-      this.permissions.removeSessionAllow(`Edit(${this.planFile})`);
-    }
-    this.planFile = path;
-    if (path) {
-      this.permissions.addSessionAllow("Write", path);
-      this.permissions.addSessionAllow("Edit", path);
-    }
-  }
 
   setPromptSection(key: string, text: string | undefined): void {
     if (text === undefined) this.dynamicSections.delete(key);
@@ -422,10 +441,71 @@ export class Session {
     );
   }
 
-  private requestPlanDecision(): Promise<PlanDecisionResult> {
-    return this.opts.requestPlanDecision
-      ? this.opts.requestPlanDecision()
-      : Promise.reject(new Error("no plan-decision channel is wired for this session"));
+  /** The permission mode that was active when OVERDRIVE engaged, for restore on disable. */
+  private modeBeforeOverdrive: PermissionMode | undefined;
+
+  /** OVERDRIVE toggle. Emits the state change so every frontend can sync its indicator. */
+  setOverdrive(enabled: boolean): void {
+    if (this.overdrive === enabled) return;
+    this.overdrive = enabled;
+    this.permissions.setOverdrive(enabled);
+    this.setPromptSection("overdrive", enabled ? OVERDRIVE_PROMPT_SECTION : undefined);
+    // The mode's contract is "nothing blocks the flow" — a default-mode ask
+    // prompt would. Engaging raises the permission floor to bypass; disabling
+    // restores the prior mode unless the user changed it mid-run themselves.
+    if (enabled) {
+      this.modeBeforeOverdrive = this.permissions.getMode();
+      if (this.modeBeforeOverdrive !== "bypass") {
+        this.permissions.setMode("bypass");
+        this.emit({ type: "mode_changed", mode: "bypass" });
+      }
+    } else {
+      if (this.modeBeforeOverdrive !== undefined && this.permissions.getMode() === "bypass") {
+        this.permissions.setMode(this.modeBeforeOverdrive);
+        this.emit({ type: "mode_changed", mode: this.modeBeforeOverdrive });
+      }
+      this.modeBeforeOverdrive = undefined;
+    }
+    this.emit({ type: "overdrive_changed", enabled });
+  }
+
+  /** Mid-run steering: queue user text for injection at the running turn's
+   *  next message boundary. Steering re-arms the self-verify rung and resets
+   *  spent strategy pivots — new guidance is new information. */
+  private readonly pendingSteering: string[] = [];
+
+  steer(text: string): void {
+    this.pendingSteering.push(text);
+    this.emit({ type: "command_output", text: "⚡ steering — your message joins the running turn at its next step" });
+  }
+
+  isOverdrive(): boolean {
+    return this.overdrive;
+  }
+
+  /** The last pre-turn OVERDRIVE snapshot: a dangling stash commit ref, or
+   *  undefined when the tree was clean (HEAD is the snapshot) or not a repo. */
+  private overdriveSnapshotRef: string | undefined;
+
+  private async snapshotForOverdrive(): Promise<void> {
+    this.overdriveSnapshotRef = undefined;
+    if (!existsSync(join(this.cwd, ".git"))) return;
+    try {
+      const ref = await new Promise<string>((res, rej) => {
+        execFile(
+          "git",
+          ["stash", "create", "overdrive pre-turn snapshot"],
+          { cwd: this.cwd, timeout: 10_000 },
+          (err, stdout) => (err ? rej(err) : res(stdout.trim())),
+        );
+      });
+      // Empty output = clean working tree; git gc keeps the dangling commit
+      // reachable long enough for session-scale recovery. Tracked files only —
+      // `git stash create` cannot see untracked ones.
+      this.overdriveSnapshotRef = ref || undefined;
+    } catch {
+      // The net is best-effort; a failed snapshot must never block the turn.
+    }
   }
 
   /** One-shot completion on the small model, no tools; returns concatenated text. */
@@ -530,10 +610,17 @@ export class Session {
       }
     }
     const baseSettings = crew ? { ...this.settings, model: crewModel ?? this.settings.model } : this.settings;
+    // OVERDRIVE children inherit the lifted budgets — a capped child inside an
+    // uncapped run is a hidden stop. Budgets only: the child gets no self-verify
+    // rung or prompt section (its parent judges its result), and an explicit
+    // spawn-time iteration cap (e.g. the atlas pipeline's) still wins.
+    const liftedSettings = this.overdrive
+      ? { ...baseSettings, maxIterationsPerTurn: Number.MAX_SAFE_INTEGER, maxTokensPerTurn: Number.MAX_SAFE_INTEGER }
+      : baseSettings;
     const childSettings =
       opts.maxIterations !== undefined
-        ? { ...baseSettings, maxIterationsPerTurn: opts.maxIterations }
-        : baseSettings;
+        ? { ...liftedSettings, maxIterationsPerTurn: opts.maxIterations }
+        : liftedSettings;
     const stamp = crew
       ? {
           ...(crew.color !== undefined ? { agentColor: crew.color } : {}),
@@ -580,9 +667,6 @@ export class Session {
       requestApproval: this.opts.requestApproval,
       askUser: async () => {
         throw new Error("subagents cannot ask the user — decide or report back");
-      },
-      requestPlanDecision: async () => {
-        throw new Error("subagents cannot use plan mode");
       },
       systemPromptOverride: system,
       // The child shares this session's PermissionEngine: an "always allow
@@ -998,6 +1082,12 @@ export class Session {
 
     this.emit({ type: "turn_started", turnId });
 
+    // OVERDRIVE safety net: before an uncapped autonomous turn starts, park a
+    // dangling stash commit of the working tree so anything an in-workspace
+    // deletion later removes stays recoverable. Root sessions only — children
+    // share the same tree.
+    if (this.overdrive && !this.opts.child) await this.snapshotForOverdrive();
+
     // Zero-cost first-turn hint: point the user at `/atlas` when this workspace
     // has no atlas (or a stale machine-owned one). Fires once per session, never
     // for subagents, and is cheap (one file read + at most one git call) — it
@@ -1017,11 +1107,50 @@ export class Session {
     let stopHookFired = false;
     let lastBatchHadError = false;
     let nudgeCount = 0;
+    // OVERDRIVE: the signal-driven recovery rungs (length cutoff, failed batch,
+    // open tasks) may fire without limit — giving up after three saves is
+    // itself a stop. The wrap-up rung keeps the cap; the self-verify rung
+    // demands a proper closing statement in this mode anyway.
+    const nudgeLimit = this.overdrive ? Number.POSITIVE_INFINITY : MAX_AUTO_NUDGES;
+    // Once per turn (re-armed when mid-run steering arrives): the OVERDRIVE
+    // end check that gates a clean break on "is the query truly handled".
+    let selfVerifyFired = false;
+    // True for exactly the one streamed response that answers the self-verify
+    // injection — that response is buffered (not shown live) so a clean DONE
+    // stays invisible and only genuine follow-up work reaches the user.
+    let verifyBuffered = false;
+    // OVERDRIVE stall detector state: the previous round's signature (tool
+    // calls + results), how many consecutive rounds matched it, and how many
+    // strategy pivots have been spent (2 pivots, then ask the user).
+    let lastRoundSig = "";
+    let identicalRounds = 0;
+    let pivotCount = 0;
     let totalToolCallsThisTurn = 0;
     let wroteOrEditedThisTurn = false;
+    // Mid-run steering drain: injects queued user guidance at a message
+    // boundary. New guidance re-arms the self-verify rung and refunds spent
+    // pivots — the user changed the game, so the old stall evidence is void.
+    const drainSteering = (): boolean => {
+      if (this.pendingSteering.length === 0) return false;
+      const texts = this.pendingSteering.splice(0);
+      selfVerifyFired = false;
+      pivotCount = 0;
+      identicalRounds = 0;
+      lastRoundSig = "";
+      this.pushMessage({
+        role: "user",
+        content: texts.map((t) => ({
+          type: "text" as const,
+          text: `<system-reminder>The user adds, mid-run — steer the ongoing work accordingly:</system-reminder>\n${t}`,
+        })),
+      });
+      return true;
+    };
     try {
       for (let iteration = 0; ; iteration++) {
-        if (iteration >= this.settings.maxIterationsPerTurn) {
+        // OVERDRIVE lifts the per-turn budgets entirely: the turn runs until
+        // the query is handled (self-verify rung) or the user interrupts.
+        if (!this.overdrive && iteration >= this.settings.maxIterationsPerTurn) {
           this.emit({
             type: "command_output",
             text: `⏸ Iteration cap reached (${iteration} tool rounds) — send any message to continue.`,
@@ -1029,13 +1158,17 @@ export class Session {
           stopReason = "max_iterations";
           break;
         }
-        if (turnUsage.outputTokens > this.settings.maxTokensPerTurn) {
+        if (!this.overdrive && turnUsage.outputTokens > this.settings.maxTokensPerTurn) {
           this.emit({
             type: "command_output",
             text: `⏸ Turn token budget reached (${turnUsage.outputTokens} output tokens) — send any message to continue.`,
           });
           break;
         }
+
+        // Steering that arrived while tools ran lands before the next model
+        // call — the earliest boundary the protocol has.
+        drainSteering();
 
         const { assistant, toolCalls, end } = await this.streamAssistantTurn(signal);
         // turnUsage ACCUMULATES (it is billed cost for this turn). The context
@@ -1046,10 +1179,33 @@ export class Session {
         turnUsage.cacheReadTokens += end.usage.cacheReadTokens;
         turnUsage.cacheWriteTokens += end.usage.cacheWriteTokens;
 
+        // OVERDRIVE self-verify result: this one response was streamed silently.
+        // A bare DONE means the query was already handled — end the turn with
+        // no second message. Anything else is genuine follow-up work or a
+        // revised answer, so reveal the buffered text now and let it flow.
+        if (verifyBuffered) {
+          verifyBuffered = false;
+          this.suppressAssistantText = false;
+          const verifyText = assistantText(assistant).trim();
+          if (toolCalls.length === 0 && SELF_VERIFY_DONE_RE.test(verifyText)) {
+            // Record the sentinel so history stays well-formed; it is never
+            // rendered. The user's single original answer stands as the reply.
+            if (assistant.content.length > 0) this.pushMessage(assistant);
+            this.emit({ type: "command_output", text: "✓ overdrive: verified — nothing left to do" });
+            stopReason = "end_turn";
+            break;
+          }
+          if (verifyText) this.emit({ type: "text_delta", text: verifyText });
+        }
+
         if (assistant.content.length > 0) this.pushMessage(assistant);
         stopReason = end.stopReason;
 
         if (toolCalls.length === 0) {
+          // Pending steering outranks every end-of-turn decision: the user's
+          // mid-run guidance must be acted on, not dropped by a clean break.
+          if (drainSteering()) continue;
+
           if (stopReason === "end_turn" && !stopHookFired && this.hooks?.has("Stop")) {
             stopHookFired = true;
             const summary = this.hooks.summarize(
@@ -1073,7 +1229,7 @@ export class Session {
           // LAYER 3: the provider cut the response off at the output-token
           // limit with no tool calls pending — resume rather than ending the
           // turn on a truncated answer.
-          if (stopReason === "max_tokens" && nudgeCount < MAX_AUTO_NUDGES) {
+          if (stopReason === "max_tokens" && nudgeCount < nudgeLimit) {
             nudgeCount++;
             this.emit({ type: "command_output", text: "↻ continuing after output-length cutoff" });
             this.pushMessage({ role: "user", content: [{ type: "text", text: LENGTH_CONTINUATION_TEXT }] });
@@ -1104,7 +1260,7 @@ export class Session {
           // models sometimes bury a failure under a long non-answer. Nudge
           // it to keep going, capped so a persistently failing model still
           // terminates.
-          if (stopReason === "end_turn" && lastBatchHadError && nudgeCount < MAX_AUTO_NUDGES) {
+          if (stopReason === "end_turn" && lastBatchHadError && nudgeCount < nudgeLimit) {
             nudgeCount++;
             this.emit({
               type: "command_output",
@@ -1118,7 +1274,7 @@ export class Session {
           // pending or in-progress work — nudge the model to finish or
           // explicitly justify leaving it open. Checked after error-recovery
           // (a failure takes priority) and before the wrap-up nudge.
-          if (stopReason === "end_turn" && !lastBatchHadError && nudgeCount < MAX_AUTO_NUDGES) {
+          if (stopReason === "end_turn" && !lastBatchHadError && nudgeCount < nudgeLimit) {
             const incomplete = this.tasks.list().filter((t) => t.status === "pending" || t.status === "in_progress");
             if (incomplete.length > 0) {
               nudgeCount++;
@@ -1126,6 +1282,21 @@ export class Session {
               this.pushMessage({ role: "user", content: [{ type: "text", text: incompleteTasksNudgeText(incomplete) }] });
               continue;
             }
+          }
+
+          // OVERDRIVE self-verify rung: the first time the turn tries to end
+          // cleanly, make the model check the outcome against the original
+          // query (completeness + economy) before the break is allowed. Runs
+          // after the signal rungs above — a real failure or open task list
+          // always outranks a politeness check — and before the wrap-up rung,
+          // which it subsumes in this mode.
+          if (this.overdrive && stopReason === "end_turn" && !selfVerifyFired) {
+            selfVerifyFired = true;
+            verifyBuffered = true;
+            this.suppressAssistantText = true; // the verify answer streams silently
+            this.emit({ type: "command_output", text: "⚡ overdrive: self-verifying against the original query" });
+            this.pushMessage({ role: "user", content: [{ type: "text", text: OVERDRIVE_SELF_VERIFY_TEXT }] });
+            continue;
           }
 
           // LAYER 1: the turn did substantial tool-driven work but ended on a
@@ -1162,12 +1333,32 @@ export class Session {
           this.remind(ERROR_BATCH_REMINDER);
           for (const text of this.opts.modeEngine?.afterErrorInjections() ?? []) this.remind(text);
         }
+        // OVERDRIVE stall detector: a round that exactly repeats the previous
+        // one (same calls, same results) produced nothing new. Three in a row
+        // is a stall — force a strategy pivot; after two spent pivots, force
+        // one concrete question to the user instead of burning forever.
+        if (this.overdrive) {
+          const sig = JSON.stringify([toolCalls.map((c) => c.name + c.json), results]);
+          identicalRounds = sig === lastRoundSig ? identicalRounds + 1 : 0;
+          lastRoundSig = sig;
+          if (identicalRounds >= 2) {
+            identicalRounds = 0;
+            if (pivotCount < 2) {
+              pivotCount++;
+              this.emit({ type: "command_output", text: `⚡ overdrive: stall detected — forcing strategy pivot ${pivotCount}/2` });
+              this.remind(OVERDRIVE_PIVOT_TEXT);
+            } else {
+              this.emit({ type: "command_output", text: "⚡ overdrive: still stalled after pivots — asking the user" });
+              this.remind(OVERDRIVE_ASK_TEXT);
+            }
+          }
+        }
         // These results are read in round iteration+1; the last round that
         // streams before the cap breaks the loop is cap-1. Warn the model ON
         // that final round (teaching, not enforcement): a weak model that
         // over-explores otherwise ends the turn cut off mid-exploration with
         // no final answer — the atlas build was the canonical casualty.
-        if (iteration === this.settings.maxIterationsPerTurn - 2) {
+        if (!this.overdrive && iteration === this.settings.maxIterationsPerTurn - 2) {
           this.remind(
             "Final tool round: the per-turn iteration cap is reached after this response. Give your complete final answer now — further tool calls will be cut off.",
           );
@@ -1214,6 +1405,8 @@ export class Session {
       }
     } finally {
       this.busy = false;
+      // A turn that died mid-self-verify must not leave the next turn muted.
+      this.suppressAssistantText = false;
       this.abortController = undefined;
       this.lastTurnUsage = turnUsage;
       const totalCostUsd = this.stats.totalCost(this.settings);
@@ -1224,6 +1417,9 @@ export class Session {
         usage: turnUsage,
         contextTokens: this.stats.contextTokens,
         ...(totalCostUsd !== undefined ? { totalCostUsd } : {}),
+        ...(this.overdrive && this.overdriveSnapshotRef !== undefined
+          ? { overdriveSnapshot: this.overdriveSnapshotRef }
+          : {}),
       });
       // Snapshot the tree-wide ledger + mode so /resume restores real
       // accounting instead of a $0.00 session. Children share the root's
@@ -1235,6 +1431,7 @@ export class Session {
             stats: this.stats.snapshot(),
             mode: this.permissions.getMode(),
             model: this.settings.model,
+            overdrive: this.overdrive,
             ...(this.label !== undefined ? { label: this.label } : {}),
           },
         });
@@ -1277,11 +1474,11 @@ export class Session {
       switch (event.type) {
         case "text_delta":
           text += event.text;
-          this.emit({ type: "text_delta", text: event.text });
+          if (!this.suppressAssistantText) this.emit({ type: "text_delta", text: event.text });
           break;
         case "thinking_delta":
           thinking += event.text;
-          this.emit({ type: "thinking_delta", text: event.text });
+          if (!this.suppressAssistantText) this.emit({ type: "thinking_delta", text: event.text });
           break;
         case "tool_use_start":
           toolCalls.push({ id: event.id, name: event.name, json: "" });
@@ -1386,7 +1583,12 @@ export class Session {
           }
           if (tool.name === "Write") {
             const gate = this.evaluateWriteReuseGate(input);
-            if (gate.kind === "block") return { content: gate.text, isError: true };
+            // OVERDRIVE never blocks the flow: a would-be block becomes the
+            // same text as a reminder — the signal survives, the refusal doesn't.
+            if (gate.kind === "block") {
+              if (!this.overdrive) return { content: gate.text, isError: true };
+              this.remind(gate.text);
+            }
             if (gate.kind === "remind") this.remind(gate.text);
           }
           if (this.hooks?.has("PreToolUse")) {
@@ -1403,7 +1605,16 @@ export class Session {
               return { content: "PreToolUse hook blocked this call: " + summary.blockReason, isError: true };
             }
           }
-          const outcome = await this.permissions.check(tool, input, subject, description);
+          const outcome = await this.permissions.check(
+            tool,
+            input,
+            subject,
+            description,
+            // Computed in every mode: the "protected" verdict (.magentra state
+            // dirs) must hold even outside OVERDRIVE. The tool sees its own
+            // effective cwd via the context.
+            tool.deletionScope?.(input, { ...this.toolContext(), callId: call.id }),
+          );
           if (outcome.source !== "user") {
             this.transcript.append({
               kind: "permission",
@@ -1545,7 +1756,6 @@ export class Session {
         (p) => this.fileState.wasRead(p),
         this.reuseBlocked,
         () => this.loadSymbolIndex(),
-        this.planFile,
       );
     } catch {
       return { kind: "pass" };
@@ -1688,10 +1898,15 @@ function finalAssistantText(session: Session): string {
 }
 
 /** Total length of the text blocks in an assistant message (used to detect a bare give-up). */
-function assistantTextLength(msg: Msg): number {
+function assistantText(msg: Msg): string {
   return msg.content
     .filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text")
-    .reduce((sum, b) => sum + b.text.length, 0);
+    .map((b) => b.text)
+    .join("");
+}
+
+function assistantTextLength(msg: Msg): number {
+  return assistantText(msg).length;
 }
 
 /** Builds the incomplete-task nudge text listing each pending/in-progress task. */

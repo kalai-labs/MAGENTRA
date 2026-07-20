@@ -68,17 +68,16 @@ function isTestPath(base: string, dirSegments: string[]): boolean {
  *  3. under a skip-dir (dot-dirs, node_modules, dist, …) or   → pass
  *     outside the workspace
  *  4. test/fixture file                                       → pass
- *  5. the plan file                                           → pass
- *  6. file already exists (overwrite — Write freshness rules) → pass
- *  7. the target was Read this session (recreate a deletion)  → pass
- *  8. already blocked once (the confirm-retry)                → pass
- *  9. no candidate tokens from content+stem (index not even   → pass
+ *  5. file already exists (overwrite — Write freshness rules) → pass
+ *  6. the target was Read this session (recreate a deletion)  → pass
+ *  7. already blocked once (the confirm-retry)                → pass
+ *  8. no candidate tokens from content+stem (index not even   → pass
  *     loaded before here)
- * 10. a related term was searched/queried this session        → pass
- * 11. one of the top matches was Read this session            → pass
- * 12. best score ≥ blockThreshold and mode `gate`             → BLOCK (record once)
- * 13. best score ≥ remindThreshold (or ≥ block in `remind`)   → REMIND
- * 14. otherwise                                               → pass
+ *  9. a related term was searched/queried this session        → pass
+ * 10. one of the top matches was Read this session            → pass
+ * 11. best score ≥ blockThreshold and mode `gate`             → BLOCK (record once)
+ * 12. best score ≥ remindThreshold (or ≥ block in `remind`)   → REMIND
+ * 13. otherwise                                               → pass
  */
 export function evaluateReuseGate(
   cwd: string,
@@ -89,7 +88,6 @@ export function evaluateReuseGate(
   wasRead: (path: string) => boolean,
   alreadyBlocked: Set<string>,
   loadIndex: () => SymbolIndexData,
-  planFile?: string,
 ): ReuseGateResult {
   if (cfg.mode === "off") return PASS; // 1
 
@@ -104,17 +102,16 @@ export function evaluateReuseGate(
 
   const base = basename(abs);
   if (isTestPath(base, dirSegments)) return PASS; // 4
-  if (planFile && resolve(cwd, planFile) === abs) return PASS; // 5
-  if (existsSync(abs)) return PASS; // 6
-  if (wasRead(abs)) return PASS; // 7
-  if (alreadyBlocked.has(abs)) return PASS; // 8
+  if (existsSync(abs)) return PASS; // 5
+  if (wasRead(abs)) return PASS; // 6
+  if (alreadyBlocked.has(abs)) return PASS; // 7
 
   const stem = base.replace(/\.[^.]+$/, "");
   const candidates = [...extractSymbols(abs, content), stem];
   const candidateTokens = [...new Set(candidates.flatMap(tokensOf))];
-  if (candidateTokens.length === 0) return PASS; // 9
+  if (candidateTokens.length === 0) return PASS; // 8
 
-  if (searchLog.overlaps(candidateTokens)) return PASS; // 10
+  if (searchLog.overlaps(candidateTokens)) return PASS; // 9
 
   // Index loaded lazily only past here; fail open if it throws (never wrongly block).
   let index: SymbolIndexData;
@@ -130,18 +127,18 @@ export function evaluateReuseGate(
     maxHits: cfg.maxHits,
     minScore: cfg.remindThreshold,
   });
-  if (hits.length === 0) return PASS; // 14 (nothing similar enough)
-  if (hits.some((h) => wasRead(join(cwd, h.file)))) return PASS; // 11
+  if (hits.length === 0) return PASS; // 13 (nothing similar enough)
+  if (hits.some((h) => wasRead(join(cwd, h.file)))) return PASS; // 10
 
   const best = hits[0]!.score;
   if (cfg.mode === "gate" && best >= cfg.blockThreshold) {
-    alreadyBlocked.add(abs); // 12 — the confirm-retry will pass at row 8
+    alreadyBlocked.add(abs); // 11 — the confirm-retry will pass at row 7
     return { kind: "block", text: blockMessage(hits, rel) };
   }
   if (best >= cfg.remindThreshold) {
-    return { kind: "remind", text: remindMessage(hits, rel) }; // 13
+    return { kind: "remind", text: remindMessage(hits, rel) }; // 12
   }
-  return PASS; // 14
+  return PASS; // 13
 }
 
 /** `- <relPath> — <symbols> (0.87)` lines for the closest existing matches. */

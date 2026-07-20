@@ -22,7 +22,12 @@ const TOUR_STEPS = [
   {
     target: "#permissionMenuBtn",
     title: "You control the permissions",
-    copy: "Ask before changes reviews consequential commands first. Autonomous applies edits automatically. Plan only reads and explains without touching files. Deletions always ask.",
+    copy: "Ask before changes reviews consequential commands first. Autonomous applies edits automatically. Deletions always ask.",
+  },
+  {
+    target: "#overdriveBtn",
+    title: "OVERDRIVE",
+    copy: "Flip this for a fully autonomous run — no caps, self-verifying, deletes inside the workspace without asking. Keep typing to steer it mid-run; Esc stops it.",
   },
   {
     target: "#modelSelect",

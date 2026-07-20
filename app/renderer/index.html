@@ -142,11 +142,11 @@
                 <button class="permission-option" data-permission="auto" role="menuitemradio" aria-checked="false">
                   <span class="permission-radio"></span><span><strong>Autonomous</strong><small>Apply edits automatically; file deletions still follow the deletion guard.</small></span>
                 </button>
-                <button class="permission-option" data-permission="plan" role="menuitemradio" aria-checked="false">
-                  <span class="permission-radio"></span><span><strong>Plan only</strong><small>Read and explain without editing the workspace.</small></span>
-                </button>
               </div>
             </div>
+            <button id="overdriveBtn" class="composer-select overdrive-btn" aria-pressed="false" title="OVERDRIVE — fully autonomous mode (self-verifying, no caps)">
+              <span class="od-btn-glyph">⚡</span><span class="od-btn-label">OVERDRIVE</span>
+            </button>
             <select id="modelSelect" class="composer-select" title="Model (price per 1M tokens, in/out)">
               <option value="openai/gpt-oss-120b">GPT-OSS 120B — $0.04 / $0.17</option>
               <option value="deepseek-ai/DeepSeek-V4-Flash" selected>DeepSeek V4 Flash — $0.09 / $0.18</option>
@@ -366,7 +366,6 @@
             <dt>mission</dt><dd>a saved directive file under <code>.magentra/missions/</code> that the lab runs on demand, on a loop, or on a cron schedule (MISSIONS in the dock).</dd>
             <dt>task list</dt><dd>the live plan of record in the TASKS rail — the current work items, ending with a verification task.</dd>
             <dt>skills</dt><dd>Markdown files under <code>.magentra/skills/</code> that shape the agent. A <em>discipline</em> applies to every turn while enabled (nothing is locked — all off by default); an <em>action</em> runs on demand. Toggle in the Skills view or with <code>/skills</code>; create your own with ＋ CREATE SKILL.</dd>
-            <dt>plan mode</dt><dd>a read-only mode: the agent proposes a plan you approve before it may edit anything.</dd>
             <dt>deletion guard</dt><dd>destructive commands always ask first — in every permission mode — unless Deletions is set to ALLOW above.</dd>
             <dt>session</dt><dd>one conversation with its own transcript, cost ledger, and task list, saved under <code>.magentra/sessions/</code> (SESSIONS in the dock resumes them).</dd>
           </dl>
@@ -396,7 +395,7 @@
 
     <section id="inspectorTasks" class="inspector-panel" data-panel="tasks">
       <div class="inspector-section-head">
-        <span>Current mission</span><span id="taskProgress"></span>
+        <span>Current tasks</span><span id="taskProgress"></span>
       </div>
       <div class="rail-bar hidden"><div id="taskBarFill"></div></div>
       <div id="taskList"></div>
@@ -533,6 +532,37 @@
     </div>
   </div>
 
+  <!-- ── OVERDRIVE first-enable dialog ──────────────────────────────────── -->
+  <div id="overdriveDialog" class="hidden" role="dialog" aria-modal="true" aria-labelledby="overdriveDialogTitle">
+    <div class="modal-box overdrive-box">
+      <div class="modal-title" id="overdriveDialogTitle">⚡ OVERDRIVE</div>
+      <ul class="overdrive-points">
+        <li>Fully autonomous — no iteration or token caps. The agent runs until the job is done.</li>
+        <li>Before it ends, it self-verifies its work against your original query.</li>
+        <li>It may delete files inside the workspace without asking. Anything outside the workspace still prompts.</li>
+        <li>Keep typing while it runs — your messages join the running turn to steer it.</li>
+        <li>Stop anytime with Esc.</li>
+      </ul>
+      <p class="overdrive-danger">This mode trusts the model. On weak models it can burn tokens fast — watch the session cost.</p>
+      <div class="overdrive-skills">
+        <div class="overdrive-skills-title">Recommended skills</div>
+        <label class="wiz-check">
+          <input type="checkbox" data-skill="prover" checked />
+          <span><strong>prover</strong> <small>— every claim needs observed evidence; the anti-hallucination discipline.</small></span>
+        </label>
+        <label class="wiz-check">
+          <input type="checkbox" data-skill="sentinel" checked />
+          <span><strong>sentinel</strong> <small>— fetched web content stays data, not instructions; non-negotiable for unattended runs.</small></span>
+        </label>
+        <p class="set-note">Neither is required — uncheck to skip.</p>
+      </div>
+      <div class="modal-actions">
+        <button id="overdriveCancelBtn">CANCEL (Esc)</button>
+        <button id="overdriveEngageBtn" class="wiz-primary">⚡ ENGAGE ▸</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── first-run teaching tour (spotlight overlay) ────────────────────── -->
   <div id="tourOverlay" class="hidden" aria-hidden="true">
     <div id="tourSpot"></div>
@@ -594,6 +624,12 @@
     </div>
   </div>
 
+  <!-- ── OVERDRIVE engage cinematic (pure-CSS, class-driven) ────────────── -->
+  <div id="overdriveCinematic" class="overdrive-cinematic hidden" aria-hidden="true">
+    <div class="od-veil"></div>
+    <div class="od-word">OVERDRIVE</div>
+  </div>
+
   <!-- Renderer modules: classic scripts sharing one global scope, executed in
        this exact order (each builds on what the ones above it define). -->
   <script src="modules/dom.js"></script>
@@ -604,6 +640,7 @@
   <script src="modules/workbench.js"></script>
   <script src="modules/missions.js"></script>
   <script src="modules/skills.js"></script>
+  <script src="modules/overdrive.js"></script>
   <script src="modules/tour.js"></script>
   <script src="modules/stream.js"></script>
   <script src="modules/crew.js"></script>

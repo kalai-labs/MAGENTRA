@@ -39,12 +39,6 @@ export interface SpawnAgentOptions {
   };
 }
 
-export interface PlanDecisionResult {
-  approve: boolean;
-  editedPlan?: string;
-  message?: string;
-}
-
 /** Services a tool can reach through its context. */
 export interface SessionServices {
   emit(event: CoreEvent): void;
@@ -59,17 +53,10 @@ export interface SessionServices {
   spawnAgent(opts: SpawnAgentOptions): Promise<string>;
   /** One-shot model call (small model) used by WebFetch to digest a page. */
   runInference(opts: { system: string; user: string; maxTokens: number }): Promise<string>;
-  /** Switch permission mode and emit mode_changed. */
-  setMode(mode: PermissionMode): void;
-  /** Set (or clear, with undefined) the plan file the model may Write/Edit in plan mode. */
-  setPlanFile(path: string | undefined): void;
-  getPlanFile(): string | undefined;
   /** Add or (with undefined text) remove a keyed dynamic system-prompt section. */
   setPromptSection(key: string, text: string | undefined): void;
   /** Add a session-scoped allow rule (subject "*" or undefined allows any subject). */
   addSessionAllow(tool: string, subject?: string): void;
-  /** Block until the frontend responds to a plan_ready event. */
-  requestPlanDecision(): Promise<PlanDecisionResult>;
   settings: Settings;
   /** Output tokens billed to the whole session tree so far — lets a workflow enforce its token budget. */
   usedOutputTokens(): number;
@@ -117,6 +104,18 @@ export interface ToolDefinition<I = unknown> {
    * session allows — see PermissionEngine.check.
    */
   deletionSubject?: (input: I) => string | undefined;
+  /**
+   * Scope classifier for a call already flagged by deletionSubject:
+   * "workspace" when every deletion target provably resolves inside the
+   * session workspace — such calls skip the deletion guard while OVERDRIVE is
+   * active. "protected" when a target is a `.magentra` state directory —
+   * such calls ALWAYS ask, in every mode, beating the "allow deletions"
+   * setting, explicit allow rules, and OVERDRIVE. Anything unprovable is
+   * "unknown" and keeps the ordinary guard. Receives the tool context because
+   * only the tool knows its own effective cwd (Bash tracks `cd` across
+   * calls). Absent = always "unknown".
+   */
+  deletionScope?: (input: I, ctx: ToolContext) => "workspace" | "unknown" | "protected";
   /** Max bytes of result kept in history before truncation. Default 40_000. */
   outputByteLimit?: number;
   /** File-editing tools are auto-approved in acceptEdits mode. */

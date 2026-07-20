@@ -107,6 +107,13 @@ const DEFAULT_UI_SETTINGS = {
   // calls (rm, force-push, drop table, terraform destroy, …) still prompt.
   // Turning `deletions` to "allow" as well is what removes every prompt.
   commands: "auto", // "auto" (autonomous) | "ask" (approval before consequential tools)
+  // OVERDRIVE: fully autonomous mode (no iteration/token caps, self-verifying,
+  // mid-run steering). Persisted so it survives a reload and re-asserts itself
+  // on the next engine link, exactly like the safety toggles above.
+  overdrive: false,
+  // First-enable teaching dialog is shown once, ever; after that, flipping the
+  // composer toggle on engages the mode directly.
+  overdriveIntroSeen: false,
 };
 
 function loadUiSettings() {
@@ -118,6 +125,11 @@ function loadUiSettings() {
     saved = {};
   }
   const settings = { ...DEFAULT_UI_SETTINGS, ...saved };
+  // First launch on a light-mode OS opens light: the theme default follows the
+  // OS until the user picks a theme explicitly (which persists and wins).
+  if (!("theme" in saved) && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+    settings.theme = "light";
+  }
   // Concept A was a deliberate reset, so the pre-reset atmosphere names are no
   // longer themes. Anything not in THEMES — a legacy atmosphere, a hand-edited
   // localStorage value — collapses to the dark default rather than leaving the
@@ -194,7 +206,7 @@ function syncUiControlsFromSettings() {
 
 // Safety toggles reach the engine as frames; only send what actually changed
 // (a fresh session gets a forced full send since it boots with defaults).
-const lastSentSafety = { deletions: null, commands: null };
+const lastSentSafety = { deletions: null, commands: null, overdrive: null };
 function applySafetySettings(force) {
   if (window.magentra && window.magentra.send) {
     if (force || uiSettings.deletions !== lastSentSafety.deletions) {
@@ -205,18 +217,23 @@ function applySafetySettings(force) {
       window.magentra.send({ type: "set_mode", mode: uiSettings.commands === "ask" ? "default" : "bypass" });
       lastSentSafety.commands = uiSettings.commands;
     }
+    // OVERDRIVE rides the same re-send-on-link pattern: a fresh session boots
+    // with the mode off, so a forced send re-asserts the user's saved choice.
+    if (force || uiSettings.overdrive !== lastSentSafety.overdrive) {
+      window.magentra.send({ type: "set_overdrive", enabled: uiSettings.overdrive === true });
+      lastSentSafety.overdrive = uiSettings.overdrive;
+    }
   }
   renderSafetyHint(uiSettings.commands === "ask" ? "default" : "bypass");
 }
 
-// The engine's four permission modes, worded for the footer hint. The UI's
-// two-way "commands" toggle only produces default/bypass, but /mode and plan
-// flows can put the engine in acceptEdits/plan — mode_changed drives this so
-// the hint never lies about what the agent will do.
+// The engine's three permission modes, worded for the footer hint. The UI's
+// two-way "commands" toggle only produces default/bypass, but /mode can put
+// the engine in acceptEdits — mode_changed drives this so the hint never lies
+// about what the agent will do.
 const MODE_HINT = {
   default: "asks before acting",
   acceptEdits: "auto-accepts edits, asks for commands",
-  plan: "plan mode — read-only",
   bypass: "autonomous",
 };
 
@@ -227,7 +244,7 @@ function renderSafetyHint(mode) {
   if (typeof syncPermissionMenu === "function") syncPermissionMenu(mode);
 }
 
-/** The engine changed permission mode on its own (/mode, plan approve/exit).
+/** The engine changed permission mode on its own (/mode, OVERDRIVE floor).
  * Update the hint to match, and keep the commands segment in sync where the
  * mode maps onto its two options. */
 function onModeChanged(event) {

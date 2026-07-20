@@ -28,7 +28,7 @@ land?), not on the model's prose.
 ## Runtime — the turn loop
 
 - [ ] **Turn loop** — user message → streamed thinking/text → tool calls → turn end. `llm`
-- [ ] **Interrupt** — a running turn stops promptly; a pending plan decision resolves rather than hanging forever. `llm`
+- [ ] **Interrupt** — a running turn stops promptly, including pending question rounds. `llm`
 - [ ] **Iteration cap** — a turn stops at `maxIterationsPerTurn`, and the model is warned on its final round so it answers instead of being cut off. `pure` + `llm`
 - [ ] **Turn token budget** — a turn stops at `maxTokensPerTurn`. `pure`
 - [ ] **Auto-recovery nudges** — a failed tool batch, an output-length cutoff, and an empty task list each inject the right reminder, capped. `pure`
@@ -38,9 +38,24 @@ land?), not on the model's prose.
 - [ ] **Cost estimate** — four token classes billed at four different rates; no rate card ⇒ no cost shown (never a fabricated `$0.00`). `pure`
 - [ ] **`/session` report** — cost, API vs wall time, code churn, context now, usage per model. `pure`
 - [ ] **Compaction** — the oldest span is summarized when context crosses the threshold; the summary replaces it and context resets. `llm`
-- [ ] **Permission modes** — `default` / `acceptEdits` / `plan` / `bypass` resolve each tool class correctly; deny-rule beats allow-rule beats mode. `pure`
+- [ ] **Permission modes** — `default` / `acceptEdits` / `bypass` resolve each tool class correctly; deny-rule beats allow-rule beats mode. `pure`
 - [ ] **Deletion guard** — destructive Bash always asks, *even in bypass*, until explicitly disabled. Covers `rm`, `mv`, force-push, `DROP TABLE`, … `pure` + `proc`
+- [ ] **Protected state dir** — deleting a folder *named* `.magentra` (or a glob/unparseable command that could hit one) always asks, in every mode; it beats the "allow deletions" setting, explicit allow rules, OVERDRIVE, and never offers "always allow". Deeper paths like `.magentra/worktrees/foo` stay routine. `pure`
 - [ ] **File freshness** — Edit/Write on a file changed on disk since it was read is refused. `fs`
+
+## OVERDRIVE — fully-autonomous turn loop
+
+When ON (composer toggle, `/overdrive on`, or `set_overdrive`), a turn runs until the query is handled; when OFF, none of the below applies. State is session-scoped, survives `/clear` within the run, and `/resume` restores it from the transcript meta.
+
+- [ ] **Caps lifted** — no iteration cap, no per-turn token budget, unlimited signal-driven recovery nudges (failed batch, length cutoff, open tasks); the wrap-up nudge keeps its cap. `pure`
+- [ ] **Self-verify rung** — the first clean end-attempt injects the completeness+economy self-check (query-shaped evidence, no invented rituals); fires once per turn, re-armed by steering. `llm`
+- [ ] **Stall detector** — three consecutive identical rounds (same calls, same results) force a strategy pivot; after two pivots, the model must ask the user one concrete question. `pure` + `llm`
+- [ ] **Reuse gate softens** — a would-be new-file Write block becomes a reminder; the signal survives, the refusal doesn't. `pure`
+- [ ] **Deletion scope-split** — deletions provably inside the workspace skip the guard (rm/del/find/mv with analyzable paths, judged against Bash's tracked cwd); history rewrites, substitution, `~`, root wildcards, out-of-tree paths, and `.magentra` state dirs still ask. `pure`
+- [ ] **Pre-turn snapshot** — a `git stash create` ref is parked before each root turn and reported as `overdriveSnapshot` on `turn_finished` (tracked files only; absent on a clean tree). `fs`
+- [ ] **Mid-run steering** — `steer_message` joins the running turn at its next message boundary, re-arms self-verify, refunds pivots; when the turn already ended, it becomes a normal user turn. `llm`
+- [ ] **Budget inheritance** — subagents spawned during an overdrive turn get uncapped budgets (an explicit spawn cap still wins); they still cannot ask the user. `pure`
+- [ ] **Prompt contract** — the OVERDRIVE system-prompt section (plan-first, consequence-thinking, query-shaped evidence, ask-rubric, cleanup license) is present exactly while ON. `pure`
 
 ## Agent
 
@@ -59,7 +74,6 @@ land?), not on the model's prose.
 - [ ] **Task list** — create/update/list/get, and `task_list_updated` fires per mutation. `pure`
 - [ ] **Background task manager** — non-blocking launch, partial-output polling, real termination on stop. `proc`
 - [ ] **Agent / Workflow tools** — dispatch subagents; workflow scripts run `agent()` / `pipeline()` / `parallel()` with a concurrency cap. `llm`
-- [ ] **Plan mode** — `EnterPlanMode` locks to read-only; `ExitPlanMode` blocks the turn until a `plan_decision`; approve/reject/edit each behave. `llm`
 - [ ] **Worktree isolation** — Enter creates a real git worktree and moves the session cwd; Exit restores it. `proc`
 - [ ] **Web search / fetch** — a real query returns real results; `htmlToText` extracts real text. `net`
 - [ ] **Push notification** — fires an OS toast. Note: unrelated to the `background_notification` *event*, despite the name. `proc`
@@ -130,7 +144,6 @@ land?), not on the model's prose.
 - [ ] **Boots** — window opens, renderer loads, no crash. (`npm run smoke` already does this — grow it.) `ui`
 - [ ] **Engine lifecycle** — the child engine spawns on workspace open, restarts on model change, and is killed on quit. `ui` + `proc`
 - [ ] **Permission prompt** — a `permission_request` surfaces a dialog, and the decision reaches the engine. `ui` + `llm`
-- [ ] **Plan review** — a `plan_ready` renders the plan with approve/reject/edit, and the decision unblocks the turn. **This one has been broken before**; it is worth a real test. `ui` + `llm`
 - [ ] **Clear** — the CLEAR button / Ctrl+L clears the chat *and* the engine's context (a fresh session), and is refused mid-turn. `ui`
 - [ ] **Session meter** — the hint line shows the true context size and running cost. `ui`
 - [ ] **Setup wizard** — first-run credential entry writes `.env` and tests the connection. `ui` + `net`

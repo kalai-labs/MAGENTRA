@@ -8,7 +8,7 @@ signal)`.
 
 Currently registered (see `createDefaultRegistry()` for the authoritative list): **Read,
 Write, Edit, Glob, Grep, Bash, TaskCreate, TaskUpdate, TaskList, TaskGet, AskUserQuestion,
-Agent, TaskStop, TaskOutput, EnterPlanMode, ExitPlanMode, WebFetch, WebSearch, Monitor,
+Agent, TaskStop, TaskOutput, WebFetch, WebSearch, Monitor,
 EnterWorktree, ExitWorktree, PushNotification, CronCreate, CronDelete, CronList,
 ScheduleWakeup, Skill, Workflow, GraphQuery, CrewRun, BackpackSearch** — plus any
 `mcp__<server>__<tool>` entries wired in from configured MCP servers at startup.

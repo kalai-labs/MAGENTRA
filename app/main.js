@@ -154,11 +154,10 @@ const USER_ACTION_FRAMES = new Set([
   "interrupt",
   "permission_response",
   "question_response",
-  "plan_decision",
+  "steer_message",
   "resume_session",
   "delete_session",
   "list_sessions",
-  "bang_command",
   "stop_background",
   "rename_session",
   "archive_session",
@@ -1177,8 +1176,34 @@ function compareVersions(a, b) {
   return 0;
 }
 
+/** True when this install format can self-update (electron-updater support):
+ *  Windows NSIS and Linux AppImage. tar.gz/deb and the unsigned mac dmg
+ *  cannot — those fall back to the notify-only release poll below. */
+function selfUpdateSupported() {
+  return process.platform === "win32" || Boolean(process.env.APPIMAGE);
+}
+
 async function checkForUpdates() {
   if (!app.isPackaged) return;
+  if (selfUpdateSupported()) {
+    try {
+      const { autoUpdater } = require("electron-updater");
+      autoUpdater.logger = { info: () => {}, warn: () => {}, error: (m) => logEvent("sys", { ev: "updater-error", m: String(m) }) };
+      autoUpdater.on("update-downloaded", (info) => {
+        logEvent("sys", { ev: "update-downloaded", version: info?.version });
+        sendToRenderer("engine:event", {
+          type: "command_output",
+          text: `⬆ MAGENTRA ${info?.version ?? ""} downloaded — it installs when you quit the app.`,
+        });
+      });
+      await autoUpdater.checkForUpdatesAndNotify();
+      return;
+    } catch (err) {
+      // Fall through to the notify-only poll: an updater failure must never
+      // cost the user the "a new version exists" signal.
+      logEvent("sys", { ev: "updater-fallback", m: String(err && err.message) });
+    }
+  }
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);

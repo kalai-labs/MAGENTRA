@@ -228,3 +228,10 @@ const changesListEl = document.getElementById("changesList");
 const changesSubEl = document.getElementById("changesSub");
 const changesEmptyEl = document.getElementById("changesEmpty");
 const changesCloseBtnEl = document.getElementById("changesCloseBtn");
+
+// OVERDRIVE: composer toggle, first-enable dialog, engage cinematic
+const overdriveBtnEl = document.getElementById("overdriveBtn");
+const overdriveDialogEl = document.getElementById("overdriveDialog");
+const overdriveEngageBtnEl = document.getElementById("overdriveEngageBtn");
+const overdriveCancelBtnEl = document.getElementById("overdriveCancelBtn");
+const overdriveCinematicEl = document.getElementById("overdriveCinematic");

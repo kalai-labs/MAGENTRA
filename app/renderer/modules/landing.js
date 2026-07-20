@@ -284,7 +284,9 @@ function syncActivityUi() {
   promptInputEl.placeholder = !engineLinked
     ? "Engine not linked — open Settings → Connection or the setup wizard"
     : busy
-      ? "Queue a follow-up — sends when the turn ends"
+      ? uiSettings.overdrive
+        ? "steering — messages join the running turn"
+        : "Queue a follow-up — sends when the turn ends"
       : "Ask Magentra anything…";
 }
 
@@ -764,73 +766,6 @@ function onQuestionRequest(event) {
   if (progressEl) withAutoScroll(() => streamEl.appendChild(progressEl));
 }
 
-function onPlanReady(event) {
-  if (!streamEl) return;
-
-  const cardEl = document.createElement("div");
-  cardEl.className = "question-card plan-card";
-
-  const headEl = document.createElement("div");
-  headEl.className = "question-head";
-  headEl.textContent = "PLAN — REVIEW REQUIRED";
-  cardEl.appendChild(headEl);
-
-  const planEl = document.createElement("textarea");
-  planEl.className = "plan-text";
-  planEl.value = event.plan;
-  cardEl.appendChild(planEl);
-
-  if (event.allowedPrompts && event.allowedPrompts.length > 0) {
-    const preauthEl = document.createElement("div");
-    preauthEl.className = "plan-preauth";
-    preauthEl.textContent =
-      "Will pre-authorize on approval: " +
-      event.allowedPrompts.map((ap) => `${ap.tool} — ${ap.prompt}`).join("; ");
-    cardEl.appendChild(preauthEl);
-  }
-
-  const actionsEl = document.createElement("div");
-  actionsEl.className = "q-other-row plan-actions";
-
-  const feedbackEl = document.createElement("input");
-  feedbackEl.className = "q-other-input";
-  feedbackEl.placeholder = "Feedback for revision (optional)…";
-
-  const approveBtn = document.createElement("button");
-  approveBtn.className = "q-opt recommended plan-approve";
-  approveBtn.textContent = "Approve";
-
-  const rejectBtn = document.createElement("button");
-  rejectBtn.className = "q-other-send plan-reject";
-  rejectBtn.textContent = "Reject";
-
-  function decide(approve) {
-    const edited = planEl.value !== event.plan ? planEl.value : undefined;
-    const message = feedbackEl.value.trim();
-    window.magentra.send({
-      type: "plan_decision",
-      approve,
-      ...(edited !== undefined ? { editedPlan: edited } : {}),
-      ...(message ? { message } : {}),
-    });
-    planEl.disabled = true;
-    feedbackEl.disabled = true;
-    approveBtn.disabled = true;
-    rejectBtn.disabled = true;
-    cardEl.classList.add("answered");
-  }
-
-  approveBtn.addEventListener("click", () => decide(true));
-  rejectBtn.addEventListener("click", () => decide(false));
-
-  actionsEl.appendChild(feedbackEl);
-  actionsEl.appendChild(rejectBtn);
-  actionsEl.appendChild(approveBtn);
-  cardEl.appendChild(actionsEl);
-
-  withAutoScroll(() => streamEl.appendChild(cardEl));
-}
-
 function handleEngineEvent(event) {
   switch (event.type) {
     case "workspace_changed":
@@ -903,9 +838,6 @@ function handleEngineEvent(event) {
       onQuestionRequest(event);
       announce("The agent is asking you a question.");
       break;
-    case "plan_ready":
-      onPlanReady(event);
-      break;
     case "command_output":
       onCommandOutput(event);
       break;
@@ -914,6 +846,9 @@ function handleEngineEvent(event) {
       break;
     case "mode_changed":
       onModeChanged(event);
+      break;
+    case "overdrive_changed":
+      onOverdriveChanged(event);
       break;
     case "modes_updated":
       onModesUpdated(event);

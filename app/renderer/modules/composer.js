@@ -228,6 +228,15 @@ function sendMessage() {
   const text = promptInputEl.value;
   if (!text.trim() || !engineLinked) return;
 
+  // Mid-turn under OVERDRIVE: steer the running turn instead of queueing. The
+  // text joins the turn at its next boundary rather than starting a new one.
+  if (busy && uiSettings.overdrive) {
+    window.magentra.send({ type: "steer_message", text });
+    appendSysNote(`⚡ steering — "${text.replace(/\s+/g, " ").trim().slice(0, 80)}"`);
+    promptInputEl.value = "";
+    autoGrow(promptInputEl);
+    return;
+  }
   // Mid-turn: queue instead of dropping the input. It flushes on turn end.
   if (busy) {
     messageQueue.push(text);
@@ -348,6 +357,10 @@ window.addEventListener("keydown", (e) => {
     // Normally consumed by the composer's own keydown (which stops
     // propagation); this is a safety net if focus wandered.
     hideSlashPop();
+    return;
+  }
+  if (overdriveDialogEl && !overdriveDialogEl.classList.contains("hidden")) {
+    closeOverdriveDialog();
     return;
   }
   if (skillWizardEl && !skillWizardEl.classList.contains("hidden")) {

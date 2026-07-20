@@ -9,7 +9,7 @@ import { runServe } from "./serve.js";
  * NDJSON over stdio. The desktop app spawns exactly this, and is its only
  * frontend — there is no terminal UI here, by design.
  *
- * Usage: engine --cwd <workspace> [--mode default|acceptEdits|plan] [--dangerously-bypass]
+ * Usage: engine --cwd <workspace> [--mode default|acceptEdits] [--dangerously-bypass]
  */
 
 interface HostArgs {
@@ -42,10 +42,10 @@ function parseArgs(argv: string[]): HostArgs {
       }
       case "--mode": {
         const value = argv[++i];
-        if (!value) fail("--mode requires one of default|acceptEdits|plan");
+        if (!value) fail("--mode requires one of default|acceptEdits");
         if (value === "bypass") fail("use --dangerously-bypass to enable bypass mode");
-        if (value !== "default" && value !== "acceptEdits" && value !== "plan") {
-          fail(`unknown mode "${value}" (expected default|acceptEdits|plan)`);
+        if (value !== "default" && value !== "acceptEdits") {
+          fail(`unknown mode "${value}" (expected default|acceptEdits)`);
         }
         mode = value;
         break;
