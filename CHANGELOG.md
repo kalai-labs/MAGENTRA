@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.6.0.0 — 2026-07-20
+
+### Features
+
+- new feature OVERDRIVE ([64ebb20](https://github.com/kalai-labs/MAGENTRA/commit/64ebb20e17415c87c5b04eb29f194df38588bef7))
+
+[Compare with v0.5.3.1](https://github.com/kalai-labs/MAGENTRA/compare/v0.5.3.1...v0.6.0.0)
+
 ## 0.5.2.1 — 2026-07-18
 
 ### Code style
