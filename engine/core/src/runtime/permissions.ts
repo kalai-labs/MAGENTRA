@@ -1,4 +1,4 @@
-import type { PermissionDecision, PermissionMode } from "@magentra/protocol";
+import type { PermissionDecision } from "@magentra/protocol";
 import type { AnyToolDefinition } from "../agent/tool.js";
 
 export interface PermissionRequestPayload {
@@ -36,17 +36,19 @@ export interface ExactGrant {
 }
 
 /**
- * Resolution order: deny rules > allow rules > mode default. Mode default may
- * resolve to "ask", which round-trips to the frontend via requestApproval.
+ * Resolution order: deny rules > allow rules > stance default. There are
+ * exactly two stances: OVERDRIVE (allow everything the rules don't deny) and
+ * normal (reads, interactions, and file edits are allowed; commands and other
+ * execute-class calls ask, which round-trips via requestApproval).
  */
 export class PermissionEngine {
-  private mode: PermissionMode;
-  /** When true (default), destructive calls always ask the user, in every mode.
-   *  The desktop's "Allow deletions" setting turns this off, after which
-   *  deletions resolve through the ordinary rules/mode path like any call. */
+  /** When true (default), destructive calls always ask the user, in both
+   *  stances. The desktop's "Allow deletions" setting turns this off, after
+   *  which deletions resolve through the ordinary rules/stance path. */
   private deletionGuard = true;
-  /** OVERDRIVE: deletions provably scoped inside the workspace skip the guard
-   *  (the flow must not block); everything unprovable still asks. */
+  /** OVERDRIVE: every call is allowed unless denied by rule, and deletions
+   *  provably scoped inside the workspace skip the guard (the flow must not
+   *  block); everything unprovable still asks. */
   private overdrive = false;
   private readonly deny: ParsedRule[];
   private readonly allow: ParsedRule[];
@@ -55,7 +57,6 @@ export class PermissionEngine {
   private readonly allowExact: ExactGrant[];
 
   constructor(
-    mode: PermissionMode,
     rules: { allow: string[]; deny: string[]; allowExact?: ExactGrant[] },
     private readonly requestApproval: (
       req: PermissionRequestPayload,
@@ -64,18 +65,9 @@ export class PermissionEngine {
     /** Persists an "always allow" grant. Absent in contexts with nowhere to write. */
     private readonly persistExact?: (tool: string, subject: string) => void,
   ) {
-    this.mode = mode;
     this.allow = rules.allow.map(parseRule);
     this.deny = rules.deny.map(parseRule);
     this.allowExact = [...(rules.allowExact ?? [])];
-  }
-
-  getMode(): PermissionMode {
-    return this.mode;
-  }
-
-  setMode(mode: PermissionMode): void {
-    this.mode = mode;
   }
 
   getDeletionGuard(): boolean {
@@ -122,7 +114,7 @@ export class PermissionEngine {
       };
     }
     // Deletion guard: a tool call that would delete a file/folder always
-    // requires interactive approval, in every mode (including bypass). One
+    // requires interactive approval, in both stances (OVERDRIVE included). One
     // exception: an EXPLICIT subject-scoped allow rule in the user's settings
     // (e.g. `Bash(rm -rf ./tmp/*)`) is a deliberate standing decision about
     // that exact call shape — it beats the guard, so unattended cleanup
@@ -181,15 +173,9 @@ export class PermissionEngine {
       return { allowed: true, source: "rule" };
     }
 
-    switch (this.modeDefault(tool)) {
+    switch (this.stanceDefault(tool)) {
       case "allow":
         return { allowed: true, source: "mode" };
-      case "deny":
-        return {
-          allowed: false,
-          source: "mode",
-          message: "This tool is not permitted in the current mode.",
-        };
       case "ask": {
         const res = await this.requestApproval(
           { tool: tool.name, input, description, ...(subject !== undefined ? { subject } : {}) },
@@ -235,10 +221,10 @@ export class PermissionEngine {
     }
   }
 
-  private modeDefault(tool: AnyToolDefinition): "allow" | "deny" | "ask" {
-    if (this.mode === "bypass") return "allow";
+  private stanceDefault(tool: AnyToolDefinition): "allow" | "ask" {
+    if (this.overdrive) return "allow";
     if (tool.permissionClass === "read" || tool.permissionClass === "interact") return "allow";
-    if (this.mode === "acceptEdits" && tool.isFileEdit) return "allow";
+    if (tool.isFileEdit) return "allow";
     return "ask";
   }
 }

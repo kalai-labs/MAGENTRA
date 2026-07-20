@@ -7,7 +7,6 @@ import {
   type CoreEvent,
   type FrontendRequest,
   type PermissionDecision,
-  type PermissionMode,
   type RestoredMessage,
   type SessionSummary,
   type SlashCommandInfo,
@@ -103,7 +102,6 @@ export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTi
   // Rates are read at report time (/session, status bar), so a new price applies
   // to the whole session's accumulated usage the moment it is set.
   pricing: "session",
-  permissionMode: "session",
   permissions: "clear",
   hooks: "restart",
   mcpServers: "restart",
@@ -332,7 +330,7 @@ export class Engine {
       sessionId: this.session.id,
       cwd: this.opts.cwd,
       model: this.opts.settings.model,
-      mode: this.session.permissions.getMode(),
+      overdrive: this.session.isOverdrive(),
       skills: (this.opts.skills ?? []).map((s) => ({ name: s.name, description: s.description })),
     });
     this.emit({ type: "task_list_updated", tasks: this.session.tasks.list() });
@@ -671,10 +669,6 @@ export class Engine {
         });
         break;
       }
-      case "set_mode":
-        this.session.permissions.setMode(request.mode);
-        this.emit({ type: "mode_changed", mode: request.mode });
-        break;
       case "set_overdrive":
         this.overdriveEnabled = request.enabled;
         this.session.setOverdrive(request.enabled);
@@ -999,15 +993,6 @@ export class Engine {
         }
         break;
       }
-      case "mode":
-        if (args === "default" || args === "acceptEdits" || args === "bypass") {
-          this.session.permissions.setMode(args);
-          this.emit({ type: "mode_changed", mode: args });
-          this.emit({ type: "command_output", text: `Permission mode: ${args}` });
-        } else {
-          this.emit({ type: "command_output", text: "Usage: /mode default|acceptEdits|bypass" });
-        }
-        break;
       case "session":
         // The end-of-session bill: cost per model at that model's own rates,
         // API vs wall time, code churn, and the CURRENT context size (no % of a
@@ -1239,12 +1224,6 @@ export class Engine {
   private applySettingLive(key: string, value: string | number | boolean): string {
     setSettingPath(this.opts.settings as unknown as Record<string, unknown>, key, value);
     const topKey = key.split(".")[0] as keyof typeof settingsSchema.shape;
-    // permissionMode is the one setting we can push into the live session at once.
-    if (topKey === "permissionMode") {
-      const mode = value as PermissionMode;
-      this.session.permissions.setMode(mode);
-      this.emit({ type: "mode_changed", mode });
-    }
     if (topKey === "retention") this.gcStateFiles();
     // A passthrough key outside the schema can't reach here (setSetting rejects it),
     // but default to /clear timing rather than crash if one ever does.
@@ -1603,10 +1582,10 @@ export class Engine {
 
   /**
    * Runs one mission as a full orchestrator turn. Unattended runs (scheduler-
-   * fired, or the /mission start loop) get the mission's permission mode
-   * (default bypass — the deletion guard still fires and is auto-denied via the
-   * session's unattended flag), never block on approvals or questions, honor
-   * the mission's token budget, and end with a notification. Every run appends
+   * fired, or the /mission start loop) take the OVERDRIVE permission stance
+   * (the deletion guard still fires and is auto-denied via the session's
+   * unattended flag), never block on approvals or questions, honor the
+   * mission's token budget, and end with a notification. Every run appends
    * to the mission's log; an active continuous mission re-arms its next run.
    */
   private runMission(mission: Mission, unattended: boolean): void {
@@ -1614,8 +1593,6 @@ export class Engine {
       const cwd = this.opts.cwd;
       const session = this.session;
       const settings = this.opts.settings;
-      const savedLiveMode = session.permissions.getMode();
-      const savedSettingsMode = settings.permissionMode;
       const savedBudget = settings.maxTokensPerTurn;
       this.emit({
         type: "command_output",
@@ -1624,11 +1601,11 @@ export class Engine {
       let ok = false;
       try {
         if (unattended) {
-          const mode = mission.mode ?? "bypass";
-          session.permissions.setMode(mode);
-          // Specialist children constructed during the run copy settings at
-          // spawn time — the mode must be visible there too.
-          settings.permissionMode = mode;
+          // Nobody is present to answer an ask prompt, so the run takes the
+          // allow-all stance; the session's unattended flag auto-denies
+          // whatever still insists on asking (deletion guard, questions).
+          // Stance only — the session's own OVERDRIVE identity is untouched.
+          session.permissions.setOverdrive(true);
           session.setUnattended(true);
         }
         if (mission.budgetTokens !== undefined) settings.maxTokensPerTurn = mission.budgetTokens;
@@ -1637,8 +1614,8 @@ export class Engine {
         ok = true;
       } finally {
         session.setUnattended(false);
-        session.permissions.setMode(savedLiveMode);
-        settings.permissionMode = savedSettingsMode;
+        // Restore the stance to the session's own OVERDRIVE state.
+        session.permissions.setOverdrive(session.isOverdrive());
         settings.maxTokensPerTurn = savedBudget;
         this.appendMissionLog(mission.id, {
           ts: new Date().toISOString(),
@@ -1855,7 +1832,7 @@ export class Engine {
       state.active[mission.id] = { startedAt: new Date().toISOString() };
       saveContinuousState(this.opts.cwd, state);
       say(
-        `🔁 continuous mission "${mission.id}" started — it runs now, then again after every ~${mission.cooldownSeconds ?? 300}s of idle time until /mission stop ${mission.id}. Runs are unattended: mode ${mission.mode ?? "bypass"}, destructive calls auto-denied${mission.budgetTokens ? `, budget ${mission.budgetTokens} output tokens per run` : ""}. The loop survives restarts.`,
+        `🔁 continuous mission "${mission.id}" started — it runs now, then again after every ~${mission.cooldownSeconds ?? 300}s of idle time until /mission stop ${mission.id}. Runs are unattended: nothing asks, destructive calls auto-denied${mission.budgetTokens ? `, budget ${mission.budgetTokens} output tokens per run` : ""}. The loop survives restarts.`,
       );
       // The loop is unattended from run one — it must never depend on a human.
       this.emitMissionsUpdated();
@@ -2110,16 +2087,11 @@ export class Engine {
     const file = join(this.opts.cwd, STATE_DIR_NAME, "sessions", `${known.id}.jsonl`);
     try {
       const { messages, meta } = Transcript.replay(file);
-      // Restore the session's accounting ledger and permission mode from the
-      // latest meta snapshot; transcripts that predate meta records (or carry
-      // a corrupt one) fall back to fresh stats and the configured mode.
+      // Restore the session's accounting ledger from the latest meta
+      // snapshot; transcripts that predate meta records (or carry a corrupt
+      // one) fall back to fresh stats.
       this.session = this.createSession(id, messages, SessionStats.fromSnapshot(meta?.stats));
       if (typeof meta?.label === "string") this.session.label = meta.label;
-      const mode = meta?.mode;
-      if (isPermissionMode(mode)) {
-        this.session.permissions.setMode(mode);
-        this.emit({ type: "mode_changed", mode });
-      }
       // The resumed session's own OVERDRIVE state wins over the engine's
       // current toggle; transcripts predating the flag leave it untouched.
       if (typeof meta?.overdrive === "boolean") {
@@ -2151,7 +2123,7 @@ export class Engine {
     if (id === this.session.id) {
       this.session.label = trimmed;
       // Merge into the latest snapshot: a bare {label} record would otherwise
-      // become the newest meta and hide stats/model/mode from resume.
+      // become the newest meta and hide stats/model/overdrive from resume.
       this.session.transcript.append({
         kind: "meta",
         data: { ...(Transcript.latestMeta(this.session.transcript.file) ?? {}), label: trimmed },
@@ -2267,8 +2239,7 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
       "  /mission schedule <id>    run it on its cron schedule (durable) · unschedule removes",
     ],
   },
-  { cmd: "/mode", args: "<default|acceptEdits|bypass>", desc: "set permission mode" },
-  { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous turn loop: no caps, self-verified completion" },
+  { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous stance: nothing asks, self-verified completion" },
   { cmd: "/styles", args: "[on|off <id>]", desc: "deprecated alias for /skills" },
   { cmd: "/debug", args: "<prompt>", desc: "reproduce-first debugging mode (off: /debug off)" },
   { cmd: "/settings", args: "[global] [k v]", desc: "show settings, or set one (add global to save to ~/.magentra)" },
@@ -2316,11 +2287,6 @@ function buildRateCard(
     };
   }
   return card;
-}
-
-/** Narrows a value read from disk to a PermissionMode before trusting it. */
-function isPermissionMode(value: unknown): value is PermissionMode {
-  return value === "default" || value === "acceptEdits" || value === "bypass";
 }
 
 /** Concatenated text of a message's text blocks. */

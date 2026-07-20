@@ -61,12 +61,9 @@ export const settingsSchema = z
         }),
       )
       .default({}),
-    // "plan" was removed as a mode (2026-07-20); settings files that still
-    // carry it load as "default" instead of failing the whole settings parse.
-    permissionMode: z.preprocess(
-      (v) => (v === "plan" ? "default" : v),
-      z.enum(["default", "acceptEdits", "bypass"]).default("default"),
-    ),
+    // permissionMode was removed as a setting (2026-07-20): the permission
+    // stance is now the session's OVERDRIVE flag alone. Old settings files
+    // that still carry the key load fine — unknown keys are stripped.
     permissions: z
       .object({
         allow: z.array(permissionRuleSchema).default([]),
@@ -118,16 +115,20 @@ export const settingsSchema = z
       .default({ model: "BAAI/bge-m3", enabled: true }),
     reuseCheck: z
       .object({
-        /** "gate" refuses an un-searched new-file Write once, "remind" only nudges, "off" disables the check. */
-        mode: z.enum(["gate", "remind", "off"]).default("gate"),
+        // "gate" (the old refuse-once mode) was retired 2026-07-20: the check
+        // never blocks anymore, it only reminds. Legacy value maps to "remind".
+        mode: z.preprocess(
+          (v) => (v === "gate" ? "remind" : v),
+          z.enum(["remind", "off"]).default("remind"),
+        ),
         /** How many of the closest existing matches to list. */
         maxHits: z.number().int().positive().max(10).default(5),
-        /** Similarity at/above which a new-file Write is blocked (gate mode). */
+        /** Similarity at/above which the reminder is worded firmly (near-duplicate). */
         blockThreshold: z.number().min(0).max(1).default(0.75),
-        /** Similarity at/above which a reminder is queued instead of a block. */
+        /** Similarity at/above which a reminder is queued. */
         remindThreshold: z.number().min(0).max(1).default(0.5),
       })
-      .default({ mode: "gate", maxHits: 5, blockThreshold: 0.75, remindThreshold: 0.5 }),
+      .default({ mode: "remind", maxHits: 5, blockThreshold: 0.75, remindThreshold: 0.5 }),
     /**
      * Skip TLS certificate verification for provider requests — the `verify=False`
      * escape hatch for self-signed certificates on servers you own (a home-lab
@@ -185,7 +186,6 @@ const ENV_OVERRIDES: ReadonlyArray<{ env: string; path: string; numeric?: boolea
   { env: "MAGENTRA_SMALL_MODEL", path: "smallModel" },
   { env: "MAGENTRA_BASE_URL", path: "baseUrl" },
   { env: "MAGENTRA_API_KEY_ENV", path: "apiKeyEnv" },
-  { env: "MAGENTRA_PERMISSION_MODE", path: "permissionMode" },
   { env: "MAGENTRA_MAX_ITERATIONS", path: "maxIterationsPerTurn", numeric: true },
   { env: "MAGENTRA_MAX_TOKENS_PER_TURN", path: "maxTokensPerTurn", numeric: true },
 ];

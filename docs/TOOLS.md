@@ -20,7 +20,7 @@ complete contract in its `ToolDefinition` description and doc comments.
 ## Permission model
 
 Every tool declares one of five permission classes, and each tool call is resolved against
-the active permission mode and the user's `allow`/`deny` rules
+the active permission stance (OVERDRIVE on/off) and the user's `allow`/`deny` rules
 (`engine/core/src/runtime/permissions.ts`).
 
 | Class | Meaning | Examples |
@@ -31,15 +31,13 @@ the active permission mode and the user's `allow`/`deny` rules
 | `network` | Reaches the network. | WebFetch, WebSearch, MCP tools |
 | `interact` | Talks to the user / task list; no filesystem or shell effect. | TaskCreate, TaskUpdate, AskUserQuestion |
 
-Resolution order is **deny rule → allow rule → mode default**. The mode default is computed
-per tool:
+Resolution order is **deny rule → allow rule → stance default**. There are exactly two
+stances, and the default is computed per tool:
 
-| Mode | `read` / `interact` | `mutate` (file edits) | `execute` / other `mutate` | Notes |
+| Stance | `read` / `interact` | `mutate` (file edits) | `execute` / other | Notes |
 | --- | --- | --- | --- | --- |
-| `default` | allow | ask | ask | Prompts the user for anything that changes state. |
-| `acceptEdits` | allow | allow | ask | File-editing tools (`isFileEdit`) auto-approved; Bash still prompts. |
-| `plan` | allow | deny | deny | Read-only enforcement; the agent records intended changes in the plan instead. |
-| `bypass` | allow | allow | allow | Everything runs unprompted (`--dangerously-bypass`). |
+| normal (OVERDRIVE off) | allow | allow | ask | File edits (`isFileEdit`) auto-approved (the review drawer + Undo cover them); commands and network prompt. |
+| OVERDRIVE on | allow | allow | allow | Everything runs unprompted; only the deletion guard (and `.magentra` protection) still asks. |
 
 Rules are strings of the form `Tool` or `Tool(subject-glob)`, where the subject is the tool's
 `permissionSubject` (for Bash the command string; for file tools the path; for Glob/Grep the
@@ -96,7 +94,7 @@ normal (non-error) result.
 ## Write
 
 Writes a file, overwriting an existing one. **Permission class:** `mutate` (`isFileEdit`, so
-auto-approved in `acceptEdits`). Subject: `file_path`.
+auto-approved in both stances). Subject: `file_path`.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |

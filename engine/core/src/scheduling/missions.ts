@@ -21,13 +21,6 @@ export interface Mission {
   schedule?: string;
   /** Optional workspace-relative output path for the final report. */
   deliverable?: string;
-  /**
-   * Permission mode for UNATTENDED runs (scheduled/continuous). Defaults to
-   * "bypass" — the lab must not stall on approval prompts nobody will answer;
-   * the deletion guard still fires and is auto-denied, so destructive calls
-   * never run unattended. Attended /mission run keeps the session's own mode.
-   */
-  mode?: "default" | "acceptEdits" | "bypass";
   /** Output-token budget per run (orchestrator turn AND each specialist run). */
   budgetTokens?: number;
   /** A standing mission: /mission start loops it — run, cool down, run again. */
@@ -88,12 +81,9 @@ export function loadMissions(cwd: string): { missions: Mission[]; warnings: stri
     if (fields.schedule) mission.schedule = fields.schedule;
     if (fields.deliverable) mission.deliverable = fields.deliverable;
     if (fields.mode) {
-      const mode = fields.mode.toLowerCase();
-      if (mode === "default" || mode === "acceptedits" || mode === "bypass") {
-        mission.mode = mode === "acceptedits" ? "acceptEdits" : mode;
-      } else {
-        warnings.push(`missions/${file}: unknown mode "${fields.mode}" (expected default, acceptEdits or bypass) — key ignored`);
-      }
+      // Permission modes were removed (2026-07-20): unattended runs always
+      // take the never-ask stance now. Old mission files may still carry it.
+      warnings.push(`missions/${file}: the "mode" key is obsolete (unattended runs never ask) — key ignored`);
     }
     if (fields.budget) {
       const budget = Number(fields.budget);
@@ -167,7 +157,6 @@ Frontmatter keys:
 - deliverable (optional) — a workspace-relative file path where the final report is written; omit it to use the default .magentra/missions/out/<id>/report.md.
 - continuous  (optional) — "true" marks a standing mission: /mission start loops it (run, cool down, run again) until /mission stop.
 - cooldown    (optional) — the pause between continuous runs, e.g. 90s, 15m, 1h (default 5m; clamped between 60s and 1h).
-- mode        (optional) — permission mode for unattended (scheduled/continuous) runs: bypass (default — destructive calls are still auto-denied), acceptEdits, or default.
 - budget      (optional) — output-token budget per run, e.g. 60000; the run pauses when it is spent.
 
 Body: everything after the closing "---" is the mission charter (REQUIRED — it must not be empty). Write what the lab is investigating and what counts as done: the question, the scope, and the shape of a good answer.

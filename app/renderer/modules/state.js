@@ -101,14 +101,13 @@ const DEFAULT_UI_SETTINGS = {
   // Default to the transparent view: a coding agent's trust rests on the user
   // being able to see what each tool actually did. "cinematic" is opt-in.
   detail: "engineer",
+  // The deletion guard is the gate that survives everything — it fires even in
+  // OVERDRIVE, so destructive calls (rm, force-push, drop table, terraform
+  // destroy, …) still prompt. Setting `deletions` to "allow" is what removes
+  // that last prompt.
   deletions: "ask", // "ask" (guard always prompts) | "allow" (deletions run freely)
-  // Autonomous out of the box: the agent acts without asking, and the deletion
-  // guard above stays the gate — it fires even in bypass mode, so destructive
-  // calls (rm, force-push, drop table, terraform destroy, …) still prompt.
-  // Turning `deletions` to "allow" as well is what removes every prompt.
-  commands: "auto", // "auto" (autonomous) | "ask" (approval before consequential tools)
-  // OVERDRIVE: fully autonomous mode (no iteration/token caps, self-verifying,
-  // mid-run steering). Persisted so it survives a reload and re-asserts itself
+  // OVERDRIVE: fully autonomous stance (nothing asks — commands run without
+  // approval prompts). Persisted so it survives a reload and re-asserts itself
   // on the next engine link, exactly like the safety toggles above.
   overdrive: false,
   // First-enable teaching dialog is shown once, ever; after that, flipping the
@@ -201,21 +200,16 @@ function syncUiControlsFromSettings() {
   syncSegGroup(setMotionEl, "motion");
   syncSegGroup(setDetailEl, "detail");
   syncSegGroup(setDeletionsEl, "deletions");
-  syncSegGroup(setCommandsEl, "commands");
 }
 
 // Safety toggles reach the engine as frames; only send what actually changed
 // (a fresh session gets a forced full send since it boots with defaults).
-const lastSentSafety = { deletions: null, commands: null, overdrive: null };
+const lastSentSafety = { deletions: null, overdrive: null };
 function applySafetySettings(force) {
   if (window.magentra && window.magentra.send) {
     if (force || uiSettings.deletions !== lastSentSafety.deletions) {
       window.magentra.send({ type: "set_deletion_guard", enabled: uiSettings.deletions !== "allow" });
       lastSentSafety.deletions = uiSettings.deletions;
-    }
-    if (force || uiSettings.commands !== lastSentSafety.commands) {
-      window.magentra.send({ type: "set_mode", mode: uiSettings.commands === "ask" ? "default" : "bypass" });
-      lastSentSafety.commands = uiSettings.commands;
     }
     // OVERDRIVE rides the same re-send-on-link pattern: a fresh session boots
     // with the mode off, so a forced send re-asserts the user's saved choice.
@@ -224,40 +218,16 @@ function applySafetySettings(force) {
       lastSentSafety.overdrive = uiSettings.overdrive;
     }
   }
-  renderSafetyHint(uiSettings.commands === "ask" ? "default" : "bypass");
+  renderSafetyHint();
 }
 
-// The engine's three permission modes, worded for the footer hint. The UI's
-// two-way "commands" toggle only produces default/bypass, but /mode can put
-// the engine in acceptEdits — mode_changed drives this so the hint never lies
-// about what the agent will do.
-const MODE_HINT = {
-  default: "asks before acting",
-  acceptEdits: "auto-accepts edits, asks for commands",
-  bypass: "autonomous",
-};
-
-function renderSafetyHint(mode) {
-  const acting = MODE_HINT[mode] || MODE_HINT.default;
+// Footer hint for the two-state safety model: commands prompt for approval on
+// every consequential tool unless OVERDRIVE is engaged, and the deletion guard
+// prompts on destructive calls unless Deletions is set to allow.
+function renderSafetyHint() {
+  const acting = uiSettings.overdrive ? "autonomous" : "asks before commands";
   const deleting = uiSettings.deletions === "allow" ? "deletions allowed" : "deletions always ask";
   if (hintAutoEl) hintAutoEl.textContent = `${acting} · ${deleting}`;
-  if (typeof syncPermissionMenu === "function") syncPermissionMenu(mode);
-}
-
-/** The engine changed permission mode on its own (/mode, OVERDRIVE floor).
- * Update the hint to match, and keep the commands segment in sync where the
- * mode maps onto its two options. */
-function onModeChanged(event) {
-  const mode = event && event.mode;
-  if (!mode) return;
-  renderSafetyHint(mode);
-  if (mode === "default" || mode === "bypass") {
-    uiSettings.commands = mode === "default" ? "ask" : "auto";
-    lastSentSafety.commands = uiSettings.commands; // engine already there; don't echo back
-    saveUiSettings();
-    syncSegGroup(setCommandsEl, "commands");
-  }
-  if (typeof syncPermissionMenu === "function") syncPermissionMenu(mode);
 }
 
 function wireSegGroup(containerEl, settingKey) {
@@ -286,7 +256,6 @@ wireSegGroup(setSizeEl, "size");
 wireSegGroup(setMotionEl, "motion");
 wireSegGroup(setDetailEl, "detail");
 wireSegGroup(setDeletionsEl, "deletions");
-wireSegGroup(setCommandsEl, "commands");
 
 syncUiControlsFromSettings();
 applySafetySettings(false);

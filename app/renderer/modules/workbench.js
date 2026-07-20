@@ -1,7 +1,7 @@
 // Concept A workbench interactions: persistent navigation, contextual
-// inspector, permission picker, and reversible diff review. This layer only
-// composes existing renderer state and IPC seams; engine event semantics stay
-// in their original modules.
+// inspector, and reversible diff review. This layer only composes existing
+// renderer state and IPC seams; engine event semantics stay in their original
+// modules.
 
 let activeInspectorTab = "tasks";
 let activeReviewPath = null;
@@ -443,39 +443,6 @@ async function undoLastChange() {
   appendSysNote(`undid the latest edit to ${last.relPath}`);
 }
 
-const PERMISSION_LABELS = {
-  default: "Ask before changes",
-  acceptEdits: "Auto-accept edits",
-  bypass: "Autonomous",
-};
-
-function syncPermissionMenu(mode) {
-  const current = mode || (uiSettings.commands === "ask" ? "default" : "bypass");
-  const selection = current === "default" ? "ask" : "auto";
-  if (permissionMenuLabelEl) permissionMenuLabelEl.textContent = PERMISSION_LABELS[current] || PERMISSION_LABELS.default;
-  if (inspectorPermissionsEl) inspectorPermissionsEl.textContent = PERMISSION_LABELS[current] || PERMISSION_LABELS.default;
-  if (!permissionMenuEl) return;
-  permissionMenuEl.querySelectorAll(".permission-option").forEach((option) => {
-    option.setAttribute("aria-checked", option.dataset.permission === selection ? "true" : "false");
-  });
-}
-
-function closePermissionMenu() {
-  if (!permissionMenuEl) return false;
-  const wasOpen = !permissionMenuEl.classList.contains("hidden");
-  permissionMenuEl.classList.add("hidden");
-  permissionMenuBtnEl.setAttribute("aria-expanded", "false");
-  return wasOpen;
-}
-
-function choosePermission(choice) {
-  closePermissionMenu();
-  uiSettings.commands = choice === "ask" ? "ask" : "auto";
-  saveUiSettings();
-  syncSegGroup(setCommandsEl, "commands");
-  applySafetySettings(false);
-}
-
 inspectorTabs.forEach((button) => button.addEventListener("click", () => openInspector(button.dataset.inspector)));
 if (inspectorToggleEl) inspectorToggleEl.addEventListener("click", () => {
   if (document.body.classList.contains("inspector-open")) closeInspector();
@@ -496,18 +463,6 @@ if (reviewUndoBtnEl) reviewUndoBtnEl.addEventListener("click", () => {
 if (openCrewViewBtnEl) openCrewViewBtnEl.addEventListener("click", () => showView("team"));
 if (sidebarSessionsRefreshEl) sidebarSessionsRefreshEl.addEventListener("click", () => requestSessionList());
 if (sidebarMissionNewEl) sidebarMissionNewEl.addEventListener("click", () => labNewBtnEl.click());
-if (permissionMenuBtnEl) permissionMenuBtnEl.addEventListener("click", (event) => {
-  event.stopPropagation();
-  const opening = permissionMenuEl.classList.contains("hidden");
-  permissionMenuEl.classList.toggle("hidden", !opening);
-  permissionMenuBtnEl.setAttribute("aria-expanded", opening ? "true" : "false");
-});
-if (permissionMenuEl) {
-  permissionMenuEl.addEventListener("click", (event) => event.stopPropagation());
-  permissionMenuEl.querySelectorAll(".permission-option").forEach((option) => {
-    option.addEventListener("click", () => choosePermission(option.dataset.permission));
-  });
-}
 if (attachBtnEl) attachBtnEl.addEventListener("click", () => {
   if (!workspaceOpen || promptInputEl.disabled) return;
   const start = promptInputEl.selectionStart || 0;
@@ -517,6 +472,3 @@ if (attachBtnEl) attachBtnEl.addEventListener("click", () => {
   promptInputEl.dispatchEvent(new Event("input"));
 });
 if (logoEl) logoEl.addEventListener("click", () => showView("console"));
-document.addEventListener("click", () => closePermissionMenu());
-
-syncPermissionMenu();

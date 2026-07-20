@@ -20,14 +20,9 @@ const TOUR_STEPS = [
     copy: "Type what you want done — plans, edits, questions. / opens the command palette, Esc stops a running turn, and anything you type mid-turn queues as a follow-up.",
   },
   {
-    target: "#permissionMenuBtn",
-    title: "You control the permissions",
-    copy: "Ask before changes reviews consequential commands first. Autonomous applies edits automatically. Deletions always ask.",
-  },
-  {
     target: "#overdriveBtn",
     title: "OVERDRIVE",
-    copy: "Flip this for a fully autonomous run — no caps, self-verifying, deletes inside the workspace without asking. Keep typing to steer it mid-run; Esc stops it.",
+    copy: "Normally Magentra asks before running consequential commands. Flip OVERDRIVE for a fully autonomous run — no approval stops at all (deletions still follow the guard). Keep typing to steer it mid-run; Esc stops it.",
   },
   {
     target: "#modelSelect",

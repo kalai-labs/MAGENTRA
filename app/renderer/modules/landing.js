@@ -239,7 +239,8 @@ function onSessionStarted(event) {
   // A fresh session (boot, or /clear) is a fresh bill and an empty window.
   sessionModel = event.model;
   resetSessionMeter();
-  // A fresh session boots with guard on + bypass; re-assert the user's safety choices.
+  // A fresh session boots with the guard on and OVERDRIVE off; re-assert the
+  // user's saved safety choices.
   applySafetySettings(true);
   resetChanges();
   engineErrorBannerShown = false;
@@ -843,9 +844,6 @@ function handleEngineEvent(event) {
       break;
     case "task_list_updated":
       onTaskListUpdated(event);
-      break;
-    case "mode_changed":
-      onModeChanged(event);
       break;
     case "overdrive_changed":
       onOverdriveChanged(event);

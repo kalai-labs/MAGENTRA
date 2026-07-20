@@ -344,7 +344,6 @@ stopBtnEl.addEventListener("click", hardStop);
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (closeOpenMenu()) return; // an open menu is the topmost surface
-  if (closePermissionMenu()) return;
   if (!reviewDrawerEl.classList.contains("hidden")) {
     closeReviewDrawer();
     return;

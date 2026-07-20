@@ -131,19 +131,6 @@
           <textarea id="promptInput" rows="2" placeholder="Ask Magentra anything…" spellcheck="false" disabled></textarea>
           <div class="composer-toolbar">
             <button id="attachBtn" class="composer-tool" title="Attach context" aria-label="Attach context">＋</button>
-            <div class="permission-wrap">
-              <button id="permissionMenuBtn" class="composer-select" aria-haspopup="menu" aria-expanded="false">
-                <span class="permission-shield">◇</span><span id="permissionMenuLabel">Ask before changes</span><span class="chevron">⌄</span>
-              </button>
-              <div id="permissionMenu" class="permission-menu hidden" role="menu">
-                <button class="permission-option" data-permission="ask" role="menuitemradio" aria-checked="true">
-                  <span class="permission-radio"></span><span><strong>Ask before changes</strong><small>Review consequential commands before they run.</small></span>
-                </button>
-                <button class="permission-option" data-permission="auto" role="menuitemradio" aria-checked="false">
-                  <span class="permission-radio"></span><span><strong>Autonomous</strong><small>Apply edits automatically; file deletions still follow the deletion guard.</small></span>
-                </button>
-              </div>
-            </div>
             <button id="overdriveBtn" class="composer-select overdrive-btn" aria-pressed="false" title="OVERDRIVE — fully autonomous mode (self-verifying, no caps)">
               <span class="od-btn-glyph">⚡</span><span class="od-btn-label">OVERDRIVE</span>
             </button>
@@ -177,7 +164,7 @@
         </div>
         <div id="hintLine">
           <span id="hintModel">deepseek-ai/DeepSeek-V4-Flash</span>
-          <span id="hintAuto" class="hint-auto">asks before acting · deletions always ask</span>
+          <span id="hintAuto" class="hint-auto">asks before commands · deletions always ask</span>
         </div>
       </footer>
     </section>
@@ -313,14 +300,7 @@
               <button class="seg-btn" data-deletions="allow">ALLOW</button>
             </div>
           </div>
-          <div class="set-row">
-            <span class="set-label">Commands</span>
-            <div class="seg" id="setCommands">
-              <button class="seg-btn on" data-commands="auto">AUTONOMOUS</button>
-              <button class="seg-btn" data-commands="ask">ASK ALWAYS</button>
-            </div>
-          </div>
-          <p class="set-note">AUTONOMOUS (the default) lets the agent run commands without asking; destructive ones still prompt because of the Deletions guard above. ASK ALWAYS pauses before every consequential command — never for reading. Setting Deletions to ALLOW removes the last prompt, so the agent deletes without asking.</p>
+          <p class="set-note">Consequential commands ask for approval before they run — never for reading or file edits. Engage OVERDRIVE (in the composer) for a fully autonomous run with no prompts. Destructive commands prompt on top of that because of the Deletions guard above; setting Deletions to ALLOW removes that last prompt too.</p>
           <div class="set-row">
             <span class="set-label">Web search</span>
             <div class="seg" id="setWebSearch">
@@ -366,7 +346,7 @@
             <dt>mission</dt><dd>a saved directive file under <code>.magentra/missions/</code> that the lab runs on demand, on a loop, or on a cron schedule (MISSIONS in the dock).</dd>
             <dt>task list</dt><dd>the live plan of record in the TASKS rail — the current work items, ending with a verification task.</dd>
             <dt>skills</dt><dd>Markdown files under <code>.magentra/skills/</code> that shape the agent. A <em>discipline</em> applies to every turn while enabled (nothing is locked — all off by default); an <em>action</em> runs on demand. Toggle in the Skills view or with <code>/skills</code>; create your own with ＋ CREATE SKILL.</dd>
-            <dt>deletion guard</dt><dd>destructive commands always ask first — in every permission mode — unless Deletions is set to ALLOW above.</dd>
+            <dt>deletion guard</dt><dd>destructive commands always ask first — even in OVERDRIVE — unless Deletions is set to ALLOW above.</dd>
             <dt>session</dt><dd>one conversation with its own transcript, cost ledger, and task list, saved under <code>.magentra/sessions/</code> (SESSIONS in the dock resumes them).</dd>
           </dl>
         </div>
@@ -406,7 +386,6 @@
           <dt>Workspace</dt><dd id="inspectorWorkspace">—</dd>
           <dt>Session</dt><dd id="inspectorSession">—</dd>
           <dt>Model</dt><dd id="inspectorModel">—</dd>
-          <dt>Permissions</dt><dd id="inspectorPermissions">Ask before changes</dd>
           <dt>Usage</dt><dd id="inspectorUsage">—</dd>
         </dl>
       </div>
@@ -537,7 +516,7 @@
     <div class="modal-box overdrive-box">
       <div class="modal-title" id="overdriveDialogTitle">⚡ OVERDRIVE</div>
       <ul class="overdrive-points">
-        <li>Fully autonomous — no iteration or token caps. The agent runs until the job is done.</li>
+        <li>Fully autonomous — nothing asks. Commands run without approval prompts until the job is done.</li>
         <li>Before it ends, it self-verifies its work against your original query.</li>
         <li>It may delete files inside the workspace without asking. Anything outside the workspace still prompts.</li>
         <li>Keep typing while it runs — your messages join the running turn to steer it.</li>

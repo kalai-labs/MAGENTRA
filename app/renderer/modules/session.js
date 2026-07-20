@@ -66,58 +66,6 @@ function enterActiveState(workspace) {
   // The teaching tour replaced the old one-shot hint card: it fires once on
   // the first workspace open (deferring while the setup wizard is up).
   maybeStartTour();
-  maybeShowAutonomyNotice();
-}
-
-const AUTONOMY_NOTICE_KEY = "magentra-autonomy-notice";
-
-/**
- * Says once, on the first workspace ever opened, that the agent acts on its own
- * and which prompts remain. Deliberately an inline banner rather than a modal:
- * the teaching tour owns the screen at this moment, and two overlays competing
- * on first run is worse than either alone.
- *
- * Skipped for anyone who has already turned autonomy off — telling them the
- * agent runs freely would simply be false.
- */
-function maybeShowAutonomyNotice() {
-  if (!streamEl) return;
-  let seen = false;
-  try {
-    seen = Boolean(localStorage.getItem(AUTONOMY_NOTICE_KEY));
-  } catch {
-    seen = true; // no storage: show nothing rather than on every launch
-  }
-  if (seen || uiSettings.commands !== "auto") return;
-
-  const bannerEl = document.createElement("div");
-  bannerEl.className = "autonomy-notice";
-
-  const textEl = document.createElement("div");
-  const strongEl = document.createElement("strong");
-  strongEl.textContent = "Magentra runs autonomously.";
-  textEl.appendChild(strongEl);
-  textEl.appendChild(
-    document.createTextNode(
-      " It edits files and runs commands without asking. Destructive ones — deleting files, force-pushing, dropping tables — still ask first. Change either in Settings › Safety.",
-    ),
-  );
-  bannerEl.appendChild(textEl);
-
-  const dismissEl = document.createElement("button");
-  dismissEl.className = "autonomy-notice-btn";
-  dismissEl.textContent = "GOT IT";
-  dismissEl.addEventListener("click", () => {
-    try {
-      localStorage.setItem(AUTONOMY_NOTICE_KEY, "1");
-    } catch {
-      // best-effort: dismissing still removes it for this run
-    }
-    bannerEl.remove();
-  });
-  bannerEl.appendChild(dismissEl);
-
-  streamEl.appendChild(bannerEl);
 }
 
 // The engine ships its rate card ($/1M) + context windows in session_started —

@@ -228,27 +228,8 @@ async function run() {
     assert.ok(frames.some((frame) => frame.type === "user_message" && frame.text.includes("propose a crew for it")));
   });
 
-  await test("permission, attach, model, and composer controls act on runtime state", async () => {
+  await test("attach, model, and composer controls act on runtime state", async () => {
     await evaluate(`document.querySelector('#teamCloseBtn').click()`);
-    const before = frames.length;
-    await evaluate(`document.querySelector('#permissionMenuBtn').click(); document.querySelector('[data-permission="ask"]').click()`);
-    await pause();
-    const permissionState = await evaluate(`(() => ({
-      label: document.querySelector('#permissionMenuLabel').textContent,
-      hidden: document.querySelector('#permissionMenu').classList.contains('hidden'),
-      askChecked: document.querySelector('[data-permission="ask"]').getAttribute('aria-checked'),
-    }))()`);
-    assert.ok(
-      frames.slice(before).some((frame) => frame.type === "set_mode" && frame.mode === "default"),
-      `permission click state=${JSON.stringify(permissionState)} frames=${JSON.stringify(frames.slice(before))}`,
-    );
-    assert.equal(await evaluate(`document.querySelector('#permissionMenuLabel').textContent`), "Ask before changes");
-    await evaluate(`document.querySelector('#permissionMenuBtn').click(); document.querySelector('[data-permission="auto"]').click()`);
-    await pause();
-    assert.ok(frames.some((frame) => frame.type === "set_mode" && frame.mode === "bypass"));
-    await evaluate(`document.querySelector('#permissionMenuBtn').click(); document.querySelector('[data-permission="auto"]').click()`);
-    await pause();
-    assert.ok(frames.some((frame) => frame.type === "set_mode" && frame.mode === "bypass"));
     await evaluate(`document.querySelector('#attachBtn').click()`);
     assert.equal(await evaluate(`document.querySelector('#promptInput').value`), "@");
     await evaluate(`(() => { const input = document.querySelector('#promptInput'); input.value = 'Explain this workspace'; input.dispatchEvent(new Event('input')); input.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true})); })()`);
@@ -441,7 +422,7 @@ async function run() {
     assert.equal(frames.filter((f) => f.type === "question_response").length - responsesBefore, 3);
 
     // GFM tables render as real tables once the turn finalizes.
-    await emit({ type: "text_delta", text: "Results:\n\n| Setting | Default |\n|---|---:|\n| theme | workbench |\n| commands | auto |\n" });
+    await emit({ type: "text_delta", text: "Results:\n\n| Setting | Default |\n|---|---:|\n| theme | workbench |\n| deletions | ask |\n" });
     await emit({ type: "turn_finished", contextTokens: 10, totalCostUsd: 0, stopReason: "end_turn" });
     const table = await evaluate(`(() => {
       const t = document.querySelector('.md-table');
@@ -457,7 +438,7 @@ async function run() {
       wrapped: true,
       headers: ["Setting", "Default"],
       aligned: "right",
-      rows: [["theme", "workbench"], ["commands", "auto"]],
+      rows: [["theme", "workbench"], ["deletions", "ask"]],
     });
   });
 
@@ -523,14 +504,14 @@ async function run() {
     await evaluate(`document.querySelector('#skillsCloseBtn').click()`);
   });
 
-  await test("the teaching tour walks all nine steps and is replayable", async () => {
+  await test("the teaching tour walks all eight steps and is replayable", async () => {
     await evaluate(`startTour(true)`);
     let state = await evaluate(`(() => ({
       visible: !document.querySelector('#tourOverlay').classList.contains('hidden'),
       label: document.querySelector('#tourStepLabel').textContent,
     }))()`);
-    assert.deepEqual(state, { visible: true, label: "1 / 9" });
-    for (let i = 0; i < 8; i++) await evaluate(`document.querySelector('#tourNext').click()`);
+    assert.deepEqual(state, { visible: true, label: "1 / 8" });
+    for (let i = 0; i < 7; i++) await evaluate(`document.querySelector('#tourNext').click()`);
     assert.equal(await evaluate(`document.querySelector('#tourNext').textContent`), "FINISH ▸");
     await evaluate(`document.querySelector('#tourNext').click()`);
     assert.equal(await evaluate(`document.querySelector('#tourOverlay').classList.contains('hidden')`), true);

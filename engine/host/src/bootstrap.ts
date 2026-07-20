@@ -8,7 +8,6 @@ import {
   loadSkills,
   resolveApiKey,
 } from "@magentra/core";
-import type { PermissionMode } from "@magentra/protocol";
 import type { Provider } from "@magentra/providers";
 import { createDefaultRegistry, resolveBashPath } from "@magentra/tools";
 import { loadDotEnv } from "./env.js";
@@ -16,8 +15,6 @@ import { loadDotEnv } from "./env.js";
 export interface BootstrapOptions {
   /** Workspace root the engine operates on. */
   cwd: string;
-  /** Overrides the permission mode from settings. */
-  mode?: PermissionMode;
 }
 
 export interface BootstrapResult {
@@ -42,7 +39,6 @@ export async function bootstrapEngine(opts: BootstrapOptions): Promise<Bootstrap
   loadDotEnv(opts.cwd);
 
   const { settings, warnings } = loadSettings(opts.cwd);
-  if (opts.mode) settings.permissionMode = opts.mode;
 
   // The `verify=False` escape hatch for self-signed local/custom endpoints.
   // Node reads this per TLS connection, so setting it here covers every

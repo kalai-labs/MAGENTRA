@@ -645,18 +645,6 @@ body.review-open .composer-toolbar > select.composer-select { min-width: 150px; 
 .composer-tool:hover, .composer-select:hover { color: var(--text-hi); border-color: var(--border-hi); }
 .composer-select { max-width: 210px; padding: 0 9px; }
 select.composer-select { color-scheme: var(--color-scheme); }
-.permission-wrap { position: relative; }
-#permissionMenuBtn { min-width: 150px; display: flex; align-items: center; gap: 6px; }
-.permission-shield { color: var(--accent); }
-.chevron { margin-left: auto; color: var(--text-faint); }
-.permission-menu { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 31; width: 330px; padding: 6px; border: 1px solid var(--border-hi); border-radius: var(--radius); background: var(--raised); box-shadow: var(--shadow); }
-.permission-option { width: 100%; display: grid; grid-template-columns: 18px 1fr; gap: 8px; padding: 9px; border: 0; border-radius: var(--radius-sm); background: transparent; text-align: left; }
-.permission-option:hover { background: var(--hover); }
-.permission-option strong { display: block; color: var(--text); font-size: max(10px, 0.78rem); }
-.permission-option small { display: block; margin-top: 2px; color: var(--text-faint); font-size: max(10px, 0.69rem); line-height: 1.35; }
-.permission-radio { width: 12px; height: 12px; margin-top: 2px; border: 1px solid var(--border-hi); border-radius: 50%; }
-.permission-option[aria-checked="true"] .permission-radio { border: 3px solid var(--accent); }
-.permission-option[aria-checked="true"] strong { color: var(--accent-hi); }
 .composer-actions { margin-left: auto; display: flex; gap: 6px; }
 .send-btn, .stop-btn { width: 30px; border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-size: 1rem; font-weight: 800; }
 .send-btn:hover { background: var(--accent-hi); }
@@ -1013,34 +1001,6 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 #wizStartBtn:hover { background: var(--accent-hi); }
 .wiz-note { margin-top: 10px; color: var(--text-faint); font-size: max(10px, 0.68rem); line-height: 1.5; }
 
-/* First-run autonomy notice: amber (an advisory, not the red of a failure). */
-.autonomy-notice {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 12px 0;
-  padding: 11px 13px;
-  border: 1px solid rgba(var(--amber-rgb), 0.45);
-  border-radius: var(--radius);
-  background: var(--amber-soft);
-  color: var(--text);
-  font-size: max(10px, 0.79rem);
-  line-height: 1.5;
-}
-.autonomy-notice strong { color: var(--text-hi); }
-.autonomy-notice-btn {
-  flex: none;
-  align-self: flex-start;
-  padding: 6px 11px;
-  border: 1px solid var(--amber);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--amber);
-  font-size: max(10px, 0.68rem);
-  font-weight: 700;
-}
-.autonomy-notice-btn:hover { color: var(--accent-ink); background: var(--amber); }
-
 .engine-banner { display: flex; align-items: center; gap: 10px; margin: 10px 0; padding: 11px 12px; border-color: rgba(var(--red-rgb), 0.5); background: var(--red-soft); }
 .engine-banner span { min-width: 0; flex: 1; }
 .engine-banner-btn { padding: 7px 9px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); color: var(--text); font-size: max(10px, 0.68rem); }
@@ -1075,8 +1035,6 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
   #transcript { padding: 16px 14px 10px; }
   #composer { padding: 0 14px 12px; }
   .composer-toolbar { flex-wrap: wrap; }
-  #permissionMenuBtn { min-width: 130px; }
-  .permission-menu { width: min(330px, calc(100vw - 86px)); }
   .view-head, #changesList, #sessionsList, #labList, #teamRoster, .set-grid { padding-left: 14px; padding-right: 14px; }
   .session-row, .lab-row { grid-template-columns: 1fr; }
   .session-actions, .lab-actions { flex-direction: row; }

@@ -144,7 +144,7 @@ function stopEngine() {
 }
 
 // Frames that represent an explicit user action: dropping one silently reads
-// as "the app ignored me". State-sync frames (set_mode, set_modes,
+// as "the app ignored me". State-sync frames (set_modes,
 // set_deletion_guard, reload_team) are re-sent on session start, so their
 // drops stay quiet by design — the renderer fires them before any engine runs.
 const USER_ACTION_FRAMES = new Set([
@@ -268,7 +268,7 @@ function startEngine(workspace, model) {
   }
 
   const entry = engineEntryPoint();
-  const args = [...entry.args, "--serve", "--dangerously-bypass", "--cwd", workspace];
+  const args = [...entry.args, "--serve", "--cwd", workspace];
 
   const env = {
     ...process.env,

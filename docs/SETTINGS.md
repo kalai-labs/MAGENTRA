@@ -42,8 +42,8 @@ file — never the shareable project file — and the file is written mode `0600
 | Key | Default | Effect |
 | --- | --- | --- |
 | `maxTokensPerResponse` | `8192` | `max_tokens` for a single model response. |
-| `maxTokensPerTurn` | `200000` | Output-token budget per user turn; hitting it ends the turn with an explanatory message. Input/context tokens are not counted (they are dominated by per-iteration context re-sends). |
-| `maxIterationsPerTurn` | `50` | Loop-safety cap on model↔tool round-trips per user turn. |
+| `maxTokensPerTurn` | `200000` | Output-token budget per turn. Applies only to unattended (mission) runs and children — interactive root turns run uncapped (the stall detector is the brake). Mission `budget:` overrides it per run. |
+| `maxIterationsPerTurn` | `50` | Loop-safety cap on model↔tool round-trips. Same scope: unattended runs and explicitly capped children only. |
 | `contextWindow` | *(unset)* | Explicit context-size override — **for local servers only**. When absent the engine uses a built-in per-model window table (`MODEL_CONTEXT_WINDOWS` in `engine/core/src/config/pricing.ts` — e.g. `claude-`→200k, `Qwen3`→128k, falling back to a conservative 128k). An explicit value always wins, and is also sent as `num_ctx` so a local endpoint loads the model with that window. Clear it with `/settings contextWindow auto` (or save the Settings → Connection card with the field empty); the engine warns at session start when an override sits far below the model's real window. |
 | `compactionThreshold` | `0.8` | Fraction of the effective context window (0.1–1) at which the conversation is compacted (oldest span summarized, recent tail kept verbatim). |
 
@@ -66,9 +66,13 @@ Bounds append-only workspace state; pruning runs whenever a root session starts.
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `permissionMode` | `"default"` | Startup mode: `default` (mutating tools prompt), `acceptEdits` (file edits auto-approved, Bash still prompts), `bypass` (explicit opt-in, no prompts). |
 | `permissions.allow` | `[]` | Rule strings matching tool name + argument glob, e.g. `"Bash(git status*)"`. Auto-approve matching calls. |
-| `permissions.deny` | `[]` | Same syntax; refuse matching calls. Resolution order is **deny > allow > mode default**. |
+| `permissions.deny` | `[]` | Same syntax; refuse matching calls. Resolution order is **deny > allow > stance default**. |
+
+There is no `permissionMode` setting: the permission stance is the session's OVERDRIVE
+toggle alone. Off, file edits and reads are auto-approved and commands prompt; on, nothing
+prompts except the deletion guard. (Old settings files that still carry `permissionMode`
+load fine — the key is ignored.)
 
 ## Hooks
 
@@ -105,14 +109,17 @@ Bounds append-only workspace state; pruning runs whenever a root session starts.
 
 ## Reuse check
 
-Guards against the agent writing a new file that duplicates an existing one.
+Warns when the agent writes a new file that likely duplicates an existing one. It never
+blocks the Write — the reminder (with the closest matches) rides along so the agent can
+consolidate. (The old refuse-once `"gate"` mode was retired 2026-07-20; a settings file
+that still says `"gate"` loads as `"remind"`.)
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `reuseCheck.mode` | `"gate"` | `"gate"` refuses an un-searched new-file Write once, `"remind"` only nudges, `"off"` disables the check. |
+| `reuseCheck.mode` | `"remind"` | `"remind"` nudges with the closest matches, `"off"` disables the check. |
 | `reuseCheck.maxHits` | `5` | How many of the closest existing matches to list (max 10). |
-| `reuseCheck.blockThreshold` | `0.75` | Similarity at/above which a new-file Write is blocked (gate mode). |
-| `reuseCheck.remindThreshold` | `0.5` | Similarity at/above which a reminder is queued instead of a block. |
+| `reuseCheck.blockThreshold` | `0.75` | Similarity at/above which the reminder is worded firmly (near-duplicate). |
+| `reuseCheck.remindThreshold` | `0.5` | Similarity at/above which a reminder is queued. |
 
 ## Skills
 
@@ -132,7 +139,6 @@ Env vars override both settings files (single source of truth: `ENV_OVERRIDES` i
 | `MAGENTRA_SMALL_MODEL` | `smallModel` |
 | `MAGENTRA_BASE_URL` | `baseUrl` |
 | `MAGENTRA_API_KEY_ENV` | `apiKeyEnv` |
-| `MAGENTRA_PERMISSION_MODE` | `permissionMode` |
 | `MAGENTRA_MAX_ITERATIONS` | `maxIterationsPerTurn` |
 | `MAGENTRA_MAX_TOKENS_PER_TURN` | `maxTokensPerTurn` |
 

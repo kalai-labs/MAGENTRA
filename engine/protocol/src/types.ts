@@ -1,7 +1,5 @@
 export const PROTOCOL_VERSION = 1;
 
-export type PermissionMode = "default" | "acceptEdits" | "bypass";
-
 export type TaskStatus = "pending" | "in_progress" | "completed";
 
 export interface TaskItem {
@@ -87,7 +85,8 @@ export type CoreEvent =
       sessionId: string;
       cwd: string;
       model: string;
-      mode: PermissionMode;
+      /** Whether OVERDRIVE (the fully-autonomous stance) is active for this session. */
+      overdrive: boolean;
       /** The engine's slash-command registry, so the palette can never drift. */
       commands: SlashCommandInfo[];
       /**
@@ -184,7 +183,6 @@ export type CoreEvent =
   | { type: "task_list_updated"; tasks: TaskItem[] }
   | { type: "file_edited"; path: string; diff: string }
   | { type: "background_notification"; taskId: string; kind: string; payload: unknown }
-  | { type: "mode_changed"; mode: PermissionMode }
   /** OVERDRIVE (fully-autonomous turn-loop policy) was toggled; frontends sync their indicator to this. */
   | { type: "overdrive_changed"; enabled: boolean }
   | { type: "command_output"; text: string }
@@ -352,7 +350,6 @@ export type FrontendRequest =
       answers: Record<string, string[]>;
     }
   | { type: "interrupt" }
-  | { type: "set_mode"; mode: PermissionMode }
   /** Toggles the always-ask deletion guard (true = guard active, the default). */
   | { type: "set_deletion_guard"; enabled: boolean }
   /** Toggles OVERDRIVE: the fully-autonomous turn-loop policy (caps lifted, self-verify end check). */
