@@ -77,7 +77,7 @@ async function run() {
     const state = await evaluate(`(() => ({
       theme: document.documentElement.dataset.theme,
       sidebar: getComputedStyle(document.querySelector('#sidebar')).display,
-      rain: Boolean(document.querySelector('#rain, #crt')),
+      rain: Boolean(document.querySelector('#rain, #crt, #matrixRain')),
       promptDisabled: document.querySelector('#promptInput').disabled,
       recentCount: document.querySelectorAll('.recent-row').length,
       title: document.querySelector('#workTitleText').textContent,
@@ -362,10 +362,100 @@ async function run() {
     await evaluate(`document.querySelector('.change-file').click()`);
     assert.equal(await evaluate(`document.querySelector('.change-file').getAttribute('aria-expanded')`), "true");
     await evaluate(`document.querySelector('#changesCloseBtn').click()`);
-    await evaluate(`document.querySelector('#undoLastBtn').click()`);
+    // Undoing the last remaining file empties the card entirely. The review
+    // drawer is the only undo path now — the inline card's "Undo last" button
+    // and its all-sessions counterpart in the inspector are both gone.
+    await evaluate(`document.querySelector('#reviewAllBtn').click()`);
+    await pause(60);
+    await evaluate(`document.querySelector('#reviewUndoBtn').click()`);
     await pause(60);
     assert.equal(await evaluate(`document.querySelector('#inspectorChangesCount').textContent`), "");
     assert.equal(await evaluate(`document.querySelector('.inline-changes-card') === null`), true);
+  });
+
+  await test("inline changes card folds past two files and unfolds on demand", async () => {
+    const diffFor = (file) => [
+      `diff --git a/${file} b/${file}`, "index 5555555..6666666 100644", `--- a/${file}`, `+++ b/${file}`,
+      "@@ -1 +1,2 @@", " x", "+y", "",
+    ].join("\n");
+    for (const file of ["one.js", "two.js", "three.js", "four.js"]) {
+      await emit({ type: "file_edited", path: file, diff: diffFor(file) });
+    }
+    const readCard = `(() => ({
+      files: document.querySelectorAll('.inline-changes-list button:not(.inline-changes-more)').length,
+      more: (document.querySelector('.inline-changes-more') || {}).textContent || null,
+      actions: [...document.querySelectorAll('.inline-changes-actions button')].map((b) => b.textContent),
+    }))()`;
+    // Compact: two files, the rest behind the fold, and Review changes is the
+    // only action left on the card.
+    assert.deepEqual(await evaluate(readCard), {
+      files: 2, more: "··· 2 more files", actions: ["Review changes"],
+    });
+    await evaluate(`document.querySelector('.inline-changes-more').click()`);
+    assert.deepEqual(await evaluate(readCard), {
+      files: 4, more: "··· show less", actions: ["Review changes"],
+    });
+    // And back — the fold is a toggle, not a one-way reveal.
+    await evaluate(`document.querySelector('.inline-changes-more').click()`);
+    assert.deepEqual(await evaluate(readCard), {
+      files: 2, more: "··· 2 more files", actions: ["Review changes"],
+    });
+    // Clear the card so the later scenarios see the same transcript they did
+    // before this test existed.
+    await evaluate(`resetChanges()`);
+    assert.equal(await evaluate(`document.querySelector('.inline-changes-card') === null`), true);
+  });
+
+  await test("all three themes switch cleanly and only matrix mounts the rain", async () => {
+    const readTheme = `(() => ({
+      theme: document.documentElement.dataset.theme,
+      rain: Boolean(document.querySelector('#matrixRain')),
+      bg: getComputedStyle(document.body).backgroundColor,
+    }))()`;
+    const pick = (name) => `document.querySelector('#setTheme .seg-btn[data-theme="${name}"]').click()`;
+    assert.equal(await evaluate(`document.querySelectorAll('#setTheme .seg-btn').length`), 3);
+
+    await evaluate(pick("light"));
+    let state = await evaluate(readTheme);
+    assert.equal(state.theme, "light");
+    assert.equal(state.rain, false);
+    const lightBg = state.bg;
+
+    await evaluate(pick("matrix"));
+    await pause(60);
+    state = await evaluate(readTheme);
+    assert.equal(state.theme, "matrix");
+    assert.equal(state.rain, true, "matrix theme must mount the rain canvas");
+    assert.notEqual(state.bg, lightBg, "matrix must repaint the surface tokens");
+    // Decoration only: it must never sit in the accessibility tree or eat clicks.
+    assert.equal(await evaluate(`document.querySelector('#matrixRain').getAttribute('aria-hidden')`), "true");
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('#matrixRain')).pointerEvents`), "none");
+
+    if (process.env.MAGENTRA_UI_CAPTURE_MATRIX) {
+      // Settings view, so the shot covers both the theme and the selector that
+      // reaches it. Needs MAGENTRA_UI_CAPTURE set too — that is what shows the
+      // window, and a hidden window composites no fresh frames to capture.
+      await evaluate(`document.querySelector('#navSettings').click()`);
+      await pause(1500); // let the rain build a few frames of trails first
+      fs.writeFileSync(process.env.MAGENTRA_UI_CAPTURE_MATRIX, (await windowRef.capturePage()).toPNG());
+      await evaluate(`showView('console')`); // back to the transcript for the rest of the suite
+      await pause(60);
+    }
+
+    // Leaving the theme tears the canvas down rather than hiding it, so no
+    // animation frame survives in the other two themes.
+    await evaluate(pick("workbench"));
+    await pause(60);
+    state = await evaluate(readTheme);
+    assert.equal(state.theme, "workbench");
+    assert.equal(state.rain, false, "leaving matrix must unmount the rain canvas");
+
+    // The choice persists like every other UI setting.
+    await evaluate(pick("matrix"));
+    await pause(60);
+    assert.equal(await evaluate(`JSON.parse(localStorage.getItem('magentra-ui')).theme`), "matrix");
+    await evaluate(pick("workbench"));
+    await pause(60);
   });
 
   await test("approval and question cards send selected decisions and notes", async () => {

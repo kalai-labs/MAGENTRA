@@ -90,13 +90,15 @@ let taskTimes = new Map();
 const UI_SETTINGS_KEY = "magentra-ui";
 // The themes that have a token block in styles.css. Kept in step with the
 // `:root`/`html[data-theme=…]` blocks there and with THEME_TITLEBAR below.
-const THEMES = ["workbench", "light"];
+// Order matches the settings segmented control: light is the default, dark the
+// second choice, matrix the third.
+const THEMES = ["light", "workbench", "matrix"];
 const DEFAULT_UI_SETTINGS = {
   // JetBrains Mono ships with the app (renderer/fonts), so the default always
   // resolves to the same face on every OS instead of a per-distro fallback.
   font: '"JetBrains Mono", "Cascadia Mono", "DejaVu Sans Mono", monospace',
   size: "14",
-  theme: "workbench",
+  theme: "light",
   motion: "full",
   // Default to the transparent view: a coding agent's trust rests on the user
   // being able to see what each tool actually did. "cinematic" is opt-in.
@@ -124,14 +126,15 @@ function loadUiSettings() {
     saved = {};
   }
   const settings = { ...DEFAULT_UI_SETTINGS, ...saved };
-  // First launch on a light-mode OS opens light: the theme default follows the
+  // First launch on a dark-mode OS opens dark: the theme default follows the
   // OS until the user picks a theme explicitly (which persists and wins).
-  if (!("theme" in saved) && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
-    settings.theme = "light";
+  // Matrix is never auto-selected — it is a deliberate choice, not a shade.
+  if (!("theme" in saved) && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    settings.theme = "workbench";
   }
   // Concept A was a deliberate reset, so the pre-reset atmosphere names are no
   // longer themes. Anything not in THEMES — a legacy atmosphere, a hand-edited
-  // localStorage value — collapses to the dark default rather than leaving the
+  // localStorage value — collapses to the default rather than leaving the
   // shell on a data-theme with no token block behind it.
   if (!THEMES.includes(settings.theme)) settings.theme = DEFAULT_UI_SETTINGS.theme;
   if (settings.detail === "technical") settings.detail = "engineer";
@@ -161,8 +164,11 @@ function saveUiSettings() {
 // Window-controls overlay tint per theme (panel background + primary ink),
 // kept in step with the theme blocks in styles.css.
 const THEME_TITLEBAR = {
-  workbench: { color: "#0e1114", symbolColor: "#ced6dd" },
   light: { color: "#e7ebf0", symbolColor: "#36424f" },
+  workbench: { color: "#0e1114", symbolColor: "#ced6dd" },
+  // Matrix's --sidebar carries alpha; the native overlay cannot, so this is
+  // that color already composited over --bg.
+  matrix: { color: "#040a06", symbolColor: "#b9f5cd" },
 };
 
 function applyUiSettings() {
@@ -171,6 +177,10 @@ function applyUiSettings() {
   document.documentElement.dataset.detail = uiSettings.detail;
   document.documentElement.style.setProperty("--font-user", uiSettings.font);
   document.documentElement.style.setProperty("--fs-base", uiSettings.size + "px");
+  // Mount / tear down the matrix rain to match the theme and motion setting.
+  // Guarded because the first call happens at load, before rain.js (which
+  // loads after this module, and takes its own first sync) has defined it.
+  if (typeof syncMatrixRain === "function") syncMatrixRain();
   // Keep the native min/max/close overlay in the theme's colors.
   const titleBar = THEME_TITLEBAR[uiSettings.theme];
   if (titleBar && window.magentra && window.magentra.setTitleBarTheme) {

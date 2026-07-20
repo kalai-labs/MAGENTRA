@@ -73,12 +73,6 @@ function discardSessionFileChanges(relPath) {
   renderChanges();
 }
 
-function discardLastSessionDiff() {
-  sessionChangeOrder.pop();
-  rebuildSessionChanges();
-  renderChanges();
-}
-
 function renderChanges() {
   const files = [...sessionChanges.entries()];
   if (dockChangesCountEl) {

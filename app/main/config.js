@@ -15,7 +15,8 @@ const DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Flash";
 // pre-paint backgroundColor and the native titlebar overlay are both set before
 // the renderer runs. Mirroring the name here is what stops a dark frame from
 // flashing ahead of a light UI — the one frame the renderer cannot repaint.
-const THEMES = ["workbench", "light"];
+// Order matches renderer/modules/state.js THEMES; the first entry is the default.
+const THEMES = ["light", "workbench", "matrix"];
 const DEFAULT_THEME = THEMES[0];
 
 // ---------------------------------------------------------------------------

@@ -659,8 +659,9 @@ function rememberWindowState() {
 // THEME_TITLEBAR in renderer/modules/state.js.
 const TITLEBAR_HEIGHT = 36;
 const THEME_CHROME = {
-  workbench: { color: "#0e1114", symbolColor: "#ced6dd", background: "#0b0e11" },
   light: { color: "#e7ebf0", symbolColor: "#36424f", background: "#eef1f5" },
+  workbench: { color: "#0e1114", symbolColor: "#ced6dd", background: "#0b0e11" },
+  matrix: { color: "#040a06", symbolColor: "#b9f5cd", background: "#030705" },
 };
 const themeChrome = (name) => THEME_CHROME[name] || THEME_CHROME[DEFAULT_THEME];
 

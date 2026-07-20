@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="workbench" data-motion="full" data-detail="engineer">
+<html lang="en" data-theme="light" data-motion="full" data-detail="engineer">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; font-src 'self';" />
@@ -187,7 +187,7 @@
         <span class="view-title">◈ SKILLS</span>
         <span id="skillsSub" class="view-sub">no skills active</span>
         <button id="skillsRecommendBtn" class="hidden" title="Enable the recommended discipline set">★ ENABLE RECOMMENDED</button>
-        <button id="skillCreateBtn" title="Describe a skill — Magentra writes the file, you approve it">＋ CREATE SKILL</button>
+        <button id="skillCreateBtn" title="Describe a skill — Magentra writes the file, you approve it">＋ BUILD NEW SKILL</button>
         <button id="skillsCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
       </div>
       <div id="skillsList"></div>
@@ -255,8 +255,9 @@
           <div class="set-row">
             <span class="set-label">Theme</span>
             <div class="seg" id="setTheme">
-              <button class="seg-btn on" data-theme="workbench">DARK</button>
-              <button class="seg-btn" data-theme="light">LIGHT</button>
+              <button class="seg-btn on" data-theme="light">LIGHT</button>
+              <button class="seg-btn" data-theme="workbench">DARK</button>
+              <button class="seg-btn" data-theme="matrix">MATRIX</button>
             </div>
           </div>
 
@@ -345,7 +346,7 @@
             <dt>atlas</dt><dd>the whole-design map of this workspace at <code>.magentra/ATLAS.md</code>; <code>/atlas</code> builds or refreshes it.</dd>
             <dt>mission</dt><dd>a saved directive file under <code>.magentra/missions/</code> that the lab runs on demand, on a loop, or on a cron schedule (MISSIONS in the dock).</dd>
             <dt>task list</dt><dd>the live plan of record in the TASKS rail — the current work items, ending with a verification task.</dd>
-            <dt>skills</dt><dd>Markdown files under <code>.magentra/skills/</code> that shape the agent. A <em>discipline</em> applies to every turn while enabled (nothing is locked — all off by default); an <em>action</em> runs on demand. Toggle in the Skills view or with <code>/skills</code>; create your own with ＋ CREATE SKILL.</dd>
+            <dt>skills</dt><dd>Markdown files under <code>.magentra/skills/</code> that shape the agent. A <em>discipline</em> applies to every turn while enabled (nothing is locked — all off by default); an <em>action</em> runs on demand. Toggle in the Skills view or with <code>/skills</code>; create your own with ＋ BUILD NEW SKILL.</dd>
             <dt>deletion guard</dt><dd>destructive commands always ask first — even in OVERDRIVE — unless Deletions is set to ALLOW above.</dd>
             <dt>session</dt><dd>one conversation with its own transcript, cost ledger, and task list, saved under <code>.magentra/sessions/</code> (SESSIONS in the dock resumes them).</dd>
           </dl>
@@ -400,7 +401,6 @@
       <div id="inspectorChangesList" class="inspector-list"></div>
       <div class="inspector-actions">
         <button id="reviewAllBtn" disabled>Review all</button>
-        <button id="undoLastBtn" disabled>Undo last</button>
       </div>
     </section>
 
@@ -614,6 +614,7 @@
        this exact order (each builds on what the ones above it define). -->
   <script src="modules/dom.js"></script>
   <script src="modules/state.js"></script>
+  <script src="modules/rain.js"></script>
   <script src="modules/util.js"></script>
   <script src="modules/markdown.js"></script>
   <script src="modules/views.js"></script>

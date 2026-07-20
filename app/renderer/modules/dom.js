@@ -75,7 +75,6 @@ const inspectorChangesListEl = document.getElementById("inspectorChangesList");
 const inspectorCrewCountEl = document.getElementById("inspectorCrewCount");
 const inspectorCrewListEl = document.getElementById("inspectorCrewList");
 const reviewAllBtnEl = document.getElementById("reviewAllBtn");
-const undoLastBtnEl = document.getElementById("undoLastBtn");
 const openCrewViewBtnEl = document.getElementById("openCrewViewBtn");
 const reviewDrawerEl = document.getElementById("reviewDrawer");
 const reviewSummaryEl = document.getElementById("reviewSummary");

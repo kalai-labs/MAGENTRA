@@ -63,7 +63,10 @@
    hardcoded anywhere below, it is a bug — it will not survive a theme switch.
    --------------------------------------------------------------------------- */
 
-/* Dark — the default instrument-panel look. */
+/* Dark — the instrument-panel look. `light` is the default theme, but the
+   bare `:root` fallback stays on dark: it only ever applies to a document with
+   no data-theme at all, and a half-painted dark shell reads as intentional
+   where a half-painted light one reads as broken. */
 :root,
 html[data-theme="workbench"] {
   --color-scheme: dark;
@@ -191,6 +194,96 @@ html[data-theme="light"] {
   --shadow-drawer: -16px 0 40px rgba(15, 25, 40, 0.12);
   --shadow-inspector: -16px 0 40px rgba(15, 25, 40, 0.16);
   --scrim: rgba(18, 28, 40, 0.42);
+}
+
+/* Matrix — phosphor-on-black CRT. Same token contract as the other two, so
+   every rule below is already themed; the only structural addition is the
+   falling-glyph canvas (see #matrixRain), which renderer/modules/rain.js
+   mounts behind the UI while this theme is active.
+
+   `--sidebar` and `--panel` are the one deliberate break from the other
+   themes' opaque surfaces: they carry a small alpha so the rain reads through
+   the chrome instead of only in the gutters. Everything text sits directly on
+   — `--well`, `--raised` — stays fully opaque so code and inputs keep their
+   contrast no matter what is falling behind them. */
+html[data-theme="matrix"] {
+  --color-scheme: dark;
+
+  --accent: #25ee6b;
+  --accent-hi: #8dffb4;
+  --accent-ink: #011a0a;
+  --accent-rgb: 37, 238, 107;
+  --accent-soft: rgba(var(--accent-rgb), 0.13);
+  /* Success sits in the same hue family as the accent here — unavoidable in a
+     green world — so it separates by brightness instead, reading as a flash
+     against the accent's steady phosphor. */
+  --green: #7bff9e;
+  --green-rgb: 123, 255, 158;
+  --green-soft: rgba(var(--green-rgb), 0.13);
+  --amber: #ffbb33;
+  --amber-rgb: 255, 187, 51;
+  --amber-soft: rgba(var(--amber-rgb), 0.13);
+  --red: #ff5f70;
+  --red-rgb: 255, 95, 112;
+  --red-soft: rgba(var(--red-rgb), 0.13);
+  /* OVERDRIVE hot hue — orange stays as far from the phosphor as any status
+     color in this theme gets, which is exactly what the mode needs. */
+  --od-accent: #ff9d1f;
+  --od-accent-hi: #ffc470;
+  --od-accent-ink: #2a1400;
+  --od-accent-rgb: 255, 157, 31;
+  --od-accent-soft: rgba(var(--od-accent-rgb), 0.15);
+
+  --bg: #030705;
+  --bg-rgb: 3, 7, 5;
+  --sidebar: rgba(4, 11, 7, 0.93);
+  --panel: rgba(6, 16, 10, 0.92);
+  --raised: #0c1f14;
+  --well: #010402;
+  --hover: #14301d;
+  --border: #17402a;
+  --border-hi: #22603c;
+  --border-strong: #2f8452;
+
+  --text: #b9f5cd;
+  --text-hi: #e9fff1;
+  --text-dim: #7fcf99;
+  --text-faint: #52926a;
+
+  --diff-add-text: #9dffbb;
+  --diff-del-text: #ffa3ad;
+  --error-text: #ff9aa5;
+
+  --scroll-thumb: #1c4a30;
+  --scroll-thumb-hi: #2b6f47;
+  --selection: rgba(var(--accent-rgb), 0.28);
+
+  --shadow: 0 18px 48px rgba(0, 0, 0, 0.62);
+  --shadow-composer: 0 10px 28px rgba(0, 0, 0, 0.4);
+  --shadow-composer-focus: 0 0 0 1px rgba(var(--accent-rgb), 0.2), 0 12px 32px rgba(0, 0, 0, 0.45);
+  --shadow-drawer: -16px 0 40px rgba(0, 0, 0, 0.45);
+  --shadow-inspector: -16px 0 40px rgba(0, 0, 0, 0.5);
+  --scrim: rgba(0, 8, 3, 0.8);
+}
+
+/* The rain canvas. `z-index: -1` puts it above the page background (which the
+   body's --bg fill propagates to) and below every in-flow element, so it can
+   never overlap or intercept UI no matter what the layout does — the panels
+   simply let it through via their alpha. Only present while the matrix theme
+   is active; rain.js mounts and unmounts the node. */
+#matrixRain {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* The transcript column has no surface of its own, so loose text — system
+     notes, steering lines, timestamps — sits directly on the rain. This is the
+     dial that keeps those legible: bright enough to read as weather, dim
+     enough to never compete with a line of text. */
+  opacity: 0.38;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -597,6 +690,10 @@ h1.md-h { font-size: 1.3rem; } h2.md-h { font-size: 1.16rem; } h3.md-h { font-si
 .inline-changes-list button { width: 100%; min-height: 30px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text-dim); font: 0.72rem var(--mono); text-align: left; }
 .inline-changes-list button:hover { color: var(--text); background: var(--hover); }
 .inline-changes-list button span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The fold/unfold row. Centered and quieter than a file row so it reads as a
+   control rather than as one more changed file. */
+.inline-changes-more { justify-content: center !important; color: var(--text-faint) !important; letter-spacing: 0.06em; }
+.inline-changes-more:hover { color: var(--accent-hi) !important; }
 .inline-changes-actions { display: flex; justify-content: flex-end; gap: 6px; padding: 8px; border-top: 1px solid var(--border); }
 .inline-changes-actions button { min-height: 30px; padding: 0 11px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); color: var(--text); font-size: max(10px, 0.72rem); }
 .inline-changes-actions button:hover { border-color: var(--border-hi); background: var(--hover); }
