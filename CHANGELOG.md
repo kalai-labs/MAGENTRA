@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.5.2.2 — 2026-07-20
+
+### Code style
+
+- new light theme ([94b79a5](https://github.com/kalai-labs/MAGENTRA/commit/94b79a58fc516b03f74f29e5495a91c5076fc3d3))
+
+[Compare with v0.5.2.1](https://github.com/kalai-labs/MAGENTRA/compare/v0.5.2.1...v0.5.2.2)
+
 ## 0.5.2.1 — 2026-07-18
 
 ### Code style
