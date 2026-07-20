@@ -1,0 +1,572 @@
+<title>MAGENTRA — How a Query Is Handled</title>
+<style>
+  :root {
+    --bg: #fbfaf9; --panel: #ffffff; --ink: #1a1917; --muted: #6b6660;
+    --line: #e4e0da; --accent: #7c3aed; --accent-soft: #f3ecff;
+    --warn: #b45309; --warn-soft: #fff5e6; --stop: #be123c; --stop-soft: #ffeef1;
+    --go: #15803d; --go-soft: #eaf7ee; --code-bg: #f5f3f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131215; --panel: #1c1a1f; --ink: #ece9e6; --muted: #9a938c;
+      --line: #302d35; --accent: #a78bfa; --accent-soft: #241f33;
+      --warn: #fbbf24; --warn-soft: #2e2413; --stop: #fb7185; --stop-soft: #331a20;
+      --go: #4ade80; --go-soft: #14261a; --code-bg: #232128;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #131215; --panel: #1c1a1f; --ink: #ece9e6; --muted: #9a938c;
+    --line: #302d35; --accent: #a78bfa; --accent-soft: #241f33;
+    --warn: #fbbf24; --warn-soft: #2e2413; --stop: #fb7185; --stop-soft: #331a20;
+    --go: #4ade80; --go-soft: #14261a; --code-bg: #232128;
+  }
+  :root[data-theme="light"] {
+    --bg: #fbfaf9; --panel: #ffffff; --ink: #1a1917; --muted: #6b6660;
+    --line: #e4e0da; --accent: #7c3aed; --accent-soft: #f3ecff;
+    --warn: #b45309; --warn-soft: #fff5e6; --stop: #be123c; --stop-soft: #ffeef1;
+    --go: #15803d; --go-soft: #eaf7ee; --code-bg: #f5f3f0;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink); margin: 0;
+    font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 96px; }
+  code, .mono { font-family: ui-monospace, "JetBrains Mono", "Cascadia Mono", "DejaVu Sans Mono", monospace; }
+  code { background: var(--code-bg); padding: .12em .4em; border-radius: 4px; font-size: .88em; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -.02em; }
+  h2 { font-size: 20px; margin: 40px 0 12px; letter-spacing: -.01em; }
+  h3 { font-size: 15px; margin: 24px 0 8px; }
+  p { margin: 0 0 14px; }
+  .sub { color: var(--muted); margin-bottom: 28px; }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); }
+
+  /* tabs */
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 28px; }
+  .tab {
+    background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted);
+    padding: 10px 14px; font: inherit; font-size: 14px; cursor: pointer; border-radius: 6px 6px 0 0;
+  }
+  .tab:hover { color: var(--ink); background: var(--code-bg); }
+  .tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .panel[hidden] { display: none; }
+
+  /* pipeline */
+  .pipe { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 8px; align-items: stretch; }
+  .stage {
+    flex: 1 1 150px; min-width: 140px; text-align: left; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 13px; font: inherit; color: var(--ink); transition: border-color .12s, transform .12s;
+  }
+  .stage:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .stage[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .stage .n { font-size: 11px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+  .stage .t { font-weight: 600; font-size: 14px; margin: 3px 0 2px; }
+  .stage .w { font-size: 11.5px; color: var(--muted); }
+
+  .detail {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 22px; margin-top: 14px;
+  }
+  .detail h3 { margin-top: 0; font-size: 17px; }
+  .steps { list-style: none; padding: 0; margin: 14px 0 0; }
+  .steps li {
+    display: grid; grid-template-columns: 26px 1fr; gap: 10px;
+    padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px;
+  }
+  .steps li:first-child { border-top: 0; }
+  .steps .i {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--code-bg);
+    color: var(--muted); font-size: 11px; display: grid; place-items: center; font-weight: 600;
+  }
+  .ref { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  /* callouts */
+  .note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; font-size: 14px; }
+  .note.stop { border-color: var(--stop); background: var(--stop-soft); }
+  .note.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .note.go { border-color: var(--go); background: var(--go-soft); }
+  .note b { display: block; margin-bottom: 4px; }
+
+  /* loop ladder */
+  .ladder { counter-reset: rung; margin: 18px 0; }
+  .rung {
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--muted);
+    border-radius: 0 8px 8px 0; padding: 12px 16px; margin-bottom: 7px;
+  }
+  .rung.keepgoing { border-left-color: var(--go); }
+  .rung.halt { border-left-color: var(--stop); }
+  .rung .h { font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .badge { font-size: 10.5px; padding: 2px 8px; border-radius: 20px; font-weight: 600; letter-spacing: .03em; white-space: nowrap; }
+  .badge.go { background: var(--go-soft); color: var(--go); }
+  .badge.halt { background: var(--stop-soft); color: var(--stop); }
+  .rung p { margin: 6px 0 0; font-size: 13.5px; color: var(--muted); }
+
+  /* table */
+  .scroll { overflow-x: auto; margin: 16px 0; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 720px; }
+  th, td { text-align: left; padding: 10px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--code-bg); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr[hidden] { display: none; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 0; }
+  .chip {
+    background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+    padding: 5px 12px; border-radius: 20px; font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--ink); }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+  .pill { font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 600; white-space: nowrap; }
+  .pill.user { background: var(--stop-soft); color: var(--stop); }
+  .pill.silent { background: var(--warn-soft); color: var(--warn); }
+  .pill.on { background: var(--stop-soft); color: var(--stop); }
+  .pill.off { background: var(--go-soft); color: var(--go); }
+
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin: 16px 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 15px 17px; }
+  .card h4 { margin: 0 0 6px; font-size: 14px; }
+  .card p { margin: 0; font-size: 13px; color: var(--muted); }
+  .kv { font-size: 13.5px; }
+  .kv div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line); }
+  .kv div:first-child { border-top: 0; }
+  .kv span:last-child { text-align: right; }
+
+  .evgrid { display: flex; flex-wrap: wrap; gap: 5px; margin: 12px 0 4px; }
+  .ev { font-size: 12px; padding: 4px 9px; border-radius: 5px; background: var(--code-bg); border: 1px solid var(--line); }
+  .ev.hot { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+  hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+  .foot { color: var(--muted); font-size: 12.5px; margin-top: 40px; }
+</style>
+
+<div class="wrap">
+
+<h1>How MAGENTRA handles a query</h1>
+<p class="sub">A traced walkthrough of one user message — keystroke to rendered answer — and every point along the way where the agent can stop, stall, or refuse. Line references are from the working tree at <code>ad544db</code>.</p>
+
+<div class="tabs" role="tablist">
+  <button class="tab" role="tab" aria-selected="true" data-p="pipeline">Pipeline</button>
+  <button class="tab" role="tab" aria-selected="false" data-p="loop">The turn loop</button>
+  <button class="tab" role="tab" aria-selected="false" data-p="stops">Stops &amp; gates</button>
+  <button class="tab" role="tab" aria-selected="false" data-p="context">Context assembly</button>
+  <button class="tab" role="tab" aria-selected="false" data-p="events">Event protocol</button>
+  <button class="tab" role="tab" aria-selected="false" data-p="diag">Your setup</button>
+</div>
+
+<!-- ─────────── PIPELINE ─────────── -->
+<section class="panel" data-panel="pipeline">
+  <p>Four processes, one pipe. The Electron renderer talks to the Electron main process over IPC; main talks to the engine child process over NDJSON on stdio. Click a stage.</p>
+
+  <div class="pipe" id="pipe"></div>
+  <div class="detail" id="stageDetail"></div>
+
+  <div class="note">
+    <b>One pipe, one consumer</b>
+    The engine's outbound event stream is single-consumer by design — exactly one <code>for await</code> loop drains it for the engine's lifetime (<code>engine.ts:208</code>). Everything the UI knows arrives through that one ordered channel.
+  </div>
+</section>
+
+<!-- ─────────── LOOP ─────────── -->
+<section class="panel" data-panel="loop" hidden>
+  <h2>The agent loop</h2>
+  <p>Everything happens inside one unbounded <code>for</code> loop at <code>session.ts:1023</code>. Each pass makes exactly one provider call. The loop only exits through the conditions below.</p>
+
+  <div class="detail">
+    <div class="mono" style="font-size:13px; line-height:1.9; white-space:pre-wrap;">for (let iteration = 0; ; iteration++) {
+  <span style="color:var(--stop)">if (iteration &gt;= maxIterationsPerTurn) break;   // cap: 50</span>
+  <span style="color:var(--stop)">if (turnUsage.outputTokens &gt; maxTokensPerTurn) break;  // 200k</span>
+
+  const { assistant, toolCalls, end } = await streamAssistantTurn();
+
+  if (toolCalls.length === 0) {
+    <span style="color:var(--go)">/* ─ the nudge ladder ─ seven checks, first match wins ─ */</span>
+    break;
+  }
+
+  const results = await executeToolCalls(toolCalls);
+  pushMessage({ role: "user", content: withReminders(results) });
+  await maybeCompact();
+}</div>
+  </div>
+
+  <h3>Guards before the model is even called</h3>
+  <div class="ladder">
+    <div class="rung halt"><div class="h"><span>Iteration cap — 50 tool rounds</span><span class="badge halt">ENDS TURN</span></div>
+      <p><code>session.ts:1024</code> · emits <code>⏸ Iteration cap reached — send any message to continue</code>, sets <code>stopReason = "max_iterations"</code>. A warning reminder is injected one round early at <code>:1170</code> so the model gets a chance to land a final answer.</p></div>
+    <div class="rung halt"><div class="h"><span>Per-turn output budget — 200,000 tokens</span><span class="badge halt">ENDS TURN</span></div>
+      <p><code>session.ts:1032</code> · emits <code>⏸ Turn token budget reached</code>. Counts <em>billed output across the whole turn</em>, not context size.</p></div>
+  </div>
+
+  <h3>The nudge ladder — what happens when the model stops calling tools</h3>
+  <p>This is the interesting part, and it runs <em>against</em> stopping. When a response comes back with no tool calls, the turn does not simply end — seven checks run in priority order, and the first match pushes a synthetic user message and <code>continue</code>s the loop.</p>
+
+  <div class="ladder">
+    <div class="rung keepgoing"><div class="h"><span>1 · Stop hook blocks</span><span class="badge go">CONTINUES</span></div>
+      <p><code>:1053</code> · If a configured <code>Stop</code> hook returns blocked, its reason is injected and the loop continues. Guarded by <code>stopHookFired</code> — at most once per turn.</p></div>
+    <div class="rung keepgoing"><div class="h"><span>2 · Response was cut off at max_tokens</span><span class="badge go">CONTINUES</span></div>
+      <p><code>:1076</code> · Injects <code>LENGTH_CONTINUATION_TEXT</code> rather than ending the turn on a truncated answer. Emits <code>↻ continuing after output-length cutoff</code>.</p></div>
+    <div class="rung keepgoing"><div class="h"><span>3 · debug.ma repro oracle unsatisfied</span><span class="badge go">CONTINUES</span></div>
+      <p><code>:1087</code> · The repro script was seen failing but never seen passing — the fix is unverified. Has its own once-per-turn flag, deliberately <em>not</em> subject to the nudge cap.</p></div>
+    <div class="rung keepgoing"><div class="h"><span>4 · Last tool batch had an error</span><span class="badge go">CONTINUES</span></div>
+      <p><code>:1107</code> · Weak models bury failures under a confident non-answer. Emits <code>↻ auto-recovery: nudging the agent to continue after a failed tool call</code>.</p></div>
+    <div class="rung keepgoing"><div class="h"><span>5 · Task list still has open work</span><span class="badge go">CONTINUES</span></div>
+      <p><code>:1121</code> · Any task <code>pending</code> or <code>in_progress</code> triggers <code>↻ tasks incomplete — continuing</code>.</p></div>
+    <div class="rung keepgoing"><div class="h"><span>6 · Lots of work, no wrap-up</span><span class="badge go">CONTINUES</span></div>
+      <p><code>:1135</code> · ≥5 tool calls this turn but the final text is under 150 chars. Requests a summary so the turn doesn't end in silence.</p></div>
+    <div class="rung halt"><div class="h"><span>7 · Otherwise</span><span class="badge halt">ENDS TURN</span></div>
+      <p><code>:1154</code> · Clean <code>break</code>. This is the normal, healthy exit.</p></div>
+  </div>
+
+  <div class="note warn">
+    <b>MAX_AUTO_NUDGES = 3 is a ceiling on persistence, not on stopping</b>
+    Rungs 2, 4, 5 and 6 all share one counter (<code>session.ts:72</code>). Once three nudges are spent, every one of them goes silent and the turn ends at rung 7 — even if tasks are still open and the last tool call failed. If the goal is fewer premature stops, <em>raising</em> this number is the lever. Lowering or removing the ladder makes stopping more frequent, not less.
+  </div>
+
+  <h3>Failure and interrupt paths</h3>
+  <p>The <code>catch</code> at <code>:1181</code> repairs dangling <code>tool_use</code> blocks with synthetic <code>tool_result</code>s before recording anything — without this the provider rejects the next request and <code>/resume</code> replays the same corruption. The <code>finally</code> at <code>:1215</code> always clears the busy latch and emits <code>turn_finished</code>, so a crash cannot strand the composer.</p>
+</section>
+
+<!-- ─────────── STOPS ─────────── -->
+<section class="panel" data-panel="stops" hidden>
+  <h2>Every way a turn can stop</h2>
+  <p>Fifteen distinct mechanisms. The distinction that matters most: <b class="mono">user-facing</b> stops raise a prompt you can see and answer; <b class="mono">silent</b> stops return an error to the <em>model</em> only — from the outside they look like the agent simply refusing or giving up.</p>
+
+  <div class="chips" id="chips">
+    <button class="chip" aria-pressed="true" data-f="all">All 15</button>
+    <button class="chip" aria-pressed="false" data-f="user">User-facing</button>
+    <button class="chip" aria-pressed="false" data-f="silent">Silent (model-only)</button>
+    <button class="chip" aria-pressed="false" data-f="ondefault">On by default</button>
+    <button class="chip" aria-pressed="false" data-f="autonomy">Blocks autonomy</button>
+  </div>
+
+  <div class="scroll">
+    <table><thead><tr>
+      <th>Mechanism</th><th>Location</th><th>Trigger</th><th>Visibility</th><th>Default</th><th>Disable</th>
+    </tr></thead><tbody id="stopBody"></tbody></table>
+  </div>
+
+  <div class="note stop">
+    <b>The deletion guard outranks everything — including bypass mode</b>
+    <code>permissions.ts:123</code> runs <em>before</em> allow-rule matching and before the mode default. Only two tools define a <code>deletionSubject</code>: <code>Bash</code> (rm patterns, forced history rewrite, <code>git checkout</code> discard, <code>find -delete</code>, destructive <code>mv</code>, SQL/kubectl teardown — <code>bash.ts:91</code>) and <code>Worktree</code> with <code>action: "remove"</code>. It never records a session-allow, so it re-fires on every non-identical call.
+  </div>
+
+  <div class="note warn">
+    <b>Unattended mode inverts every human gate into an auto-deny</b>
+    <code>session.ts:275</code> — in a mission run, <code>requestApproval</code> never prompts; it denies with an explanation, and <code>askUser</code> rejects outright. Combined with the point above, the net effect is that in an unattended mission the <em>only</em> thing that reliably gets refused is destructive work. Subagents are hard-blocked from both channels in every mode (<code>session.ts:581</code>).
+  </div>
+</section>
+
+<!-- ─────────── CONTEXT ─────────── -->
+<section class="panel" data-panel="context" hidden>
+  <h2>What the model actually sees</h2>
+  <p>Two different clocks. The <b>system prompt</b> is rebuilt from scratch on <em>every</em> loop iteration. <b>Reminders</b> are queued during the turn and flushed into the next user message, then drained.</p>
+
+  <h3>System prompt — rebuilt per provider call</h3>
+  <p><code>session.ts:709</code> → <code>buildSystemPrompt()</code>, called fresh at <code>:1266</code>. A <code>systemPromptOverride</code> short-circuits the whole thing (<code>:710</code>) — that's how subagents and crew specialists get their own identity.</p>
+  <ol class="steps">
+    <li><span class="i">1</span><div><b>behaviorCore()</b> — ten static sections joined<span class="ref">prompts.ts:89 · identity, harness, communication, action-care, git, code-style, tasks, working-method, autonomy, plan-mode</span></div></li>
+    <li><span class="i">2</span><div><b>environmentBlock</b> — cwd, is-git-repo, platform, model, date<span class="ref">prompts.ts:112 · values gathered session.ts:714</span></div></li>
+    <li><span class="i">3</span><div><b>projectMemoryBlock</b> — the project guide file from cwd<span class="ref">prompts.ts:121</span></div></li>
+    <li><span class="i">4</span><div><b>skillsBlock</b> — action-skill <em>names and descriptions only</em>, never bodies<span class="ref">prompts.ts:139 · loaded once at boot, bootstrap.ts:114</span></div></li>
+    <li><span class="i">5</span><div><b>extraSections</b>, in order: static sections, tool-mutated <code>dynamicSections</code>, active discipline skills, crew roster, ATLAS.md, standards<span class="ref">session.ts:722 · modeEngine.promptSections() at ma/modes.ts:508</span></div></li>
+  </ol>
+
+  <div class="note">
+    <b>Backpack knowledge is not in the main prompt</b>
+    <code>backpackPromptSection</code> (<code>session.ts:734</code>) injects a knowledge brief only into a <em>crew child's</em> prompt. The main session reaches that corpus through the <code>BackpackSearch</code> tool instead.
+  </div>
+
+  <h3>Reminders — queued, flushed once, drained</h3>
+  <p>Queued via <code>remind()</code> (<code>:375</code>), flushed by <code>withReminders()</code> (<code>:1563</code>) as one wrapped block appended to the next user message.</p>
+  <ol class="steps">
+    <li><span class="i">A</span><div><b>Plan-first reminder</b> — fires when the task list is empty<span class="ref">session.ts:972 · "first create a plan with TaskCreate … before making any edits"</span></div></li>
+    <li><span class="i">B</span><div><b>Skill turn-start injections</b> — once per <em>conversation</em>, not per turn<span class="ref">session.ts:985 · guarded by injectedSkillReminders; ~140 tokens/turn saved</span></div></li>
+    <li><span class="i">C</span><div><b>No-atlas nudge</b> — once per session<span class="ref">session.ts:1010</span></div></li>
+    <li><span class="i">D</span><div><b>Error-batch reminder</b> + skill after-error injections, mid-loop<span class="ref">session.ts:1162</span></div></li>
+    <li><span class="i">E</span><div><b>Final-round cap warning</b> at <code>iteration === max - 2</code><span class="ref">session.ts:1170</span></div></li>
+  </ol>
+
+  <h3>Compaction</h3>
+  <p>Runs mid-loop (<code>:1179</code>) and post-turn (<code>:1244</code>). <code>maybeCompact</code> (<code>:1575</code>) self-gates on <code>contextWindow × compactionThreshold</code> (default 0.8) and walks the keep-boundary back so a <code>tool_use</code> is never severed from its <code>tool_result</code> (<code>:1581</code>).</p>
+
+  <div class="note warn">
+    <b>Known historical failure mode</b>
+    A <code>contextWindow</code> value pinned in the <em>global</em> settings layer merges into every workspace. When that value was 4096, compaction looped continuously instead of using the model's real window. The resolver is now single-source via <code>contextWindowFor(model)</code>, and the key is documented as an escape hatch for local servers only.
+  </div>
+</section>
+
+<!-- ─────────── EVENTS ─────────── -->
+<section class="panel" data-panel="events" hidden>
+  <h2>The wire protocol</h2>
+  <p>Newline-delimited JSON both directions. Encoding at <code>protocol/ndjson.ts:3</code>, decoding at <code>:12</code>.</p>
+
+  <h3>Engine → app · <span class="mono muted">CoreEvent</span></h3>
+  <p class="muted" style="font-size:13px">Defined at <code>protocol/types.ts:88</code>. Highlighted ones block the turn until the app answers.</p>
+  <div class="evgrid" id="coreEvents"></div>
+
+  <h3>App → engine · <span class="mono muted">FrontendRequest</span></h3>
+  <p class="muted" style="font-size:13px">Defined at <code>protocol/types.ts:338</code>. Highlighted ones are the replies that unblock a suspended turn.</p>
+  <div class="evgrid" id="frontEvents"></div>
+
+  <div class="note">
+    <b>Three events are synthesized by the app, not the protocol</b>
+    <code>engine_stderr</code> and <code>engine_exit</code> come from the main process watching the child (<code>landing.js:951</code>), and <code>workspace_changed</code> is renderer-local (<code>:836</code>). They flow through the same handler switch but never cross the pipe.
+  </div>
+
+  <h3>Round trip of a blocking prompt</h3>
+  <ol class="steps">
+    <li><span class="i">1</span><div>Tool calls <code>permissions.check()</code>, which awaits <code>requestApproval</code><span class="ref">permissions.ts:171</span></div></li>
+    <li><span class="i">2</span><div>Session emits <code>permission_request</code> with a stable <code>id</code><span class="ref">session.ts:289</span></div></li>
+    <li><span class="i">3</span><div>The sequential tool loop stalls — mutating calls run strictly in order precisely so prompts cannot race<span class="ref">session.ts:1457</span></div></li>
+    <li><span class="i">4</span><div>App renders the modal; user answers; renderer sends <code>permission_response</code></div></li>
+    <li><span class="i">5</span><div>Promise resolves, <code>allow_always</code> may persist a grant, tool proceeds or returns a denial as an error result<span class="ref">permissions.ts:147</span></div></li>
+  </ol>
+  <p>The same shape drives <code>question_request</code>/<code>question_response</code> and <code>plan_ready</code>/<code>plan_decision</code>. The interrupt handler force-resolves a pending plan decision as rejected (<code>engine.ts:653</code>) so a plan modal can never deadlock the stop button.</p>
+</section>
+
+<!-- ─────────── DIAG ─────────── -->
+<section class="panel" data-panel="diag" hidden>
+  <h2>What's actually configured on this machine</h2>
+  <p>Read from your settings files and session transcripts on 2026-07-20 — not defaults.</p>
+
+  <div class="grid2">
+    <div class="card"><h4>Permission mode</h4><div class="kv">
+      <div><span>App launch flag</span><span class="mono">--dangerously-bypass</span></div>
+      <div><span>Observed in transcripts</span><span class="mono">bypass</span></div>
+      <div><span>Deletion guard</span><span class="pill on">still active</span></div>
+    </div></div>
+    <div class="card"><h4>Active discipline skills</h4><div class="kv">
+      <div><span>lexicon</span><span class="pill off">no gate</span></div>
+      <div><span>prover</span><span class="pill off">no gate</span></div>
+      <div><span>sentinel</span><span class="pill off">no gate</span></div>
+      <div><span>grill / reshape / debug</span><span class="pill off">off</span></div>
+    </div></div>
+    <div class="card"><h4>Loop budgets</h4><div class="kv">
+      <div><span>maxIterationsPerTurn</span><span class="mono">50</span></div>
+      <div><span>maxTokensPerTurn</span><span class="mono">200,000</span></div>
+      <div><span>MAX_AUTO_NUDGES</span><span class="mono">3</span></div>
+    </div></div>
+    <div class="card"><h4>Reuse gate</h4><div class="kv">
+      <div><span>reuseCheck.mode</span><span class="pill on">gate</span></div>
+      <div><span>blockThreshold</span><span class="mono">0.75</span></div>
+      <div><span>Visibility</span><span class="pill silent">silent</span></div>
+    </div></div>
+  </div>
+
+  <div class="note go">
+    <b>The gated skills are off — planning gates are not what's stopping you</b>
+    <code>grill</code> carries <code>gate: Write, Edit requires tasks-exist</code> and instructs relentless <code>AskUserQuestion</code> interviewing. It is <em>not</em> active in any observed session. Same for <code>reshape</code> and <code>debug</code>. The Grill hypothesis is ruled out by evidence.
+  </div>
+
+  <div class="note warn">
+    <b>The plan-first reminder fires on every turn with an empty task list</b>
+    <code>session.ts:972</code> injects <em>"If this request needs more than a couple of steps, first create a plan with TaskCreate — one task per step … before making any edits."</em> Paired with <code>prover.ma</code>'s "every code change owes a verdict" and a small fast model, this is a standing push toward planning over acting. It is advisory text with no enforcement behind it — but a weak model can take it literally and loop.
+  </div>
+
+  <div class="note stop">
+    <b>Three orphaned config directories, each pinning a different model</b>
+    <code>~/.config/magentra-app/</code> (live — DeepSeek-V4-Flash), <code>~/.config/magentra/</code> (Qwen3.5-122B-A10B), <code>~/.config/magentra-desktop/</code> (gemma-4-31B-it, and a stale workspace list). The Electron app name changed across versions and left the old ones behind. Only the first is read today; the other two are pure confusion surface.
+  </div>
+
+  <div class="note stop">
+    <b>Plaintext API key in the global settings file</b>
+    <code>~/.magentra/settings.json</code> holds a live DeepInfra key in the <code>apiKey</code> field <em>and</em> sets <code>apiKeyEnv</code>. Since the literal key wins, the env var is dead weight. Worth rotating and moving to the env path.
+  </div>
+
+  <hr>
+
+  <h2>Where autonomy actually leaks</h2>
+  <p>Ranked by how often each is likely to interrupt a real working session, given the configuration above.</p>
+
+  <ol class="steps">
+    <li><span class="i">1</span><div><b>Reuse gate refusing new-file Writes</b> — on by default, silent, and reads from the outside as the agent simply declining to do the work. Setting <code>reuseCheck.mode</code> to <code>"remind"</code> keeps the signal and drops the block.<span class="ref">reuseGate.ts:83 · enforced session.ts:1387</span></div></li>
+    <li><span class="i">2</span><div><b>Iteration cap at 50</b> — a genuinely long refactor hits this and the turn dies mid-flight with <code>⏸</code>. The one-round-early warning helps only if the model heeds it.<span class="ref">session.ts:1024</span></div></li>
+    <li><span class="i">3</span><div><b>Nudge cap at 3</b> — the ladder that keeps the agent working gives up after three saves. On a model that errors often, this is exhausted early and the turn then ends at the first quiet moment.<span class="ref">session.ts:72</span></div></li>
+    <li><span class="i">4</span><div><b>Plan-first reminder</b> — advisory, but a strong standing instruction toward planning on every empty-task-list turn.<span class="ref">session.ts:972</span></div></li>
+    <li><span class="i">5</span><div><b>Read-before-write freshness</b> — refuses Write/Edit on a file not read this session. Not configurable. Usually correct, occasionally a loop when the model doesn't re-read.<span class="ref">fileState.ts:35 · write.ts:31, edit.ts:41</span></div></li>
+  </ol>
+
+  <div class="note">
+    <b>What not to remove</b>
+    The nudge ladder, the dangling-<code>tool_use</code> repair in the <code>catch</code>, and the compaction boundary walk are all load-bearing <em>against</em> stopping. Stripping "planning stops" indiscriminately would take the ladder with it and make premature termination more common, not less. The removable set is small and specific: the reuse gate's block mode, the iteration cap's value, the nudge cap's value, and the plan-first reminder's wording.
+  </div>
+</section>
+
+<p class="foot">Generated from a full read of <code>engine/core</code>, <code>engine/host</code>, <code>engine/tools</code>, <code>engine/protocol</code> and <code>app/</code>. Line numbers drift — re-verify before editing.</p>
+
+</div>
+
+<script>
+const STAGES = [
+  { id:"renderer", n:"Stage 1", t:"Renderer", w:"composer.js", h:"Keystroke → IPC frame",
+    steps:[
+      ["Enter without Shift calls <b>sendMessage()</b>","composer.js:308 · click path at :313"],
+      ["Guards on <code>engineLinked</code> and empty text — an unconfigured engine can never receive a prompt","composer.js:227"],
+      ["If the session is busy, text goes to <code>messageQueue</code> and is flushed one per turn-end","composer.js:151, :213"],
+      ["<b>dispatch()</b> routes by prefix: <code>/</code> → slash_command, <code>!</code> → bang_command, else a user turn","composer.js:186"],
+      ["Optimistic local echo, then the frame goes out","composer.js:207 · appendUserMessage() at stream.js:93"],
+      ["Preload bridge forwards it","preload.js:12 · ipcRenderer.send(\"engine:send\", frame)"]
+    ],
+    note:["Payload is exactly <code>{ type: \"user_message\", text: string }</code>","protocol/types.ts:338"] },
+
+  { id:"main", n:"Stage 2", t:"Electron main", w:"main.js", h:"IPC → engine stdin",
+    steps:[
+      ["<code>ipcMain.on(\"engine:send\")</code> validates a non-array object with a string <code>type</code>","main.js:1110"],
+      ["<b>writeToEngine()</b> does the NDJSON framing","main.js:167 · the write itself is :169"],
+      ["<code>JSON.stringify(frame) + \"\\n\"</code> onto the child's stdin","main.js:169"],
+      ["Dead-engine fallback: frames in <code>USER_ACTION_FRAMES</code> get a synthetic error event back instead of vanishing","main.js:160, :174"],
+      ["The child was spawned with <code>stdio: [\"pipe\",\"pipe\",\"pipe\"]</code>","main.js:285 · entry resolved at :91"]
+    ],
+    note:["<code>app/main/connection.js</code> is <em>not</em> on this path — it handles credential validation and the setup wizard's TEST button. The engine pipe lives entirely in <code>main.js</code>.",""] },
+
+  { id:"host", n:"Stage 3", t:"Engine host", w:"serve.ts", h:"Frame dispatch",
+    steps:[
+      ["<b>main()</b> parses argv, bootstraps, calls <code>runServe</code>","host/main.ts:70"],
+      ["Registry, MCP tools and provider are constructed","bootstrap.ts:87 · createDefaultRegistry() :99, loadSkills() :114"],
+      ["<code>engine.start()</code>, then a concurrent pump writes every CoreEvent to stdout","serve.ts:12"],
+      ["stdin is decoded into frames, each forwarded to <code>engine.send(frame)</code>","serve.ts:39 · ndjson.ts:12"],
+      ["stdin EOF or SIGTERM triggers interrupt, drain, close","serve.ts:26"]
+    ],
+    note:["The app always launches the engine with <code>--serve --dangerously-bypass --cwd &lt;workspace&gt;</code>.","main.js:272"] },
+
+  { id:"turn", n:"Stage 4", t:"Session.runTurn", w:"session.ts", h:"Turn setup",
+    steps:[
+      ["<code>Engine.send()</code> switch: <code>user_message</code> → <code>startExclusive(… runTurn(text))</code>","engine.ts:614"],
+      ["<b>startExclusive</b> refuses overlap and chains onto <code>turnPromise</code> so <code>idle()</code> never forgets in-flight work","engine.ts:590"],
+      ["Busy latch set — a second turn throws \"session is already processing a turn\"","session.ts:938"],
+      ["Crew hot-reload check via the team-dir signature","session.ts:943"],
+      ["<b>UserPromptSubmit hook</b> — the one thing that can kill a turn before it starts","session.ts:949"],
+      ["Reminders queued: plan-first, skill turn-start injections, atlas hints","session.ts:970, :985, :1005"],
+      ["Prompt enters history <em>with reminders appended</em>","session.ts:1014 · withReminders() :1563"],
+      ["<code>turn_started</code> emitted, loop begins","session.ts:999 → :1023"]
+    ],
+    note:["See the <b>Turn loop</b> tab for what happens inside.",""] },
+
+  { id:"model", n:"Stage 5", t:"Provider call", w:"streamAssistantTurn", h:"One call per iteration",
+    steps:[
+      ["<code>provider.stream({ model, system, messages, tools, maxTokens, signal, onRetry })</code>","session.ts:1264"],
+      ["<code>system</code> is <b>rebuilt from scratch every iteration</b>","session.ts:1266 → buildSystemPrompt() :709"],
+      ["Retries narrate themselves — a silent backoff looks like a frozen spinner","session.ts:1272 · emits retry_status"],
+      ["<code>text_delta</code> and <code>thinking_delta</code> stream straight through to the UI","session.ts:1278, :1282"],
+      ["Tool calls accumulate locally and are <b>not</b> emitted here — JSON arrives in fragments","session.ts:1286"],
+      ["<code>message_end</code> yields <code>stopReason</code> + <code>usage</code>; blocks assembled at :1308","session.ts:1296"]
+    ],
+    note:["Billed usage accumulates across the turn; context size does not. Summing the two is the classic context-meter bug — see the comment at <code>session.ts:1044</code>.",""] },
+
+  { id:"tools", n:"Stage 6", t:"Tool execution", w:"executeToolCalls", h:"13 checks per call",
+    steps:[
+      ["Registry lookup — unknown tool returns an error listing what exists","session.ts:1325"],
+      ["Zod validation via <code>inputSchema.safeParse</code>","session.ts:1338"],
+      ["Parallelism decided: <code>permissionClass === \"read\" || parallelSafe</code>","session.ts:1357"],
+      ["Search-evidence logged for the reuse gate","session.ts:1361"],
+      ["<b>Skill gates</b> — never / tasks-exist / repro-failed","session.ts:1368"],
+      ["<b>Reuse gate</b> on Write — block or remind","session.ts:1387"],
+      ["<b>PreToolUse hook</b> — can block","session.ts:1402"],
+      ["<b>permissions.check()</b> — deletion guard, allow rules, mode default","session.ts:1406"],
+      ["<code>tool_call_started</code> emitted, then <code>tool.execute()</code>","session.ts:1419, :1427"],
+      ["Output truncated to the tool's byte limit","session.ts:1429"],
+      ["<b>PostToolUse hook</b> — advisory reminder only, never blocks","session.ts:1430"],
+      ["Read-only calls run concurrently; mutating calls strictly sequential so prompts can't race","session.ts:1457"],
+      ["<code>tool_call_finished</code> per call; results returned in original call order","session.ts:1472"]
+    ],
+    note:["Note the ordering — <b>gates run before permissions</b>. A skill gate or reuse-gate refusal never reaches the permission system at all, which is why bypass mode doesn't lift them.",""] },
+
+  { id:"back", n:"Stage 7", t:"Render", w:"landing.js", h:"Events → DOM",
+    steps:[
+      ["<code>session.emit</code> → <code>Engine.events.push</code>","engine.ts:208"],
+      ["Pump loop writes <code>encodeFrame(event)</code> to stdout","serve.ts:15"],
+      ["Main buffers stdout on <code>\\n</code>, JSON.parses each line, forwards to the renderer","main.js:310, :327"],
+      ["Renderer's handler switch dispatches by event type","landing.js:834"],
+      ["<b>onTextDelta</b> appends raw text to a live span; Markdown is deferred to <code>finalizeAssistantEl</code> so half-streamed code fences don't flicker","landing.js:380 · stream.js:13"],
+      ["<b>onThinkingDelta</b> builds a collapsed <code>&lt;details&gt;</code> reasoning block","landing.js:414"],
+      ["Tool call started/finished, turn started/finished render their own affordances","landing.js:436, :475, :291, :350"],
+      ["<code>file_edited</code> feeds the changes panel","events.js:33"]
+    ],
+    note:["Parse failures on the stdout reader are logged rather than swallowed — silent frame drops were a real bug class here.","main.js:198"] }
+];
+
+const STOPS = [
+  { m:"Permission ask prompt", loc:"permissions.ts:171", tr:"modeDefault(tool) returns \"ask\" — any non-read/interact tool in default mode with no allow rule", v:"user", d:"on in <code>default</code> mode", dis:"<code>permissionMode: \"bypass\"</code>, allow rules, or a session grant", tags:["user","autonomy"] },
+  { m:"Deletion guard", loc:"permissions.ts:123", tr:"tool.deletionSubject() returns a string — Bash destructive patterns, Worktree remove", v:"user", d:"<b>on in every mode, bypass included</b>", dis:"the app's \"allow deletions\" toggle, or an exact subject-scoped allow rule", tags:["user","ondefault","autonomy"] },
+  { m:"ExitPlanMode approval", loc:"planMode.ts:51", tr:"the model calls ExitPlanMode", v:"user", d:"only reachable from plan mode", dis:"never enter plan mode", tags:["user","autonomy"] },
+  { m:"AskUserQuestion", loc:"askUserQuestion.ts:31", tr:"the model calls it", v:"user", d:"tool always registered", dis:"no config switch — only unattended mode short-circuits it", tags:["user","autonomy"] },
+  { m:"UserPromptSubmit hook", loc:"session.ts:949", tr:"a configured hook returns blocked", v:"user", d:"off unless configured", dis:"remove the hook", tags:["user"] },
+  { m:"Plan mode tool denial", loc:"permissions.ts:220", tr:"mode is \"plan\" and the tool isn't read/interact", v:"silent", d:"off", dis:"<code>/mode default</code>", tags:["silent","autonomy"] },
+  { m:"Skill gate — tasks-exist", loc:"session.ts:1373", tr:"an active skill gates Write/Edit until the task list is non-empty", v:"silent", d:"off — grill &amp; reshape inactive", dis:"deactivate the skill", tags:["silent","autonomy"] },
+  { m:"Skill gate — repro-failed", loc:"session.ts:1379", tr:"debug.ma: edits locked until the repro script is seen failing", v:"silent", d:"off — debug inactive", dis:"deactivate the skill", tags:["silent","autonomy"] },
+  { m:"Skill gate — never", loc:"session.ts:1370", tr:"a workspace skill declares an unconditional block", v:"silent", d:"off — no builtin uses it", dis:"deactivate the skill", tags:["silent"] },
+  { m:"Reuse gate", loc:"reuseGate.ts:83", tr:"a new-file Write resembling existing code, with no related search this session", v:"silent", d:"<b>on — mode \"gate\"</b>", dis:"<code>reuseCheck.mode: \"remind\"</code> or <code>\"off\"</code>", tags:["silent","ondefault","autonomy"] },
+  { m:"PreToolUse hook", loc:"session.ts:1402", tr:"a configured hook returns blocked", v:"silent", d:"off unless configured", dis:"remove the hook", tags:["silent"] },
+  { m:"Iteration cap", loc:"session.ts:1024", tr:"50 tool rounds in one turn", v:"user", d:"<b>on — 50</b>", dis:"raise <code>maxIterationsPerTurn</code> / <code>MAGENTRA_MAX_ITERATIONS</code>", tags:["user","ondefault","autonomy"] },
+  { m:"Per-turn token budget", loc:"session.ts:1032", tr:"200k billed output tokens in one turn", v:"user", d:"<b>on — 200,000</b>", dis:"raise <code>maxTokensPerTurn</code>", tags:["user","ondefault","autonomy"] },
+  { m:"Nudge cap exhausted", loc:"session.ts:72", tr:"3 auto-recovery nudges spent — the ladder goes silent", v:"silent", d:"<b>on — 3</b>", dis:"raise <code>MAX_AUTO_NUDGES</code> (code constant, not a setting)", tags:["silent","ondefault","autonomy"] },
+  { m:"Read-before-write freshness", loc:"fileState.ts:35", tr:"Write/Edit on a file not read this session, or changed on disk since", v:"silent", d:"<b>on — not configurable</b>", dis:"none", tags:["silent","ondefault"] }
+];
+
+const CORE_EV = ["session_started","turn_started","text_delta","thinking_delta","tool_call_started","tool_call_finished","tool_output_delta","retry_status","agent_spawned","agent_finished","permission_request","question_request","plan_ready","task_list_updated","file_edited","background_notification","mode_changed","command_output","session_list","turn_finished","error","skill_draft","skills_updated","modes_updated","team_updated","backpack_progress","session_restored","model_catalog","cwd_changed","missions_updated"];
+const CORE_HOT = new Set(["permission_request","question_request","plan_ready"]);
+const FRONT_EV = ["user_message","permission_response","question_response","plan_decision","interrupt","set_mode","set_deletion_guard","slash_command","bang_command","resume_session","delete_session","stop_background","rename_session","archive_session","list_sessions","set_modes","reload_team","generate_skill","install_skill"];
+const FRONT_HOT = new Set(["permission_response","question_response","plan_decision","interrupt"]);
+
+// tabs
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", String(x === t)));
+  document.querySelectorAll(".panel").forEach(p => { p.hidden = p.dataset.panel !== t.dataset.p; });
+}));
+
+// pipeline
+const pipeEl = document.getElementById("pipe");
+const detEl = document.getElementById("stageDetail");
+STAGES.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.className = "stage"; b.setAttribute("aria-pressed", String(i === 0));
+  b.innerHTML = `<div class="n">${s.n}</div><div class="t">${s.t}</div><div class="w mono">${s.w}</div>`;
+  b.addEventListener("click", () => {
+    document.querySelectorAll(".stage").forEach(x => x.setAttribute("aria-pressed", "false"));
+    b.setAttribute("aria-pressed", "true");
+    showStage(s);
+  });
+  pipeEl.appendChild(b);
+});
+function showStage(s) {
+  const steps = s.steps.map(([txt, ref], i) =>
+    `<li><span class="i">${i + 1}</span><div>${txt}${ref ? `<span class="ref mono">${ref}</span>` : ""}</div></li>`).join("");
+  const note = s.note ? `<div class="note">${s.note[0]}${s.note[1] ? `<span class="ref mono">${s.note[1]}</span>` : ""}</div>` : "";
+  detEl.innerHTML = `<h3>${s.t} — ${s.h}</h3><ol class="steps">${steps}</ol>${note}`;
+}
+showStage(STAGES[0]);
+
+// stops table
+const body = document.getElementById("stopBody");
+STOPS.forEach(s => {
+  const tr = document.createElement("tr");
+  tr.dataset.tags = s.tags.join(" ");
+  tr.innerHTML = `<td><b>${s.m}</b></td><td class="mono" style="font-size:12px">${s.loc}</td>` +
+    `<td>${s.tr}</td><td><span class="pill ${s.v}">${s.v === "user" ? "user-facing" : "silent"}</span></td>` +
+    `<td>${s.d}</td><td>${s.dis}</td>`;
+  body.appendChild(tr);
+});
+document.querySelectorAll("#chips .chip").forEach(c => c.addEventListener("click", () => {
+  document.querySelectorAll("#chips .chip").forEach(x => x.setAttribute("aria-pressed", String(x === c)));
+  const f = c.dataset.f;
+  body.querySelectorAll("tr").forEach(tr => { tr.hidden = f !== "all" && !tr.dataset.tags.split(" ").includes(f); });
+}));
+
+// events
+function fillEvents(id, list, hot) {
+  const el = document.getElementById(id);
+  list.forEach(n => {
+    const d = document.createElement("div");
+    d.className = "ev mono" + (hot.has(n) ? " hot" : "");
+    d.textContent = n;
+    el.appendChild(d);
+  });
+}
+fillEvents("coreEvents", CORE_EV, CORE_HOT);
+fillEvents("frontEvents", FRONT_EV, FRONT_HOT);
+</script>

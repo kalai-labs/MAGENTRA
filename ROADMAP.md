@@ -439,6 +439,53 @@ Goal: the engine's power is findable; words mean one thing each.
 
 ---
 
+## Phase O — OVERDRIVE: fully-autonomous mode (designed 2026-07-20)
+
+Design confirmed via grilling session 2026-07-20; the decision record lives in project memory (`magentra-overdrive-design`). Non-negotiables baked into every item below: **generic evidence** (never assume builds/tests/linters — evidence is whatever the query calls for), **no separate verifier caller**, **nothing blocks the flow** except a rubric-worthy question to the user. Items are ordered so the engine policy exists and is manually drivable (via a temp slash command) before any UI is built on top.
+
+- [ ] **O.1 Protocol + session flag**
+  Files: `engine/protocol/src/types.ts` (FrontendRequest `{type:"set_overdrive", enabled}`; CoreEvent `{type:"overdrive_changed", enabled}`), `engine/core/src/runtime/engine.ts` (`send` switch case, plus a `/overdrive` slash for manual driving), `engine/core/src/runtime/session.ts` (an `overdrive: boolean` on the session, included in the transcript meta so `/resume` restores it).
+  Done when: `/overdrive on` flips the flag, the event round-trips, and a resumed session comes back with the flag intact.
+
+- [ ] **O.2 Loop policy — lift the stops**
+  Files: `engine/core/src/runtime/session.ts` (~:1024 iteration cap, ~:1032 token budget — both skipped when overdrive; ~:72 `MAX_AUTO_NUDGES` — deterministic rungs (error-recovery, tasks-incomplete, length-continuation) become unlimited in overdrive), reuse gate call site (~:1387 — treat `gate` as `remind` when overdrive).
+  Done when: a turn in overdrive sails past 50 iterations without the `⏸` pause, and a new-file Write near-duplicate produces a reminder, not a refusal.
+
+- [ ] **O.3 Self-verify rung + economy cleanup**
+  Files: `engine/core/src/runtime/session.ts` (nudge ladder, before the final `break` ~:1154).
+  First end-attempt in an overdrive turn injects: re-read the original query; is every part handled; did you create anything the query did not need — if fully done say DONE, else continue (cleanup counts as continuing). Fires once per turn; re-arms only when mid-run steering (O.6) arrives. No new subsystem, no extra caller.
+  Done when: a deliberately half-finished reply triggers exactly one self-verify round-trip, and a turn that scattered scratch files cleans them before ending.
+
+- [ ] **O.4 Stall detector → strategy pivots → ask**
+  Files: `engine/core/src/runtime/session.ts` (track a per-round progress signature: files touched, task-list changes, latest error text).
+  Three consecutive rounds with an identical signature = stall → inject "this approach is not working — abandon it and try a different strategy" (max 2 pivots), then force one concrete AskUserQuestion. Numeric caps stay out; this is the only brake.
+  Done when: a command that always fails the same way produces two visible pivots and then a single user question, not an infinite loop.
+
+- [ ] **O.5 Deletion scope-split (non-blocking bias)**
+  Files: `engine/core/src/runtime/permissions.ts` (~:123 guard path), `engine/tools/src/bash.ts` (~:91 `bashDeletionSubject` — classify the target path in/out of workspace), `engine/core/src/runtime/session.ts` (pre-turn `git stash create` snapshot ref, kept in session state, mentioned in `turn_finished`).
+  In overdrive: in-workspace deletions run silently; out-of-workspace targets, git-history rewrites, and workspace-root wildcards still ask. Guard unchanged in every other mode.
+  Done when: an overdrive turn deletes its own temp file without a prompt, `rm` outside the workspace still asks, and the snapshot ref can restore a deleted tracked file.
+
+- [ ] **O.6 Prompt policy + mid-run steering**
+  Files: `engine/core/src/runtime/session.ts` (overdrive prompt section: plan-first-no-gate wording, ask-rubric — design-changing / irreversible / outside-workspace only, genericness clause; steering queue consumed at the next message boundary, re-arms O.3), `engine/protocol/src/types.ts` + `app/renderer/modules/composer.js` (busy-state send becomes steering instead of queue-until-turn-end; composer hint text changes).
+  Done when: typing mid-turn lands in the running turn at the next boundary and visibly steers it.
+
+- [ ] **O.7 Subagents inherit budgets**
+  Files: `engine/core/src/runtime/session.ts` (spawn opts ~:535 — children of an overdrive session get the lifted iteration/token budgets; the never-ask rule stays).
+  Done when: a long child task no longer dies at its own cap mid-overdrive-run.
+
+- [ ] **O.8 UI — toggle, first-enable dialog, cinematic, shell identity**
+  Files: `app/renderer/index.html` + `app/renderer/modules/composer.js` (composer toggle), new `app/renderer/modules/overdrive.js` (first-enable dialog: 4–5 plain lines, one danger line, recommended skills pre-checked with one-line whys, none required; ENGAGE), CSS (full-window engage cinematic ~2s, GT-mode energy, honors `prefers-reduced-motion`; `data-overdrive` attr shifts the whole shell's accent while active), `app/renderer/modules/state.js` (persist in uiSettings, re-send on engine link like `set_deletion_guard`; status bar shows ⚡ OVERDRIVE — note bypass already displays as "autonomous", the OVERDRIVE name avoids that collision).
+  Done when: one click engages with the animation, the shell visibly wears the mode, the state survives an app restart, and disabling reverts everything.
+
+- [ ] **O.9 Docs**
+  Files: `FEATURES.md` (OVERDRIVE section: what lifts, what still asks, the rubric), `docs/query-lifecycle.html` (overdrive branch in the loop tab).
+  Done when: a new user can predict from FEATURES.md exactly when OVERDRIVE will and will not interrupt them.
+
+Tests for all of the above land in Phase 10 per the standing policy (10.5 llm bucket: self-verify rung, stall pivots; 10.1 pure bucket: scope-split classification, progress signature).
+
+---
+
 ## Phase P — Permissions & trust hardening (deferred by decision, 2026-07-16)
 
 Running with all permissions bypassed is **intentional** during product development. Revisit this phase when the product is ready (likely alongside Phase 9's distribution work — the point where strangers start running it). Items parked here, in future priority order:
