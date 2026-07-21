@@ -192,7 +192,7 @@ function showEngineErrorBanner(message, kind) {
 
   const setupBtn = document.createElement("button");
   setupBtn.className = "engine-banner-btn";
-  setupBtn.textContent = "SET UP ENGINE ▸";
+  setupBtn.textContent = "SET UP CONNECTIONS ▸";
   setupBtn.addEventListener("click", openSetupWizard);
 
   if (kind === "credential") el.append(setupBtn, restartBtn);

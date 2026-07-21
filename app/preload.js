@@ -23,6 +23,13 @@ contextBridge.exposeInMainWorld("magentra", {
   pickDoc: (agentId) => ipcRenderer.invoke("team:pickDoc", agentId),
   writeEnv: (payload) => ipcRenderer.invoke("setup:writeEnv", payload),
   testConnection: (payload) => ipcRenderer.invoke("setup:testConnection", payload),
+  // Which local model servers (Ollama, LM Studio) are present on this machine.
+  detectLocalServers: () => ipcRenderer.invoke("connections:detectLocal"),
+  // Global connection profiles (reusable across workspaces).
+  listProfiles: () => ipcRenderer.invoke("profiles:list"),
+  saveProfile: (payload) => ipcRenderer.invoke("profiles:save", payload),
+  deleteProfile: (id) => ipcRenderer.invoke("profiles:delete", id),
+  applyProfile: (id) => ipcRenderer.invoke("profiles:apply", { id }),
   getWebSearch: () => ipcRenderer.invoke("settings:getWebSearch"),
   setWebSearch: (enabled) => ipcRenderer.invoke("settings:setWebSearch", enabled),
   getAppInfo: () => ipcRenderer.invoke("app:info"),

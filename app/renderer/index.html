@@ -70,6 +70,9 @@
         <span class="dock-glyph">±</span><span class="dock-label">Changes</span>
         <span id="dockChangesCount" class="dock-badge hidden">0</span>
       </button>
+      <button class="dock-btn" id="navSetupConn" title="Set up connections" aria-label="Set up connections">
+        <span class="dock-glyph">⇆</span><span class="dock-label">Connect</span>
+      </button>
       <button class="dock-btn" id="navSettings" title="Settings" aria-label="Settings">
         <span class="dock-glyph">⚙</span><span class="dock-label">Settings</span>
       </button>
@@ -108,7 +111,10 @@
           <div class="empty-mark" aria-hidden="true">M</div>
           <h1>Bring a workspace. Leave with reviewed work.</h1>
           <p class="empty-tag">Magentra plans, edits, verifies, and keeps every decision visible.</p>
-          <button id="pickFolderBtn">Open workspace</button>
+          <div class="empty-actions">
+            <button id="pickFolderBtn">Open workspace</button>
+            <button id="welcomeSetupConnBtn" class="empty-secondary" title="Build reusable connection profiles">⇆ Set up connections</button>
+          </div>
           <div id="recentList" class="recent-list hidden"></div>
         </div>
       </main>
@@ -574,23 +580,32 @@
     </div>
   </div>
 
-  <!-- ── first-run wizard ───────────────────────────────────────────────── -->
-  <div id="setupWizard" class="hidden" role="dialog" aria-modal="true" aria-label="Engine setup">
+  <!-- ── connection wizard: saved profiles + build-new ──────────────────── -->
+  <div id="setupWizard" class="hidden" role="dialog" aria-modal="true" aria-label="Set up connections">
     <div class="wiz-box">
-      <button id="wizCloseBtn" class="wiz-close" title="Not now (Esc)" aria-label="Not now (Esc)">✕</button>
-      <div class="wiz-title"><span class="logo-mark">▮</span> LINK YOUR ENGINE</div>
-      <p class="wiz-sub">This workspace has no credentials yet. Choose a provider and Magentra will write a local <code>.env</code> for it.</p>
+      <button id="wizCloseBtn" class="wiz-close" title="Close (Esc)" aria-label="Close (Esc)">✕</button>
+      <div class="wiz-title"><span class="logo-mark">▮</span> SET UP CONNECTIONS</div>
+      <p class="wiz-sub" id="wizSub">This workspace has no connection yet. Pick a saved profile, or build a new one below.</p>
+
+      <div class="wiz-profiles" id="wizProfiles" hidden>
+        <div class="wiz-profiles-head">SAVED PROFILES</div>
+        <div id="wizProfilesList" class="wiz-profiles-list"></div>
+      </div>
+
+      <div class="wiz-build-head" id="wizBuildHead">＋ NEW PROFILE</div>
+
+      <label class="wiz-field"><span>PROFILE NAME</span>
+        <input id="wizName" type="text" spellcheck="false" placeholder="e.g. DeepInfra — DeepSeek" />
+      </label>
 
       <div class="wiz-presets">
-        <button class="wiz-preset on" data-preset="deepinfra">DEEPINFRA</button>
-        <button class="wiz-preset" data-preset="anthropic">ANTHROPIC</button>
+        <button class="wiz-preset on" data-preset="custom">CUSTOM</button>
         <button class="wiz-preset" data-preset="ollama">OLLAMA</button>
         <button class="wiz-preset" data-preset="lmstudio">LM STUDIO</button>
-        <button class="wiz-preset" data-preset="custom">CUSTOM</button>
       </div>
 
       <label class="wiz-field"><span>BASE URL</span>
-        <input id="wizBaseUrl" type="text" spellcheck="false" value="https://api.deepinfra.com/v1/openai" />
+        <input id="wizBaseUrl" type="text" spellcheck="false" value="" placeholder="https://your-endpoint/v1" />
         <span id="wizBaseUrlHint" class="wiz-field-hint" hidden>Paste the exact URL your client calls — even <code>…/v1/chat/completions</code> — Magentra derives the base.</span>
       </label>
       <label class="wiz-check" id="wizInsecureRow" hidden>
@@ -602,7 +617,7 @@
         <button id="wizKeyHint" class="wiz-key-hint" type="button" hidden></button>
       </label>
       <label class="wiz-field"><span>MODEL</span>
-        <input id="wizModel" type="text" spellcheck="false" value="deepseek-ai/DeepSeek-V4-Flash" list="wizModels" />
+        <input id="wizModel" type="text" spellcheck="false" value="" placeholder="provider/model-id" list="wizModels" />
         <!-- options are filled per provider preset by setup.js -->
         <datalist id="wizModels"></datalist>
       </label>
@@ -613,9 +628,10 @@
       <div class="wiz-actions">
         <span id="wizStatus"></span>
         <button id="wizTestBtn">TEST</button>
-        <button id="wizStartBtn">IGNITE ▸</button>
+        <button id="wizSaveProfileBtn">SAVE PROFILE</button>
+        <button id="wizStartBtn">SAVE &amp; CONNECT ▸</button>
       </div>
-      <p class="wiz-note" id="wizNote">The key is written to <code>.env</code> beside your code and never leaves this machine.</p>
+      <p class="wiz-note" id="wizNote">Profiles are saved to <code>~/.magentra/profiles.json</code> (owner-only, this machine). Connecting also writes the key to the workspace <code>.env</code>.</p>
     </div>
   </div>
 

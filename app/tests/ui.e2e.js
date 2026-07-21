@@ -13,6 +13,10 @@ const modes = [];
 const permissions = [];
 const signals = [];
 const rendererErrors = [];
+// Stateful mock of the global connection-profile store (main/profiles.js). Holds
+// sanitized records (never a raw key — only hasKey), exactly what the IPC returns.
+const profiles = [];
+let profileSeq = 0;
 let windowRef = null;
 let passed = 0;
 
@@ -38,6 +42,39 @@ function apiResult(name, args) {
       return { ok: true, models: [MODEL], ...(baseUrl ? { baseUrl } : {}) };
     }
     case "pickDoc": return { ok: true, path: "/tmp/context.md" };
+    case "detectLocalServers":
+      // Ollama present, LM Studio absent — exercises both the enabled and the
+      // grayed-out-with-a-reason paths.
+      return {
+        ollama: { available: true },
+        lmstudio: { available: false, reason: "LM Studio wasn't found on this PC" },
+      };
+    case "listProfiles": return profiles.map((p) => ({ ...p }));
+    case "saveProfile": {
+      const payload = args[0] || {};
+      const profileName = typeof payload.name === "string" ? payload.name.trim() : "";
+      if (!profileName) return { ok: false, error: "profile name required" };
+      const record = {
+        id: typeof payload.id === "string" && payload.id ? payload.id : `prof-${++profileSeq}`,
+        name: profileName,
+        baseUrl: payload.baseUrl || "",
+        model: payload.model || "",
+        provider: payload.provider === "anthropic" ? "anthropic" : "openai-compat",
+        contextWindow: payload.contextWindow ? String(payload.contextWindow) : "",
+        allowInsecureTls: payload.insecureTls === true,
+        hasKey: typeof payload.apiKey === "string" && payload.apiKey.trim() !== "",
+      };
+      const idx = profiles.findIndex((p) => p.id === record.id);
+      if (idx >= 0) profiles[idx] = record;
+      else profiles.unshift(record);
+      return { ok: true, id: record.id, profiles: profiles.map((p) => ({ ...p })) };
+    }
+    case "deleteProfile": {
+      const idx = profiles.findIndex((p) => p.id === args[0]);
+      if (idx >= 0) profiles.splice(idx, 1);
+      return { ok: true, profiles: profiles.map((p) => ({ ...p })) };
+    }
+    case "applyProfile": return { ok: true };
     default: return { ok: true };
   }
 }
@@ -87,6 +124,12 @@ async function run() {
       theme: "workbench", sidebar: "flex", rain: false, promptDisabled: true,
       recentCount: 1, title: "Start a new conversation", version: "v0.0.0-test",
     });
+    // The welcome page offers building connection profiles before any workspace
+    // is open, alongside the folder picker.
+    assert.equal(await evaluate(`(() => {
+      const b = document.querySelector('#welcomeSetupConnBtn');
+      return Boolean(b) && getComputedStyle(b).display !== 'none';
+    })()`), true);
     // Keep the auto-starting first-run tour out of the unrelated scenarios;
     // the dedicated tour test below replays it explicitly via startTour(true).
     await evaluate(`localStorage.setItem('magentra-tour-done', '1')`);
@@ -841,24 +884,47 @@ async function run() {
     assert.equal(await evaluate(`document.body.dataset.view`), "console");
     assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.command === "clear"));
     windowRef.webContents.send("test:setup-required", { workspace: WORKSPACE });
-    await pause();
+    await pause(80);
     assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), false);
     await evaluate(`(() => {
+      document.querySelector('#wizName').value = 'My Endpoint';
+      const base = document.querySelector('#wizBaseUrl');
+      base.value = 'https://api.test/v1';
+      base.dispatchEvent(new Event('input'));
+      const model = document.querySelector('#wizModel');
+      model.value = 'deepseek-ai/DeepSeek-V4-Flash';
+      model.dispatchEvent(new Event('input'));
       document.querySelector('#wizApiKey').value = 'wizard-test-key';
       document.querySelector('#wizApiKey').dispatchEvent(new Event('input'));
       document.querySelector('#wizTestBtn').click();
     })()`);
     await pause();
     assert.equal(await evaluate(`document.querySelector('#wizStatus').textContent`), "link established");
+    // SAVE & CONNECT saves the profile globally, then applies it to the workspace.
     await evaluate(`document.querySelector('#wizStartBtn').click()`);
     await pause();
-    assert.ok(calls.filter((call) => call.name === "writeEnv").length >= 2);
+    const savedProfile = calls.filter((call) => call.name === "saveProfile").pop();
+    assert.equal(savedProfile.args[0].name, "My Endpoint");
+    assert.ok(calls.some((call) => call.name === "applyProfile"));
     assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
   });
 
   await test("custom endpoint wizard: pasted URL normalizes, keyless + self-signed works, model stays aligned", async () => {
     windowRef.webContents.send("test:setup-required", { workspace: WORKSPACE });
-    await pause();
+    await pause(80);
+    // Presets are just Custom / Ollama / LM Studio — no provider branding — and
+    // the local servers are auto-detected: Ollama enabled, LM Studio grayed out
+    // with a hover reason.
+    let detect = await evaluate(`(() => ({
+      presets: [...document.querySelectorAll('.wiz-preset')].map((b) => b.dataset.preset),
+      ollamaDisabled: document.querySelector('[data-preset="ollama"]').disabled,
+      lmDisabled: document.querySelector('[data-preset="lmstudio"]').disabled,
+      lmTitle: document.querySelector('[data-preset="lmstudio"]').title,
+    }))()`);
+    assert.deepEqual(detect.presets, ["custom", "ollama", "lmstudio"]);
+    assert.equal(detect.ollamaDisabled, false);
+    assert.equal(detect.lmDisabled, true);
+    assert.match(detect.lmTitle, /LM Studio/);
     await evaluate(`document.querySelector('[data-preset="custom"]').click()`);
     let state = await evaluate(`(() => ({
       insecureVisible: !document.querySelector('#wizInsecureRow').hidden,
@@ -867,6 +933,7 @@ async function run() {
     assert.deepEqual(state, { insecureVisible: true, hintVisible: true });
     // Paste the full completions URL a script would use, keyless, self-signed.
     await evaluate(`(() => {
+      document.querySelector('#wizName').value = 'Coder GW';
       const base = document.querySelector('#wizBaseUrl');
       base.value = 'https://gw.example/coder/v1/chat/completions';
       base.dispatchEvent(new Event('input'));
@@ -883,13 +950,16 @@ async function run() {
     assert.equal(testCall.args[0].apiKey, "");
     // The field now shows the base that will actually be saved.
     assert.equal(await evaluate(`document.querySelector('#wizBaseUrl').value`), "https://gw.example/coder/v1");
-    // IGNITE proceeds keyless without an "untested" warning (TEST just passed).
+    // SAVE & CONNECT proceeds keyless without an "untested" warning (TEST passed);
+    // the saved profile carries the normalized base, model, and TLS opt-in.
     await evaluate(`document.querySelector('#wizStartBtn').click()`);
     await pause();
-    const envCall = calls.filter((c) => c.name === "writeEnv").pop();
-    assert.equal(envCall.args[0].insecureTls, true);
-    assert.equal(envCall.args[0].baseUrl, "https://gw.example/coder/v1");
-    assert.equal(envCall.args[0].model, "qwen3.6-35b-a3b");
+    const saveCall = calls.filter((c) => c.name === "saveProfile").pop();
+    assert.equal(saveCall.args[0].name, "Coder GW");
+    assert.equal(saveCall.args[0].insecureTls, true);
+    assert.equal(saveCall.args[0].baseUrl, "https://gw.example/coder/v1");
+    assert.equal(saveCall.args[0].model, "qwen3.6-35b-a3b");
+    assert.ok(calls.some((c) => c.name === "applyProfile"));
     assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
     // The engine announces the configured model — the composer picker follows
     // without the user touching it, even for an id outside the preset list.
@@ -902,6 +972,89 @@ async function run() {
     assert.deepEqual(state, { select: "__custom__", custom: "qwen3.6-35b-a3b", customVisible: true });
     // Restore the default model for the remaining scenarios.
     await emit({ type: "session_started", sessionId: "sess-restore", model: MODEL, commands: [], rateCard: {} });
+  });
+
+  await test("connection profiles: dock opens the picker, USE applies, delete removes", async () => {
+    // The two wizard scenarios above saved "My DeepInfra" and "Coder GW".
+    const dockCount = await evaluate(`document.querySelectorAll('#dock .dock-btn').length`);
+    // The Connect button sits immediately left of Settings.
+    const order = await evaluate(`(() => {
+      const btns = [...document.querySelectorAll('#dock .dock-btn')].map((b) => b.id);
+      return { connectBeforeSettings: btns.indexOf('navSetupConn') === btns.indexOf('navSettings') - 1 };
+    })()`);
+    assert.equal(order.connectBeforeSettings, true);
+    assert.ok(dockCount >= 2);
+
+    // Open the connections wizard from the dock (a workspace is open → apply mode).
+    await evaluate(`document.querySelector('#navSetupConn').click()`);
+    await pause(80);
+    let state = await evaluate(`(() => ({
+      open: !document.querySelector('#setupWizard').classList.contains('hidden'),
+      rows: document.querySelectorAll('#wizProfilesList .wiz-profile-row').length,
+      useButtons: document.querySelectorAll('.wiz-profile-use').length,
+      names: [...document.querySelectorAll('.wiz-profile-name')].map((n) => n.textContent),
+    }))()`);
+    assert.equal(state.open, true);
+    assert.equal(state.rows, 2);
+    assert.equal(state.useButtons, 2, "USE is offered in apply mode");
+    assert.ok(state.names.includes("My Endpoint") && state.names.includes("Coder GW"));
+
+    // USE applies that profile and closes the wizard.
+    await evaluate(`document.querySelector('.wiz-profile-use').click()`);
+    await pause();
+    assert.ok(calls.some((c) => c.name === "applyProfile" && typeof c.args[0] === "string"));
+    assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
+
+    // Reopen and delete a profile — the row disappears and the store shrinks.
+    await evaluate(`document.querySelector('#navSetupConn').click()`);
+    await pause(80);
+    await evaluate(`document.querySelector('.wiz-profile-del').click()`);
+    await pause();
+    assert.ok(calls.some((c) => c.name === "deleteProfile"));
+    assert.equal(await evaluate(`document.querySelectorAll('#wizProfilesList .wiz-profile-row').length`), 1);
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
+    assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
+    // USE left the engine unlinked (awaiting the new connection); relink for the
+    // remaining scenarios exactly as a real session_started would.
+    await emit({ type: "session_started", sessionId: "sess-prof", model: MODEL, commands: [], rateCard: {} });
+  });
+
+  await test("connection profiles: consecutive saves accumulate, never overwrite", async () => {
+    await evaluate(`document.querySelector('#navSetupConn').click()`);
+    await pause(80);
+    const before = await evaluate(`document.querySelectorAll('#wizProfilesList .wiz-profile-row').length`);
+    const buildAndSave = (name) => `(() => {
+      document.querySelector('#wizName').value = '${name}';
+      const base = document.querySelector('#wizBaseUrl');
+      base.value = 'https://api.test/v1';
+      base.dispatchEvent(new Event('input'));
+      const model = document.querySelector('#wizModel');
+      model.value = 'some/model';
+      model.dispatchEvent(new Event('input'));
+      document.querySelector('#wizSaveProfileBtn').click();
+    })()`;
+    await evaluate(buildAndSave("Alpha"));
+    await pause();
+    // The form resets after a save, so the next SAVE PROFILE builds a NEW one.
+    assert.equal(await evaluate(`document.querySelector('#wizName').value`), "");
+    await evaluate(buildAndSave("Beta"));
+    await pause();
+    const after = await evaluate(`(() => ({
+      rows: document.querySelectorAll('#wizProfilesList .wiz-profile-row').length,
+      names: [...document.querySelectorAll('.wiz-profile-name')].map((n) => n.textContent),
+    }))()`);
+    assert.equal(after.rows, before + 2, "each save adds a distinct profile");
+    assert.ok(after.names.includes("Alpha") && after.names.includes("Beta"), "the first save must survive the second");
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
+  });
+
+  await test("Esc closes an open stage view back to the console", async () => {
+    await evaluate(`document.querySelector('#navSettings').click()`);
+    await pause();
+    assert.equal(await evaluate(`document.body.dataset.view`), "settings");
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
+    await pause();
+    assert.equal(await evaluate(`document.body.dataset.view`), "console");
   });
 
   await test("responsive workbench collapses navigation and overlays inspector", async () => {

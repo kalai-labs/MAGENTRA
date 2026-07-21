@@ -20,6 +20,7 @@ const {
 const { logEvent, setLogWorkspace, flushLog, initFallbackLog, activeLogsDir } = require("./main/logging.js");
 const { resolveWorkspaceFile, undoWorkspaceDiffs } = require("./main/changes.js");
 const { testEndpoint, validateCredentialPayload } = require("./main/connection.js");
+const { readProfiles, upsertProfile, deleteProfile, findProfile, sanitizeProfile } = require("./main/profiles.js");
 
 const SMOKE = process.argv.includes("--smoke");
 
@@ -764,10 +765,18 @@ ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
   }
   const validated = validateCredentialPayload(payload);
   if (!validated.ok) return validated;
-  const { apiKey, model, provider, baseUrl, contextWindow, insecureTls } = validated;
 
   const workspace = currentConfig.workspace;
   if (!workspace) return { ok: false, error: "no workspace" };
+  return applyValidatedConnection(workspace, validated);
+});
+
+/** Commit a validated connection to a workspace: the API key to its .env, the
+ * rest to its .magentra/settings.json, then (re)start the engine on it. Shared
+ * by the setup wizard's writeEnv and by applying a saved global profile, so
+ * both paths land credentials identically. */
+function applyValidatedConnection(workspace, validated) {
+  const { apiKey, model, provider, baseUrl, contextWindow, insecureTls } = validated;
 
   const envVarName = provider === "anthropic" ? "ANTHROPIC_API_KEY" : "DEEPINFRA_API_KEY";
 
@@ -859,6 +868,128 @@ ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
   logEvent("sys", { ev: "env-written", provider });
   startEngine(workspace, model);
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Global connection profiles: the reusable layer above per-workspace creds.
+// Build/save profiles once (even before any workspace is open); apply one to
+// the active workspace to connect it. The raw key never crosses back to the
+// renderer — list/save return sanitized records, and apply reads the stored
+// key here in main.
+// ---------------------------------------------------------------------------
+
+/** True if an executable named `bin` sits on PATH — how "is Ollama installed"
+ * is answered without spawning anything. Windows also tries PATHEXT suffixes. */
+function commandOnPath(bin) {
+  const dirs = (process.env.PATH || "").split(path.delimiter).filter(Boolean);
+  const exts = process.platform === "win32"
+    ? (process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean)
+    : [""];
+  for (const dir of dirs) {
+    for (const ext of exts) {
+      try {
+        const candidate = path.join(dir, bin + ext);
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return true;
+      } catch {
+        // unreadable PATH entry — skip
+      }
+    }
+  }
+  return false;
+}
+
+/** Short probe of a local server's HTTP port — any answer at all (even a 404)
+ * means something is listening. Covers a server that is running but whose CLI
+ * is not on PATH (a portable install, a container). */
+async function probeLocal(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 500);
+  try {
+    await fetch(url, { signal: controller.signal });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Which local model servers are present on this machine — installed (on PATH)
+ * or already running. Drives the grayed-out OLLAMA / LM STUDIO presets. */
+async function detectLocalServers() {
+  const ollamaInstalled = commandOnPath("ollama");
+  const lmsInstalled = commandOnPath("lms") || commandOnPath("lm-studio");
+  const [ollamaUp, lmsUp] = await Promise.all([
+    ollamaInstalled ? Promise.resolve(true) : probeLocal("http://127.0.0.1:11434/api/version"),
+    lmsInstalled ? Promise.resolve(true) : probeLocal("http://127.0.0.1:1234/v1/models"),
+  ]);
+  return {
+    ollama: ollamaUp ? { available: true } : { available: false, reason: "Ollama wasn't found on this PC" },
+    lmstudio: lmsUp ? { available: true } : { available: false, reason: "LM Studio wasn't found on this PC" },
+  };
+}
+
+ipcMain.handle("connections:detectLocal", () => detectLocalServers());
+
+ipcMain.handle("profiles:list", () => readProfiles().map(sanitizeProfile));
+
+ipcMain.handle("profiles:save", (_evt, payload) => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { ok: false, error: "invalid payload" };
+  }
+  const name = typeof payload.name === "string" ? payload.name.trim() : "";
+  if (!name) return { ok: false, error: "profile name required" };
+
+  // Editing a profile without re-typing its key keeps the stored one — mirrors
+  // the workspace card's "empty field means keep the saved key".
+  let connection = payload;
+  if (payload.id && (!payload.apiKey || !String(payload.apiKey).trim())) {
+    const existing = findProfile(payload.id);
+    if (existing && typeof existing.apiKey === "string") connection = { ...payload, apiKey: existing.apiKey };
+  }
+  const validated = validateCredentialPayload(connection);
+  if (!validated.ok) return validated;
+
+  const { list, id } = upsertProfile({
+    id: typeof payload.id === "string" ? payload.id : undefined,
+    name,
+    baseUrl: validated.baseUrl,
+    apiKey: validated.apiKey,
+    model: validated.model,
+    provider: validated.provider,
+    ...(validated.contextWindow !== undefined ? { contextWindow: validated.contextWindow } : {}),
+    ...(validated.insecureTls ? { insecureTls: true } : {}),
+  });
+  logEvent("sys", { ev: "profile-saved" });
+  return { ok: true, id, profiles: list.map(sanitizeProfile) };
+});
+
+ipcMain.handle("profiles:delete", (_evt, id) => {
+  if (typeof id !== "string" || !id) return { ok: false, error: "invalid id" };
+  const list = deleteProfile(id);
+  logEvent("sys", { ev: "profile-deleted" });
+  return { ok: true, profiles: list.map(sanitizeProfile) };
+});
+
+ipcMain.handle("profiles:apply", (_evt, payload) => {
+  const id = payload && typeof payload === "object" ? payload.id : payload;
+  if (typeof id !== "string" || !id) return { ok: false, error: "invalid id" };
+  const workspace = currentConfig.workspace;
+  if (!workspace) return { ok: false, error: "no workspace open" };
+  const profile = findProfile(id);
+  if (!profile) return { ok: false, error: "profile not found" };
+  const validated = validateCredentialPayload({
+    baseUrl: profile.baseUrl,
+    apiKey: typeof profile.apiKey === "string" ? profile.apiKey : "",
+    model: profile.model,
+    provider: profile.provider,
+    contextWindow: profile.contextWindow,
+    insecureTls: profile.insecureTls === true,
+  });
+  if (!validated.ok) return validated;
+  const result = applyValidatedConnection(workspace, validated);
+  if (result.ok) logEvent("sys", { ev: "profile-applied" });
+  return result;
 });
 
 /** The saved key for the current workspace (first *_API_KEY line of .env). */

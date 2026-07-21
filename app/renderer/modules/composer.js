@@ -383,6 +383,14 @@ window.addEventListener("keydown", (e) => {
     resolvePermission("deny");
     return;
   }
+  // A non-console stage view (Settings, Skills, Changes, Crew, Sessions,
+  // Missions) is a full-surface "popup tab" — Esc returns to the console, the
+  // same as its ✕. Sits below the modals above and above the stop-work
+  // fallback, so Esc closes an open view before it interrupts a running turn.
+  if (document.body.dataset.view && document.body.dataset.view !== "console") {
+    showView("console");
+    return;
+  }
   if (busy || backgroundJobs.size > 0) {
     e.preventDefault();
     hardStop();
@@ -497,12 +505,15 @@ function dismissSetupWizard() {
   setupWizardEl.classList.add("hidden");
   closeModalA11y();
   maybeStartTour();
+  // Opened to manage profiles over a working (or no) workspace: closing is
+  // silent. The stranded-engine guidance only applies when there is genuinely
+  // no linked engine behind the wizard.
   if (!engineLinked) {
     // The composer is locked (syncActivityUi) — give the stranded user the
     // way back on a banner instead of only a note that scrolls away.
     showEngineErrorBanner("Engine not linked — this workspace has no credentials yet.", "credential");
+    appendSysNote("engine not linked — add credentials any time in SETTINGS → CONNECTION, or ⇆ Connect");
   }
-  appendSysNote("engine not linked — add credentials any time in SETTINGS → CONNECTION");
 }
 if (wizCloseBtnEl) wizCloseBtnEl.addEventListener("click", dismissSetupWizard);
 
