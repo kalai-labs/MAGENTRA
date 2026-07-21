@@ -34,6 +34,27 @@ function rainGlyph() {
   return RAIN_GLYPHS[Math.floor(Math.random() * RAIN_GLYPHS.length)];
 }
 
+// The canvas opacity at the top of the user's dial. The rain sits behind loose
+// transcript text, so "full strength" is still well under 1 for legibility —
+// the dial then scales this down toward invisible. Kept here rather than in the
+// stylesheet because JS owns the canvas element entirely (CSS never sees it).
+const RAIN_BASE_OPACITY = 0.38;
+
+/** The user's rain dial as a 0..1 scalar. 1 is the shipped look, 0 hides the
+ * rain outright. Anything missing or out of range reads as the full 1. */
+function rainOpacityScalar() {
+  if (typeof uiSettings !== "object" || !uiSettings) return 1;
+  const value = Number(uiSettings.rainOpacity);
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(1, Math.max(0, value));
+}
+
+/** Push the current dial value onto the mounted canvas. Cheap enough to call on
+ * every sync; the whole effect of the setting lives in this one line. */
+function rainApplyOpacity() {
+  if (rainCanvas) rainCanvas.style.opacity = String(RAIN_BASE_OPACITY * rainOpacityScalar());
+}
+
 /** True when the user has asked for stillness — either the app's own CALM
  * motion setting or the OS-level reduced-motion preference. The rain then
  * paints one static frame instead of animating, so the theme still reads as
@@ -185,9 +206,12 @@ function syncMatrixRain() {
     return;
   }
   rainMount();
-  if (rainMotionStilled() || document.hidden) {
+  rainApplyOpacity();
+  // A dialled-to-zero rain is invisible, so there is nothing to animate — stop
+  // the loop and spend no frames on it until the user brings it back.
+  if (rainMotionStilled() || document.hidden || rainOpacityScalar() === 0) {
     rainStopLoop();
-    if (!document.hidden) rainPaintStill();
+    if (!document.hidden && rainOpacityScalar() > 0) rainPaintStill();
     return;
   }
   rainStartLoop();

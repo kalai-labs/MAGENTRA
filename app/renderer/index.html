@@ -261,6 +261,13 @@
             </div>
           </div>
 
+          <div class="set-row hidden" id="setRainRow">
+            <span class="set-label">Rain</span>
+            <input id="setRainOpacity" class="set-number" type="number" min="0" max="1" step="0.05" value="0.35"
+                   inputmode="decimal" aria-describedby="setRainNote">
+          </div>
+          <p class="set-note hidden" id="setRainNote">Matrix rain strength — 0.0 (off) to 1.0 (full). Only affects the Matrix theme.</p>
+
           <div class="set-row">
             <span class="set-label">Text size</span>
             <div class="seg" id="setSize">
@@ -270,6 +277,14 @@
               <button class="seg-btn" data-size="15">XL</button>
             </div>
           </div>
+
+          <div class="set-row">
+            <span class="set-label">UI scale</span>
+            <input id="setZoom" class="set-number" type="number" min="0.5" max="2" step="0.05" value="1.2"
+                   inputmode="decimal" aria-describedby="setZoomNote">
+            <button id="setZoomResetBtn" class="set-inline-btn" title="Back to 1.0">RESET</button>
+          </div>
+          <p class="set-note" id="setZoomNote">Scales the entire interface — text, spacing, panels, controls. 0.5 to 2.0; 1.0 is normal.</p>
 
           <div class="set-row">
             <span class="set-label">Motion</span>

@@ -444,17 +444,175 @@ async function run() {
 
     // Leaving the theme tears the canvas down rather than hiding it, so no
     // animation frame survives in the other two themes.
+    // Rain opacity dial: only present under matrix, drives the canvas opacity,
+    // and hides the canvas outright at 0 while staying mounted.
+    await evaluate(pick("matrix"));
+    await pause(60);
+    const readRain = `(() => ({
+      rowShown: !document.querySelector('#setRainRow').classList.contains('hidden'),
+      field: document.querySelector('#setRainOpacity').value,
+      opacity: document.querySelector('#matrixRain') && document.querySelector('#matrixRain').style.opacity,
+      saved: JSON.parse(localStorage.getItem('magentra-ui')).rainOpacity,
+    }))()`;
+    const setRain = (v) => `(() => {
+      const el = document.querySelector('#setRainOpacity');
+      el.value = '${v}';
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`;
+    let rain = await evaluate(readRain);
+    assert.equal(rain.rowShown, true, "rain dial must be visible under matrix");
+    // Ships faint, not full — a legible fraction at the default dial.
+    assert.equal(rain.field, "0.35");
+    assert.equal(rain.saved, 0.35);
+    assert.ok(Number(rain.opacity) > 0 && Number(rain.opacity) < 0.2, "default is faint");
+
+    // Full strength is a fixed base fraction; read it by pinning the dial to 1.
+    await evaluate(setRain("1"));
+    await pause(60);
+    const fullOpacity = Number((await evaluate(readRain)).opacity);
+    assert.ok(fullOpacity > 0 && fullOpacity < 1, "full strength is a legible fraction, not 1");
+
+    await evaluate(setRain("0.5"));
+    await pause(60);
+    rain = await evaluate(readRain);
+    assert.equal(rain.saved, 0.5);
+    assert.ok(Math.abs(Number(rain.opacity) - fullOpacity * 0.5) < 0.001, "0.5 dial must halve the canvas opacity");
+
+    await evaluate(setRain("0"));
+    await pause(60);
+    rain = await evaluate(readRain);
+    assert.equal(rain.saved, 0);
+    assert.equal(Number(rain.opacity), 0, "0 dial hides the rain");
+    assert.equal(await evaluate(`Boolean(document.querySelector('#matrixRain'))`), true, "0 keeps the canvas mounted, just invisible");
+
+    // Out of range clamps and rewrites the field.
+    await evaluate(setRain("5"));
+    await pause(60);
+    rain = await evaluate(readRain);
+    assert.deepEqual({ field: rain.field, saved: rain.saved }, { field: "1", saved: 1 });
+    await evaluate(setRain("1"));
+    await pause(60);
+
     await evaluate(pick("workbench"));
     await pause(60);
     state = await evaluate(readTheme);
     assert.equal(state.theme, "workbench");
     assert.equal(state.rain, false, "leaving matrix must unmount the rain canvas");
+    assert.equal(await evaluate(`document.querySelector('#setRainRow').classList.contains('hidden')`), true,
+      "rain dial must hide outside matrix");
 
     // The choice persists like every other UI setting.
     await evaluate(pick("matrix"));
     await pause(60);
     assert.equal(await evaluate(`JSON.parse(localStorage.getItem('magentra-ui')).theme`), "matrix");
     await evaluate(pick("workbench"));
+    await pause(60);
+  });
+
+  await test("UI scale zooms the whole interface, clamps, persists, and resets", async () => {
+    await evaluate(`document.querySelector('#navSettings').click()`);
+    await pause();
+    // Baseline in CSS pixels. Page zoom shrinks the layout viewport, so a
+    // scaled-up interface reports a *smaller* innerWidth while the sidebar
+    // keeps its 264px token — that ratio is what proves the chrome scaled with
+    // the text rather than only the type ramp moving.
+    const readScale = `(() => ({
+      field: document.querySelector('#setZoom').value,
+      saved: JSON.parse(localStorage.getItem('magentra-ui')).zoom,
+      viewport: window.innerWidth,
+      sidebar: document.querySelector('#sidebar').getBoundingClientRect().width,
+    }))()`;
+    // Ships at 1.2, so the interface opens gently enlarged.
+    assert.equal((await evaluate(readScale)).saved, 1.2);
+
+    const setScale = (v) => `(() => {
+      const el = document.querySelector('#setZoom');
+      el.value = '${v}';
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`;
+
+    // Pin an unzoomed baseline for the breakpoint reasoning below — independent
+    // of whatever the ship default happens to be.
+    await evaluate(setScale("1"));
+    await pause(80);
+    const base = await evaluate(readScale);
+    assert.equal(base.field, "1");
+    assert.equal(base.saved, 1);
+    assert.ok(base.viewport > 1120, "test window at 1.0 must start above the widest breakpoint");
+
+    // A gentle scale stays inside the same breakpoint: the viewport shrinks
+    // while the sidebar keeps its 264px token, so every pixel of chrome grew
+    // by the same factor as the text. That is the whole point of using page
+    // zoom over a font-size multiplier — the layout tokens are hard pixels and
+    // would not have moved.
+    await evaluate(setScale("1.1"));
+    await pause(80);
+    let state = await evaluate(readScale);
+    assert.equal(state.field, "1.1");
+    assert.equal(state.saved, 1.1);
+    assert.ok(state.viewport < base.viewport, "zooming in must shrink the layout viewport");
+    assert.equal(Math.round(state.sidebar), Math.round(base.sidebar));
+
+    // A large scale crosses the responsive breakpoints, and the workbench
+    // collapses exactly as it does when the window narrows — the stylesheet's
+    // media queries re-evaluate against the scaled viewport for free.
+    await evaluate(setScale("1.5"));
+    await pause(80);
+    state = await evaluate(readScale);
+    assert.equal(state.saved, 1.5);
+    assert.ok(state.viewport < 1120, "1.5x must drop the viewport past the first breakpoint");
+    assert.ok(state.sidebar < base.sidebar, "crossing the breakpoint must collapse the sidebar rail");
+
+    await evaluate(setScale("0.5"));
+    await pause(80);
+    state = await evaluate(readScale);
+    assert.equal(state.saved, 0.5);
+    assert.ok(state.viewport > base.viewport, "zooming out must grow the layout viewport");
+
+    // Out of range clamps to the boundary and rewrites the field, so the box
+    // never disagrees with the interface it just scaled.
+    await evaluate(setScale("7"));
+    await pause(80);
+    state = await evaluate(readScale);
+    assert.deepEqual({ field: state.field, saved: state.saved }, { field: "2", saved: 2 });
+    await evaluate(setScale("0.1"));
+    await pause(80);
+    assert.equal((await evaluate(readScale)).saved, 0.5);
+    // Garbage falls back to 1.0 rather than NaN-ing the zoom factor.
+    await evaluate(setScale("abc"));
+    await pause(80);
+    assert.equal((await evaluate(readScale)).saved, 1);
+
+    await evaluate(setScale("1.75"));
+    await pause(80);
+    await evaluate(`document.querySelector('#setZoomResetBtn').click()`);
+    await pause(80);
+    state = await evaluate(readScale);
+    assert.deepEqual({ field: state.field, saved: state.saved }, { field: "1", saved: 1 });
+    assert.equal(state.viewport, base.viewport, "reset must restore the original viewport");
+
+    // Zoom moved outside the setting — what the native View▸Zoom accelerators
+    // do — is adopted when the settings view next opens, so the field can
+    // never sit at a stale 1.0 over a zoomed interface.
+    await evaluate(`showView('console')`);
+    await evaluate(`window.magentra.setZoom(1.4)`);
+    await pause(80);
+    await evaluate(`document.querySelector('#navSettings').click()`);
+    await pause(80);
+    state = await evaluate(readScale);
+    assert.deepEqual({ field: state.field, saved: state.saved }, { field: "1.4", saved: 1.4 });
+    // And a factor beyond the supported range snaps back into it.
+    await evaluate(`showView('console')`);
+    await evaluate(`window.magentra.setZoom(4)`);
+    await pause(80);
+    await evaluate(`document.querySelector('#navSettings').click()`);
+    await pause(80);
+    assert.equal((await evaluate(readScale)).saved, 2);
+
+    await evaluate(`document.querySelector('#setZoomResetBtn').click()`);
+    await pause(80);
+    assert.equal((await evaluate(readScale)).viewport, base.viewport);
+    await evaluate(`showView('console')`);
     await pause(60);
   });
 

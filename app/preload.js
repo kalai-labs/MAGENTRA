@@ -1,6 +1,6 @@
 "use strict";
 
-const { contextBridge, ipcRenderer, webUtils } = require("electron");
+const { contextBridge, ipcRenderer, webUtils, webFrame } = require("electron");
 
 contextBridge.exposeInMainWorld("magentra", {
   getConfig: () => ipcRenderer.invoke("config:get"),
@@ -30,6 +30,23 @@ contextBridge.exposeInMainWorld("magentra", {
   openLogs: () => ipcRenderer.invoke("app:openLogs"),
   connectionInfo: () => ipcRenderer.invoke("connection:info"),
   setTitleBarTheme: (theme) => ipcRenderer.send("app:titleBarTheme", theme),
+  // Whole-interface scale. Page zoom rather than a font-size multiplier: the
+  // layout tokens (--sidebar-w, --topbar-h, radii, borders) are hard pixels,
+  // so only zoom moves the chrome along with the text.
+  setZoom: (factor) => {
+    try {
+      webFrame.setZoomFactor(factor);
+    } catch {
+      // A frame that cannot zoom just stays at 1.0 — never fatal.
+    }
+  },
+  getZoom: () => {
+    try {
+      return webFrame.getZoomFactor();
+    } catch {
+      return 1;
+    }
+  },
   revealKey: () => ipcRenderer.invoke("connection:revealKey"),
   getPathForFile: (file) => {
     try {

@@ -1,6 +1,6 @@
 "use strict";
 
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webFrame } = require("electron");
 
 const api = (name, ...args) => ipcRenderer.invoke("test:api", { name, args });
 
@@ -48,6 +48,21 @@ contextBridge.exposeInMainWorld("magentra", {
   openLogs: () => api("openLogs"),
   connectionInfo: () => api("connectionInfo"),
   setTitleBarTheme: (theme) => ipcRenderer.send("test:titlebar", theme),
+  // The real zoom, not a stub — the suite asserts the layout actually scales.
+  setZoom: (factor) => {
+    try {
+      webFrame.setZoomFactor(factor);
+    } catch {
+      // matches preload.js: a frame that cannot zoom stays at 1.0
+    }
+  },
+  getZoom: () => {
+    try {
+      return webFrame.getZoomFactor();
+    } catch {
+      return 1;
+    }
+  },
   revealKey: () => api("revealKey"),
   getPathForFile: () => null,
   onEvent: (callback) => listen("test:engine-event", callback),

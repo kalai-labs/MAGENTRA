@@ -279,11 +279,9 @@ html[data-theme="matrix"] {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  /* The transcript column has no surface of its own, so loose text — system
-     notes, steering lines, timestamps — sits directly on the rain. This is the
-     dial that keeps those legible: bright enough to read as weather, dim
-     enough to never compete with a line of text. */
-  opacity: 0.38;
+  /* Opacity is driven from rain.js (RAIN_BASE_OPACITY × the user's dial), not
+     set here — the transcript column has no surface of its own, so loose text
+     sits directly on the rain and the dial is what keeps it legible. */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1043,6 +1041,11 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .set-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
 .set-label { width: 92px; flex: none; color: var(--text-dim); font-size: max(10px, 0.75rem); }
 .set-row select, .set-row input, #promptModalInput { min-width: 0; flex: 1; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); color-scheme: var(--color-scheme); }
+/* A scale value is three characters wide — the shared `flex: 1` input rule
+   would stretch it across the card and read as a text field. */
+.set-number { flex: none !important; width: 88px; font-variant-numeric: tabular-nums; }
+.set-inline-btn { padding: 6px 10px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); color: var(--text-dim); font-size: max(10px, 0.68rem); }
+.set-inline-btn:hover { color: var(--text-hi); background: var(--hover); }
 .set-note { margin-top: 6px; color: var(--text-faint); font-size: max(10px, 0.71rem); line-height: 1.5; }
 .seg { display: flex; overflow: hidden; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); }
 .seg-btn { padding: 6px 10px; border: 0; border-left: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: max(10px, 0.68rem); }

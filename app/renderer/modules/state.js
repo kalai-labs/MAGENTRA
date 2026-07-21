@@ -98,7 +98,14 @@ const DEFAULT_UI_SETTINGS = {
   // resolves to the same face on every OS instead of a per-distro fallback.
   font: '"JetBrains Mono", "Cascadia Mono", "DejaVu Sans Mono", monospace',
   size: "14",
+  // Whole-interface scale (page zoom), independent of `size` above: `size`
+  // sets the type ramp, `zoom` scales everything including the layout tokens.
+  zoom: 1.2,
   theme: "light",
+  // Matrix-rain strength, 0..1. Ships faint so the rain reads as atmosphere
+  // behind the transcript rather than competing with it; the user can raise it
+  // toward 1 or drop it to 0. Only has any effect under the matrix theme.
+  rainOpacity: 0.35,
   motion: "full",
   // Default to the transparent view: a coding agent's trust rests on the user
   // being able to see what each tool actually did. "cinematic" is opt-in.
@@ -148,7 +155,37 @@ function loadUiSettings() {
     settings.fontMigrated = true;
   }
   if (!["12", "13", "14", "15"].includes(settings.size)) settings.size = "14";
+  settings.zoom = clampZoom(settings.zoom);
+  settings.rainOpacity = clampUnit(settings.rainOpacity, DEFAULT_UI_SETTINGS.rainOpacity);
   return settings;
+}
+
+/** Coerce anything into a 0..1 fraction, falling back to `fallback` for blank
+ * or unparseable input (an empty number field hands back "", and Number("") is
+ * 0, which would silently read as fully transparent). */
+function clampUnit(value, fallback) {
+  const raw = typeof value === "string" ? value.trim() : value;
+  if (raw === "" || raw === null || raw === undefined) return fallback;
+  const factor = Number(raw);
+  if (!Number.isFinite(factor)) return fallback;
+  return Math.min(1, Math.max(0, Math.round(factor * 100) / 100));
+}
+
+/** Coerce anything — a hand-edited localStorage string, a half-typed field,
+ * NaN — into the supported scale range. Out-of-range values clamp rather than
+ * reset, so typing "5" lands on the maximum instead of snapping back to 1.0. */
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2;
+function clampZoom(value) {
+  // A number input hands back "" for anything it could not parse, and
+  // Number("") is 0 — which would clamp a cleared or mistyped field down to
+  // the 0.5 minimum instead of leaving the interface alone. Blank means
+  // "no usable value", so it lands on the documented normal.
+  const raw = typeof value === "string" ? value.trim() : value;
+  if (raw === "" || raw === null || raw === undefined) return 1;
+  const factor = Number(raw);
+  if (!Number.isFinite(factor)) return 1;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(factor * 100) / 100));
 }
 
 let uiSettings = loadUiSettings();
@@ -177,6 +214,15 @@ function applyUiSettings() {
   document.documentElement.dataset.detail = uiSettings.detail;
   document.documentElement.style.setProperty("--font-user", uiSettings.font);
   document.documentElement.style.setProperty("--fs-base", uiSettings.size + "px");
+  // Whole-interface scale. Page zoom changes the layout viewport, so the
+  // stylesheet's responsive breakpoints re-evaluate against the scaled size —
+  // zooming in collapses the workbench exactly as narrowing the window does.
+  if (window.magentra && window.magentra.setZoom) window.magentra.setZoom(uiSettings.zoom);
+  // The rain dial only means anything under the matrix theme, so its row is
+  // hidden everywhere else rather than sitting inert in the other two themes.
+  const matrix = uiSettings.theme === "matrix";
+  if (setRainRowEl) setRainRowEl.classList.toggle("hidden", !matrix);
+  if (setRainNoteEl) setRainNoteEl.classList.toggle("hidden", !matrix);
   // Mount / tear down the matrix rain to match the theme and motion setting.
   // Guarded because the first call happens at load, before rain.js (which
   // loads after this module, and takes its own first sync) has defined it.
@@ -205,6 +251,8 @@ function syncSegGroup(containerEl, settingKey) {
 
 function syncUiControlsFromSettings() {
   if (setFontEl) setFontEl.value = uiSettings.font;
+  if (setZoomEl) setZoomEl.value = String(uiSettings.zoom);
+  if (setRainOpacityEl) setRainOpacityEl.value = String(uiSettings.rainOpacity);
   syncSegGroup(setThemeEl, "theme");
   syncSegGroup(setSizeEl, "size");
   syncSegGroup(setMotionEl, "motion");
@@ -261,6 +309,48 @@ if (setFontEl) {
     applyUiSettings();
   });
 }
+/** Commit a typed or reset scale. The field is rewritten from the clamped
+ * value so an out-of-range entry visibly corrects itself instead of leaving
+ * the box disagreeing with the interface it just scaled. */
+function commitZoom(value) {
+  uiSettings.zoom = clampZoom(value);
+  if (setZoomEl) setZoomEl.value = String(uiSettings.zoom);
+  saveUiSettings();
+  applyUiSettings();
+}
+
+/** Electron's native View▸Zoom accelerators (Ctrl/Cmd +, −, 0) stay live
+ * wherever the app menu is not nulled — dev runs and macOS — and move the frame
+ * zoom without going through this setting. Re-reading the real factor whenever
+ * the settings view opens keeps the field honest instead of showing a stale
+ * 1.0 over a zoomed interface. A factor outside the supported range snaps back
+ * into it, which is also what makes the reading safe to persist. */
+function adoptExternalZoom() {
+  if (!window.magentra || !window.magentra.getZoom) return;
+  const actual = clampZoom(window.magentra.getZoom());
+  if (actual === uiSettings.zoom) return;
+  commitZoom(actual);
+}
+
+if (setZoomEl) {
+  // `change` (blur / Enter / stepper) rather than `input`: re-zooming on every
+  // keystroke would rescale the page mid-word, moving the field under the cursor.
+  setZoomEl.addEventListener("change", () => commitZoom(setZoomEl.value));
+}
+if (setZoomResetBtnEl) setZoomResetBtnEl.addEventListener("click", () => commitZoom(1));
+
+if (setRainOpacityEl) {
+  // `change`, not `input`: applyUiSettings re-syncs the rain, and rescaling it
+  // on every keystroke would flicker the canvas mid-entry. The field is
+  // rewritten from the clamped value so an out-of-range entry visibly corrects.
+  setRainOpacityEl.addEventListener("change", () => {
+    uiSettings.rainOpacity = clampUnit(setRainOpacityEl.value, DEFAULT_UI_SETTINGS.rainOpacity);
+    setRainOpacityEl.value = String(uiSettings.rainOpacity);
+    saveUiSettings();
+    applyUiSettings();
+  });
+}
+
 wireSegGroup(setThemeEl, "theme");
 wireSegGroup(setSizeEl, "size");
 wireSegGroup(setMotionEl, "motion");

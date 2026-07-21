@@ -29,6 +29,9 @@ function showView(name) {
   navChangesEl.classList.toggle("active", name === "changes");
   navSettingsEl.classList.toggle("active", name === "settings");
   if (navSkillsEl) navSkillsEl.classList.toggle("active", name === "skills");
+  // The UI-scale field can be moved out from under us by the native zoom
+  // accelerators, so it re-reads the real factor each time it becomes visible.
+  if (name === "settings") adoptExternalZoom();
 }
 
 // ---------------------------------------------------------------------------
