@@ -693,8 +693,11 @@ itself)? Quote the decisive line from the output in your reasoning.
 - Are all falsified hypotheses closed in the task list?
 `;
 
+// `grill` and `debug` are intentionally NOT shipped as skills: they are becoming
+// first-class chat features (`/grill-me`, `/debug <prompt>`) rather than
+// toggleable disciplines. GRILL_SKILL / DEBUG_SKILL above are kept as the source
+// text those features will build on — not loaded here on purpose.
 export const BUILTIN_SKILL_FILES: BuiltinSkill[] = [
-  { id: "grill", text: GRILL_SKILL },
   { id: "lexicon", text: LEXICON_SKILL },
   { id: "headlights", text: HEADLIGHTS_SKILL },
   { id: "prover", text: PROVER_SKILL },
@@ -704,5 +707,4 @@ export const BUILTIN_SKILL_FILES: BuiltinSkill[] = [
   { id: "sentinel", text: SENTINEL_SKILL },
   { id: "reshape", text: RESHAPE_SKILL },
   { id: "obvious", text: OBVIOUS_SKILL },
-  { id: "debug", text: DEBUG_SKILL },
 ];

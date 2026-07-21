@@ -164,10 +164,20 @@ const USER_ACTION_FRAMES = new Set([
   "archive_session",
 ]);
 
+// The generate_skill frame can carry a resolved profile's API key (to author
+// with a different provider). It must reach the engine over stdin but must NOT
+// land in the log — redact it in the logged copy only.
+function redactFrameForLog(frame) {
+  if (frame && typeof frame === "object" && frame.connection && typeof frame.connection === "object" && "apiKey" in frame.connection) {
+    return { ...frame, connection: { ...frame.connection, apiKey: frame.connection.apiKey ? "<redacted>" : "" } };
+  }
+  return frame;
+}
+
 function writeToEngine(frame) {
   if (engineChild && engineChild.stdin.writable) {
     engineChild.stdin.write(JSON.stringify(frame) + "\n");
-    logEvent("ui", frame);
+    logEvent("ui", redactFrameForLog(frame));
     return;
   }
   logEvent("sys", { ev: "engine-write-dropped", type: frame && frame.type });
@@ -931,42 +941,54 @@ async function detectLocalServers() {
 
 ipcMain.handle("connections:detectLocal", () => detectLocalServers());
 
-// Export a skill's .md to a location the user picks. Skills are already Markdown
-// files under <workspace>/.magentra/skills/, so this is a read + save-dialog +
-// copy — no engine round-trip. Built-ins with no on-disk file report that.
-ipcMain.handle("skills:export", async (_evt, id) => {
-  // The id round-trips through the renderer, so re-validate its shape before it
-  // touches a path — never trust it to be the clean slug the parser produced.
-  if (typeof id !== "string" || !/^[a-z0-9][a-z0-9_-]*$/.test(id)) {
-    return { ok: false, error: "invalid skill id" };
+// Skill generation, routed through main so it can resolve a chosen connection
+// profile into a full connection (the renderer never holds a profile's key).
+// Without a profileId it is a plain passthrough to the engine's generate_skill.
+ipcMain.handle("skills:generate", (_evt, payload) => {
+  if (!payload || typeof payload !== "object") return { ok: false, error: "invalid payload" };
+  if (!engineChild) return { ok: false, error: "Open a workspace and connect an engine first." };
+  const description = typeof payload.description === "string" ? payload.description.trim() : "";
+  if (!description) return { ok: false, error: "Describe the skill first." };
+  const frame = { type: "generate_skill", description, kind: payload.kind === "action" ? "action" : "discipline" };
+  if (typeof payload.context === "string" && payload.context.trim()) frame.context = payload.context.trim();
+  if (typeof payload.profileId === "string" && payload.profileId) {
+    const profile = findProfile(payload.profileId);
+    if (!profile) return { ok: false, error: "profile not found" };
+    frame.connection = {
+      provider: profile.provider === "anthropic" ? "anthropic" : "openai-compat",
+      ...(profile.baseUrl ? { baseUrl: profile.baseUrl } : {}),
+      apiKey: typeof profile.apiKey === "string" ? profile.apiKey : "",
+      model: profile.model || "",
+    };
+  } else if (typeof payload.model === "string" && payload.model) {
+    frame.model = payload.model;
   }
-  const workspace = currentConfig.workspace;
-  if (!workspace) return { ok: false, error: "open a workspace first" };
-  const skillsDir = path.join(workspace, ".magentra", "skills");
-  const candidates = [path.join(skillsDir, `${id}.md`), path.join(skillsDir, id, "SKILL.md")];
-  const src = candidates.find((p) => {
-    try {
-      return fs.statSync(p).isFile();
-    } catch {
-      return false;
-    }
-  });
-  if (!src) {
-    return { ok: false, error: "This skill has no file to export (it's a built-in). Customize it first to create one." };
+  writeToEngine(frame);
+  return { ok: true };
+});
+
+// Save a skill's .md (text supplied by the engine's skill_export) to a chosen
+// location. The engine sources the text — including built-ins — so every skill
+// exports, not only on-disk ones.
+ipcMain.handle("skills:saveExport", async (_evt, payload) => {
+  const filename = payload && typeof payload.filename === "string" ? payload.filename : "";
+  const text = payload && typeof payload.text === "string" ? payload.text : "";
+  if (!/^[a-z0-9][a-z0-9_-]*\.md$/.test(filename) || text.length === 0) {
+    return { ok: false, error: "nothing to export" };
   }
   if (!mainWindow) return { ok: false, error: "no window" };
   const result = await dialog.showSaveDialog(mainWindow, {
     title: "Export skill",
-    defaultPath: `${id}.md`,
+    defaultPath: filename,
     filters: [{ name: "Markdown", extensions: ["md"] }],
   });
   if (result.canceled || !result.filePath) return { ok: false, canceled: true };
   try {
-    fs.copyFileSync(src, result.filePath);
+    fs.writeFileSync(result.filePath, text.endsWith("\n") ? text : text + "\n", "utf8");
   } catch (err) {
     return { ok: false, error: `failed to write: ${err && err.message ? err.message : String(err)}` };
   }
-  logEvent("sys", { ev: "skill-exported", id });
+  logEvent("sys", { ev: "skill-exported" });
   return { ok: true, path: result.filePath };
 });
 

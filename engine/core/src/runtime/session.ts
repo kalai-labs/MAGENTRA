@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import { loadBackpackIndex } from "../knowledge/backpack/index.js";
 import {
   STATE_DIR_NAME,
@@ -37,7 +37,7 @@ import {
 import { areaFacts, graphSummary, planAtlasAreas, projectName } from "../knowledge/atlasPlan.js";
 import { loadOrBuildGraph, type GraphData } from "../knowledge/graph.js";
 import { loadStandards } from "../knowledge/standards.js";
-import { contextWindowFor, formatTokens } from "../config/pricing.js";
+import { formatTokens } from "../config/pricing.js";
 import { BackgroundManager } from "../scheduling/background.js";
 import { FileState } from "./fileState.js";
 import type { HookRunner } from "../agent/hooks.js";
@@ -66,11 +66,6 @@ import type {
 import { Transcript, syntheticToolResults, unansweredToolUseIds } from "../state/transcript.js";
 
 const DEFAULT_OUTPUT_LIMIT = 40_000;
-
-/** Context size at which the user is nudged (once) to run /compact. A round,
- * model-independent "this is getting large" mark; contextWarnThreshold caps it
- * under the real window so a smaller model still gets the nudge with headroom. */
-const CONTEXT_WARN_TOKENS = 200_000;
 
 /** Per-turn cap on auto-recovery / length-continuation nudges (see runTurn). */
 const MAX_AUTO_NUDGES = 3;
@@ -258,10 +253,10 @@ export class Session {
    * Session-scoped, persisted in the meta snapshot so /resume restores it.
    */
   private overdrive = false;
-  /** Set once the context crosses the warn threshold, so the "run /compact"
-   *  reminder fires exactly once per crossing (it re-arms when the window is
-   *  emptied by a compaction). Keeps the nudge from becoming nagging. */
-  private contextWarned = false;
+  /** Auto-compact at this many context tokens; 0 = off (nothing auto-compacts).
+   *  Its ONLY source is the UI's set_compact_limit frame — no settings key, no
+   *  /settings path — so the value can never disagree with what the UI shows. */
+  private autoCompactLimit = 0;
   /** While true, streamAssistantTurn accumulates text/thinking but does not
    *  emit it — used to run the OVERDRIVE self-verify round silently so a clean
    *  "DONE" never reaches the UI as a second message. */
@@ -521,9 +516,15 @@ export class Session {
   /** One-shot completion with no tools; returns concatenated text. Runs on the
    *  small model unless `model` overrides it (the clarify pre-layer runs on
    *  the main model by design). */
-  async runInference(opts: { system: string; user: string; maxTokens: number; model?: string }): Promise<string> {
+  async runInference(opts: {
+    system: string;
+    user: string;
+    maxTokens: number;
+    model?: string;
+    provider?: Provider;
+  }): Promise<string> {
     let text = "";
-    const stream = this.provider.stream({
+    const stream = (opts.provider ?? this.provider).stream({
       model: opts.model ?? this.settings.smallModel ?? this.settings.model,
       system: opts.system,
       messages: [{ role: "user", content: [{ type: "text", text: opts.user }] }],
@@ -1577,6 +1578,15 @@ export class Session {
     // took, and the context size it reveals. Shared with the parent session, so
     // a crew/subagent's spend lands in the same /session report.
     this.stats.recordResponse(model, end.usage, Date.now() - apiStartedAt);
+    // Provider omitted usage (some do on very large prompts): recordResponse
+    // kept the prior size, but this turn's history may have grown. Fall back to
+    // a conservative estimate from the real messages so the compaction safety
+    // still sees roughly the true size instead of a stale, too-small number.
+    const measured =
+      end.usage.inputTokens + end.usage.cacheReadTokens + end.usage.cacheWriteTokens + end.usage.outputTokens;
+    if (measured === 0) {
+      this.stats.contextTokens = Math.max(this.stats.contextTokens, this.estimateContextTokens());
+    }
 
     if (thinking) blocks.push({ type: "thinking", thinking });
     if (text) blocks.push({ type: "text", text });
@@ -1623,8 +1633,13 @@ export class Session {
       }
 
       const input = parsed.data as never;
-      const subject = tool.permissionSubject?.(input);
+      let subject = tool.permissionSubject?.(input);
       const description = tool.describeInput?.(input);
+      // A file edit that escapes the workspace must ask (it auto-runs inside).
+      // Surface the absolute path as the subject so the prompt names it and an
+      // "always allow" can grant that exact path.
+      const editOutsidePath = tool.isFileEdit ? this.fileEditOutsideWorkspace(input) : undefined;
+      if (editOutsidePath && subject === undefined) subject = editOutsidePath;
       planned.push({
         call,
         parallel: tool.permissionClass === "read" || tool.parallelSafe === true,
@@ -1687,6 +1702,8 @@ export class Session {
             // dirs) must hold even outside OVERDRIVE. The tool sees its own
             // effective cwd via the context.
             tool.deletionScope?.(input, { ...this.toolContext(), callId: call.id }),
+            // A file edit landing outside the workspace is not auto-safe.
+            editOutsidePath !== undefined,
           );
           if (outcome.source !== "user") {
             this.transcript.append({
@@ -1816,6 +1833,27 @@ export class Session {
   }
 
   /**
+   * The absolute target of a file-edit call when it lands OUTSIDE the workspace,
+   * else undefined. File edits auto-run inside the workspace (the frictionless
+   * default), but an edit that escapes the tree — a shell profile, an SSH key,
+   * a system file — is exactly what a prompt-injection would attempt, so it must
+   * ask first. Reads the path field structurally (no dependency on @magentra/tools).
+   */
+  private fileEditOutsideWorkspace(input: unknown): string | undefined {
+    if (typeof input !== "object" || input === null) return undefined;
+    const rec = input as Record<string, unknown>;
+    const raw =
+      typeof rec.file_path === "string" ? rec.file_path
+      : typeof rec.path === "string" ? rec.path
+      : typeof rec.notebook_path === "string" ? rec.notebook_path
+      : undefined;
+    if (!raw) return undefined;
+    const abs = isAbsolute(raw) ? resolve(raw) : resolve(this.cwd, raw);
+    const root = resolve(this.cwd);
+    return abs !== root && !abs.startsWith(root + sep) ? abs : undefined;
+  }
+
+  /**
    * Reuse gate for a Write call. Reads `file_path`/`content` structurally (this
    * module must not depend on @magentra/tools) and delegates to the pure
    * evaluator. Fails open on any throw — the gate must never break a Write.
@@ -1860,47 +1898,43 @@ export class Session {
     this.transcript.append({ kind: "message", message: msg });
   }
 
-  /** Where the "run /compact" reminder fires — roughly CONTEXT_WARN_TOKENS
-   * (~200k), but never above ~85% of the model's real window, so on a smaller
-   * window there is still room to compact before the ceiling. */
-  contextWarnThreshold(window: number): number {
-    return Math.min(CONTEXT_WARN_TOKENS, Math.floor(window * 0.85));
+  /**
+   * A conservative token estimate of the current message history, used only when
+   * the provider gave no usage to measure from. ~3.5 chars/token (deliberately
+   * low, so it OVER-counts) — better to compact a little early than to
+   * under-count and overflow the provider.
+   */
+  private estimateContextTokens(): number {
+    let chars = 0;
+    for (const m of this.messages) chars += JSON.stringify(m.content).length;
+    return Math.ceil(chars / 3.5);
   }
 
-  /** True when the context has grown past the warn threshold — the UI tints its
-   * context counter on this. */
+  /** Set the auto-compact token limit. 0 (or invalid) disables auto-compaction.
+   * The ONLY source of this value is the UI's set_compact_limit frame — there is
+   * deliberately no settings key or /settings path, so it can never disagree. */
+  setAutoCompactLimit(limit: number): void {
+    this.autoCompactLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+  }
+
+  /** True when the context is within 10% of the user's auto-compact limit — the
+   * UI tints its counter as it approaches. False when no limit is set. The engine
+   * never guesses the model window; this is purely the user's own chosen number. */
   contextOverWarnThreshold(): boolean {
-    const window = contextWindowFor(this.settings.model, this.settings);
-    return this.stats.contextTokens >= this.contextWarnThreshold(window);
+    return this.autoCompactLimit > 0 && this.stats.contextTokens >= Math.floor(this.autoCompactLimit * 0.9);
   }
 
   /**
-   * Proactive auto-compaction is OFF by design: rather than silently summarizing
-   * at some fraction of the window (which loses detail the user did not choose to
-   * drop), the user is *warned* once to run /compact when the context grows past
-   * ~200k tokens. Two things still compact: an explicit /compact (`force`), and a
-   * last-resort safety when the context reaches the model's real window and the
-   * next call would otherwise overflow the provider. Returns whether it compacted.
+   * Compaction is either MANUAL (`/compact`, force) or fires at a limit the user
+   * set in the UI. With no limit set (the default) nothing is compacted
+   * automatically — the engine never guesses the model's usable window (it varies
+   * by provider, tier, and endpoint, so any guess misinforms). The user knows
+   * their own model's size and sets the limit if they want one. Returns whether
+   * it compacted.
    */
   async maybeCompact(force = false): Promise<boolean> {
-    const window = contextWindowFor(this.settings.model, this.settings);
     if (!force) {
-      // Gentle, once-per-crossing nudge — not a nag.
-      const warnAt = this.contextWarnThreshold(window);
-      if (this.stats.contextTokens >= warnAt) {
-        if (!this.contextWarned) {
-          this.contextWarned = true;
-          this.emit({
-            type: "command_output",
-            text: `⚠ Context is getting large (~${formatTokens(this.stats.contextTokens)} tokens). Run /compact when convenient to summarize older history and free up room — no rush.`,
-          });
-        }
-      } else {
-        this.contextWarned = false;
-      }
-      // Only the ceiling triggers an automatic compaction now, purely to avoid a
-      // hard provider context-overflow error mid-turn.
-      if (this.stats.contextTokens < window) return false;
+      if (this.autoCompactLimit <= 0 || this.stats.contextTokens < this.autoCompactLimit) return false;
     }
 
     // Keep the most recent messages (a shorter tail under /compact force, so a
@@ -1930,15 +1964,14 @@ export class Session {
     // The original skill reminders likely lived in the summarized span — let
     // the next turn re-establish them in the surviving conversation.
     this.injectedSkillReminders.clear();
-    // The window is emptied — re-arm the warning for the next time it fills.
-    this.contextWarned = false;
-    // A safety compaction (non-forced, at the window ceiling) must not be silent
-    // — mid-turn it would otherwise look like the agent quietly forgot the
-    // conversation. Forced /compact prints its own confirmation elsewhere.
+    // An auto-compaction (non-forced) must not be silent — mid-turn it would
+    // otherwise look like the agent quietly forgot the conversation. The note
+    // names WHY it happened (the user's limit) and where to change it, so it is
+    // never a mystery. Forced /compact prints its own confirmation elsewhere.
     if (!force) {
       this.emit({
         type: "command_output",
-        text: `🗜 Context reached the model's window limit (~${formatTokens(before)} tokens) — compacted automatically to keep going. Run /compact yourself earlier next time to control what gets summarized.`,
+        text: `🗜 Auto-compacted (~${formatTokens(before)} tokens summarized): the context reached your auto-compact limit of ${formatTokens(this.autoCompactLimit)} tokens. Raise or turn it off in Settings → Context.`,
       });
     }
     return true;

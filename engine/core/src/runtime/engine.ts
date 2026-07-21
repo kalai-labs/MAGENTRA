@@ -15,7 +15,7 @@ import type { ContentBlock, Msg, Provider } from "@magentra/providers";
 import { AsyncQueue } from "../util/asyncQueue.js";
 import { CronScheduler } from "../scheduling/cron.js";
 import { HookRunner } from "../agent/hooks.js";
-import { loadModes, ModeEngine, parseSkillMd } from "../ma/modes.js";
+import { BUILTIN_SKILL_FILES, loadModes, ModeEngine, parseSkillMd } from "../ma/modes.js";
 import { parseFrontmatter } from "../config/frontmatter.js";
 import { loadSkills } from "../agent/skills.js";
 import { loadAtlas } from "../knowledge/atlas.js";
@@ -97,7 +97,6 @@ export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTi
   maxTokensPerTurn: "nextTurn",
   maxIterationsPerTurn: "nextTurn",
   contextWindow: "nextTurn",
-  compactionThreshold: "nextTurn",
   retention: "session",
   // Rates are read at report time (/session, status bar), so a new price applies
   // to the whole session's accumulated usage the moment it is set.
@@ -474,6 +473,19 @@ export class Engine {
     opts: SkillGenOptions = {},
   ): Promise<{ ok: boolean; text?: string; suggestedFilename?: string; error?: string }> {
     const takenIds = this.modeEngine.list().map((m) => m.id);
+    // Author with a different provider entirely when a profile connection was
+    // passed (the app resolved it); otherwise use the session's own provider and
+    // the chosen/default model.
+    let authorProvider: Provider | undefined;
+    let authorModel = opts.model ?? this.opts.settings.model;
+    if (opts.connection) {
+      authorProvider = createProviderForEndpoint({
+        provider: opts.connection.provider === "anthropic" ? "anthropic" : "openai-compatible",
+        apiKey: opts.connection.apiKey,
+        ...(opts.connection.baseUrl ? { baseUrl: opts.connection.baseUrl } : {}),
+      });
+      authorModel = opts.connection.model || authorModel;
+    }
     let feedback = "";
     let lastError = "";
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -486,7 +498,8 @@ export class Engine {
         system: SKILL_AUTHOR_ROLE,
         user: buildSkillPrompt(description, kind, takenIds, opts) + feedback,
         maxTokens: 4096,
-        model: opts.model ?? this.opts.settings.model,
+        model: authorModel,
+        ...(authorProvider ? { provider: authorProvider } : {}),
       });
       const text = repairSkillText(raw);
       const check = this.validateSkillText(text, kind);
@@ -579,6 +592,37 @@ export class Engine {
       this.emitModesUpdated();
       this.emit({ type: "command_output", text: `🧩 installed the ${id} skill (.magentra/skills/${filename}) — the agent can now invoke it on demand` });
     }
+  }
+
+  /**
+   * export_skill: hand the app a skill's .md text so it can save it anywhere.
+   * A workspace file wins (it may be a customized override); otherwise the
+   * built-in's shipped text — so every skill in the list can be exported, not
+   * just user-authored ones.
+   */
+  private exportSkill(id: string): void {
+    if (typeof id !== "string" || !/^[a-z0-9][a-z0-9_-]*$/.test(id)) {
+      this.emit({ type: "skill_export", ok: false, id: String(id), error: "invalid skill id" });
+      return;
+    }
+    const dir = join(this.opts.cwd, ".magentra", "skills");
+    for (const rel of [`${id}.md`, join(id, "SKILL.md")]) {
+      const p = join(dir, rel);
+      try {
+        if (statSync(p).isFile()) {
+          this.emit({ type: "skill_export", ok: true, id, filename: `${id}.md`, text: readFileSync(p, "utf8") });
+          return;
+        }
+      } catch {
+        // not this candidate — try the next / fall through to built-ins
+      }
+    }
+    const builtin = BUILTIN_SKILL_FILES.find((b) => b.id === id);
+    if (builtin) {
+      this.emit({ type: "skill_export", ok: true, id, filename: `${id}.md`, text: builtin.text });
+      return;
+    }
+    this.emit({ type: "skill_export", ok: false, id, error: `no source found for skill "${id}"` });
   }
 
   /**
@@ -683,6 +727,9 @@ export class Engine {
       case "set_model":
         this.handleSetModel(request.model);
         break;
+      case "set_compact_limit":
+        this.session.setAutoCompactLimit(request.limit);
+        break;
       case "set_deletion_guard":
         this.session.setDeletionPolicy(!request.enabled);
         this.emit({
@@ -747,10 +794,14 @@ export class Engine {
           ...(request.model ? { model: request.model } : {}),
           ...(request.context ? { context: request.context } : {}),
           ...(request.enforce ? { enforce: request.enforce } : {}),
+          ...(request.connection ? { connection: request.connection } : {}),
         });
         break;
       case "install_skill":
         this.installSkill(request.filename, request.text);
+        break;
+      case "export_skill":
+        this.exportSkill(request.id);
         break;
       default:
         // The wire accepts any {type: string} object, so an unknown type can
@@ -2441,7 +2492,12 @@ commentary before or after it. You may read a few workspace files first if the
 skill should reference real project conventions, but keep it brief.`;
 
 /** Optional knobs the wizard passes into skill authoring. */
-type SkillGenOptions = { model?: string; context?: string; enforce?: "remind" | "block" };
+type SkillGenOptions = {
+  model?: string;
+  context?: string;
+  enforce?: "remind" | "block";
+  connection?: { provider: "anthropic" | "openai-compat"; baseUrl?: string; apiKey: string; model: string };
+};
 
 /** The format the generator must produce, per kind — kept in one place so the wizard and validator agree. */
 function buildSkillPrompt(

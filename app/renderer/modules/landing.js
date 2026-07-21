@@ -877,6 +877,9 @@ function handleEngineEvent(event) {
     case "skill_draft":
       onSkillDraft(event);
       break;
+    case "skill_export":
+      onSkillExport(event);
+      break;
     case "missions_updated":
       onMissionsUpdated(event);
       break;

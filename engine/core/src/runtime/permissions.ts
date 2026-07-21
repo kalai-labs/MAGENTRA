@@ -152,6 +152,9 @@ export class PermissionEngine {
     description: string | undefined,
     /** The tool's deletion-scope verdict for this call, when computed. */
     deletionScope?: "workspace" | "unknown" | "protected",
+    /** True when a file-edit call targets a path OUTSIDE the workspace — such an
+     *  edit is not auto-safe and must ask (in-workspace edits still auto-run). */
+    editOutsideWorkspace?: boolean,
   ): Promise<PermissionOutcome> {
     if (matches(this.deny, tool.name, subject)) {
       return {
@@ -223,7 +226,16 @@ export class PermissionEngine {
       return { allowed: true, source: "rule" };
     }
 
-    switch (this.stanceDefault(tool)) {
+    // A file edit that escapes the workspace is downgraded from its usual
+    // auto-allow to an approval prompt — the frictionless default is meant for
+    // edits inside the tree, not for overwriting a shell profile or an SSH key.
+    // OVERDRIVE (fully autonomous, risk accepted) and explicit user allow rules
+    // above are untouched; only the auto-allow default is overridden.
+    let stance = this.stanceDefault(tool);
+    if (stance === "allow" && !this.overdrive && tool.isFileEdit && editOutsideWorkspace === true) {
+      stance = "ask";
+    }
+    switch (stance) {
       case "allow":
         return { allowed: true, source: "mode" };
       case "ask": {

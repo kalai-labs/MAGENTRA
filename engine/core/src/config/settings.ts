@@ -39,7 +39,6 @@ export const settingsSchema = z
     maxIterationsPerTurn: z.number().int().positive().default(50),
     /** Explicit override; when absent the engine uses the known window for the model (128k fallback). */
     contextWindow: z.number().int().positive().optional(),
-    compactionThreshold: z.number().min(0.1).max(1).default(0.8),
     /** Bounds append-only workspace state; pruning runs whenever a root session starts. */
     retention: z
       .object({

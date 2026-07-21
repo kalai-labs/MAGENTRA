@@ -415,6 +415,18 @@ navConsoleEl.addEventListener("click", () => {
   if (workspaceOpen) requestClear();
 });
 
+// "Welcome page": re-initialize the renderer to the start screen. A full reload
+// is the safe way back — boot() always lands on the start page, so there is no
+// half-torn-down workspace state to get wrong. The engine keeps running in the
+// background and the conversation stays saved (resume it from Sessions), so a
+// busy turn only needs a heads-up, not a block.
+if (navHomeEl) {
+  navHomeEl.addEventListener("click", () => {
+    if (busy && !window.confirm("Return to the welcome page? This conversation stays saved — resume it anytime from Sessions.")) return;
+    window.location.reload();
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Keyboard power layer. "mod" is Ctrl on Linux/Windows, Cmd on macOS — every
 // shortcut works on all three platforms. `?` shows the cheat sheet.

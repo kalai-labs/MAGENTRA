@@ -115,6 +115,11 @@ const DEFAULT_UI_SETTINGS = {
   // destroy, …) still prompt. Setting `deletions` to "allow" is what removes
   // that last prompt.
   deletions: "ask", // "ask" (guard always prompts) | "allow" (deletions run freely)
+  // Auto-compact the conversation once its context reaches this many tokens;
+  // 0 turns auto-compaction off (manage it yourself with /compact). This is the
+  // ONLY place the limit is set — it rides to the engine as a set_compact_limit
+  // frame, never a settings.json key, so it can never disagree with this control.
+  compactLimit: 32000,
   // OVERDRIVE: fully autonomous stance (nothing asks — commands run without
   // approval prompts). Persisted so it survives a reload and re-asserts itself
   // on the next engine link, exactly like the safety toggles above.
@@ -157,7 +162,19 @@ function loadUiSettings() {
   if (!["12", "13", "14", "15"].includes(settings.size)) settings.size = "14";
   settings.zoom = clampZoom(settings.zoom);
   settings.rainOpacity = clampUnit(settings.rainOpacity, DEFAULT_UI_SETTINGS.rainOpacity);
+  settings.compactLimit = clampCompactLimit(settings.compactLimit);
   return settings;
+}
+
+/** The auto-compact limit: 0 (off) or a sensible token count. A tiny positive
+ * value would compact on every turn, so anything in (0, 4000) rounds up to the
+ * 4000 floor; blank/garbage falls back to the default. */
+function clampCompactLimit(value) {
+  const raw = typeof value === "string" ? value.trim() : value;
+  if (raw === "" || raw === null || raw === undefined) return DEFAULT_UI_SETTINGS.compactLimit;
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(2_000_000, Math.max(4000, n));
 }
 
 /** Coerce anything into a 0..1 fraction, falling back to `fallback` for blank
@@ -253,6 +270,7 @@ function syncUiControlsFromSettings() {
   if (setFontEl) setFontEl.value = uiSettings.font;
   if (setZoomEl) setZoomEl.value = String(uiSettings.zoom);
   if (setRainOpacityEl) setRainOpacityEl.value = String(uiSettings.rainOpacity);
+  if (setCompactLimitEl) setCompactLimitEl.value = String(uiSettings.compactLimit);
   syncSegGroup(setThemeEl, "theme");
   syncSegGroup(setSizeEl, "size");
   syncSegGroup(setMotionEl, "motion");
@@ -262,7 +280,7 @@ function syncUiControlsFromSettings() {
 
 // Safety toggles reach the engine as frames; only send what actually changed
 // (a fresh session gets a forced full send since it boots with defaults).
-const lastSentSafety = { deletions: null, overdrive: null };
+const lastSentSafety = { deletions: null, overdrive: null, compactLimit: null };
 function applySafetySettings(force) {
   if (window.magentra && window.magentra.send) {
     if (force || uiSettings.deletions !== lastSentSafety.deletions) {
@@ -274,6 +292,12 @@ function applySafetySettings(force) {
     if (force || uiSettings.overdrive !== lastSentSafety.overdrive) {
       window.magentra.send({ type: "set_overdrive", enabled: uiSettings.overdrive === true });
       lastSentSafety.overdrive = uiSettings.overdrive;
+    }
+    // Auto-compact limit: same pattern. A fresh session's engine starts at 0
+    // (off) until this asserts the user's chosen limit on link.
+    if (force || uiSettings.compactLimit !== lastSentSafety.compactLimit) {
+      window.magentra.send({ type: "set_compact_limit", limit: uiSettings.compactLimit });
+      lastSentSafety.compactLimit = uiSettings.compactLimit;
     }
   }
   renderSafetyHint();
@@ -351,6 +375,16 @@ if (setRainOpacityEl) {
   });
 }
 
+if (setCompactLimitEl) {
+  setCompactLimitEl.addEventListener("change", () => {
+    uiSettings.compactLimit = clampCompactLimit(setCompactLimitEl.value);
+    setCompactLimitEl.value = String(uiSettings.compactLimit);
+    saveUiSettings();
+    // Push the new limit straight to the live engine (no restart needed).
+    applySafetySettings(false);
+  });
+}
+
 wireSegGroup(setThemeEl, "theme");
 wireSegGroup(setSizeEl, "size");
 wireSegGroup(setMotionEl, "motion");
@@ -398,8 +432,10 @@ let modes = []; // discipline skills, from modes_updated
 let modesReceived = false; // has the first modes_updated arrived (vs. still session-start)
 let pendingModesNote = false; // set on a set_modes click; consumed by the next modes_updated
 
-const HERO_MODE_IDS = ["grill", "reshape"];
-const HERO_MODE_LABELS = { grill: "⚡ grill", reshape: "⟲ reshape" };
+// grill was removed as a skill (it becomes the /grill-me chat feature), so it is
+// no longer a hero quick-toggle chip.
+const HERO_MODE_IDS = ["reshape"];
+const HERO_MODE_LABELS = { reshape: "⟲ reshape" };
 
 // slash-command palette state. The engine ships its real command registry in
 // session_started (onSessionStarted adopts it), so the palette can never

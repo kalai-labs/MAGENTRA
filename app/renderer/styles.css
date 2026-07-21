@@ -427,6 +427,11 @@ body.platform-mac .sidebar-brand { padding-top: 16px; height: 60px; }
 .sidebar-primary:hover { border-color: var(--border-strong); background: var(--hover); }
 .sidebar-primary .dock-glyph { color: var(--accent); font-size: 1.1rem; }
 .sidebar-primary .dock-label { font-size: max(10px, 0.83rem); font-weight: 650; }
+/* "Welcome page" sits just under New conversation — quieter (secondary). */
+.sidebar-home { margin: 0 12px 4px; width: calc(100% - 24px); height: 30px; display: flex; align-items: center; gap: 9px; padding: 0 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--text-dim); text-align: left; }
+.sidebar-home:hover { color: var(--text-hi); background: var(--hover); border-color: var(--border-hi); }
+.sidebar-home .dock-glyph { font-size: 1rem; }
+.sidebar-home .dock-label { font-size: max(10px, 0.8rem); }
 
 .sidebar-section { min-height: 0; padding: 7px 8px 0; }
 .sidebar-section-workspaces { flex: none; }
@@ -1056,6 +1061,7 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 /* A scale value is three characters wide — the shared `flex: 1` input rule
    would stretch it across the card and read as a text field. */
 .set-number { flex: none !important; width: 88px; font-variant-numeric: tabular-nums; }
+.set-suffix { color: var(--text-dim); font-size: max(10px, 0.72rem); }
 .set-inline-btn { padding: 6px 10px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); color: var(--text-dim); font-size: max(10px, 0.68rem); }
 .set-inline-btn:hover { color: var(--text-hi); background: var(--hover); }
 .set-note { margin-top: 6px; color: var(--text-faint); font-size: max(10px, 0.71rem); line-height: 1.5; }
@@ -1164,7 +1170,7 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
   .logo-text, .sidebar-primary .dock-label,
   .sidebar-section, .dock-label, .sidebar-status span { display: none; }
   .sidebar-brand { justify-content: center; padding: 0; }
-  .sidebar-primary { justify-content: center; padding: 0; }
+  .sidebar-primary, .sidebar-home { justify-content: center; padding: 0; }
   .sidebar-tools { grid-template-columns: 1fr; }
   .dock-btn { height: 38px; }
   .sidebar-status { justify-content: center; padding: 0; }

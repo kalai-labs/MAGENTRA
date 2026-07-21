@@ -22,6 +22,9 @@
     <button class="sidebar-primary active" id="navConsole" title="New conversation" aria-label="New conversation">
       <span class="dock-glyph">＋</span><span class="dock-label">New conversation</span>
     </button>
+    <button class="sidebar-home hidden" id="navHome" title="Back to the welcome page" aria-label="Back to the welcome page">
+      <span class="dock-glyph">⌂</span><span class="dock-label">Welcome page</span>
+    </button>
 
     <section class="sidebar-section sidebar-section-workspaces" aria-labelledby="workspacesSidebarTitle">
       <div class="sidebar-section-head">
@@ -314,6 +317,17 @@
         </div>
 
         <div class="set-card">
+          <div class="set-card-title">CONTEXT</div>
+          <div class="set-row">
+            <span class="set-label">Auto-compact at</span>
+            <input id="setCompactLimit" class="set-number" type="number" min="0" step="1000" value="32000"
+                   inputmode="numeric" aria-describedby="setCompactNote">
+            <span class="set-suffix">tokens</span>
+          </div>
+          <p class="set-note" id="setCompactNote">When the conversation reaches this many context tokens, older history is summarized automatically to keep it flowing. Set to <strong>0</strong> to turn auto-compaction off and manage it yourself with <code>/compact</code>. This is the only place it's set — pick a value you know fits your model (real context size varies by provider).</p>
+        </div>
+
+        <div class="set-card">
           <div class="set-card-title">SAFETY</div>
           <div class="set-row">
             <span class="set-label">Deletions</span>
@@ -371,6 +385,14 @@
             <dt>deletion guard</dt><dd>destructive commands always ask first — even in OVERDRIVE — unless Deletions is set to ALLOW above.</dd>
             <dt>session</dt><dd>one conversation with its own transcript, cost ledger, and task list, saved under <code>.magentra/sessions/</code> (SESSIONS in the dock resumes them).</dd>
           </dl>
+        </div>
+
+        <div class="set-card">
+          <div class="set-card-title">SKILLS</div>
+          <p class="set-note">Skills shape how the agent works — a <em>discipline</em> is a standing rule applied every turn, an <em>action</em> is an on-demand recipe. Describe one in plain language and Magentra drafts it.</p>
+          <div class="set-actions">
+            <button id="settingsBuildSkillBtn">＋ BUILD NEW SKILL ▸</button>
+          </div>
         </div>
 
         <div class="set-card">
@@ -518,14 +540,6 @@
 
         <input id="skillContextInput" class="skill-wiz-field" type="text" spellcheck="false"
                placeholder="Optional — when should it apply? triggers or an example situation" />
-
-        <div class="skill-wiz-row hidden" id="skillEnforceRow">
-          <span class="skill-wiz-label" title="Remind: the agent gets a nudge. Block: the engine refuses the edit until the condition is met.">Enforcement</span>
-          <div class="seg" id="skillEnforceSeg">
-            <button class="seg-btn on" data-enforce="remind">REMIND</button>
-            <button class="seg-btn" data-enforce="block">BLOCK EDITS</button>
-          </div>
-        </div>
 
         <div class="skill-wiz-row">
           <span class="skill-wiz-label">Author with</span>

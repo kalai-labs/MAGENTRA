@@ -794,13 +794,13 @@ async function run() {
 
   await test("skills view, chips, recommended set, and create-skill wizard are functional", async () => {
     await emit({ type: "modes_updated", modes: [
-      { id: "grill", name: "Grill", description: "Challenge assumptions", why: "Stress-test plans before code", active: false, recommended: false, conflicts: [] },
+      { id: "reshape", name: "Reshape", description: "Deliberate restructuring", why: "Enable for large refactors", active: false, recommended: false, conflicts: [] },
       { id: "prover", name: "Prover", description: "Prove every change", why: "Enable when correctness matters", active: false, recommended: true, conflicts: [] },
     ] });
-    // Hero chip toggles a skill through the shared set_modes path.
+    // Hero chip toggles a skill through the shared set_modes path (reshape is a hero).
     await evaluate(`document.querySelector('.mode-chip.hero').click()`);
     await pause();
-    assert.ok(modes.some((active) => active.includes("grill")));
+    assert.ok(modes.some((active) => active.includes("reshape")));
     // The summary chip opens the Skills view; both cards render with badges + why.
     await evaluate(`document.querySelector('#skillsSummary').click()`);
     await pause();
@@ -814,11 +814,16 @@ async function run() {
     // The ? explainer reveals the why copy.
     await evaluate(`document.querySelectorAll('.skill-why-btn')[0].click()`);
     assert.equal(await evaluate(`document.querySelectorAll('.skill-why:not(.hidden)').length`), 1);
-    // Every card carries an export button; clicking one exports that skill's .md by id.
+    // Every card has an export button. It asks the engine for the .md
+    // (export_skill), and on the reply saves it via main (saveSkillExport) — so
+    // built-ins export too, not only on-disk skills.
     assert.equal(await evaluate(`document.querySelectorAll('.skill-export-btn').length`), 2);
     await evaluate(`[...document.querySelectorAll('.skill-card')].find((c) => c.querySelector('.skill-name').textContent === 'Prover').querySelector('.skill-export-btn').click()`);
     await pause();
-    assert.ok(calls.some((call) => call.name === "exportSkill" && call.args[0] === "prover"));
+    assert.ok(frames.some((frame) => frame.type === "export_skill" && frame.id === "prover"));
+    await emit({ type: "skill_export", ok: true, id: "prover", filename: "prover.md", text: "---\\nkind: discipline\\nname: Prover\\n---\\n\\nProve it." });
+    await pause();
+    assert.ok(calls.some((call) => call.name === "saveSkillExport" && call.args[0].filename === "prover.md"));
     // A card toggle flips the discipline via set_modes.
     modes.length = 0;
     await evaluate(`[...document.querySelectorAll('.skill-card')].find((c) => c.querySelector('.skill-name').textContent === 'Prover').querySelector('.skill-toggle').click()`);
@@ -833,32 +838,22 @@ async function run() {
     await evaluate(`document.querySelector('#skillsRecommendBtn').click()`);
     await pause();
     assert.ok(modes.some((active) => active.includes("prover")));
-    // Create-skill wizard: describe → generate_skill frame → draft preview → install_skill frame.
+    // Create-skill wizard: describe → generateSkill (main resolves any profile)
+    // → draft preview → install_skill frame. Reachable from Settings too.
     await evaluate(`document.querySelector('#skillCreateBtn').click()`);
     assert.equal(await evaluate(`document.querySelector('#skillWizard').classList.contains('hidden')`), false);
-    // The enforcement row shows for a discipline and the model picker is
-    // populated; switching to an action hides enforcement (an action has no gate).
-    let wizState = await evaluate(`(() => ({
-      enforceShown: !document.querySelector('#skillEnforceRow').classList.contains('hidden'),
-      modelOptions: document.querySelectorAll('#skillModelSelect option').length,
-    }))()`);
-    assert.equal(wizState.enforceShown, true, "discipline shows the enforcement choice");
-    assert.ok(wizState.modelOptions > 0, "the author-with model picker is populated");
-    await evaluate(`document.querySelector('#skillKindSeg .seg-btn[data-skillkind="action"]').click()`);
-    assert.equal(await evaluate(`document.querySelector('#skillEnforceRow').classList.contains('hidden')`), true);
-    await evaluate(`document.querySelector('#skillKindSeg .seg-btn[data-skillkind="discipline"]').click()`);
+    // The "author with" model picker is populated (no enforcement UI any more).
+    assert.ok(await evaluate(`document.querySelectorAll('#skillModelSelect option').length > 0`), "the author-with model picker is populated");
     await evaluate(`(() => {
       document.querySelector('#skillDescInput').value = 'Always write rollback SQL beside every migration';
       document.querySelector('#skillContextInput').value = 'when editing files under db/migrations';
-      document.querySelector('#skillEnforceSeg .seg-btn[data-enforce="block"]').click();
       document.querySelector('#skillWizGenerate').click();
     })()`);
     await pause();
-    const genFrame = frames.filter((frame) => frame.type === "generate_skill").pop();
-    assert.equal(genFrame.kind, "discipline");
-    assert.equal(genFrame.enforce, "block", "the chosen enforcement rides along");
-    assert.equal(genFrame.context, "when editing files under db/migrations");
-    assert.ok(genFrame.model, "the chosen author model rides along");
+    const genCall = calls.filter((call) => call.name === "generateSkill").pop();
+    assert.equal(genCall.args[0].kind, "discipline");
+    assert.equal(genCall.args[0].context, "when editing files under db/migrations");
+    assert.ok(genCall.args[0].model, "the chosen author model rides along");
     await emit({ type: "skill_draft", ok: true, suggestedFilename: "sql-rollback.md", text: "---\\nkind: discipline\\nname: SQL Rollback\\n---\\n\\nAlways pair migrations with rollbacks." });
     state = await evaluate(`(() => ({
       step2: !document.querySelector('#skillWizStep2').classList.contains('hidden'),
@@ -904,6 +899,15 @@ async function run() {
     assert.equal(await evaluate(`getComputedStyle(document.documentElement).fontSize`), "15px");
     assert.equal(await evaluate(`document.documentElement.dataset.detail`), "cinematic");
     assert.ok(frames.some((frame) => frame.type === "set_deletion_guard" && frame.enabled === false));
+    // The auto-compact limit is UI-set and pushed to the engine as set_compact_limit.
+    await evaluate(`(() => { const el = document.querySelector('#setCompactLimit'); el.value = '80000'; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await pause();
+    assert.ok(frames.some((frame) => frame.type === "set_compact_limit" && frame.limit === 80000), "UI limit rides to the engine");
+    // 0 turns it off; a tiny value floors to keep it usable.
+    await evaluate(`(() => { const el = document.querySelector('#setCompactLimit'); el.value = '0'; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await pause();
+    assert.ok(frames.some((frame) => frame.type === "set_compact_limit" && frame.limit === 0));
+    assert.equal(await evaluate(`document.querySelector('#setCompactLimit').value`), "0");
     await evaluate(`document.querySelector('#setKeyReveal').click()`);
     await pause();
     assert.equal(await evaluate(`document.querySelector('#setApiKey').value`), "test-key");

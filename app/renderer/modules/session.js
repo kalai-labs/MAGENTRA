@@ -50,6 +50,7 @@ function enterActiveState(workspace) {
   navLabEl.classList.remove("hidden");
   navMissionEl.classList.remove("hidden");
   if (navSkillsEl) navSkillsEl.classList.remove("hidden");
+  if (navHomeEl) navHomeEl.classList.remove("hidden");
   sidebarSessionsRefreshEl.classList.remove("hidden");
   sidebarMissionNewEl.classList.remove("hidden");
   inspectorToggleEl.classList.remove("hidden");

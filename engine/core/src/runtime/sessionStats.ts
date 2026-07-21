@@ -57,7 +57,16 @@ export class SessionStats {
     entry.cacheWriteTokens += usage.cacheWriteTokens;
     this.byModel.set(model, entry);
     this.apiMs += apiMs;
-    this.contextTokens = contextSizeOf(usage);
+    // Context size is read from the response's own usage. Some providers
+    // intermittently omit usage on very large prompts (or a stream ends without
+    // a usage frame), which reports as all-zeros — but a real response always
+    // had a prompt, so zero means "not measured", NOT "the context emptied".
+    // Collapsing to 0 there would blind the compaction safety (the next turn
+    // would think the window is empty and never compact, then overflow), so a
+    // zero measurement retains the last known size. Compaction is what actually
+    // shrinks contextTokens, and it sets it explicitly.
+    const measured = contextSizeOf(usage);
+    if (measured > 0) this.contextTokens = measured;
   }
 
   /** Serializable view for the transcript `meta` record, restored by /resume. */

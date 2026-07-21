@@ -114,41 +114,67 @@ function skillSlug(s) {
   return String(s || "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-/** A "⇩ Export" button that saves the skill's .md via a native save dialog
- * (main reads it from .magentra/skills/). Skills are already Markdown on disk,
- * so this is a plain copy-out; a built-in with no file reports that. */
+// Export is a round-trip: the button asks the engine for the skill's .md text
+// (export_skill → skill_export), then main saves it via a dialog. The engine
+// sources the text — including built-ins — so EVERY skill exports, not only
+// on-disk ones (the old file-only path failed on built-ins). Pending buttons
+// are tracked by id so the reply lands back on the right one.
+const pendingSkillExports = new Map();
+
+/** A "⇩ Export" button that saves the skill's .md to a location the user picks. */
 function makeSkillExportButton(id, label) {
   const btn = document.createElement("button");
   btn.className = "skill-export-btn";
   btn.textContent = "⇩ Export";
   btn.title = `Save ${label} as a .md file`;
   btn.setAttribute("aria-label", `Export ${label}`);
-  btn.addEventListener("click", async () => {
-    if (!window.magentra.exportSkill) return;
-    const original = btn.textContent;
+  btn.addEventListener("click", () => {
+    if (!window.magentra.send) return;
     btn.disabled = true;
-    let res = null;
-    try {
-      res = await window.magentra.exportSkill(id);
-    } catch {
-      res = null;
-    }
+    btn.dataset.original = "⇩ Export";
+    btn.textContent = "…";
+    pendingSkillExports.set(id, btn);
+    window.magentra.send({ type: "export_skill", id });
+  });
+  return btn;
+}
+
+async function onSkillExport(event) {
+  const btn = pendingSkillExports.get(event.id);
+  if (!btn) return;
+  pendingSkillExports.delete(event.id);
+  const original = btn.dataset.original || "⇩ Export";
+  const settle = (text) => {
     btn.disabled = false;
-    if (res && res.canceled) return; // user dismissed the dialog — no fuss
-    if (res && res.ok) {
-      btn.textContent = "Exported ✓";
-      announce(`Exported ${label}.`);
-    } else {
-      btn.textContent = "Failed";
-      const detail = (res && res.error) || "unknown error";
-      announce(`Export failed: ${detail}`);
-      appendSysNote(`export failed for ${id}: ${detail}`);
-    }
+    btn.textContent = text;
     setTimeout(() => {
       btn.textContent = original;
     }, 2200);
-  });
-  return btn;
+  };
+  if (!event.ok) {
+    announce(`Export failed: ${event.error || "error"}`);
+    appendSysNote(`export failed for ${event.id}: ${event.error || "unknown error"}`);
+    settle("Failed");
+    return;
+  }
+  let res = null;
+  try {
+    res = await window.magentra.saveSkillExport({ filename: event.filename, text: event.text });
+  } catch {
+    res = null;
+  }
+  if (res && res.canceled) {
+    btn.disabled = false;
+    btn.textContent = original;
+    return;
+  }
+  if (res && res.ok) {
+    announce(`Exported ${event.id}.`);
+    settle("Exported ✓");
+  } else {
+    announce(`Export failed: ${(res && res.error) || "error"}`);
+    settle("Failed");
+  }
 }
 
 function renderActionSkillCard(skill) {
@@ -251,40 +277,70 @@ if (skillsCloseBtnEl) skillsCloseBtnEl.addEventListener("click", () => showView(
 // ---------------------------------------------------------------------------
 
 let skillWizardKind = "discipline";
-let skillWizardEnforce = "remind"; // discipline only: "remind" | "block"
 let skillWizardWaiting = false;
 let skillDraftFilename = "skill.md";
 
-/** Fill the wizard's model picker from the composer's model list, defaulting to
- * the model the session runs on — so authoring uses the same connection, on a
- * model the user can upgrade for a better draft. */
+/** Fill the wizard's "Author with" picker: the current connection's models
+ * (default = the session model, upgradeable for a better draft), then any saved
+ * connection profiles — choosing one authors with that different provider. */
 function populateSkillModelSelect() {
   if (!skillModelSelectEl || !modelSelectEl) return;
   const current = activeModel || modelSelectEl.value;
   skillModelSelectEl.textContent = "";
   const seen = new Set();
+  const modelGroup = document.createElement("optgroup");
+  modelGroup.label = "This workspace's connection";
   for (const opt of modelSelectEl.options) {
     if (opt.value === "__custom__" || seen.has(opt.value)) continue;
     seen.add(opt.value);
     const o = document.createElement("option");
     o.value = opt.value;
     o.textContent = opt.textContent;
-    skillModelSelectEl.appendChild(o);
+    modelGroup.appendChild(o);
   }
   if (current && !seen.has(current)) {
     const o = document.createElement("option");
     o.value = current;
     o.textContent = shortModelLabel(current);
-    skillModelSelectEl.appendChild(o);
+    modelGroup.appendChild(o);
+    seen.add(current);
   }
+  skillModelSelectEl.appendChild(modelGroup);
   if (current) skillModelSelectEl.value = current;
+  void appendSkillProfileOptions();
 }
 
-/** The enforcement choice only makes sense for a discipline (an action has no
- * gate), so its row is hidden for actions. */
+/** Append saved connection profiles to the picker (each = a different provider),
+ * and tune the hint depending on whether any exist. */
+async function appendSkillProfileOptions() {
+  let profiles = [];
+  if (window.magentra.listProfiles) {
+    try {
+      profiles = (await window.magentra.listProfiles()) || [];
+    } catch {
+      profiles = [];
+    }
+  }
+  if (skillModelSelectEl && profiles.length) {
+    const group = document.createElement("optgroup");
+    group.label = "Saved profiles — different provider";
+    for (const p of profiles) {
+      const o = document.createElement("option");
+      o.value = `profile:${p.id}`;
+      o.textContent = `${p.name} · ${p.model || "—"}`;
+      group.appendChild(o);
+    }
+    skillModelSelectEl.appendChild(group);
+  }
+  if (skillModelHintEl) {
+    skillModelHintEl.textContent = profiles.length
+      ? "Author with your workspace's model, or pick a saved profile to use a different provider."
+      : "Uses your workspace connection. Save a connection profile (⇆ Connect) to author with a different provider.";
+  }
+}
+
 function syncSkillKindUi() {
   if (skillKindHintEl) skillKindHintEl.textContent = SKILL_KIND_HINTS[skillWizardKind];
-  if (skillEnforceRowEl) skillEnforceRowEl.classList.toggle("hidden", skillWizardKind !== "discipline");
 }
 
 // Kept in step with the inline #skillKindHint in index.html (the discipline text
@@ -304,10 +360,6 @@ function openSkillWizard() {
   skillWizStatusEl.textContent = "";
   skillWizStatus2El.textContent = "";
   if (skillContextInputEl) skillContextInputEl.value = "";
-  skillWizardEnforce = "remind";
-  if (skillEnforceSegEl) {
-    skillEnforceSegEl.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("on", b.dataset.enforce === "remind"));
-  }
   syncSkillKindUi();
   populateSkillModelSelect();
   skillWizardEl.classList.remove("hidden");
@@ -343,6 +395,9 @@ function onSkillDraft(event) {
 }
 
 if (skillCreateBtnEl) skillCreateBtnEl.addEventListener("click", openSkillWizard);
+// Also reachable from Settings, so the feature is discoverable without first
+// finding the Skills view (which only appears once a workspace is open).
+if (settingsBuildSkillBtnEl) settingsBuildSkillBtnEl.addEventListener("click", openSkillWizard);
 if (skillWizCancelEl) skillWizCancelEl.addEventListener("click", closeSkillWizard);
 if (skillWizBackEl) {
   skillWizBackEl.addEventListener("click", () => {
@@ -360,35 +415,38 @@ if (skillKindSegEl) {
     });
   });
 }
-if (skillEnforceSegEl) {
-  skillEnforceSegEl.querySelectorAll(".seg-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      skillEnforceSegEl.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("on"));
-      btn.classList.add("on");
-      skillWizardEnforce = btn.dataset.enforce;
-    });
-  });
-}
 if (skillWizGenerateEl) {
-  skillWizGenerateEl.addEventListener("click", () => {
+  skillWizGenerateEl.addEventListener("click", async () => {
     const description = skillDescInputEl.value.trim();
     if (!description) {
       skillWizStatusEl.textContent = "Describe the skill first.";
       return;
     }
     if (!engineLinked) {
-      skillWizStatusEl.textContent = "Engine not linked — set up a connection first (Settings → Connection).";
+      skillWizStatusEl.textContent = "Engine not linked — open a workspace / set up a connection first.";
       return;
     }
     setSkillWizardWaiting(true);
-    const frame = { type: "generate_skill", description, kind: skillWizardKind };
+    const payload = { description, kind: skillWizardKind };
     const context = skillContextInputEl && skillContextInputEl.value.trim();
-    if (context) frame.context = context;
-    const model = skillModelSelectEl && skillModelSelectEl.value;
-    if (model) frame.model = model;
-    // Enforcement is a discipline-only concept (an action has no gate).
-    if (skillWizardKind === "discipline") frame.enforce = skillWizardEnforce;
-    window.magentra.send(frame);
+    if (context) payload.context = context;
+    // "profile:<id>" authors with that saved profile's provider (main resolves
+    // the key); a bare value is a model on the current connection.
+    const sel = skillModelSelectEl && skillModelSelectEl.value;
+    if (sel && sel.startsWith("profile:")) payload.profileId = sel.slice("profile:".length);
+    else if (sel) payload.model = sel;
+    let res = null;
+    try {
+      res = await window.magentra.generateSkill(payload);
+    } catch {
+      res = null;
+    }
+    // A refusal (no engine, no profile) comes back synchronously; a success is
+    // followed asynchronously by the skill_draft event that clears waiting.
+    if (res && res.ok === false) {
+      setSkillWizardWaiting(false);
+      skillWizStatusEl.textContent = res.error || "could not start generation";
+    }
   });
 }
 if (skillWizInstallEl) {
