@@ -23,6 +23,19 @@ import type { Settings } from "../config/settings.js";
  * two classic ways to get this wrong; both produce a context number that has no
  * relationship to how full the window actually is.
  */
+/**
+ * A per-part estimate of what fills the context now, sourced from the live
+ * session (system prompt, tool schemas, skills, message history). Every field is
+ * an estimate; `limit` is the user's auto-compact token limit (0 = none set).
+ */
+export interface ContextBreakdown {
+  systemPrompt: number;
+  tools: number;
+  skills: number;
+  messages: number;
+  limit: number;
+}
+
 export class SessionStats {
   /** Wall-clock start of the session (ms epoch). */
   readonly startedAt: number;
@@ -137,12 +150,13 @@ export class SessionStats {
    * can diverge, so any dollar figure risks misinforming. Token counts (which
    * we measure directly) stay; context is shown "~" to signal it is an estimate.
    */
-  format(_settings?: Settings, now: number = Date.now()): string {
+  format(_settings?: Settings, now: number = Date.now(), breakdown?: ContextBreakdown): string {
     const lines: string[] = ["Session", ""];
     lines.push(`  Total duration (API):  ${formatDuration(this.apiMs)}`);
     lines.push(`  Total duration (wall): ${formatDuration(now - this.startedAt)}`);
     lines.push(`  Total code changes:    ${this.linesAdded} lines added, ${this.linesRemoved} lines removed`);
     lines.push(`  Context now:            ~${formatTokens(this.contextTokens)} tokens`);
+    if (breakdown) lines.push(...this.formatBreakdown(breakdown));
 
     if (this.byModel.size === 0) {
       lines.push("  Usage by model:        (no model calls yet)");
@@ -158,6 +172,29 @@ export class SessionStats {
       );
     }
     return lines.join("\n");
+  }
+
+  /**
+   * The "what's filling the context" lines under `/session`. Estimated per-part
+   * sizes (system prompt, tools, skills, message history), plus free space when
+   * the user has set an auto-compact limit to measure against. All approximate —
+   * they show the shape of the context, not an exact accounting; the measured
+   * "Context now" above is the true total.
+   */
+  private formatBreakdown(b: ContextBreakdown): string[] {
+    const lines: string[] = ["  Context breakdown (~estimated):"];
+    const pad = (label: string) => `${label}:`.padEnd(16);
+    lines.push(`      ${pad("System prompt")}~${formatTokens(b.systemPrompt)} tokens`);
+    lines.push(`      ${pad("System tools")}~${formatTokens(b.tools)} tokens`);
+    if (b.skills > 0) lines.push(`      ${pad("Skills")}~${formatTokens(b.skills)} tokens`);
+    lines.push(`      ${pad("Messages")}~${formatTokens(b.messages)} tokens`);
+    if (b.limit > 0) {
+      const free = Math.max(0, b.limit - this.contextTokens);
+      lines.push(`      ${pad("Free space")}~${formatTokens(free)} tokens (until auto-compact at ~${formatTokens(b.limit)})`);
+    } else {
+      lines.push("      (no auto-compact limit set — no fixed window to measure free space against; set one in Settings → Context)");
+    }
+    return lines;
   }
 }
 

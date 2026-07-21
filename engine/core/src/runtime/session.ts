@@ -43,7 +43,7 @@ import { FileState } from "./fileState.js";
 import type { HookRunner } from "../agent/hooks.js";
 import type { ModeEngine } from "../ma/modes.js";
 import { PermissionEngine, type PermissionRequestPayload } from "./permissions.js";
-import { buildSystemPrompt } from "../agent/prompts.js";
+import { buildSystemPrompt, skillsBlock } from "../agent/prompts.js";
 import { DEBUG_DIR, commandRunsRepro, reproScriptRelPath } from "../ma/debug.js";
 import { SearchLog, evaluateReuseGate, type ReuseGateResult } from "../knowledge/reuseGate.js";
 import { buildSymbolIndex, loadOrBuildSymbolIndex, type SymbolIndexData } from "../knowledge/symbols.js";
@@ -1907,7 +1907,39 @@ export class Session {
   private estimateContextTokens(): number {
     let chars = 0;
     for (const m of this.messages) chars += JSON.stringify(m.content).length;
+    return this.estimateTokens(chars);
+  }
+
+  /** Rough token count from a character length (or a string), ~3.5 chars/token,
+   * rounded up. Deliberately low chars/token so it over-counts rather than under. */
+  private estimateTokens(input: string | number): number {
+    const chars = typeof input === "number" ? input : input.length;
     return Math.ceil(chars / 3.5);
+  }
+
+  /**
+   * A composition estimate of what currently fills the context, for the /session
+   * report. Each part is an ESTIMATE (~3.5 chars/token) of its own size — the
+   * measured total (`stats.contextTokens`, from provider usage) is the source of
+   * truth and will not sum to these exactly. Skills physically live inside the
+   * system string; they are broken out so their weight is visible on its own.
+   * `limit` is the user's auto-compact limit (0 = none set), used to show free
+   * space; without a limit there is no window to compute free space against.
+   */
+  contextBreakdown(): {
+    systemPrompt: number;
+    tools: number;
+    skills: number;
+    messages: number;
+    limit: number;
+  } {
+    const skillsText = skillsBlock(this.opts.skills ?? []) ?? "";
+    const skills = this.estimateTokens(skillsText);
+    // System prompt without the skills block, so the two don't double-count.
+    const systemPrompt = Math.max(0, this.estimateTokens(this.buildSystemPrompt()) - skills);
+    const tools = this.estimateTokens(JSON.stringify(this.toolSchemas()));
+    const messages = this.estimateContextTokens();
+    return { systemPrompt, tools, skills, messages, limit: this.autoCompactLimit };
   }
 
   /** Set the auto-compact token limit. 0 (or invalid) disables auto-compaction.

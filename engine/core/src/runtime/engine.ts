@@ -1065,7 +1065,7 @@ export class Engine {
         // would be confidently wrong; the raw number is always true).
         this.emit({
           type: "command_output",
-          text: `${this.session.stats.format(this.opts.settings)}\n${this.extensionLines()}`,
+          text: `${this.session.stats.format(this.opts.settings, Date.now(), this.session.contextBreakdown())}\n${this.extensionLines()}`,
         });
         break;
       case "sessions":
