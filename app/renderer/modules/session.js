@@ -85,8 +85,8 @@ function onModelCatalog(event) {
   for (const id of models) {
     const opt = document.createElement("option");
     opt.value = id;
-    const p = modelRateCard[id];
-    opt.textContent = p ? `${shortModelLabel(id)} — $${p.input} / $${p.output}` : shortModelLabel(id);
+    // Price intentionally omitted — the catalog shows model ids only.
+    opt.textContent = shortModelLabel(id);
     modelSelectEl.appendChild(opt);
   }
   // The active model may be absent from the catalog (typo, gated model):
@@ -113,11 +113,13 @@ function shortModelLabel(id) {
 function modelHintText(model) {
   const p = modelRateCard[model];
   if (!p) return model;
-  const cached = p.cacheRead !== undefined ? `$${p.cacheRead} cached · ` : "";
+  // Price is intentionally not shown (our token counting and a provider's
+  // billing can diverge). The window size is a published capacity spec, so it
+  // stays exact — only the live context estimate is prefixed "~".
   const ctx = p.contextWindow >= 1_000_000
     ? `${(p.contextWindow / 1_000_000).toFixed(0)}M`
     : `${Math.round(p.contextWindow / 1000)}K`;
-  return `${model} · ${cached}$${p.input} in · $${p.output} out /1M · ${ctx} ctx`;
+  return `${model} · ${ctx} ctx`;
 }
 
 // ---------------------------------------------------------------------------
@@ -137,35 +139,33 @@ function modelHintText(model) {
 
 let contextTokens = 0;
 let sessionModel = ""; // the model this session runs on (from session_started)
-// Whole-session cost, PRICED BY THE ENGINE (turn_finished.totalCostUsd) — it
-// bills every model in the tree at its own rate, so crew runs on other models
-// attribute correctly. null until the engine reports a priced figure.
-let sessionCostUsd = null;
+// True once the engine reports the context has grown past the "run /compact"
+// warn threshold (turn_finished.contextWarn). Tints the context counter.
+let contextWarn = false;
 
+// Context is an ESTIMATE (our count and a provider's can differ), so it always
+// carries a "~". Values are rounded coarsely for the same reason — a precise
+// figure would imply a precision we don't have.
 function formatTokensShort(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 10_000) return `${Math.round(n / 1_000)}k`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
-}
-
-function formatUsdShort(d) {
-  if (d === 0) return "$0.00";
-  return d < 0.01 ? `$${d.toFixed(4)}` : `$${d.toFixed(2)}`;
 }
 
 function updateSessionMeter() {
   if (!hintUsageEl) return;
   const parts = [];
-  if (contextTokens > 0) parts.push(`ctx ${formatTokensShort(contextTokens)}`);
-  if (sessionCostUsd !== null) parts.push(formatUsdShort(sessionCostUsd));
+  if (contextTokens > 0) parts.push(`ctx ~${formatTokensShort(contextTokens)}`);
   hintUsageEl.textContent = parts.join(" · ");
   hintUsageEl.classList.toggle("hidden", parts.length === 0);
+  hintUsageEl.classList.toggle("warn", contextWarn);
   syncWorkbenchContext();
 }
 
 function resetSessionMeter() {
   contextTokens = 0;
-  sessionCostUsd = null;
+  contextWarn = false;
   updateSessionMeter();
 }
 
@@ -192,23 +192,20 @@ async function handleChooseWorkspace() {
   }
 }
 
-// The model the engine is actually running now. Guards against no-op restarts
-// (re-selecting the same model) and destructive mid-turn restarts.
+// The model the engine is actually running now. Guards against no-op changes
+// (re-selecting the same model).
 let activeModel = null;
 
 async function applyModelChange(model) {
-  if (!model || model === activeModel) return; // nothing changed — no restart
-  // Changing model restarts the engine and drops the current conversation. If
-  // a turn is mid-flight (or any context has built up), make that explicit
-  // rather than silently discarding it.
-  if (busy && !window.confirm(`Switch to ${model}? This restarts the engine and ends the current turn, losing its context.`)) {
-    applyModel(activeModel); // revert the dropdown to the running model
-    return;
-  }
+  if (!model || model === activeModel) return; // nothing changed
+  // Changing the model now updates the LIVE session (main sends set_model) — it
+  // no longer restarts the engine, so the conversation is kept and it takes
+  // effect on the next turn. Safe mid-turn: the current turn finishes on the
+  // model it started with.
   activeModel = model;
   await window.magentra.setModel(model);
   hintModelEl.textContent = modelHintText(model);
-  appendSysNote(`model set to ${model} — session restarted`);
+  appendSysNote(`model set to ${model} — applies to your next message`);
 }
 
 function commitCustomModel() {

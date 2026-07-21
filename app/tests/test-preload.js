@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld("magentra", {
   writeEnv: (payload) => api("writeEnv", payload),
   testConnection: (payload) => api("testConnection", payload),
   detectLocalServers: () => api("detectLocalServers"),
+  exportSkill: (id) => api("exportSkill", id),
   listProfiles: () => api("listProfiles"),
   saveProfile: (payload) => api("saveProfile", payload),
   deleteProfile: (id) => api("deleteProfile", id),

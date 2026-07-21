@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld("magentra", {
   testConnection: (payload) => ipcRenderer.invoke("setup:testConnection", payload),
   // Which local model servers (Ollama, LM Studio) are present on this machine.
   detectLocalServers: () => ipcRenderer.invoke("connections:detectLocal"),
+  // Export a skill's .md to a user-chosen location (save dialog in main).
+  exportSkill: (id) => ipcRenderer.invoke("skills:export", id),
   // Global connection profiles (reusable across workspaces).
   listProfiles: () => ipcRenderer.invoke("profiles:list"),
   saveProfile: (payload) => ipcRenderer.invoke("profiles:save", payload),

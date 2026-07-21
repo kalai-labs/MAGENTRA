@@ -140,23 +140,23 @@
             <button id="overdriveBtn" class="composer-select overdrive-btn" aria-pressed="false" title="OVERDRIVE — fully autonomous mode (self-verifying, no caps)">
               <span class="od-btn-glyph">⚡</span><span class="od-btn-label">OVERDRIVE</span>
             </button>
-            <select id="modelSelect" class="composer-select" title="Model (price per 1M tokens, in/out)">
-              <option value="openai/gpt-oss-120b">GPT-OSS 120B — $0.04 / $0.17</option>
-              <option value="deepseek-ai/DeepSeek-V4-Flash" selected>DeepSeek V4 Flash — $0.09 / $0.18</option>
-              <option value="Qwen/Qwen3-14B">Qwen3 14B — $0.12 / $0.24</option>
-              <option value="google/gemma-4-26B-A4B-it">Gemma 4 26B — $0.07 / $0.34</option>
-              <option value="google/gemma-4-31B-it">Gemma 4 31B — $0.13 / $0.38</option>
-              <option value="deepseek-ai/DeepSeek-V3.2">DeepSeek V3.2 — $0.26 / $0.38</option>
-              <option value="Qwen/Qwen3.6-35B-A3B">Qwen3.6 35B — $0.15 / $0.95</option>
-              <option value="Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo">Qwen3 Coder 480B — $0.30 / $1.00</option>
-              <option value="MiniMaxAI/MiniMax-M2.5">MiniMax M2.5 — $0.15 / $1.15</option>
-              <option value="XiaomiMiMo/MiMo-V2.5">MiMo V2.5 — $0.40 / $2.00</option>
-              <option value="zai-org/GLM-5">GLM-5 — $0.60 / $2.08</option>
-              <option value="moonshotai/Kimi-K2.5">Kimi K2.5 — $0.45 / $2.25</option>
-              <option value="deepseek-ai/DeepSeek-V4-Pro">DeepSeek V4 Pro — $1.30 / $2.60</option>
-              <option value="zai-org/GLM-5.2">GLM-5.2 — $0.93 / $3.00</option>
-              <option value="moonshotai/Kimi-K2.7-Code">Kimi K2.7 Code — $0.74 / $3.50</option>
-              <option value="moonshotai/Kimi-K2.6">Kimi K2.6 — $0.75 / $3.50</option>
+            <select id="modelSelect" class="composer-select" title="Model">
+              <option value="openai/gpt-oss-120b">GPT-OSS 120B</option>
+              <option value="deepseek-ai/DeepSeek-V4-Flash" selected>DeepSeek V4 Flash</option>
+              <option value="Qwen/Qwen3-14B">Qwen3 14B</option>
+              <option value="google/gemma-4-26B-A4B-it">Gemma 4 26B</option>
+              <option value="google/gemma-4-31B-it">Gemma 4 31B</option>
+              <option value="deepseek-ai/DeepSeek-V3.2">DeepSeek V3.2</option>
+              <option value="Qwen/Qwen3.6-35B-A3B">Qwen3.6 35B</option>
+              <option value="Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo">Qwen3 Coder 480B</option>
+              <option value="MiniMaxAI/MiniMax-M2.5">MiniMax M2.5</option>
+              <option value="XiaomiMiMo/MiMo-V2.5">MiMo V2.5</option>
+              <option value="zai-org/GLM-5">GLM-5</option>
+              <option value="moonshotai/Kimi-K2.5">Kimi K2.5</option>
+              <option value="deepseek-ai/DeepSeek-V4-Pro">DeepSeek V4 Pro</option>
+              <option value="zai-org/GLM-5.2">GLM-5.2</option>
+              <option value="moonshotai/Kimi-K2.7-Code">Kimi K2.7 Code</option>
+              <option value="moonshotai/Kimi-K2.6">Kimi K2.6</option>
               <option value="__custom__">Custom…</option>
             </select>
             <input id="customModel" class="composer-select hidden" type="text" placeholder="provider/model-id" spellcheck="false" />
@@ -510,11 +510,29 @@
       <div id="skillWizStep1">
         <p class="modal-sub">Describe what you want in plain language. Magentra writes the skill file; you review and edit it before anything is installed.</p>
         <div class="seg skill-kind-seg" id="skillKindSeg">
-          <button class="seg-btn on" data-skillkind="discipline">DISCIPLINE — always on</button>
-          <button class="seg-btn" data-skillkind="action">ACTION — on demand</button>
+          <button class="seg-btn on" data-skillkind="discipline">DISCIPLINE — a standing rule</button>
+          <button class="seg-btn" data-skillkind="action">ACTION — an on-demand recipe</button>
         </div>
-        <p id="skillKindHint" class="set-note">A discipline shapes every turn while enabled — rules, reminders, even tool gates the engine enforces.</p>
-        <textarea id="skillDescInput" rows="5" spellcheck="false" placeholder="e.g. Before editing any SQL file, require an EXPLAIN plan in the task notes, and always add a rollback statement alongside every migration."></textarea>
+        <p id="skillKindHint" class="set-note">Always-on while enabled: it shapes <em>every</em> turn — rules the agent follows, reminders it gets, even tool gates the engine enforces. <em>e.g.</em> “investigate before editing,” or “always write a failing test before the fix.”</p>
+        <textarea id="skillDescInput" rows="4" spellcheck="false" placeholder="e.g. Before editing any SQL file, require an EXPLAIN plan in the task notes, and always add a rollback statement alongside every migration."></textarea>
+
+        <input id="skillContextInput" class="skill-wiz-field" type="text" spellcheck="false"
+               placeholder="Optional — when should it apply? triggers or an example situation" />
+
+        <div class="skill-wiz-row hidden" id="skillEnforceRow">
+          <span class="skill-wiz-label" title="Remind: the agent gets a nudge. Block: the engine refuses the edit until the condition is met.">Enforcement</span>
+          <div class="seg" id="skillEnforceSeg">
+            <button class="seg-btn on" data-enforce="remind">REMIND</button>
+            <button class="seg-btn" data-enforce="block">BLOCK EDITS</button>
+          </div>
+        </div>
+
+        <div class="skill-wiz-row">
+          <span class="skill-wiz-label">Author with</span>
+          <select id="skillModelSelect" class="skill-wiz-select"></select>
+        </div>
+        <p class="set-note" id="skillModelHint">Uses your workspace connection. Pick a stronger model here if a draft comes out poorly.</p>
+
         <div class="modal-actions">
           <span id="skillWizStatus"></span>
           <button id="skillWizCancel">CANCEL (Esc)</button>

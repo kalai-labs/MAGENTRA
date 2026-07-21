@@ -412,6 +412,13 @@ if (wizTestBtnEl) {
     wizStatusEl.className = "";
     if (!window.magentra.testConnection) return;
     const payload = wizPayload();
+    // Testing a saved profile whose key field is left blank: the key is not in
+    // the form (sanitized profiles never carry it to the renderer), so point the
+    // main process at the stored key by id — otherwise TEST sends no key and a
+    // hosted endpoint answers 401 even though the saved connection is valid.
+    if (wizEditingId && wizApiKeyEl && !wizApiKeyEl.value.trim()) {
+      payload.profileId = wizEditingId;
+    }
     let result = null;
     try {
       result = await window.magentra.testConnection(payload);

@@ -220,11 +220,11 @@ export type CoreEvent =
        */
       overdriveSnapshot?: string;
       /**
-       * Whole-session cost so far in USD, priced engine-side per model (crew
-       * runs on other models included). Absent when no used model has a rate
-       * card — the frontend must show nothing rather than a fake $0.
+       * True once the context has grown past the "run /compact" warn threshold
+       * (~200k, capped under the model window). The frontend tints its context
+       * counter on this; absent while the context is comfortably small.
        */
-      totalCostUsd?: number;
+      contextWarn?: boolean;
     }
   | { type: "error"; message: string; fatal: boolean }
   /** The generate_skill result: a validated draft to preview/edit, or the failure after retries. */
@@ -361,6 +361,12 @@ export type FrontendRequest =
   /** Toggles OVERDRIVE: the fully-autonomous turn-loop policy (caps lifted, self-verify end check). */
   | { type: "set_overdrive"; enabled: boolean }
   /**
+   * Change the session's model live (takes effect on the next turn) WITHOUT
+   * restarting the engine — so the conversation and session id are preserved.
+   * The frontend sends this on a model-picker change instead of respawning.
+   */
+  | { type: "set_model"; model: string }
+  /**
    * Mid-run steering: user text that joins the RUNNING turn at its next
    * message boundary instead of waiting for the turn to end. Sent by
    * frontends while a turn is busy; falls back to a normal user turn when
@@ -377,8 +383,21 @@ export type FrontendRequest =
   | { type: "list_sessions" }
   | { type: "set_modes"; active: string[] }
   | { type: "reload_team" }
-  /** Ask the engine to author a skill .md from a plain-language description (LLM-generated, parser-validated). */
-  | { type: "generate_skill"; description: string; kind: "discipline" | "action" }
+  /**
+   * Ask the engine to author a skill .md from a plain-language description
+   * (LLM-generated, parser-validated). `model` overrides which model authors it
+   * (defaults to the session model); `context` is optional extra detail (when it
+   * should apply, examples); `enforce` asks a discipline to hard-gate edits
+   * ("block") rather than only remind ("remind", the default).
+   */
+  | {
+      type: "generate_skill";
+      description: string;
+      kind: "discipline" | "action";
+      model?: string;
+      context?: string;
+      enforce?: "remind" | "block";
+    }
   /** Write a (re-validated) skill file into .magentra/skills/ and reload both skill kinds. */
   | { type: "install_skill"; filename: string; text: string };
 

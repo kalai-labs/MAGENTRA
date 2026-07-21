@@ -438,7 +438,7 @@ export class Engine {
    */
   private skillGenBusy = false;
 
-  private startSkillGeneration(description: string, kind: "discipline" | "action"): void {
+  private startSkillGeneration(description: string, kind: "discipline" | "action", opts: SkillGenOptions = {}): void {
     if (this.skillGenBusy) {
       this.emit({ type: "command_output", text: "🧩 a skill generation is already running." });
       return;
@@ -454,7 +454,7 @@ export class Engine {
       kind: "start",
       payload: { description: "generating skill" },
     });
-    void this.generateSkill(description.trim(), kind)
+    void this.generateSkill(description.trim(), kind, opts)
       .then((draft) => this.emit({ type: "skill_draft", ...draft }))
       .catch((err: Error) => this.emit({ type: "skill_draft", ok: false, error: err.message }))
       .finally(() => {
@@ -471,23 +471,28 @@ export class Engine {
   private async generateSkill(
     description: string,
     kind: "discipline" | "action",
+    opts: SkillGenOptions = {},
   ): Promise<{ ok: boolean; text?: string; suggestedFilename?: string; error?: string }> {
     const takenIds = this.modeEngine.list().map((m) => m.id);
     let feedback = "";
     let lastError = "";
     for (let attempt = 0; attempt < 3; attempt++) {
-      const raw = await this.session.spawnAgent({
-        agentType: "explore",
-        description: "author a skill file",
-        maxIterations: 4,
-        roleOverride: SKILL_AUTHOR_ROLE,
-        prompt: buildSkillPrompt(description, kind, takenIds) + feedback,
+      // A single completion — NOT an agentic explore loop. Authoring one small
+      // file needs no tools; the old explore agent could spend minutes reading
+      // workspace files and still return prose instead of a file. runInference
+      // is one focused call, on the chosen model (defaulting to the session's
+      // main model — skill authoring wants the capable model, not smallModel).
+      const raw = await this.session.runInference({
+        system: SKILL_AUTHOR_ROLE,
+        user: buildSkillPrompt(description, kind, takenIds, opts) + feedback,
+        maxTokens: 4096,
+        model: opts.model ?? this.opts.settings.model,
       });
-      const text = stripCodeFence(raw);
+      const text = repairSkillText(raw);
       const check = this.validateSkillText(text, kind);
       if (check.ok) return { ok: true, text, suggestedFilename: check.filename };
       lastError = check.error;
-      feedback = `\n\nYour previous attempt was rejected by the validator:\n${check.error}\nProduce the corrected complete file.`;
+      feedback = `\n\nYour previous attempt was rejected by the validator:\n${check.error}\nReturn ONLY the corrected file, starting with the "---" line — no sentence before it.`;
     }
     return { ok: false, error: `Generation failed validation after 3 attempts: ${lastError}` };
   }
@@ -675,6 +680,9 @@ export class Engine {
         this.overdriveEnabled = request.enabled;
         this.session.setOverdrive(request.enabled);
         break;
+      case "set_model":
+        this.handleSetModel(request.model);
+        break;
       case "set_deletion_guard":
         this.session.setDeletionPolicy(!request.enabled);
         this.emit({
@@ -735,7 +743,11 @@ export class Engine {
         this.reloadTeam();
         break;
       case "generate_skill":
-        this.startSkillGeneration(request.description, request.kind);
+        this.startSkillGeneration(request.description, request.kind, {
+          ...(request.model ? { model: request.model } : {}),
+          ...(request.context ? { context: request.context } : {}),
+          ...(request.enforce ? { enforce: request.enforce } : {}),
+        });
         break;
       case "install_skill":
         this.installSkill(request.filename, request.text);
@@ -1223,6 +1235,23 @@ export class Engine {
    * live session, so a fresh session via /clear always sees it) and report when it takes
    * effect. Returns the human-readable timing note for the command output.
    */
+  /**
+   * Live model swap (set_model frame): persist it and push it into the running
+   * session so the NEXT turn uses it — no engine restart, so the conversation
+   * and session id survive. Silent on success (the frontend shows its own note);
+   * only a rejected value surfaces a message.
+   */
+  private handleSetModel(model: string): void {
+    const trimmed = typeof model === "string" ? model.trim() : "";
+    if (!trimmed) return;
+    try {
+      const applied = setSetting(this.opts.cwd, "model", trimmed, "auto");
+      this.applySettingLive(applied.key, applied.value);
+    } catch (err) {
+      this.emit({ type: "command_output", text: `model unchanged: ${(err as Error).message}` });
+    }
+  }
+
   private applySettingLive(key: string, value: string | number | boolean): string {
     setSettingPath(this.opts.settings as unknown as Record<string, unknown>, key, value);
     const topKey = key.split(".")[0] as keyof typeof settingsSchema.shape;
@@ -2211,7 +2240,7 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
   { cmd: "/atlas", args: "[force]", desc: "map the codebase into .magentra/ATLAS.md (force overwrites hand edits)" },
   { cmd: "/clear", args: "", desc: "start a fresh session (history cleared)" },
   { cmd: "/compact", args: "", desc: "compact the conversation now" },
-  { cmd: "/session", args: "", desc: "this session's bill: cost per model, API/wall time, code churn, context now" },
+  { cmd: "/session", args: "", desc: "this session's usage: tokens per model, API/wall time, code churn, context now" },
   { cmd: "/tasks", args: "", desc: "show the task list" },
   { cmd: "/skills", args: "[on|off <id>]", desc: "list skills (disciplines + on-demand), or toggle a discipline (session only)" },
   { cmd: "/lab", args: "[load|save]", desc: "one-file lab blueprint (magentricks.md): load applies it, save snapshots it" },
@@ -2411,12 +2440,30 @@ response must be EXACTLY the content of one skill .md file — no code fences, n
 commentary before or after it. You may read a few workspace files first if the
 skill should reference real project conventions, but keep it brief.`;
 
+/** Optional knobs the wizard passes into skill authoring. */
+type SkillGenOptions = { model?: string; context?: string; enforce?: "remind" | "block" };
+
 /** The format the generator must produce, per kind — kept in one place so the wizard and validator agree. */
-function buildSkillPrompt(description: string, kind: "discipline" | "action", takenIds: string[]): string {
+function buildSkillPrompt(
+  description: string,
+  kind: "discipline" | "action",
+  takenIds: string[],
+  opts: SkillGenOptions = {},
+): string {
+  const contextLine = opts.context && opts.context.trim()
+    ? `\n\nWhen it should apply / extra detail from the user:\n"""\n${opts.context.trim()}\n"""`
+    : "";
+  const enforceLine =
+    kind === "discipline" && opts.enforce === "block"
+      ? `\n\nThe user wants this ENFORCED, not just advisory: include a "gate:" frontmatter line that blocks the relevant tools (e.g. Write, Edit) until the condition holds, with a short, specific refusal message.`
+      : kind === "discipline"
+        ? `\n\nThe user wants a REMINDER, not a hard block: rely on the directive and a short "## On turn start" reminder — do NOT add a gate: line.`
+        : "";
+
   const common = `The user wants a new ${kind} skill. Their description:
 """
 ${description}
-"""
+"""${contextLine}${enforceLine}
 
 Already-taken skill ids (choose a DIFFERENT short kebab-case id): ${takenIds.join(", ")}.`;
 
@@ -2475,4 +2522,17 @@ function stripCodeFence(raw: string): string {
   const text = raw.trim();
   const m = /^```(?:markdown|md)?\n([\s\S]*?)\n```$/.exec(text);
   return m ? m[1]! : text;
+}
+
+/**
+ * Coax a model's reply into the exact file the validator expects: unwrap a code
+ * fence, then — the common failure — drop any preamble sentence the model wrote
+ * before the actual `---` frontmatter, so a chatty-but-correct draft validates
+ * instead of being thrown away over a leading "Here's your skill:".
+ */
+function repairSkillText(raw: string): string {
+  const text = stripCodeFence(raw).trim();
+  const lines = text.split("\n");
+  const start = lines.findIndex((l) => l.trim() === "---");
+  return start > 0 ? lines.slice(start).join("\n").trim() : text;
 }

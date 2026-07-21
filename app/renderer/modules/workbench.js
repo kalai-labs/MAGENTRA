@@ -30,9 +30,9 @@ function syncWorkbenchContext() {
   }
   if (inspectorUsageEl) {
     const parts = [];
-    if (contextTokens > 0) parts.push(`${formatTokensShort(contextTokens)} ctx`);
-    if (sessionCostUsd !== null) parts.push(formatUsdShort(sessionCostUsd));
+    if (contextTokens > 0) parts.push(`~${formatTokensShort(contextTokens)} ctx`);
     inspectorUsageEl.textContent = parts.join(" · ") || "—";
+    inspectorUsageEl.classList.toggle("warn", contextWarn);
   }
   if (workspaceOpen) {
     const activeSummary = currentSessionId

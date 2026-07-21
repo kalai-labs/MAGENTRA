@@ -931,6 +931,45 @@ async function detectLocalServers() {
 
 ipcMain.handle("connections:detectLocal", () => detectLocalServers());
 
+// Export a skill's .md to a location the user picks. Skills are already Markdown
+// files under <workspace>/.magentra/skills/, so this is a read + save-dialog +
+// copy — no engine round-trip. Built-ins with no on-disk file report that.
+ipcMain.handle("skills:export", async (_evt, id) => {
+  // The id round-trips through the renderer, so re-validate its shape before it
+  // touches a path — never trust it to be the clean slug the parser produced.
+  if (typeof id !== "string" || !/^[a-z0-9][a-z0-9_-]*$/.test(id)) {
+    return { ok: false, error: "invalid skill id" };
+  }
+  const workspace = currentConfig.workspace;
+  if (!workspace) return { ok: false, error: "open a workspace first" };
+  const skillsDir = path.join(workspace, ".magentra", "skills");
+  const candidates = [path.join(skillsDir, `${id}.md`), path.join(skillsDir, id, "SKILL.md")];
+  const src = candidates.find((p) => {
+    try {
+      return fs.statSync(p).isFile();
+    } catch {
+      return false;
+    }
+  });
+  if (!src) {
+    return { ok: false, error: "This skill has no file to export (it's a built-in). Customize it first to create one." };
+  }
+  if (!mainWindow) return { ok: false, error: "no window" };
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: "Export skill",
+    defaultPath: `${id}.md`,
+    filters: [{ name: "Markdown", extensions: ["md"] }],
+  });
+  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+  try {
+    fs.copyFileSync(src, result.filePath);
+  } catch (err) {
+    return { ok: false, error: `failed to write: ${err && err.message ? err.message : String(err)}` };
+  }
+  logEvent("sys", { ev: "skill-exported", id });
+  return { ok: true, path: result.filePath };
+});
+
 ipcMain.handle("profiles:list", () => readProfiles().map(sanitizeProfile));
 
 ipcMain.handle("profiles:save", (_evt, payload) => {
@@ -1029,6 +1068,13 @@ ipcMain.handle("setup:testConnection", async (_evt, payload) => {
   // An empty key field with a saved key means "test the saved connection".
   if (payload && typeof payload === "object" && payload.useSavedKey) {
     payload = { ...payload, apiKey: savedWorkspaceKey() };
+  }
+  // Testing a saved profile with a blank key field: resolve the key from the
+  // profile store (the renderer never holds it). Without this, TEST sends no
+  // key and a hosted endpoint rejects it 401 though the profile is valid.
+  if (payload && typeof payload === "object" && payload.profileId && !String(payload.apiKey || "").trim()) {
+    const profile = findProfile(payload.profileId);
+    if (profile && typeof profile.apiKey === "string") payload = { ...payload, apiKey: profile.apiKey };
   }
   const validated = validateCredentialPayload(payload);
   if (!validated.ok) return validated;
@@ -1133,7 +1179,15 @@ ipcMain.handle("config:setModel", (_evt, model) => {
   currentConfig = { ...currentConfig, model: trimmed };
   writeConfig(currentConfig);
   logEvent("sys", { ev: "model-changed", model: currentConfig.model });
-  if (currentConfig.workspace) {
+  // Change the model on the LIVE session (takes effect next turn) rather than
+  // respawning the engine — a restart would start a fresh session and drop the
+  // current conversation. The persisted config above still makes the new model
+  // the default a future (re)start uses via MAGENTRA_MODEL.
+  if (currentConfig.workspace && engineChild) {
+    writeToEngine({ type: "set_model", model: trimmed });
+  } else if (currentConfig.workspace) {
+    // No live engine to update (not yet linked / crashed) — bring one up on the
+    // chosen model so the picker still connects.
     startEngine(currentConfig.workspace, currentConfig.model);
     sendToRenderer("engine:restarted", { model: currentConfig.model });
   }

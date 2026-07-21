@@ -1,5 +1,5 @@
 import type { Usage } from "@magentra/protocol";
-import { estimateCost, formatDuration, formatTokens, formatUsd, pricingFor } from "../config/pricing.js";
+import { formatDuration, formatTokens } from "../config/pricing.js";
 import type { Settings } from "../config/settings.js";
 
 /**
@@ -123,33 +123,17 @@ export class SessionStats {
   }
 
   /**
-   * Session cost, summed per model at that model's own rate card. Returns
-   * undefined only when NO model used this session has a rate card at all;
-   * a partially-priced session reports what it can price (unpriced models
-   * contribute their token counts but nothing to the total).
+   * The `/session` report — the whole-session summary a user reads at the end.
+   * Cost is deliberately omitted: our token counting and a provider's billing
+   * can diverge, so any dollar figure risks misinforming. Token counts (which
+   * we measure directly) stay; context is shown "~" to signal it is an estimate.
    */
-  totalCost(settings?: Settings): number | undefined {
-    let total = 0;
-    let priced = false;
-    for (const [model, usage] of this.byModel) {
-      const cost = estimateCost(usage, pricingFor(model, settings));
-      if (cost !== undefined) {
-        total += cost;
-        priced = true;
-      }
-    }
-    return priced ? total : undefined;
-  }
-
-  /** The `/session` report — the whole-session summary a user reads at the end. */
-  format(settings?: Settings, now: number = Date.now()): string {
+  format(_settings?: Settings, now: number = Date.now()): string {
     const lines: string[] = ["Session", ""];
-    const cost = this.totalCost(settings);
-    lines.push(`  Total cost:            ${cost === undefined ? "— (no rate card for this model)" : formatUsd(cost)}`);
     lines.push(`  Total duration (API):  ${formatDuration(this.apiMs)}`);
     lines.push(`  Total duration (wall): ${formatDuration(now - this.startedAt)}`);
     lines.push(`  Total code changes:    ${this.linesAdded} lines added, ${this.linesRemoved} lines removed`);
-    lines.push(`  Context now:           ${formatTokens(this.contextTokens)} tokens`);
+    lines.push(`  Context now:            ~${formatTokens(this.contextTokens)} tokens`);
 
     if (this.byModel.size === 0) {
       lines.push("  Usage by model:        (no model calls yet)");
@@ -157,13 +141,11 @@ export class SessionStats {
     }
     lines.push("  Usage by model:");
     for (const [model, usage] of this.byModel) {
-      const modelCost = estimateCost(usage, pricingFor(model, settings));
-      const priced = modelCost === undefined ? "" : ` (${formatUsd(modelCost)})`;
       lines.push(
         `      ${model}:  ${formatTokens(usage.inputTokens)} input, ` +
           `${formatTokens(usage.outputTokens)} output, ` +
           `${formatTokens(usage.cacheReadTokens)} cache read, ` +
-          `${formatTokens(usage.cacheWriteTokens)} cache write${priced}`,
+          `${formatTokens(usage.cacheWriteTokens)} cache write`,
       );
     }
     return lines.join("\n");

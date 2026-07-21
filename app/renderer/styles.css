@@ -746,6 +746,9 @@ select.composer-select { color-scheme: var(--color-scheme); }
 .stop-btn { border-color: var(--red); background: var(--red-soft); color: var(--red); }
 #hintLine { display: none; }
 .hint-usage { margin-left: auto; color: var(--text-faint); font-size: max(10px, 0.69rem); font-variant-numeric: tabular-nums; }
+/* Context past the /compact nudge point — amber, a calm "getting large", never
+   alarming red. Applies to both the composer hint and the inspector readout. */
+.hint-usage.warn, #inspectorUsage.warn { color: var(--amber); font-weight: 600; }
 
 /* OVERDRIVE composer toggle — also the active-state indicator (glyph + label). */
 .overdrive-btn { display: flex; align-items: center; gap: 5px; padding: 0 10px; font-weight: 700; letter-spacing: 0.03em; }
@@ -977,9 +980,13 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .skill-desc { color: var(--text-dim); font-size: max(10px, 0.78rem); line-height: 1.5; }
 .skill-why { padding: 8px 10px; border-left: 2px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--raised); color: var(--text); font-size: max(10px, 0.75rem); line-height: 1.5; }
 .skill-conflicts { color: var(--amber); font-size: max(10px, 0.7rem); }
-.skill-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: auto; }
+.skill-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
 .skill-foot code { font-size: max(10px, 0.68rem); }
 .skill-kind { color: var(--text-faint); font-size: max(10px, 0.67rem); }
+/* Export sits at the far right of the card foot; quiet until hovered. */
+.skill-export-btn { flex: none; margin-left: auto; padding: 3px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); color: var(--text-dim); font-size: max(10px, 0.66rem); white-space: nowrap; }
+.skill-export-btn:hover { color: var(--accent-hi); border-color: var(--accent); }
+.skill-export-btn:disabled { opacity: 0.5; }
 #skillsRecommendBtn { margin-left: auto; padding: 6px 11px; border: 1px solid var(--amber); border-radius: var(--radius-sm); background: var(--amber-soft); color: var(--amber); font-size: max(10px, 0.72rem); font-weight: 650; }
 #skillsRecommendBtn:hover { background: rgba(var(--amber-rgb), 0.22); }
 #skillCreateBtn { padding: 6px 11px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-ink); font-size: max(10px, 0.72rem); font-weight: 700; }
@@ -991,6 +998,11 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .skill-wiz-box { width: min(680px, 94vw); }
 .skill-kind-seg { margin-bottom: 8px; }
 .skill-kind-seg .seg-btn { flex: 1; padding: 8px 10px; }
+.skill-wiz-field { width: 100%; margin-top: 8px; padding: 8px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); }
+.skill-wiz-row { display: flex; align-items: center; gap: 10px; margin-top: 9px; }
+.skill-wiz-label { width: 96px; flex: none; color: var(--text-dim); font-size: max(10px, 0.72rem); }
+.skill-wiz-select { flex: 1; min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); color-scheme: var(--color-scheme); }
+#skillModelHint { margin-top: 5px; }
 #skillDescInput, #skillDraftText { width: 100%; margin-top: 8px; padding: 10px 11px; resize: vertical; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); color: var(--text-hi); line-height: 1.5; }
 #skillDraftText { font: 0.76rem/1.5 var(--mono); min-height: 300px; }
 #skillWizStatus, #skillWizStatus2 { margin-right: auto; color: var(--amber); font-size: max(10px, 0.72rem); }

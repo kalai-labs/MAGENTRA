@@ -324,7 +324,30 @@ async function run() {
     await emit({ type: "turn_finished", contextTokens: 4200, totalCostUsd: 0.012, stopReason: "end_turn" });
     await pause();
     assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.command === "help"));
-    assert.match(await evaluate(`document.querySelector('#inspectorUsage').textContent`), /4\.2k ctx/);
+    assert.match(await evaluate(`document.querySelector('#inspectorUsage').textContent`), /~4\.2k ctx/);
+  });
+
+  await test("context counter is approximate, tints past the warn threshold, and shows no price", async () => {
+    await emit({ type: "turn_finished", contextTokens: 210000, contextWarn: true, stopReason: "end_turn" });
+    await pause();
+    let meter = await evaluate(`(() => ({
+      text: document.querySelector('#hintUsage').textContent,
+      warn: document.querySelector('#hintUsage').classList.contains('warn'),
+      inspectorWarn: document.querySelector('#inspectorUsage').classList.contains('warn'),
+    }))()`);
+    assert.match(meter.text, /ctx ~210k/, "shows a rounded, tilde-prefixed size");
+    assert.ok(!meter.text.includes("$"), "never surfaces a price");
+    assert.equal(meter.warn, true, "counter tints when the engine flags a large context");
+    assert.equal(meter.inspectorWarn, true);
+    // Dropping back below the threshold clears the tint.
+    await emit({ type: "turn_finished", contextTokens: 5000, contextWarn: false, stopReason: "end_turn" });
+    await pause();
+    meter = await evaluate(`(() => ({
+      text: document.querySelector('#hintUsage').textContent,
+      warn: document.querySelector('#hintUsage').classList.contains('warn'),
+    }))()`);
+    assert.match(meter.text, /ctx ~5\.0k/);
+    assert.equal(meter.warn, false);
   });
 
   await test("slash palette, background jobs, application menu, and recovery banner are live controls", async () => {
@@ -791,6 +814,11 @@ async function run() {
     // The ? explainer reveals the why copy.
     await evaluate(`document.querySelectorAll('.skill-why-btn')[0].click()`);
     assert.equal(await evaluate(`document.querySelectorAll('.skill-why:not(.hidden)').length`), 1);
+    // Every card carries an export button; clicking one exports that skill's .md by id.
+    assert.equal(await evaluate(`document.querySelectorAll('.skill-export-btn').length`), 2);
+    await evaluate(`[...document.querySelectorAll('.skill-card')].find((c) => c.querySelector('.skill-name').textContent === 'Prover').querySelector('.skill-export-btn').click()`);
+    await pause();
+    assert.ok(calls.some((call) => call.name === "exportSkill" && call.args[0] === "prover"));
     // A card toggle flips the discipline via set_modes.
     modes.length = 0;
     await evaluate(`[...document.querySelectorAll('.skill-card')].find((c) => c.querySelector('.skill-name').textContent === 'Prover').querySelector('.skill-toggle').click()`);
@@ -808,12 +836,29 @@ async function run() {
     // Create-skill wizard: describe → generate_skill frame → draft preview → install_skill frame.
     await evaluate(`document.querySelector('#skillCreateBtn').click()`);
     assert.equal(await evaluate(`document.querySelector('#skillWizard').classList.contains('hidden')`), false);
+    // The enforcement row shows for a discipline and the model picker is
+    // populated; switching to an action hides enforcement (an action has no gate).
+    let wizState = await evaluate(`(() => ({
+      enforceShown: !document.querySelector('#skillEnforceRow').classList.contains('hidden'),
+      modelOptions: document.querySelectorAll('#skillModelSelect option').length,
+    }))()`);
+    assert.equal(wizState.enforceShown, true, "discipline shows the enforcement choice");
+    assert.ok(wizState.modelOptions > 0, "the author-with model picker is populated");
+    await evaluate(`document.querySelector('#skillKindSeg .seg-btn[data-skillkind="action"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#skillEnforceRow').classList.contains('hidden')`), true);
+    await evaluate(`document.querySelector('#skillKindSeg .seg-btn[data-skillkind="discipline"]').click()`);
     await evaluate(`(() => {
       document.querySelector('#skillDescInput').value = 'Always write rollback SQL beside every migration';
+      document.querySelector('#skillContextInput').value = 'when editing files under db/migrations';
+      document.querySelector('#skillEnforceSeg .seg-btn[data-enforce="block"]').click();
       document.querySelector('#skillWizGenerate').click();
     })()`);
     await pause();
-    assert.ok(frames.some((frame) => frame.type === "generate_skill" && frame.kind === "discipline"));
+    const genFrame = frames.filter((frame) => frame.type === "generate_skill").pop();
+    assert.equal(genFrame.kind, "discipline");
+    assert.equal(genFrame.enforce, "block", "the chosen enforcement rides along");
+    assert.equal(genFrame.context, "when editing files under db/migrations");
+    assert.ok(genFrame.model, "the chosen author model rides along");
     await emit({ type: "skill_draft", ok: true, suggestedFilename: "sql-rollback.md", text: "---\\nkind: discipline\\nname: SQL Rollback\\n---\\n\\nAlways pair migrations with rollbacks." });
     state = await evaluate(`(() => ({
       step2: !document.querySelector('#skillWizStep2').classList.contains('hidden'),
@@ -998,6 +1043,21 @@ async function run() {
     assert.equal(state.rows, 2);
     assert.equal(state.useButtons, 2, "USE is offered in apply mode");
     assert.ok(state.names.includes("My Endpoint") && state.names.includes("Coder GW"));
+
+    // Clicking a profile loads it for editing with a blank key field; TEST must
+    // then point main at the stored key by id (not send an empty key → 401).
+    await evaluate(`document.querySelector('.wiz-profile-info').click()`);
+    await pause();
+    assert.equal(await evaluate(`document.querySelector('#wizApiKey').value`), "", "loaded profile leaves the key blank");
+    await evaluate(`document.querySelector('#wizTestBtn').click()`);
+    await pause();
+    const profileTest = calls.filter((c) => c.name === "testConnection").pop();
+    assert.ok(profileTest.args[0].profileId, "TEST forwards the profile id so main can use the stored key");
+    // Re-open cleanly for the USE/delete flow (editing state was just set).
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
+    await pause();
+    await evaluate(`document.querySelector('#navSetupConn').click()`);
+    await pause(80);
 
     // USE applies that profile and closes the wizard.
     await evaluate(`document.querySelector('.wiz-profile-use').click()`);

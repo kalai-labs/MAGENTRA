@@ -356,10 +356,10 @@ function onTurnFinished(event) {
 
   if (event) {
     // contextTokens = how full the window is NOW (engine-computed, cache-aware).
-    // totalCostUsd = the engine's own whole-session bill (every model in the
-    // tree at its own rate) — the renderer never prices tokens itself.
+    // contextWarn = the engine flags when it has grown past the /compact nudge
+    // point; the counter tints on it. Cost is intentionally never shown.
     contextTokens = event.contextTokens ?? contextTokens;
-    if (typeof event.totalCostUsd === "number") sessionCostUsd = event.totalCostUsd;
+    contextWarn = event.contextWarn === true;
     updateSessionMeter();
   }
 

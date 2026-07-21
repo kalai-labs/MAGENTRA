@@ -37,7 +37,7 @@ import {
 import { areaFacts, graphSummary, planAtlasAreas, projectName } from "../knowledge/atlasPlan.js";
 import { loadOrBuildGraph, type GraphData } from "../knowledge/graph.js";
 import { loadStandards } from "../knowledge/standards.js";
-import { contextWindowFor } from "../config/pricing.js";
+import { contextWindowFor, formatTokens } from "../config/pricing.js";
 import { BackgroundManager } from "../scheduling/background.js";
 import { FileState } from "./fileState.js";
 import type { HookRunner } from "../agent/hooks.js";
@@ -66,6 +66,11 @@ import type {
 import { Transcript, syntheticToolResults, unansweredToolUseIds } from "../state/transcript.js";
 
 const DEFAULT_OUTPUT_LIMIT = 40_000;
+
+/** Context size at which the user is nudged (once) to run /compact. A round,
+ * model-independent "this is getting large" mark; contextWarnThreshold caps it
+ * under the real window so a smaller model still gets the nudge with headroom. */
+const CONTEXT_WARN_TOKENS = 200_000;
 
 /** Per-turn cap on auto-recovery / length-continuation nudges (see runTurn). */
 const MAX_AUTO_NUDGES = 3;
@@ -253,6 +258,10 @@ export class Session {
    * Session-scoped, persisted in the meta snapshot so /resume restores it.
    */
   private overdrive = false;
+  /** Set once the context crosses the warn threshold, so the "run /compact"
+   *  reminder fires exactly once per crossing (it re-arms when the window is
+   *  emptied by a compaction). Keeps the nudge from becoming nagging. */
+  private contextWarned = false;
   /** While true, streamAssistantTurn accumulates text/thinking but does not
    *  emit it — used to run the OVERDRIVE self-verify round silently so a clean
    *  "DONE" never reaches the UI as a second message. */
@@ -1476,14 +1485,15 @@ export class Session {
       this.suppressAssistantText = false;
       this.abortController = undefined;
       this.lastTurnUsage = turnUsage;
-      const totalCostUsd = this.stats.totalCost(this.settings);
       this.emit({
         type: "turn_finished",
         turnId,
         stopReason,
         usage: turnUsage,
         contextTokens: this.stats.contextTokens,
-        ...(totalCostUsd !== undefined ? { totalCostUsd } : {}),
+        // Cost is intentionally not surfaced: our token counting and a
+        // provider's billing can diverge, so any figure risks misinforming.
+        ...(this.contextOverWarnThreshold() ? { contextWarn: true } : {}),
         ...(this.overdrive && this.overdriveSnapshotRef !== undefined
           ? { overdriveSnapshot: this.overdriveSnapshotRef }
           : {}),
@@ -1850,11 +1860,48 @@ export class Session {
     this.transcript.append({ kind: "message", message: msg });
   }
 
-  /** Summarize the oldest span when the context estimate crosses the threshold. */
+  /** Where the "run /compact" reminder fires — roughly CONTEXT_WARN_TOKENS
+   * (~200k), but never above ~85% of the model's real window, so on a smaller
+   * window there is still room to compact before the ceiling. */
+  contextWarnThreshold(window: number): number {
+    return Math.min(CONTEXT_WARN_TOKENS, Math.floor(window * 0.85));
+  }
+
+  /** True when the context has grown past the warn threshold — the UI tints its
+   * context counter on this. */
+  contextOverWarnThreshold(): boolean {
+    const window = contextWindowFor(this.settings.model, this.settings);
+    return this.stats.contextTokens >= this.contextWarnThreshold(window);
+  }
+
+  /**
+   * Proactive auto-compaction is OFF by design: rather than silently summarizing
+   * at some fraction of the window (which loses detail the user did not choose to
+   * drop), the user is *warned* once to run /compact when the context grows past
+   * ~200k tokens. Two things still compact: an explicit /compact (`force`), and a
+   * last-resort safety when the context reaches the model's real window and the
+   * next call would otherwise overflow the provider. Returns whether it compacted.
+   */
   async maybeCompact(force = false): Promise<boolean> {
     const window = contextWindowFor(this.settings.model, this.settings);
-    const threshold = window * this.settings.compactionThreshold;
-    if (!force && this.stats.contextTokens < threshold) return false;
+    if (!force) {
+      // Gentle, once-per-crossing nudge — not a nag.
+      const warnAt = this.contextWarnThreshold(window);
+      if (this.stats.contextTokens >= warnAt) {
+        if (!this.contextWarned) {
+          this.contextWarned = true;
+          this.emit({
+            type: "command_output",
+            text: `⚠ Context is getting large (~${formatTokens(this.stats.contextTokens)} tokens). Run /compact when convenient to summarize older history and free up room — no rush.`,
+          });
+        }
+      } else {
+        this.contextWarned = false;
+      }
+      // Only the ceiling triggers an automatic compaction now, purely to avoid a
+      // hard provider context-overflow error mid-turn.
+      if (this.stats.contextTokens < window) return false;
+    }
 
     // Keep the most recent messages (a shorter tail under /compact force, so a
     // small history can still be squeezed), but never split a tool_use from
@@ -1883,12 +1930,15 @@ export class Session {
     // The original skill reminders likely lived in the summarized span — let
     // the next turn re-establish them in the surviving conversation.
     this.injectedSkillReminders.clear();
-    // An automatic (threshold) compaction must not be silent — mid-turn it
-    // would otherwise look like the agent quietly forgot the conversation.
+    // The window is emptied — re-arm the warning for the next time it fills.
+    this.contextWarned = false;
+    // A safety compaction (non-forced, at the window ceiling) must not be silent
+    // — mid-turn it would otherwise look like the agent quietly forgot the
+    // conversation. Forced /compact prints its own confirmation elsewhere.
     if (!force) {
       this.emit({
         type: "command_output",
-        text: `🗜 context compacted automatically (${before} tokens — over ${Math.round(this.settings.compactionThreshold * 100)}% of the ${window}-token window)`,
+        text: `🗜 Context reached the model's window limit (~${formatTokens(before)} tokens) — compacted automatically to keep going. Run /compact yourself earlier next time to control what gets summarized.`,
       });
     }
     return true;

@@ -102,10 +102,53 @@ function renderSkillCard(mode) {
   const kindEl = document.createElement("span");
   kindEl.className = "skill-kind";
   kindEl.textContent = mode.active ? "discipline · shaping every turn" : "discipline";
-  foot.append(idEl, kindEl);
+  foot.append(idEl, kindEl, makeSkillExportButton(mode.id, mode.name || mode.id));
   card.appendChild(foot);
 
   return card;
+}
+
+/** The engine's slug rule, mirrored so an action card (which carries only a
+ * name) can name its file for export the same way install_skill wrote it. */
+function skillSlug(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+/** A "⇩ Export" button that saves the skill's .md via a native save dialog
+ * (main reads it from .magentra/skills/). Skills are already Markdown on disk,
+ * so this is a plain copy-out; a built-in with no file reports that. */
+function makeSkillExportButton(id, label) {
+  const btn = document.createElement("button");
+  btn.className = "skill-export-btn";
+  btn.textContent = "⇩ Export";
+  btn.title = `Save ${label} as a .md file`;
+  btn.setAttribute("aria-label", `Export ${label}`);
+  btn.addEventListener("click", async () => {
+    if (!window.magentra.exportSkill) return;
+    const original = btn.textContent;
+    btn.disabled = true;
+    let res = null;
+    try {
+      res = await window.magentra.exportSkill(id);
+    } catch {
+      res = null;
+    }
+    btn.disabled = false;
+    if (res && res.canceled) return; // user dismissed the dialog — no fuss
+    if (res && res.ok) {
+      btn.textContent = "Exported ✓";
+      announce(`Exported ${label}.`);
+    } else {
+      btn.textContent = "Failed";
+      const detail = (res && res.error) || "unknown error";
+      announce(`Export failed: ${detail}`);
+      appendSysNote(`export failed for ${id}: ${detail}`);
+    }
+    setTimeout(() => {
+      btn.textContent = original;
+    }, 2200);
+  });
+  return btn;
 }
 
 function renderActionSkillCard(skill) {
@@ -130,7 +173,7 @@ function renderActionSkillCard(skill) {
   const hint = document.createElement("span");
   hint.className = "skill-kind";
   hint.textContent = "invoked by the agent when the task calls for it";
-  foot.appendChild(hint);
+  foot.append(hint, makeSkillExportButton(skillSlug(skill.name), skill.name));
   card.appendChild(foot);
   return card;
 }
@@ -208,12 +251,50 @@ if (skillsCloseBtnEl) skillsCloseBtnEl.addEventListener("click", () => showView(
 // ---------------------------------------------------------------------------
 
 let skillWizardKind = "discipline";
+let skillWizardEnforce = "remind"; // discipline only: "remind" | "block"
 let skillWizardWaiting = false;
 let skillDraftFilename = "skill.md";
 
+/** Fill the wizard's model picker from the composer's model list, defaulting to
+ * the model the session runs on — so authoring uses the same connection, on a
+ * model the user can upgrade for a better draft. */
+function populateSkillModelSelect() {
+  if (!skillModelSelectEl || !modelSelectEl) return;
+  const current = activeModel || modelSelectEl.value;
+  skillModelSelectEl.textContent = "";
+  const seen = new Set();
+  for (const opt of modelSelectEl.options) {
+    if (opt.value === "__custom__" || seen.has(opt.value)) continue;
+    seen.add(opt.value);
+    const o = document.createElement("option");
+    o.value = opt.value;
+    o.textContent = opt.textContent;
+    skillModelSelectEl.appendChild(o);
+  }
+  if (current && !seen.has(current)) {
+    const o = document.createElement("option");
+    o.value = current;
+    o.textContent = shortModelLabel(current);
+    skillModelSelectEl.appendChild(o);
+  }
+  if (current) skillModelSelectEl.value = current;
+}
+
+/** The enforcement choice only makes sense for a discipline (an action has no
+ * gate), so its row is hidden for actions. */
+function syncSkillKindUi() {
+  if (skillKindHintEl) skillKindHintEl.textContent = SKILL_KIND_HINTS[skillWizardKind];
+  if (skillEnforceRowEl) skillEnforceRowEl.classList.toggle("hidden", skillWizardKind !== "discipline");
+}
+
+// Kept in step with the inline #skillKindHint in index.html (the discipline text
+// there is this one). Both explain the kind in plain terms + a concrete example,
+// since "discipline vs action" is not self-evident to someone building one.
 const SKILL_KIND_HINTS = {
-  discipline: "A discipline shapes every turn while enabled — rules, reminders, even tool gates the engine enforces.",
-  action: "An action is a procedure the agent invokes on demand — a recipe for a specific job, out of the way otherwise.",
+  discipline:
+    'Always-on while enabled: it shapes every turn — rules the agent follows, reminders it gets, even tool gates the engine enforces. e.g. "investigate before editing," or "always write a failing test before the fix."',
+  action:
+    'On-demand only: a named recipe the agent runs when a task calls for it, out of the way otherwise. e.g. a "cut a release" checklist, or "how to add a database migration in this repo."',
 };
 
 function openSkillWizard() {
@@ -222,6 +303,13 @@ function openSkillWizard() {
   skillWizStep2El.classList.add("hidden");
   skillWizStatusEl.textContent = "";
   skillWizStatus2El.textContent = "";
+  if (skillContextInputEl) skillContextInputEl.value = "";
+  skillWizardEnforce = "remind";
+  if (skillEnforceSegEl) {
+    skillEnforceSegEl.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("on", b.dataset.enforce === "remind"));
+  }
+  syncSkillKindUi();
+  populateSkillModelSelect();
   skillWizardEl.classList.remove("hidden");
   openModalA11y(skillWizardEl, skillDescInputEl);
 }
@@ -268,7 +356,16 @@ if (skillKindSegEl) {
       skillKindSegEl.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("on"));
       btn.classList.add("on");
       skillWizardKind = btn.dataset.skillkind;
-      skillKindHintEl.textContent = SKILL_KIND_HINTS[skillWizardKind];
+      syncSkillKindUi();
+    });
+  });
+}
+if (skillEnforceSegEl) {
+  skillEnforceSegEl.querySelectorAll(".seg-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      skillEnforceSegEl.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("on"));
+      btn.classList.add("on");
+      skillWizardEnforce = btn.dataset.enforce;
     });
   });
 }
@@ -284,7 +381,14 @@ if (skillWizGenerateEl) {
       return;
     }
     setSkillWizardWaiting(true);
-    window.magentra.send({ type: "generate_skill", description, kind: skillWizardKind });
+    const frame = { type: "generate_skill", description, kind: skillWizardKind };
+    const context = skillContextInputEl && skillContextInputEl.value.trim();
+    if (context) frame.context = context;
+    const model = skillModelSelectEl && skillModelSelectEl.value;
+    if (model) frame.model = model;
+    // Enforcement is a discipline-only concept (an action has no gate).
+    if (skillWizardKind === "discipline") frame.enforce = skillWizardEnforce;
+    window.magentra.send(frame);
   });
 }
 if (skillWizInstallEl) {
