@@ -1,6 +1,5 @@
 import { resolve } from "node:path";
 import { encodeFrame } from "@magentra/protocol";
-import type { PermissionMode } from "@magentra/protocol";
 import { MissingApiKeyError, bootstrapEngine } from "./bootstrap.js";
 import { runServe } from "./serve.js";
 
@@ -9,12 +8,11 @@ import { runServe } from "./serve.js";
  * NDJSON over stdio. The desktop app spawns exactly this, and is its only
  * frontend — there is no terminal UI here, by design.
  *
- * Usage: engine --cwd <workspace> [--mode default|acceptEdits] [--dangerously-bypass]
+ * Usage: engine --cwd <workspace>
  */
 
 interface HostArgs {
   cwd: string;
-  mode?: PermissionMode;
 }
 
 /**
@@ -30,7 +28,6 @@ function fail(message: string): never {
 
 function parseArgs(argv: string[]): HostArgs {
   let cwd = process.cwd();
-  let mode: PermissionMode | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
@@ -40,19 +37,6 @@ function parseArgs(argv: string[]): HostArgs {
         cwd = resolve(value);
         break;
       }
-      case "--mode": {
-        const value = argv[++i];
-        if (!value) fail("--mode requires one of default|acceptEdits");
-        if (value === "bypass") fail("use --dangerously-bypass to enable bypass mode");
-        if (value !== "default" && value !== "acceptEdits") {
-          fail(`unknown mode "${value}" (expected default|acceptEdits)`);
-        }
-        mode = value;
-        break;
-      }
-      case "--dangerously-bypass":
-        mode = "bypass";
-        break;
       // Serving is the only thing this binary does, but --serve stays accepted
       // so an older launch command still works.
       case "--serve":
@@ -60,11 +44,11 @@ function parseArgs(argv: string[]): HostArgs {
       default:
         // A typo'd flag silently ignored means a session running with the
         // WRONG configuration — fail loudly instead.
-        fail(`unknown flag "${argv[i]}" (expected --cwd, --mode, --dangerously-bypass, --serve)`);
+        fail(`unknown flag "${argv[i]}" (expected --cwd, --serve; permission modes were removed — the stance is the session's OVERDRIVE toggle)`);
     }
   }
 
-  return { cwd, ...(mode ? { mode } : {}) };
+  return { cwd };
 }
 
 async function main(): Promise<void> {

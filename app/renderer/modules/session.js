@@ -50,6 +50,7 @@ function enterActiveState(workspace) {
   navLabEl.classList.remove("hidden");
   navMissionEl.classList.remove("hidden");
   if (navSkillsEl) navSkillsEl.classList.remove("hidden");
+  if (navHomeEl) navHomeEl.classList.remove("hidden");
   sidebarSessionsRefreshEl.classList.remove("hidden");
   sidebarMissionNewEl.classList.remove("hidden");
   inspectorToggleEl.classList.remove("hidden");
@@ -66,58 +67,6 @@ function enterActiveState(workspace) {
   // The teaching tour replaced the old one-shot hint card: it fires once on
   // the first workspace open (deferring while the setup wizard is up).
   maybeStartTour();
-  maybeShowAutonomyNotice();
-}
-
-const AUTONOMY_NOTICE_KEY = "magentra-autonomy-notice";
-
-/**
- * Says once, on the first workspace ever opened, that the agent acts on its own
- * and which prompts remain. Deliberately an inline banner rather than a modal:
- * the teaching tour owns the screen at this moment, and two overlays competing
- * on first run is worse than either alone.
- *
- * Skipped for anyone who has already turned autonomy off — telling them the
- * agent runs freely would simply be false.
- */
-function maybeShowAutonomyNotice() {
-  if (!streamEl) return;
-  let seen = false;
-  try {
-    seen = Boolean(localStorage.getItem(AUTONOMY_NOTICE_KEY));
-  } catch {
-    seen = true; // no storage: show nothing rather than on every launch
-  }
-  if (seen || uiSettings.commands !== "auto") return;
-
-  const bannerEl = document.createElement("div");
-  bannerEl.className = "autonomy-notice";
-
-  const textEl = document.createElement("div");
-  const strongEl = document.createElement("strong");
-  strongEl.textContent = "Magentra runs autonomously.";
-  textEl.appendChild(strongEl);
-  textEl.appendChild(
-    document.createTextNode(
-      " It edits files and runs commands without asking. Destructive ones — deleting files, force-pushing, dropping tables — still ask first. Change either in Settings › Safety.",
-    ),
-  );
-  bannerEl.appendChild(textEl);
-
-  const dismissEl = document.createElement("button");
-  dismissEl.className = "autonomy-notice-btn";
-  dismissEl.textContent = "GOT IT";
-  dismissEl.addEventListener("click", () => {
-    try {
-      localStorage.setItem(AUTONOMY_NOTICE_KEY, "1");
-    } catch {
-      // best-effort: dismissing still removes it for this run
-    }
-    bannerEl.remove();
-  });
-  bannerEl.appendChild(dismissEl);
-
-  streamEl.appendChild(bannerEl);
 }
 
 // The engine ships its rate card ($/1M) + context windows in session_started —
@@ -137,8 +86,8 @@ function onModelCatalog(event) {
   for (const id of models) {
     const opt = document.createElement("option");
     opt.value = id;
-    const p = modelRateCard[id];
-    opt.textContent = p ? `${shortModelLabel(id)} — $${p.input} / $${p.output}` : shortModelLabel(id);
+    // Price intentionally omitted — the catalog shows model ids only.
+    opt.textContent = shortModelLabel(id);
     modelSelectEl.appendChild(opt);
   }
   // The active model may be absent from the catalog (typo, gated model):
@@ -165,11 +114,13 @@ function shortModelLabel(id) {
 function modelHintText(model) {
   const p = modelRateCard[model];
   if (!p) return model;
-  const cached = p.cacheRead !== undefined ? `$${p.cacheRead} cached · ` : "";
+  // Price is intentionally not shown (our token counting and a provider's
+  // billing can diverge). The window size is a published capacity spec, so it
+  // stays exact — only the live context estimate is prefixed "~".
   const ctx = p.contextWindow >= 1_000_000
     ? `${(p.contextWindow / 1_000_000).toFixed(0)}M`
     : `${Math.round(p.contextWindow / 1000)}K`;
-  return `${model} · ${cached}$${p.input} in · $${p.output} out /1M · ${ctx} ctx`;
+  return `${model} · ${ctx} ctx`;
 }
 
 // ---------------------------------------------------------------------------
@@ -189,35 +140,33 @@ function modelHintText(model) {
 
 let contextTokens = 0;
 let sessionModel = ""; // the model this session runs on (from session_started)
-// Whole-session cost, PRICED BY THE ENGINE (turn_finished.totalCostUsd) — it
-// bills every model in the tree at its own rate, so crew runs on other models
-// attribute correctly. null until the engine reports a priced figure.
-let sessionCostUsd = null;
+// True once the engine reports the context has grown past the "run /compact"
+// warn threshold (turn_finished.contextWarn). Tints the context counter.
+let contextWarn = false;
 
+// Context is an ESTIMATE (our count and a provider's can differ), so it always
+// carries a "~". Values are rounded coarsely for the same reason — a precise
+// figure would imply a precision we don't have.
 function formatTokensShort(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 10_000) return `${Math.round(n / 1_000)}k`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
-}
-
-function formatUsdShort(d) {
-  if (d === 0) return "$0.00";
-  return d < 0.01 ? `$${d.toFixed(4)}` : `$${d.toFixed(2)}`;
 }
 
 function updateSessionMeter() {
   if (!hintUsageEl) return;
   const parts = [];
-  if (contextTokens > 0) parts.push(`ctx ${formatTokensShort(contextTokens)}`);
-  if (sessionCostUsd !== null) parts.push(formatUsdShort(sessionCostUsd));
+  if (contextTokens > 0) parts.push(`ctx ~${formatTokensShort(contextTokens)}`);
   hintUsageEl.textContent = parts.join(" · ");
   hintUsageEl.classList.toggle("hidden", parts.length === 0);
+  hintUsageEl.classList.toggle("warn", contextWarn);
   syncWorkbenchContext();
 }
 
 function resetSessionMeter() {
   contextTokens = 0;
-  sessionCostUsd = null;
+  contextWarn = false;
   updateSessionMeter();
 }
 
@@ -244,23 +193,20 @@ async function handleChooseWorkspace() {
   }
 }
 
-// The model the engine is actually running now. Guards against no-op restarts
-// (re-selecting the same model) and destructive mid-turn restarts.
+// The model the engine is actually running now. Guards against no-op changes
+// (re-selecting the same model).
 let activeModel = null;
 
 async function applyModelChange(model) {
-  if (!model || model === activeModel) return; // nothing changed — no restart
-  // Changing model restarts the engine and drops the current conversation. If
-  // a turn is mid-flight (or any context has built up), make that explicit
-  // rather than silently discarding it.
-  if (busy && !window.confirm(`Switch to ${model}? This restarts the engine and ends the current turn, losing its context.`)) {
-    applyModel(activeModel); // revert the dropdown to the running model
-    return;
-  }
+  if (!model || model === activeModel) return; // nothing changed
+  // Changing the model now updates the LIVE session (main sends set_model) — it
+  // no longer restarts the engine, so the conversation is kept and it takes
+  // effect on the next turn. Safe mid-turn: the current turn finishes on the
+  // model it started with.
   activeModel = model;
   await window.magentra.setModel(model);
   hintModelEl.textContent = modelHintText(model);
-  appendSysNote(`model set to ${model} — session restarted`);
+  appendSysNote(`model set to ${model} — applies to your next message`);
 }
 
 function commitCustomModel() {

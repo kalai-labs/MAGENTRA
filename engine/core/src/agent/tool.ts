@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { CoreEvent, PermissionMode, TaskItem } from "@magentra/protocol";
+import type { CoreEvent, TaskItem } from "@magentra/protocol";
 import type { ToolResultPart } from "@magentra/providers";
 import type { Settings } from "../config/settings.js";
 import type { CrewAgent } from "../crew/team.js";
@@ -100,7 +100,7 @@ export interface ToolDefinition<I = unknown> {
    * Returns a human-readable description of what would be DELETED (a file,
    * folder, or worktree) when the input is destructive, undefined otherwise.
    * Deletion calls always require interactive user approval, in every
-   * permission mode (including bypass) and regardless of allow/deny rules or
+   * permission stance (OVERDRIVE included) and regardless of allow/deny rules or
    * session allows — see PermissionEngine.check.
    */
   deletionSubject?: (input: I) => string | undefined;
@@ -118,7 +118,7 @@ export interface ToolDefinition<I = unknown> {
   deletionScope?: (input: I, ctx: ToolContext) => "workspace" | "unknown" | "protected";
   /** Max bytes of result kept in history before truncation. Default 40_000. */
   outputByteLimit?: number;
-  /** File-editing tools are auto-approved in acceptEdits mode. */
+  /** File-editing tools are auto-approved in both permission stances. */
   isFileEdit?: boolean;
   /** Read-only tools run concurrently within one assistant turn. */
   parallelSafe?: boolean;

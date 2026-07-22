@@ -1,4 +1,4 @@
-import type { PermissionDecision, PermissionMode } from "@magentra/protocol";
+import type { PermissionDecision } from "@magentra/protocol";
 import type { AnyToolDefinition } from "../agent/tool.js";
 
 export interface PermissionRequestPayload {
@@ -11,12 +11,20 @@ export interface PermissionRequestPayload {
    * frontends use its presence to decide whether to offer that choice.
    */
   subject?: string;
+  /**
+   * What "always allow" would remember, when broader than the exact subject —
+   * the command's shape (e.g. "mkdir", "git push"). Frontends show it so the
+   * grant's scope is never a surprise. Absent = the grant is the exact subject.
+   */
+  grant?: string;
 }
 
 export interface PermissionOutcome {
   allowed: boolean;
   /** Shown to the model when denied. */
   message?: string;
+  /** A note the user attached while APPROVING — must reach the model. */
+  note?: string;
   source: "mode" | "rule" | "user";
 }
 
@@ -29,24 +37,65 @@ interface ParsedRule {
   raw: string;
 }
 
-/** One exact-subject grant, compared as a literal string — never as a glob. */
+/** One "always allow" grant. Literal by default — never a glob. With
+ *  `prefix: true` it covers every subject equal to `subject` or starting with
+ *  `subject + " "` (the command-shape grants derived below). */
 export interface ExactGrant {
   tool: string;
   subject: string;
+  prefix?: boolean;
+}
+
+/** CLIs whose first argument is a subcommand — the grant keeps both tokens
+ *  ("git push", not all of "git"). */
+const MULTI_COMMAND_CLIS = new Set([
+  "git", "gh", "npm", "npx", "pnpm", "yarn", "docker", "kubectl", "cargo",
+  "go", "dotnet", "pip", "pip3", "apt", "apt-get", "brew", "systemctl",
+  "terraform", "gcloud", "aws", "az",
+]);
+
+/**
+ * The subject an "always allow" click should remember for an execute-class
+ * call: the command's shape rather than its exact text — `mkdir -p a/b`
+ * grants all `mkdir` commands, `git push origin main` grants all `git push`.
+ * Returns undefined (grant stays exact) for compound/substituted commands
+ * and anything whose head token does not look like a plain program name.
+ * Deletion-guard approvals never come through here — those stay literal.
+ */
+export function deriveAlwaysGrant(subject: string): string | undefined {
+  if (/[|;&`$><\\'"]/.test(subject)) return undefined;
+  const tokens = subject.trim().split(/\s+/);
+  const head = tokens[0];
+  if (!head || !/^[\w./-]+$/.test(head)) return undefined;
+  if (MULTI_COMMAND_CLIS.has(head.toLowerCase())) {
+    const sub = tokens[1];
+    if (!sub || sub.startsWith("-") || !/^[\w./:-]+$/.test(sub)) return undefined;
+    // Script runners: "npm run" alone would cover every script — keep the
+    // script name in the shape ("npm run build", not all of "npm run").
+    if (sub.toLowerCase() === "run" && /^(npm|pnpm|yarn)$/i.test(head)) {
+      const script = tokens[2];
+      if (!script || script.startsWith("-") || !/^[\w./:-]+$/.test(script)) return undefined;
+      return `${head} ${sub} ${script}`;
+    }
+    return `${head} ${sub}`;
+  }
+  return head;
 }
 
 /**
- * Resolution order: deny rules > allow rules > mode default. Mode default may
- * resolve to "ask", which round-trips to the frontend via requestApproval.
+ * Resolution order: deny rules > allow rules > stance default. There are
+ * exactly two stances: OVERDRIVE (allow everything the rules don't deny) and
+ * normal (reads, interactions, and file edits are allowed; commands and other
+ * execute-class calls ask, which round-trips via requestApproval).
  */
 export class PermissionEngine {
-  private mode: PermissionMode;
-  /** When true (default), destructive calls always ask the user, in every mode.
-   *  The desktop's "Allow deletions" setting turns this off, after which
-   *  deletions resolve through the ordinary rules/mode path like any call. */
+  /** When true (default), destructive calls always ask the user, in both
+   *  stances. The desktop's "Allow deletions" setting turns this off, after
+   *  which deletions resolve through the ordinary rules/stance path. */
   private deletionGuard = true;
-  /** OVERDRIVE: deletions provably scoped inside the workspace skip the guard
-   *  (the flow must not block); everything unprovable still asks. */
+  /** OVERDRIVE: every call is allowed unless denied by rule, and deletions
+   *  provably scoped inside the workspace skip the guard (the flow must not
+   *  block); everything unprovable still asks. */
   private overdrive = false;
   private readonly deny: ParsedRule[];
   private readonly allow: ParsedRule[];
@@ -55,27 +104,17 @@ export class PermissionEngine {
   private readonly allowExact: ExactGrant[];
 
   constructor(
-    mode: PermissionMode,
     rules: { allow: string[]; deny: string[]; allowExact?: ExactGrant[] },
     private readonly requestApproval: (
       req: PermissionRequestPayload,
       source: ApprovalSource,
     ) => Promise<{ decision: PermissionDecision; message?: string }>,
     /** Persists an "always allow" grant. Absent in contexts with nowhere to write. */
-    private readonly persistExact?: (tool: string, subject: string) => void,
+    private readonly persistExact?: (tool: string, subject: string, prefix?: boolean) => void,
   ) {
-    this.mode = mode;
     this.allow = rules.allow.map(parseRule);
     this.deny = rules.deny.map(parseRule);
     this.allowExact = [...(rules.allowExact ?? [])];
-  }
-
-  getMode(): PermissionMode {
-    return this.mode;
-  }
-
-  setMode(mode: PermissionMode): void {
-    this.mode = mode;
   }
 
   getDeletionGuard(): boolean {
@@ -113,6 +152,9 @@ export class PermissionEngine {
     description: string | undefined,
     /** The tool's deletion-scope verdict for this call, when computed. */
     deletionScope?: "workspace" | "unknown" | "protected",
+    /** True when a file-edit call targets a path OUTSIDE the workspace — such an
+     *  edit is not auto-safe and must ask (in-workspace edits still auto-run). */
+    editOutsideWorkspace?: boolean,
   ): Promise<PermissionOutcome> {
     if (matches(this.deny, tool.name, subject)) {
       return {
@@ -122,15 +164,18 @@ export class PermissionEngine {
       };
     }
     // Deletion guard: a tool call that would delete a file/folder always
-    // requires interactive approval, in every mode (including bypass). One
+    // requires interactive approval, in both stances (OVERDRIVE included). One
     // exception: an EXPLICIT subject-scoped allow rule in the user's settings
     // (e.g. `Bash(rm -rf ./tmp/*)`) is a deliberate standing decision about
     // that exact call shape — it beats the guard, so unattended cleanup
     // missions can delete their own temp files without re-prompting forever.
     // Broad grants (bare tool, `Tool(*)`, session allows) never do. The guard
     // never adds a session-allow, so it re-fires on every other matching call.
+    // Only LITERAL grants may override the guard: a derived command-shape
+    // grant ("git push …") from a benign approval must never let a later
+    // destructive variant ("git push --force") skip the always-ask.
     const explicitlyAllowed =
-      matchesExplicit(this.allow, tool.name, subject) || this.matchesExact(tool.name, subject);
+      matchesExplicit(this.allow, tool.name, subject) || this.matchesExact(tool.name, subject, true);
     // OVERDRIVE scope-split: a deletion whose every target provably resolves
     // inside the workspace runs without asking — an autonomous run must be
     // able to clean its own temp files and redo its own work. Only the
@@ -170,7 +215,7 @@ export class PermissionEngine {
       // whole tool, which is never what one click on one command should mean.
       // A protected deletion never records a grant at all — it must re-ask.
       if (res.decision === "allow_always" && !protectedTarget) this.grantExact(tool.name, subject);
-      return { allowed: true, source: "user" };
+      return { allowed: true, source: "user", ...(res.message ? { note: res.message } : {}) };
     }
 
     if (
@@ -181,18 +226,33 @@ export class PermissionEngine {
       return { allowed: true, source: "rule" };
     }
 
-    switch (this.modeDefault(tool)) {
+    // A file edit that escapes the workspace is downgraded from its usual
+    // auto-allow to an approval prompt — the frictionless default is meant for
+    // edits inside the tree, not for overwriting a shell profile or an SSH key.
+    // OVERDRIVE (fully autonomous, risk accepted) and explicit user allow rules
+    // above are untouched; only the auto-allow default is overridden.
+    let stance = this.stanceDefault(tool);
+    if (stance === "allow" && !this.overdrive && tool.isFileEdit && editOutsideWorkspace === true) {
+      stance = "ask";
+    }
+    switch (stance) {
       case "allow":
         return { allowed: true, source: "mode" };
-      case "deny":
-        return {
-          allowed: false,
-          source: "mode",
-          message: "This tool is not permitted in the current mode.",
-        };
       case "ask": {
+        // For commands, "always allow" remembers the command's SHAPE, not its
+        // exact text — approving `mkdir -p a` must also cover `mkdir -p b`.
+        const shape =
+          tool.permissionClass === "execute" && subject !== undefined
+            ? deriveAlwaysGrant(subject)
+            : undefined;
         const res = await this.requestApproval(
-          { tool: tool.name, input, description, ...(subject !== undefined ? { subject } : {}) },
+          {
+            tool: tool.name,
+            input,
+            description,
+            ...(subject !== undefined ? { subject } : {}),
+            ...(shape !== undefined && shape !== subject ? { grant: shape } : {}),
+          },
           "ask",
         );
         if (res.decision === "deny") {
@@ -202,7 +262,10 @@ export class PermissionEngine {
             message: `The user declined this tool call${res.message ? `: ${res.message}` : "."} Adjust your approach instead of retrying the same call.`,
           };
         }
-        if (res.decision === "allow_always") this.grantExact(tool.name, subject);
+        if (res.decision === "allow_always") {
+          if (shape !== undefined) this.grantExact(tool.name, shape, true);
+          else this.grantExact(tool.name, subject);
+        }
         if (res.decision === "allow_session") {
           // "Always allow this session" means the TOOL, not this exact
           // subject — an exact-subject grant re-asks on every new command/path
@@ -211,34 +274,43 @@ export class PermissionEngine {
           // (Targeted subject-scoped grants still exist via addSessionAllow.)
           this.sessionAllow.push({ tool: tool.name, raw: tool.name });
         }
-        return { allowed: true, source: "user" };
+        return { allowed: true, source: "user", ...(res.message ? { note: res.message } : {}) };
       }
     }
   }
 
-  /** Literal subject comparison — a `*` in an approved command stays a `*`. */
-  private matchesExact(tool: string, subject: string | undefined): boolean {
+  /** Grant matching. Literal grants compare as strings — a `*` in an approved
+   *  command stays a `*`. Prefix (command-shape) grants also cover subjects
+   *  starting with `subject + " "`; `literalOnly` skips them (deletion-guard
+   *  override must never widen through a derived shape). */
+  private matchesExact(tool: string, subject: string | undefined, literalOnly = false): boolean {
     if (subject === undefined) return false;
-    return this.allowExact.some((g) => g.tool === tool && g.subject === subject);
+    return this.allowExact.some((g) => {
+      if (g.tool !== tool) return false;
+      if (g.subject === subject) return !literalOnly || g.prefix !== true;
+      return !literalOnly && g.prefix === true && subject.startsWith(`${g.subject} `);
+    });
   }
 
   /** Records an "always allow" grant for this run and persists it. */
-  private grantExact(tool: string, subject: string | undefined): void {
+  private grantExact(tool: string, subject: string | undefined, prefix = false): void {
     if (subject === undefined) return; // nothing identifiable to scope the grant to
-    if (!this.matchesExact(tool, subject)) this.allowExact.push({ tool, subject });
+    if (!this.allowExact.some((g) => g.tool === tool && g.subject === subject && (g.prefix === true) === prefix)) {
+      this.allowExact.push({ tool, subject, ...(prefix ? { prefix: true } : {}) });
+    }
     // A failed write must not turn an approved call into an error: the grant
     // still holds in memory for this run, it just will not survive a restart.
     try {
-      this.persistExact?.(tool, subject);
+      this.persistExact?.(tool, subject, prefix);
     } catch {
       // best-effort persistence
     }
   }
 
-  private modeDefault(tool: AnyToolDefinition): "allow" | "deny" | "ask" {
-    if (this.mode === "bypass") return "allow";
+  private stanceDefault(tool: AnyToolDefinition): "allow" | "ask" {
+    if (this.overdrive) return "allow";
     if (tool.permissionClass === "read" || tool.permissionClass === "interact") return "allow";
-    if (this.mode === "acceptEdits" && tool.isFileEdit) return "allow";
+    if (tool.isFileEdit) return "allow";
     return "ask";
   }
 }

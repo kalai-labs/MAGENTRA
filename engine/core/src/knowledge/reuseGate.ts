@@ -5,13 +5,14 @@ import { extractSymbols, findSimilarSymbols, tokensOf, type SymbolHit, type Symb
 import type { Settings } from "../config/settings.js";
 
 /**
- * Search-before-write reuse gate. When the agent tries to Write a brand-new
+ * Search-before-write reuse check. When the agent tries to Write a brand-new
  * source file, this checks — with zero model calls — whether code by a similar
- * name already exists and whether the agent did any related search or read this
- * session. If similar code exists and no such evidence is on record, the Write
- * is refused ONCE (fail-open on any uncertainty), with the closest matches
- * listed; re-issuing the same Write always passes. See the decision table in
- * {@link evaluateReuseGate} — it is normative, top-down first-match.
+ * name already exists and whether the agent did any related search or read
+ * this session. If similar code exists and no such evidence is on record, a
+ * reminder listing the closest matches rides along with the (allowed) Write —
+ * the signal survives, the refusal doesn't; silent refusals were the root of
+ * "it suddenly stops". Fail-open on any uncertainty. See the decision table
+ * in {@link evaluateReuseGate} — it is normative, top-down first-match.
  */
 
 /** Tokenized evidence that the agent searched/queried for related code this session. */
@@ -42,10 +43,7 @@ function tokenizeSearchTerm(term: string): string[] {
   return tokensOf(term.replace(/[\\^$.*+?()[\]{}|/]/g, " "));
 }
 
-export type ReuseGateResult =
-  | { kind: "pass" }
-  | { kind: "remind"; text: string }
-  | { kind: "block"; text: string };
+export type ReuseGateResult = { kind: "pass" } | { kind: "remind"; text: string };
 
 const PASS: ReuseGateResult = { kind: "pass" };
 
@@ -58,10 +56,8 @@ function isTestPath(base: string, dirSegments: string[]): boolean {
 }
 
 /**
- * Evaluate the reuse gate for a would-be Write of `filePath` with `content`.
- * Pure and side-effect-free except that a `block` records `filePath` in
- * `alreadyBlocked` so the confirm-retry passes. Decision table (top-down,
- * first match wins):
+ * Evaluate the reuse check for a would-be Write of `filePath` with `content`.
+ * Pure and side-effect-free. Decision table (top-down, first match wins):
  *
  *  1. mode `off`                                              → pass
  *  2. extension not a scanned source ext (md/json/configs)    → pass
@@ -70,14 +66,13 @@ function isTestPath(base: string, dirSegments: string[]): boolean {
  *  4. test/fixture file                                       → pass
  *  5. file already exists (overwrite — Write freshness rules) → pass
  *  6. the target was Read this session (recreate a deletion)  → pass
- *  7. already blocked once (the confirm-retry)                → pass
- *  8. no candidate tokens from content+stem (index not even   → pass
+ *  7. no candidate tokens from content+stem (index not even   → pass
  *     loaded before here)
- *  9. a related term was searched/queried this session        → pass
- * 10. one of the top matches was Read this session            → pass
- * 11. best score ≥ blockThreshold and mode `gate`             → BLOCK (record once)
- * 12. best score ≥ remindThreshold (or ≥ block in `remind`)   → REMIND
- * 13. otherwise                                               → pass
+ *  8. a related term was searched/queried this session        → pass
+ *  9. one of the top matches was Read this session            → pass
+ * 10. best score ≥ blockThreshold                             → REMIND (firm)
+ * 11. best score ≥ remindThreshold                            → REMIND
+ * 12. otherwise                                               → pass
  */
 export function evaluateReuseGate(
   cwd: string,
@@ -86,7 +81,6 @@ export function evaluateReuseGate(
   cfg: Settings["reuseCheck"],
   searchLog: SearchLog,
   wasRead: (path: string) => boolean,
-  alreadyBlocked: Set<string>,
   loadIndex: () => SymbolIndexData,
 ): ReuseGateResult {
   if (cfg.mode === "off") return PASS; // 1
@@ -104,14 +98,13 @@ export function evaluateReuseGate(
   if (isTestPath(base, dirSegments)) return PASS; // 4
   if (existsSync(abs)) return PASS; // 5
   if (wasRead(abs)) return PASS; // 6
-  if (alreadyBlocked.has(abs)) return PASS; // 7
 
   const stem = base.replace(/\.[^.]+$/, "");
   const candidates = [...extractSymbols(abs, content), stem];
   const candidateTokens = [...new Set(candidates.flatMap(tokensOf))];
-  if (candidateTokens.length === 0) return PASS; // 8
+  if (candidateTokens.length === 0) return PASS; // 7
 
-  if (searchLog.overlaps(candidateTokens)) return PASS; // 9
+  if (searchLog.overlaps(candidateTokens)) return PASS; // 8
 
   // Index loaded lazily only past here; fail open if it throws (never wrongly block).
   let index: SymbolIndexData;
@@ -127,18 +120,17 @@ export function evaluateReuseGate(
     maxHits: cfg.maxHits,
     minScore: cfg.remindThreshold,
   });
-  if (hits.length === 0) return PASS; // 13 (nothing similar enough)
-  if (hits.some((h) => wasRead(join(cwd, h.file)))) return PASS; // 10
+  if (hits.length === 0) return PASS; // 12 (nothing similar enough)
+  if (hits.some((h) => wasRead(join(cwd, h.file)))) return PASS; // 9
 
   const best = hits[0]!.score;
-  if (cfg.mode === "gate" && best >= cfg.blockThreshold) {
-    alreadyBlocked.add(abs); // 11 — the confirm-retry will pass at row 7
-    return { kind: "block", text: blockMessage(hits, rel) };
+  if (best >= cfg.blockThreshold) {
+    return { kind: "remind", text: firmRemindMessage(hits, rel) }; // 10
   }
   if (best >= cfg.remindThreshold) {
-    return { kind: "remind", text: remindMessage(hits, rel) }; // 12
+    return { kind: "remind", text: remindMessage(hits, rel) }; // 11
   }
-  return PASS; // 13
+  return PASS; // 12
 }
 
 /** `- <relPath> — <symbols> (0.87)` lines for the closest existing matches. */
@@ -146,19 +138,18 @@ function hitLines(hits: SymbolHit[]): string {
   return hits.map((h) => `- ${h.file} — ${h.symbol} (${h.score.toFixed(2)})`).join("\n");
 }
 
-function blockMessage(hits: SymbolHit[], relTarget: string): string {
+function firmRemindMessage(hits: SymbolHit[], relTarget: string): string {
   return (
-    "Reuse gate: similar code already exists and no related search/read happened this session.\n" +
+    `Reuse check: ${relTarget} was just created, but very similar code already exists and no related search/read happened this session:\n` +
     hitLines(hits) +
-    `\nRead the closest match and extend it (Edit) instead of creating ${relTarget}. ` +
-    "If a new file is genuinely correct, re-issue this exact Write — it will not be blocked again."
+    "\nRead the closest match now. If it already covers this, extend it (Edit) and delete the new file; keep the new file only if it is genuinely distinct."
   );
 }
 
 function remindMessage(hits: SymbolHit[], relTarget: string): string {
   return (
-    `Reuse check: before creating ${relTarget}, note that similar code may already exist:\n` +
+    `Reuse check: ${relTarget} was just created, but similar code may already exist:\n` +
     hitLines(hits) +
-    "\nIf one of these is what you need, extend it with Edit rather than adding a parallel implementation."
+    "\nIf one of these already covers it, extend that with Edit and remove the new file rather than keeping a parallel implementation."
   );
 }

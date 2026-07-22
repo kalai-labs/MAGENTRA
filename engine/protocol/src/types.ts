@@ -1,7 +1,5 @@
 export const PROTOCOL_VERSION = 1;
 
-export type PermissionMode = "default" | "acceptEdits" | "bypass";
-
 export type TaskStatus = "pending" | "in_progress" | "completed";
 
 export interface TaskItem {
@@ -87,7 +85,8 @@ export type CoreEvent =
       sessionId: string;
       cwd: string;
       model: string;
-      mode: PermissionMode;
+      /** Whether OVERDRIVE (the fully-autonomous stance) is active for this session. */
+      overdrive: boolean;
       /** The engine's slash-command registry, so the palette can never drift. */
       commands: SlashCommandInfo[];
       /**
@@ -179,15 +178,23 @@ export type CoreEvent =
        * then, since there is nothing durable to scope a grant to.
        */
       subject?: string;
+      /**
+       * What `allow_always` would remember when broader than the exact
+       * subject: the command's shape (e.g. "mkdir", "git push"). Frontends
+       * surface it so the grant's scope is never a surprise.
+       */
+      grant?: string;
     }
   | { type: "question_request"; id: string; questions: Question[] }
   | { type: "task_list_updated"; tasks: TaskItem[] }
   | { type: "file_edited"; path: string; diff: string }
   | { type: "background_notification"; taskId: string; kind: string; payload: unknown }
-  | { type: "mode_changed"; mode: PermissionMode }
   /** OVERDRIVE (fully-autonomous turn-loop policy) was toggled; frontends sync their indicator to this. */
   | { type: "overdrive_changed"; enabled: boolean }
   | { type: "command_output"; text: string }
+  /** The /session report — the whole formatted summary, shown by frontends in a
+   * dedicated modal (line-by-line) rather than a single inline console note. */
+  | { type: "session_report"; text: string }
   | { type: "session_list"; sessions: SessionSummary[] }
   | {
       type: "turn_finished";
@@ -216,15 +223,17 @@ export type CoreEvent =
        */
       overdriveSnapshot?: string;
       /**
-       * Whole-session cost so far in USD, priced engine-side per model (crew
-       * runs on other models included). Absent when no used model has a rate
-       * card — the frontend must show nothing rather than a fake $0.
+       * True once the context has grown past the "run /compact" warn threshold
+       * (~200k, capped under the model window). The frontend tints its context
+       * counter on this; absent while the context is comfortably small.
        */
-      totalCostUsd?: number;
+      contextWarn?: boolean;
     }
   | { type: "error"; message: string; fatal: boolean }
   /** The generate_skill result: a validated draft to preview/edit, or the failure after retries. */
   | { type: "skill_draft"; ok: boolean; text?: string; suggestedFilename?: string; error?: string }
+  /** The export_skill result: the skill's .md text + suggested filename, for the app to save. */
+  | { type: "skill_export"; ok: boolean; id: string; filename?: string; text?: string; error?: string }
   /** On-demand action skills changed (e.g. after install_skill); disciplines re-arrive via modes_updated. */
   | { type: "skills_updated"; skills: { name: string; description: string }[] }
   | {
@@ -352,11 +361,20 @@ export type FrontendRequest =
       answers: Record<string, string[]>;
     }
   | { type: "interrupt" }
-  | { type: "set_mode"; mode: PermissionMode }
   /** Toggles the always-ask deletion guard (true = guard active, the default). */
   | { type: "set_deletion_guard"; enabled: boolean }
   /** Toggles OVERDRIVE: the fully-autonomous turn-loop policy (caps lifted, self-verify end check). */
   | { type: "set_overdrive"; enabled: boolean }
+  /** Auto-compact the conversation at this many context tokens (0 = off). The
+   *  ONLY way to set it — no settings key or /settings path — so it stays
+   *  consistent with the UI control that owns it. */
+  | { type: "set_compact_limit"; limit: number }
+  /**
+   * Change the session's model live (takes effect on the next turn) WITHOUT
+   * restarting the engine — so the conversation and session id are preserved.
+   * The frontend sends this on a model-picker change instead of respawning.
+   */
+  | { type: "set_model"; model: string }
   /**
    * Mid-run steering: user text that joins the RUNNING turn at its next
    * message boundary instead of waiting for the turn to end. Sent by
@@ -374,8 +392,30 @@ export type FrontendRequest =
   | { type: "list_sessions" }
   | { type: "set_modes"; active: string[] }
   | { type: "reload_team" }
-  /** Ask the engine to author a skill .md from a plain-language description (LLM-generated, parser-validated). */
-  | { type: "generate_skill"; description: string; kind: "discipline" | "action" }
+  /**
+   * Ask the engine to author a skill .md from a plain-language description
+   * (LLM-generated, parser-validated). `model` overrides which model authors it
+   * (defaults to the session model); `context` is optional extra detail (when it
+   * should apply, examples); `enforce` asks a discipline to hard-gate edits
+   * ("block") rather than only remind ("remind", the default).
+   */
+  | {
+      type: "generate_skill";
+      description: string;
+      kind: "discipline" | "action";
+      model?: string;
+      context?: string;
+      enforce?: "remind" | "block";
+      /**
+       * Author with a different provider entirely (a saved connection profile),
+       * not just a different model on the current one. The app resolves the
+       * profile and injects its connection here — the engine builds a one-off
+       * provider for the authoring call. `model` is ignored when this is set.
+       */
+      connection?: { provider: "anthropic" | "openai-compat"; baseUrl?: string; apiKey: string; model: string };
+    }
+  /** Export a skill's .md text (built-in or workspace file) for the app to save. */
+  | { type: "export_skill"; id: string }
   /** Write a (re-validated) skill file into .magentra/skills/ and reload both skill kinds. */
   | { type: "install_skill"; filename: string; text: string };
 

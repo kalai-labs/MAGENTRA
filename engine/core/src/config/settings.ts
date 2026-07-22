@@ -8,8 +8,15 @@ import { STATE_DIR_NAME } from "@magentra/protocol";
 export const DEFAULT_OPENAI_BASE_URL = "https://api.deepinfra.com/v1/openai";
 
 const permissionRuleSchema = z.string();
-/** One exact-subject grant: `{ tool: "Bash", subject: "rm -rf ./tmp/build" }`. */
-const exactPermissionSchema = z.object({ tool: z.string().min(1), subject: z.string().min(1) });
+/** One "always allow" grant: `{ tool: "Bash", subject: "rm -rf ./tmp/build" }`.
+ *  With `prefix: true` the subject is a command shape ("git push") covering
+ *  every command that starts with it; prefix grants never override the
+ *  deletion guard. */
+const exactPermissionSchema = z.object({
+  tool: z.string().min(1),
+  subject: z.string().min(1),
+  prefix: z.boolean().optional(),
+});
 
 export const settingsSchema = z
   .object({
@@ -32,7 +39,6 @@ export const settingsSchema = z
     maxIterationsPerTurn: z.number().int().positive().default(50),
     /** Explicit override; when absent the engine uses the known window for the model (128k fallback). */
     contextWindow: z.number().int().positive().optional(),
-    compactionThreshold: z.number().min(0.1).max(1).default(0.8),
     /** Bounds append-only workspace state; pruning runs whenever a root session starts. */
     retention: z
       .object({
@@ -61,12 +67,16 @@ export const settingsSchema = z
         }),
       )
       .default({}),
-    // "plan" was removed as a mode (2026-07-20); settings files that still
-    // carry it load as "default" instead of failing the whole settings parse.
-    permissionMode: z.preprocess(
-      (v) => (v === "plan" ? "default" : v),
-      z.enum(["default", "acceptEdits", "bypass"]).default("default"),
-    ),
+    /**
+     * Clarify pre-layer: on a genuinely open-ended request ("build a game",
+     * "improve this app"), the main model first asks the user up to three
+     * shape-defining questions before any work starts. Root attended
+     * sessions only; fail-open on any error.
+     */
+    clarify: z.boolean().default(true),
+    // permissionMode was removed as a setting (2026-07-20): the permission
+    // stance is now the session's OVERDRIVE flag alone. Old settings files
+    // that still carry the key load fine — unknown keys are stripped.
     permissions: z
       .object({
         allow: z.array(permissionRuleSchema).default([]),
@@ -118,16 +128,20 @@ export const settingsSchema = z
       .default({ model: "BAAI/bge-m3", enabled: true }),
     reuseCheck: z
       .object({
-        /** "gate" refuses an un-searched new-file Write once, "remind" only nudges, "off" disables the check. */
-        mode: z.enum(["gate", "remind", "off"]).default("gate"),
+        // "gate" (the old refuse-once mode) was retired 2026-07-20: the check
+        // never blocks anymore, it only reminds. Legacy value maps to "remind".
+        mode: z.preprocess(
+          (v) => (v === "gate" ? "remind" : v),
+          z.enum(["remind", "off"]).default("remind"),
+        ),
         /** How many of the closest existing matches to list. */
         maxHits: z.number().int().positive().max(10).default(5),
-        /** Similarity at/above which a new-file Write is blocked (gate mode). */
+        /** Similarity at/above which the reminder is worded firmly (near-duplicate). */
         blockThreshold: z.number().min(0).max(1).default(0.75),
-        /** Similarity at/above which a reminder is queued instead of a block. */
+        /** Similarity at/above which a reminder is queued. */
         remindThreshold: z.number().min(0).max(1).default(0.5),
       })
-      .default({ mode: "gate", maxHits: 5, blockThreshold: 0.75, remindThreshold: 0.5 }),
+      .default({ mode: "remind", maxHits: 5, blockThreshold: 0.75, remindThreshold: 0.5 }),
     /**
      * Skip TLS certificate verification for provider requests — the `verify=False`
      * escape hatch for self-signed certificates on servers you own (a home-lab
@@ -185,7 +199,6 @@ const ENV_OVERRIDES: ReadonlyArray<{ env: string; path: string; numeric?: boolea
   { env: "MAGENTRA_SMALL_MODEL", path: "smallModel" },
   { env: "MAGENTRA_BASE_URL", path: "baseUrl" },
   { env: "MAGENTRA_API_KEY_ENV", path: "apiKeyEnv" },
-  { env: "MAGENTRA_PERMISSION_MODE", path: "permissionMode" },
   { env: "MAGENTRA_MAX_ITERATIONS", path: "maxIterationsPerTurn", numeric: true },
   { env: "MAGENTRA_MAX_TOKENS_PER_TURN", path: "maxTokensPerTurn", numeric: true },
 ];
@@ -439,14 +452,14 @@ export function setSetting(
  * path; this has to read the existing array, append, and dedupe. Returns false
  * when the grant was already present (nothing written).
  */
-export function addExactPermission(cwd: string, tool: string, subject: string): boolean {
+export function addExactPermission(cwd: string, tool: string, subject: string, prefix = false): boolean {
   const file = existsSync(join(cwd, STATE_DIR_NAME)) ? projectSettingsPath(cwd) : globalSettingsPath();
   const discard: SettingsWarning[] = [];
   const candidate: Record<string, unknown> = structuredClone(readJson(file, discard) ?? {});
   const permissions = (candidate.permissions ??= {}) as Record<string, unknown>;
   const existing = Array.isArray(permissions.allowExact) ? [...permissions.allowExact] : [];
-  if (existing.some((e) => isSameGrant(e, tool, subject))) return false;
-  existing.push({ tool, subject });
+  if (existing.some((e) => isSameGrant(e, tool, subject, prefix))) return false;
+  existing.push({ tool, subject, ...(prefix ? { prefix: true } : {}) });
   permissions.allowExact = existing;
 
   const parsed = settingsSchema.safeParse(candidate);
@@ -457,12 +470,13 @@ export function addExactPermission(cwd: string, tool: string, subject: string): 
   return true;
 }
 
-function isSameGrant(entry: unknown, tool: string, subject: string): boolean {
+function isSameGrant(entry: unknown, tool: string, subject: string, prefix: boolean): boolean {
   return (
     typeof entry === "object" &&
     entry !== null &&
     (entry as { tool?: unknown }).tool === tool &&
-    (entry as { subject?: unknown }).subject === subject
+    (entry as { subject?: unknown }).subject === subject &&
+    ((entry as { prefix?: unknown }).prefix === true) === prefix
   );
 }
 

@@ -146,8 +146,9 @@ sources for every claim.
 - `schedule:` — optional 5-field cron for recurring runs.
 - `continuous: true` — a standing mission `/mission start` loops forever.
 - `cooldown:` — pause between continuous runs (`90s`, `15m`, `1h`; default 5m).
-- `mode:` — permission mode for unattended runs (default `bypass`).
-- `budget:` — output-token cap per run (e.g. `60000`).
+- `budget:` — output-token cap per run (e.g. `60000`). Unattended runs never ask:
+  they take the allow-all stance, and anything that still insists on asking
+  (deletion guard, questions) is auto-denied.
 
 Commands:
 

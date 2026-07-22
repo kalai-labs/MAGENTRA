@@ -6,43 +6,21 @@
 // First-run setup wizard
 // ---------------------------------------------------------------------------
 
-// Each preset knows its endpoint, provider, a suggested default model, the
-// models worth offering in the picker, where to obtain an API key, and whether
-// it is a keyless local server (Ollama, LM Studio) that also sets a context
-// size. The model list and the key link MUST match the chosen provider — a
-// blank model with another provider's ids in the picker is how a first-run
-// user gets stuck.
+// Three connection shapes, all OpenAI-compatible — no provider branding. CUSTOM
+// is any endpoint you type a base URL for (a hosted API, a LAN box, a gateway);
+// OLLAMA and LM STUDIO are the two common local servers, pre-filled with their
+// default ports and auto-detected on the machine (a missing one grays out).
+// `detect` names the key openConnectionsWizard's local-server probe reports on.
 const WIZ_PRESETS = {
-  deepinfra: {
-    url: "https://api.deepinfra.com/v1/openai",
-    provider: "openai-compat",
-    model: "deepseek-ai/DeepSeek-V4-Flash",
-    models: [
-      "deepseek-ai/DeepSeek-V4-Flash",
-      "openai/gpt-oss-120b",
-      "Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo",
-      "zai-org/GLM-5.2",
-      "moonshotai/Kimi-K2.6",
-      "deepseek-ai/DeepSeek-V4-Pro",
-    ],
-    keyUrl: "https://deepinfra.com/dash/api_keys",
-    local: false,
-  },
-  anthropic: {
-    url: "https://api.anthropic.com",
-    provider: "anthropic",
-    model: "claude-sonnet-5",
-    models: ["claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5-20251001"],
-    keyUrl: "https://console.anthropic.com/settings/keys",
-    local: false,
-  },
+  custom: { url: "", provider: "openai-compat", model: "", models: [], keyUrl: "", local: false },
   ollama: {
     url: "http://localhost:11434/v1",
     provider: "openai-compat",
-    model: "qwen3:8b",
+    model: "",
     models: ["qwen3:8b", "qwen2.5-coder:7b", "llama3.1:8b"],
     keyUrl: "",
     local: true,
+    detect: "ollama",
   },
   lmstudio: {
     url: "http://localhost:1234/v1",
@@ -51,11 +29,11 @@ const WIZ_PRESETS = {
     models: [],
     keyUrl: "",
     local: true,
+    detect: "lmstudio",
   },
-  custom: { url: "", provider: "openai-compat", model: "", models: [], keyUrl: "", local: false },
 };
 
-let currentWizPreset = "deepinfra";
+let currentWizPreset = "custom";
 
 function applyWizPreset(preset) {
   const meta = WIZ_PRESETS[preset] || WIZ_PRESETS.custom;
@@ -88,10 +66,8 @@ function applyWizPreset(preset) {
   }
   if (wizNoteEl) {
     wizNoteEl.textContent = meta.local
-      ? "No API key needed. Magentra writes the connection to .magentra/settings.json and talks to your local server."
-      : preset === "custom"
-        ? "Key optional — leave it empty for keyless servers. TEST fetches the server's model list when it has one."
-        : "The key is written to .env beside your code and never leaves this machine.";
+      ? "No API key needed for a local server. Saved as a profile in ~/.magentra (owner-only); connecting also writes .magentra/settings.json in the workspace."
+      : "Key optional — leave it empty for keyless servers, or paste one for a hosted endpoint. Saved to the profile in ~/.magentra (owner-only), and to the workspace .env on connect.";
   }
   wizConnectionChanged();
   if (preset === "custom") wizBaseUrlEl.focus();
@@ -123,13 +99,259 @@ wizPresetEls.forEach((btn) => {
   });
 });
 
-/** Open the setup wizard on demand (also the fallback if auto-setup misfires). */
-function openSetupWizard() {
-  if (!setupWizardEl) return;
-  setupWizardEl.classList.remove("hidden");
-  const meta = WIZ_PRESETS[currentWizPreset] || WIZ_PRESETS.custom;
-  openModalA11y(setupWizardEl, meta.local ? wizBaseUrlEl : wizApiKeyEl);
+// The connections wizard runs in two modes. "apply" — a workspace is open, so
+// a saved profile can be applied to it (USE) and a fresh build both saves and
+// connects. "manage" — no workspace (the welcome page), so profiles can only be
+// built/saved; nothing to connect to yet.
+let wizMode = "apply";
+let wizProfiles = []; // sanitized profiles from main (never the raw key)
+let wizEditingId = null; // id of the profile loaded into the form, or null for a fresh build
+
+/** Reflect a preset choice in both the button row and the fields. Extracted so
+ * loading a saved profile can drive the same path a preset click does. */
+function selectWizPreset(preset) {
+  wizPresetEls.forEach((b) => b.classList.toggle("on", b.dataset.preset === preset));
+  applyWizPreset(preset);
 }
+
+/** Back to a blank "new profile" build form. */
+function resetWizForm() {
+  wizEditingId = null;
+  if (wizNameEl) wizNameEl.value = "";
+  if (wizBuildHeadEl) wizBuildHeadEl.textContent = "＋ NEW PROFILE";
+  if (wizApiKeyEl) wizApiKeyEl.placeholder = "paste your key — kept in the profile and this workspace";
+}
+
+/** Load a saved profile into the build form for editing / re-saving. */
+function loadProfileIntoForm(p) {
+  wizEditingId = p.id;
+  // Anthropic keeps its preset; anything else opens as custom so the saved base
+  // URL and the self-signed opt-in it may need are both visible/editable.
+  selectWizPreset(p.provider === "anthropic" ? "anthropic" : "custom");
+  if (wizNameEl) wizNameEl.value = p.name;
+  if (p.baseUrl) wizBaseUrlEl.value = p.baseUrl;
+  if (p.model) wizModelEl.value = p.model;
+  if (wizContextEl) wizContextEl.value = p.contextWindow || "";
+  if (wizInsecureEl) wizInsecureEl.checked = p.allowInsecureTls === true;
+  if (wizApiKeyEl) {
+    wizApiKeyEl.value = "";
+    wizApiKeyEl.placeholder = p.hasKey ? "leave empty to keep the saved key" : "no key — add one if the endpoint needs it";
+  }
+  if (wizBuildHeadEl) wizBuildHeadEl.textContent = `EDIT — ${p.name}`;
+  wizConnectionChanged();
+  if (wizNameEl) wizNameEl.focus();
+}
+
+/** Draw the saved-profile list. USE is offered only in apply mode; delete and
+ * click-to-edit are always available. */
+function renderWizProfiles() {
+  if (!wizProfilesListEl || !wizProfilesEl) return;
+  wizProfilesListEl.textContent = "";
+  if (!wizProfiles.length) {
+    wizProfilesEl.hidden = true;
+    return;
+  }
+  wizProfilesEl.hidden = false;
+  for (const p of wizProfiles) {
+    const row = document.createElement("div");
+    row.className = "wiz-profile-row";
+    const info = document.createElement("button");
+    info.type = "button";
+    info.className = "wiz-profile-info";
+    info.title = "Edit this profile";
+    const name = document.createElement("span");
+    name.className = "wiz-profile-name";
+    name.textContent = p.name;
+    const meta = document.createElement("span");
+    meta.className = "wiz-profile-meta";
+    const endpoint = p.baseUrl
+      ? p.baseUrl.replace(/^https?:\/\//, "")
+      : (p.provider === "anthropic" ? "anthropic.com" : "deepinfra");
+    meta.textContent = `${p.model || "—"} · ${endpoint}${p.hasKey ? "" : " · keyless"}`;
+    info.append(name, meta);
+    info.addEventListener("click", () => loadProfileIntoForm(p));
+    row.appendChild(info);
+    if (wizMode === "apply") {
+      const use = document.createElement("button");
+      use.type = "button";
+      use.className = "wiz-profile-use";
+      use.textContent = "USE ▸";
+      use.addEventListener("click", () => void useProfile(p.id));
+      row.appendChild(use);
+    }
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "wiz-profile-del";
+    del.title = "Delete profile";
+    del.setAttribute("aria-label", `Delete profile ${p.name}`);
+    del.textContent = "🗑";
+    del.addEventListener("click", () => void deleteProfileRow(p.id));
+    row.appendChild(del);
+    wizProfilesListEl.appendChild(row);
+  }
+}
+
+async function refreshWizProfiles() {
+  if (!window.magentra.listProfiles) {
+    wizProfiles = [];
+    renderWizProfiles();
+    return;
+  }
+  try {
+    wizProfiles = (await window.magentra.listProfiles()) || [];
+  } catch {
+    wizProfiles = [];
+  }
+  renderWizProfiles();
+}
+
+/** Gray out the OLLAMA / LM STUDIO presets that are not present on the machine,
+ * with a hover note saying so. A disabled button cannot be clicked, so the user
+ * can never pick a local server that is not there. `custom` is always enabled. */
+function applyLocalDetection(detection) {
+  wizPresetEls.forEach((btn) => {
+    const meta = WIZ_PRESETS[btn.dataset.preset];
+    if (!meta || !meta.detect) return; // custom — always available
+    const info = detection && detection[meta.detect];
+    const available = Boolean(info && info.available);
+    btn.disabled = !available;
+    btn.classList.toggle("wiz-preset-off", !available);
+    btn.title = available ? "" : (info && info.reason) || "not found on this PC";
+  });
+}
+
+async function refreshLocalDetection() {
+  if (!window.magentra.detectLocalServers) return;
+  let detection = null;
+  try {
+    detection = await window.magentra.detectLocalServers();
+  } catch {
+    detection = null;
+  }
+  applyLocalDetection(detection);
+}
+
+/** Sync the copy and the primary button to the active mode. */
+function applyWizModeUi() {
+  const manage = wizMode === "manage";
+  if (wizSubEl) {
+    wizSubEl.textContent = manage
+      ? "Build reusable connection profiles. They're offered whenever you open a workspace that has no connection yet."
+      : "Pick a saved profile to connect this workspace, or build a new one below.";
+  }
+  // Nothing to connect to in manage mode — only saving makes sense there.
+  if (wizStartBtnEl) wizStartBtnEl.hidden = manage;
+}
+
+/** Open the connections wizard. `mode` defaults to apply when a workspace is
+ * open (connect it) and manage otherwise (welcome page). Also the fallback the
+ * failure banner and the dock button use. */
+async function openConnectionsWizard(mode) {
+  if (!setupWizardEl) return;
+  wizMode = mode || (activeWorkspace ? "apply" : "manage");
+  resetWizForm();
+  applyWizModeUi();
+  await refreshWizProfiles();
+  await refreshLocalDetection();
+  if (wizStatusEl) {
+    wizStatusEl.textContent = "";
+    wizStatusEl.className = "";
+  }
+  setupWizardEl.classList.remove("hidden");
+  openModalA11y(setupWizardEl, wizNameEl || wizBaseUrlEl);
+}
+
+// Preserved name: the engine-failure banner (events.js) opens the wizard to
+// connect the current workspace.
+function openSetupWizard() {
+  void openConnectionsWizard("apply");
+}
+
+if (navSetupConnEl) navSetupConnEl.addEventListener("click", () => void openConnectionsWizard());
+if (welcomeSetupConnBtnEl) welcomeSetupConnBtnEl.addEventListener("click", () => void openConnectionsWizard("manage"));
+
+/** Apply a saved profile to the current workspace and connect. */
+async function useProfile(id) {
+  if (!window.magentra.applyProfile || !wizStatusEl) return;
+  wizStatusEl.textContent = "connecting…";
+  wizStatusEl.className = "";
+  let res = null;
+  try {
+    res = await window.magentra.applyProfile(id);
+  } catch {
+    res = null;
+  }
+  if (res && res.ok) {
+    // The engine is restarting on the new connection; session_started relinks.
+    engineLinked = false;
+    syncActivityUi();
+    setupWizardEl.classList.add("hidden");
+    closeModalA11y();
+    maybeStartTour();
+  } else {
+    wizStatusEl.textContent = (res && res.error) || "failed to connect";
+    wizStatusEl.className = "err";
+  }
+}
+
+/** Save the build form as a global profile. Returns the profile id, or null on
+ * validation/save failure (status already shown). */
+async function saveWizProfile() {
+  if (!wizNameEl || !window.magentra.saveProfile) return null;
+  const name = wizNameEl.value.trim();
+  if (!name) {
+    wizStatusEl.textContent = "profile name required";
+    wizStatusEl.className = "err";
+    wizNameEl.focus();
+    return null;
+  }
+  const payload = { ...wizPayload(), name, ...(wizEditingId ? { id: wizEditingId } : {}) };
+  let res = null;
+  try {
+    res = await window.magentra.saveProfile(payload);
+  } catch {
+    res = null;
+  }
+  if (res && res.ok) {
+    wizProfiles = res.profiles || [];
+    renderWizProfiles();
+    wizStatusEl.textContent = "profile saved";
+    wizStatusEl.className = "ok";
+    // Return to a blank "new profile" form so the NEXT save creates another
+    // profile instead of silently overwriting the one just saved — the bug
+    // where a second save made the first disappear. Editing an existing one is
+    // a deliberate act (click its row); it should not persist across saves.
+    resetWizForm();
+    return res.id;
+  }
+  wizStatusEl.textContent = (res && res.error) || "failed to save profile";
+  wizStatusEl.className = "err";
+  return null;
+}
+
+async function deleteProfileRow(id) {
+  if (!window.magentra.deleteProfile) return;
+  let res = null;
+  try {
+    res = await window.magentra.deleteProfile(id);
+  } catch {
+    res = null;
+  }
+  if (res && res.ok) {
+    wizProfiles = res.profiles || [];
+    renderWizProfiles();
+    if (wizEditingId === id) resetWizForm();
+  }
+}
+
+if (wizSaveProfileBtnEl) wizSaveProfileBtnEl.addEventListener("click", () => void saveWizProfile());
+
+// A fresh preset click means "build something new" — drop any profile being
+// edited so the next save creates a profile instead of overwriting one.
+wizPresetEls.forEach((btn) => btn.addEventListener("click", () => {
+  wizEditingId = null;
+  if (wizBuildHeadEl) wizBuildHeadEl.textContent = "＋ NEW PROFILE";
+}));
 
 if (window.magentra.onSetupRequired && setupWizardEl) {
   window.magentra.onSetupRequired(() => {
@@ -137,7 +359,7 @@ if (window.magentra.onSetupRequired && setupWizardEl) {
     // dead engine) until session_started proves the connection works.
     engineLinked = false;
     syncActivityUi();
-    openSetupWizard();
+    void openConnectionsWizard("apply");
   });
 }
 
@@ -190,6 +412,13 @@ if (wizTestBtnEl) {
     wizStatusEl.className = "";
     if (!window.magentra.testConnection) return;
     const payload = wizPayload();
+    // Testing a saved profile whose key field is left blank: the key is not in
+    // the form (sanitized profiles never carry it to the renderer), so point the
+    // main process at the stored key by id — otherwise TEST sends no key and a
+    // hosted endpoint answers 401 even though the saved connection is valid.
+    if (wizEditingId && wizApiKeyEl && !wizApiKeyEl.value.trim()) {
+      payload.profileId = wizEditingId;
+    }
     let result = null;
     try {
       result = await window.magentra.testConnection(payload);
@@ -228,15 +457,9 @@ if (wizTestBtnEl) {
 if (wizStartBtnEl) {
   wizStartBtnEl.addEventListener("click", async () => {
     const meta = WIZ_PRESETS[currentWizPreset] || WIZ_PRESETS.custom;
-    // A key is mandatory only where it cannot work without one: Anthropic and
-    // the default hosted preset. Custom endpoints are key-optional — a server
-    // that wants one will reject TEST/the first turn with a 401 the user sees.
-    if (!meta.local && currentWizPreset !== "custom" && !wizApiKeyEl.value.trim()) {
-      wizStatusEl.textContent = "key required";
-      wizStatusEl.className = "err";
-      return;
-    }
-    if (currentWizPreset === "custom" && !wizBaseUrlEl.value.trim()) {
+    // Every shape is key-optional (a server that needs one rejects with a 401
+    // the user sees). Custom needs a base URL — a local preset already has one.
+    if (!meta.local && !wizBaseUrlEl.value.trim()) {
       wizStatusEl.textContent = "base URL required";
       wizStatusEl.className = "err";
       return;
@@ -250,28 +473,33 @@ if (wizStartBtnEl) {
     const payload = wizPayload();
     if (wizTestedOkFor !== wizPayloadKey(payload) && !wizIgniteArmed) {
       wizIgniteArmed = true;
-      wizStatusEl.textContent = "untested — click TEST first, or IGNITE again to proceed anyway";
+      wizStatusEl.textContent = "untested — click TEST first, or SAVE & CONNECT again to proceed anyway";
       wizStatusEl.className = "err";
       return;
     }
 
-    if (!window.magentra.writeEnv) return;
+    // Save the profile globally, then apply that exact profile to the workspace
+    // — so what connects is always what was saved.
+    const id = await saveWizProfile();
+    if (!id || !window.magentra.applyProfile) return;
     let result = null;
     try {
-      result = await window.magentra.writeEnv(payload);
+      result = await window.magentra.applyProfile(id);
     } catch (err) {
-      wizStatusEl.textContent = (err && err.message) || "failed to save connection";
+      wizStatusEl.textContent = (err && err.message) || "failed to connect";
       wizStatusEl.className = "err";
       return;
     }
     if (result && result.ok) {
+      engineLinked = false;
+      syncActivityUi();
       setupWizardEl.classList.add("hidden");
       closeModalA11y();
-      wizApiKeyEl.value = "";
+      if (wizApiKeyEl) wizApiKeyEl.value = "";
       wizConnectionChanged();
       maybeStartTour();
     } else {
-      wizStatusEl.textContent = (result && result.error) || "failed to save connection";
+      wizStatusEl.textContent = (result && result.error) || "failed to connect";
       wizStatusEl.className = "err";
     }
   });

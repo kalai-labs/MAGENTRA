@@ -1,7 +1,7 @@
 // Concept A workbench interactions: persistent navigation, contextual
-// inspector, permission picker, and reversible diff review. This layer only
-// composes existing renderer state and IPC seams; engine event semantics stay
-// in their original modules.
+// inspector, and reversible diff review. This layer only composes existing
+// renderer state and IPC seams; engine event semantics stay in their original
+// modules.
 
 let activeInspectorTab = "tasks";
 let activeReviewPath = null;
@@ -30,9 +30,9 @@ function syncWorkbenchContext() {
   }
   if (inspectorUsageEl) {
     const parts = [];
-    if (contextTokens > 0) parts.push(`${formatTokensShort(contextTokens)} ctx`);
-    if (sessionCostUsd !== null) parts.push(formatUsdShort(sessionCostUsd));
+    if (contextTokens > 0) parts.push(`~${formatTokensShort(contextTokens)} ctx`);
     inspectorUsageEl.textContent = parts.join(" · ") || "—";
+    inspectorUsageEl.classList.toggle("warn", contextWarn);
   }
   if (workspaceOpen) {
     const activeSummary = currentSessionId
@@ -309,15 +309,22 @@ function renderInspectorChanges() {
     inspectorChangesListEl.appendChild(row);
   }
   if (reviewAllBtnEl) reviewAllBtnEl.disabled = total.files === 0;
-  if (undoLastBtnEl) undoLastBtnEl.disabled = sessionChangeOrder.length === 0;
   renderInlineChangesCard();
   if (!reviewDrawerEl.classList.contains("hidden")) renderReviewDrawer(activeReviewPath);
 }
+
+// How many files the inline card lists before folding the rest behind the
+// "··· N more files" row, and whether that row is currently unfolded. The flag
+// survives re-renders (every new edit rebuilds the card) but resets with the
+// card itself, so a fresh run of edits starts compact again.
+const INLINE_CHANGES_COMPACT = 2;
+let inlineChangesExpanded = false;
 
 function renderInlineChangesCard() {
   if (!streamEl || sessionChanges.size === 0) {
     if (inlineChangesCardEl) inlineChangesCardEl.remove();
     inlineChangesCardEl = null;
+    inlineChangesExpanded = false;
     return;
   }
   if (!inlineChangesCardEl || !inlineChangesCardEl.isConnected) {
@@ -335,7 +342,11 @@ function renderInlineChangesCard() {
   head.append(title, summary);
   const list = document.createElement("div");
   list.className = "inline-changes-list";
-  for (const [relPath, change] of [...sessionChanges.entries()].slice(0, 6)) {
+  // Compact by default: a long edit run would otherwise push the conversation
+  // off screen every time the card re-renders. The rest stay one click away.
+  const entries = [...sessionChanges.entries()];
+  const shown = inlineChangesExpanded ? entries : entries.slice(0, INLINE_CHANGES_COMPACT);
+  for (const [relPath, change] of shown) {
     const row = document.createElement("button");
     const name = document.createElement("span");
     name.textContent = relPath;
@@ -345,15 +356,24 @@ function renderInlineChangesCard() {
     row.addEventListener("click", () => openReviewDrawer(relPath));
     list.appendChild(row);
   }
+  const hidden = entries.length - shown.length;
+  if (hidden > 0 || inlineChangesExpanded) {
+    const more = document.createElement("button");
+    more.className = "inline-changes-more";
+    more.textContent = inlineChangesExpanded ? "··· show less" : `··· ${hidden} more file${hidden === 1 ? "" : "s"}`;
+    more.setAttribute("aria-expanded", inlineChangesExpanded ? "true" : "false");
+    more.addEventListener("click", () => {
+      inlineChangesExpanded = !inlineChangesExpanded;
+      renderInlineChangesCard();
+    });
+    list.appendChild(more);
+  }
   const actions = document.createElement("div");
   actions.className = "inline-changes-actions";
   const review = document.createElement("button");
   review.textContent = "Review changes";
   review.addEventListener("click", () => openReviewDrawer());
-  const undo = document.createElement("button");
-  undo.textContent = "Undo last";
-  undo.addEventListener("click", () => void undoLastChange());
-  actions.append(review, undo);
+  actions.append(review);
   inlineChangesCardEl.append(head, list, actions);
   withAutoScroll(() => streamEl.appendChild(inlineChangesCardEl));
 }
@@ -431,51 +451,6 @@ async function undoFileChange(relPath) {
   appendSysNote(`undid ${relPath}`);
 }
 
-async function undoLastChange() {
-  const last = sessionChangeOrder[sessionChangeOrder.length - 1];
-  if (!last || !window.magentra.undoChanges) return;
-  const response = await window.magentra.undoChanges(last.relPath, [last.diff]);
-  if (!response || response.ok !== true) {
-    appendSysError(`undo failed for ${last.relPath}: ${(response && response.error) || "unknown error"}`);
-    return;
-  }
-  discardLastSessionDiff();
-  appendSysNote(`undid the latest edit to ${last.relPath}`);
-}
-
-const PERMISSION_LABELS = {
-  default: "Ask before changes",
-  acceptEdits: "Auto-accept edits",
-  bypass: "Autonomous",
-};
-
-function syncPermissionMenu(mode) {
-  const current = mode || (uiSettings.commands === "ask" ? "default" : "bypass");
-  const selection = current === "default" ? "ask" : "auto";
-  if (permissionMenuLabelEl) permissionMenuLabelEl.textContent = PERMISSION_LABELS[current] || PERMISSION_LABELS.default;
-  if (inspectorPermissionsEl) inspectorPermissionsEl.textContent = PERMISSION_LABELS[current] || PERMISSION_LABELS.default;
-  if (!permissionMenuEl) return;
-  permissionMenuEl.querySelectorAll(".permission-option").forEach((option) => {
-    option.setAttribute("aria-checked", option.dataset.permission === selection ? "true" : "false");
-  });
-}
-
-function closePermissionMenu() {
-  if (!permissionMenuEl) return false;
-  const wasOpen = !permissionMenuEl.classList.contains("hidden");
-  permissionMenuEl.classList.add("hidden");
-  permissionMenuBtnEl.setAttribute("aria-expanded", "false");
-  return wasOpen;
-}
-
-function choosePermission(choice) {
-  closePermissionMenu();
-  uiSettings.commands = choice === "ask" ? "ask" : "auto";
-  saveUiSettings();
-  syncSegGroup(setCommandsEl, "commands");
-  applySafetySettings(false);
-}
-
 inspectorTabs.forEach((button) => button.addEventListener("click", () => openInspector(button.dataset.inspector)));
 if (inspectorToggleEl) inspectorToggleEl.addEventListener("click", () => {
   if (document.body.classList.contains("inspector-open")) closeInspector();
@@ -484,7 +459,6 @@ if (inspectorToggleEl) inspectorToggleEl.addEventListener("click", () => {
 if (taskCollapseEl) taskCollapseEl.addEventListener("click", closeInspector);
 if (taskTabEl) taskTabEl.addEventListener("click", () => openInspector());
 if (reviewAllBtnEl) reviewAllBtnEl.addEventListener("click", () => openReviewDrawer());
-if (undoLastBtnEl) undoLastBtnEl.addEventListener("click", () => void undoLastChange());
 if (reviewCloseBtnEl) reviewCloseBtnEl.addEventListener("click", closeReviewDrawer);
 if (reviewDoneBtnEl) reviewDoneBtnEl.addEventListener("click", closeReviewDrawer);
 if (reviewOpenBtnEl) reviewOpenBtnEl.addEventListener("click", () => {
@@ -496,18 +470,6 @@ if (reviewUndoBtnEl) reviewUndoBtnEl.addEventListener("click", () => {
 if (openCrewViewBtnEl) openCrewViewBtnEl.addEventListener("click", () => showView("team"));
 if (sidebarSessionsRefreshEl) sidebarSessionsRefreshEl.addEventListener("click", () => requestSessionList());
 if (sidebarMissionNewEl) sidebarMissionNewEl.addEventListener("click", () => labNewBtnEl.click());
-if (permissionMenuBtnEl) permissionMenuBtnEl.addEventListener("click", (event) => {
-  event.stopPropagation();
-  const opening = permissionMenuEl.classList.contains("hidden");
-  permissionMenuEl.classList.toggle("hidden", !opening);
-  permissionMenuBtnEl.setAttribute("aria-expanded", opening ? "true" : "false");
-});
-if (permissionMenuEl) {
-  permissionMenuEl.addEventListener("click", (event) => event.stopPropagation());
-  permissionMenuEl.querySelectorAll(".permission-option").forEach((option) => {
-    option.addEventListener("click", () => choosePermission(option.dataset.permission));
-  });
-}
 if (attachBtnEl) attachBtnEl.addEventListener("click", () => {
   if (!workspaceOpen || promptInputEl.disabled) return;
   const start = promptInputEl.selectionStart || 0;
@@ -517,6 +479,3 @@ if (attachBtnEl) attachBtnEl.addEventListener("click", () => {
   promptInputEl.dispatchEvent(new Event("input"));
 });
 if (logoEl) logoEl.addEventListener("click", () => showView("console"));
-document.addEventListener("click", () => closePermissionMenu());
-
-syncPermissionMenu();

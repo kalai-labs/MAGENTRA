@@ -1,6 +1,6 @@
 "use strict";
 
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webFrame } = require("electron");
 
 const api = (name, ...args) => ipcRenderer.invoke("test:api", { name, args });
 
@@ -31,7 +31,8 @@ contextBridge.exposeInMainWorld("magentra", {
   setModes: (activeIds) => ipcRenderer.send("test:modes", activeIds),
   interrupt: () => ipcRenderer.send("test:interrupt"),
   restartEngine: () => ipcRenderer.send("test:restart"),
-  respondPermission: (id, decision) => ipcRenderer.send("test:permission", { id, decision }),
+  respondPermission: (id, decision, message) =>
+    ipcRenderer.send("test:permission", message ? { id, decision, message } : { id, decision }),
   addDoc: (agentId, filePath) => api("addDoc", agentId, filePath),
   createTeamTemplate: () => api("createTeamTemplate"),
   reloadTeam: () => ipcRenderer.send("test:reloadTeam"),
@@ -40,6 +41,13 @@ contextBridge.exposeInMainWorld("magentra", {
   pickDoc: (agentId) => api("pickDoc", agentId),
   writeEnv: (payload) => api("writeEnv", payload),
   testConnection: (payload) => api("testConnection", payload),
+  detectLocalServers: () => api("detectLocalServers"),
+  generateSkill: (payload) => api("generateSkill", payload),
+  saveSkillExport: (payload) => api("saveSkillExport", payload),
+  listProfiles: () => api("listProfiles"),
+  saveProfile: (payload) => api("saveProfile", payload),
+  deleteProfile: (id) => api("deleteProfile", id),
+  applyProfile: (id) => api("applyProfile", id),
   getWebSearch: () => api("getWebSearch"),
   setWebSearch: (enabled) => api("setWebSearch", enabled),
   getAppInfo: () => api("getAppInfo"),
@@ -47,6 +55,21 @@ contextBridge.exposeInMainWorld("magentra", {
   openLogs: () => api("openLogs"),
   connectionInfo: () => api("connectionInfo"),
   setTitleBarTheme: (theme) => ipcRenderer.send("test:titlebar", theme),
+  // The real zoom, not a stub — the suite asserts the layout actually scales.
+  setZoom: (factor) => {
+    try {
+      webFrame.setZoomFactor(factor);
+    } catch {
+      // matches preload.js: a frame that cannot zoom stays at 1.0
+    }
+  },
+  getZoom: () => {
+    try {
+      return webFrame.getZoomFactor();
+    } catch {
+      return 1;
+    }
+  },
   revealKey: () => api("revealKey"),
   getPathForFile: () => null,
   onEvent: (callback) => listen("test:engine-event", callback),

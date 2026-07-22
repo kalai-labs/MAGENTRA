@@ -13,6 +13,10 @@ const modes = [];
 const permissions = [];
 const signals = [];
 const rendererErrors = [];
+// Stateful mock of the global connection-profile store (main/profiles.js). Holds
+// sanitized records (never a raw key — only hasKey), exactly what the IPC returns.
+const profiles = [];
+let profileSeq = 0;
 let windowRef = null;
 let passed = 0;
 
@@ -38,6 +42,39 @@ function apiResult(name, args) {
       return { ok: true, models: [MODEL], ...(baseUrl ? { baseUrl } : {}) };
     }
     case "pickDoc": return { ok: true, path: "/tmp/context.md" };
+    case "detectLocalServers":
+      // Ollama present, LM Studio absent — exercises both the enabled and the
+      // grayed-out-with-a-reason paths.
+      return {
+        ollama: { available: true },
+        lmstudio: { available: false, reason: "LM Studio wasn't found on this PC" },
+      };
+    case "listProfiles": return profiles.map((p) => ({ ...p }));
+    case "saveProfile": {
+      const payload = args[0] || {};
+      const profileName = typeof payload.name === "string" ? payload.name.trim() : "";
+      if (!profileName) return { ok: false, error: "profile name required" };
+      const record = {
+        id: typeof payload.id === "string" && payload.id ? payload.id : `prof-${++profileSeq}`,
+        name: profileName,
+        baseUrl: payload.baseUrl || "",
+        model: payload.model || "",
+        provider: payload.provider === "anthropic" ? "anthropic" : "openai-compat",
+        contextWindow: payload.contextWindow ? String(payload.contextWindow) : "",
+        allowInsecureTls: payload.insecureTls === true,
+        hasKey: typeof payload.apiKey === "string" && payload.apiKey.trim() !== "",
+      };
+      const idx = profiles.findIndex((p) => p.id === record.id);
+      if (idx >= 0) profiles[idx] = record;
+      else profiles.unshift(record);
+      return { ok: true, id: record.id, profiles: profiles.map((p) => ({ ...p })) };
+    }
+    case "deleteProfile": {
+      const idx = profiles.findIndex((p) => p.id === args[0]);
+      if (idx >= 0) profiles.splice(idx, 1);
+      return { ok: true, profiles: profiles.map((p) => ({ ...p })) };
+    }
+    case "applyProfile": return { ok: true };
     default: return { ok: true };
   }
 }
@@ -77,7 +114,7 @@ async function run() {
     const state = await evaluate(`(() => ({
       theme: document.documentElement.dataset.theme,
       sidebar: getComputedStyle(document.querySelector('#sidebar')).display,
-      rain: Boolean(document.querySelector('#rain, #crt')),
+      rain: Boolean(document.querySelector('#rain, #crt, #matrixRain')),
       promptDisabled: document.querySelector('#promptInput').disabled,
       recentCount: document.querySelectorAll('.recent-row').length,
       title: document.querySelector('#workTitleText').textContent,
@@ -87,6 +124,12 @@ async function run() {
       theme: "workbench", sidebar: "flex", rain: false, promptDisabled: true,
       recentCount: 1, title: "Start a new conversation", version: "v0.0.0-test",
     });
+    // The welcome page offers building connection profiles before any workspace
+    // is open, alongside the folder picker.
+    assert.equal(await evaluate(`(() => {
+      const b = document.querySelector('#welcomeSetupConnBtn');
+      return Boolean(b) && getComputedStyle(b).display !== 'none';
+    })()`), true);
     // Keep the auto-starting first-run tour out of the unrelated scenarios;
     // the dedicated tour test below replays it explicitly via startTour(true).
     await evaluate(`localStorage.setItem('magentra-tour-done', '1')`);
@@ -228,27 +271,8 @@ async function run() {
     assert.ok(frames.some((frame) => frame.type === "user_message" && frame.text.includes("propose a crew for it")));
   });
 
-  await test("permission, attach, model, and composer controls act on runtime state", async () => {
+  await test("attach, model, and composer controls act on runtime state", async () => {
     await evaluate(`document.querySelector('#teamCloseBtn').click()`);
-    const before = frames.length;
-    await evaluate(`document.querySelector('#permissionMenuBtn').click(); document.querySelector('[data-permission="ask"]').click()`);
-    await pause();
-    const permissionState = await evaluate(`(() => ({
-      label: document.querySelector('#permissionMenuLabel').textContent,
-      hidden: document.querySelector('#permissionMenu').classList.contains('hidden'),
-      askChecked: document.querySelector('[data-permission="ask"]').getAttribute('aria-checked'),
-    }))()`);
-    assert.ok(
-      frames.slice(before).some((frame) => frame.type === "set_mode" && frame.mode === "default"),
-      `permission click state=${JSON.stringify(permissionState)} frames=${JSON.stringify(frames.slice(before))}`,
-    );
-    assert.equal(await evaluate(`document.querySelector('#permissionMenuLabel').textContent`), "Ask before changes");
-    await evaluate(`document.querySelector('#permissionMenuBtn').click(); document.querySelector('[data-permission="auto"]').click()`);
-    await pause();
-    assert.ok(frames.some((frame) => frame.type === "set_mode" && frame.mode === "bypass"));
-    await evaluate(`document.querySelector('#permissionMenuBtn').click(); document.querySelector('[data-permission="auto"]').click()`);
-    await pause();
-    assert.ok(frames.some((frame) => frame.type === "set_mode" && frame.mode === "bypass"));
     await evaluate(`document.querySelector('#attachBtn').click()`);
     assert.equal(await evaluate(`document.querySelector('#promptInput').value`), "@");
     await evaluate(`(() => { const input = document.querySelector('#promptInput'); input.value = 'Explain this workspace'; input.dispatchEvent(new Event('input')); input.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true})); })()`);
@@ -286,14 +310,44 @@ async function run() {
     assert.equal(await evaluate(`document.querySelectorAll('.tool-row').length > 0`), true);
     await evaluate(`document.querySelector('.tool-row').click()`);
     assert.equal(await evaluate(`document.querySelector('.tool-row').getAttribute('aria-expanded')`), "true");
+    // Mid-turn plain text steers the running turn immediately — no queue wait.
     await evaluate(`(() => { const input = document.querySelector('#promptInput'); input.value = 'Now verify it'; document.querySelector('#sendBtn').click(); })()`);
+    await pause();
+    assert.ok(frames.some((frame) => frame.type === "steer_message" && frame.text === "Now verify it"));
+    // Commands can't steer, so a slash command typed mid-turn still queues and
+    // flushes when the turn ends.
+    await evaluate(`(() => { const input = document.querySelector('#promptInput'); input.value = '/help'; document.querySelector('#sendBtn').click(); })()`);
     assert.equal(await evaluate(`document.querySelector('#queueChip').classList.contains('hidden')`), false);
     await evaluate(`document.querySelector('#stopBtn').click()`);
     await pause();
     assert.ok(signals.some((signal) => signal.name === "interrupt"));
     await emit({ type: "turn_finished", contextTokens: 4200, totalCostUsd: 0.012, stopReason: "end_turn" });
-    assert.ok(frames.some((frame) => frame.type === "user_message" && frame.text === "Now verify it"));
-    assert.match(await evaluate(`document.querySelector('#inspectorUsage').textContent`), /4\.2k ctx/);
+    await pause();
+    assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.command === "help"));
+    assert.match(await evaluate(`document.querySelector('#inspectorUsage').textContent`), /~4\.2k ctx/);
+  });
+
+  await test("context counter is approximate, tints past the warn threshold, and shows no price", async () => {
+    await emit({ type: "turn_finished", contextTokens: 210000, contextWarn: true, stopReason: "end_turn" });
+    await pause();
+    let meter = await evaluate(`(() => ({
+      text: document.querySelector('#hintUsage').textContent,
+      warn: document.querySelector('#hintUsage').classList.contains('warn'),
+      inspectorWarn: document.querySelector('#inspectorUsage').classList.contains('warn'),
+    }))()`);
+    assert.match(meter.text, /ctx ~210k/, "shows a rounded, tilde-prefixed size");
+    assert.ok(!meter.text.includes("$"), "never surfaces a price");
+    assert.equal(meter.warn, true, "counter tints when the engine flags a large context");
+    assert.equal(meter.inspectorWarn, true);
+    // Dropping back below the threshold clears the tint.
+    await emit({ type: "turn_finished", contextTokens: 5000, contextWarn: false, stopReason: "end_turn" });
+    await pause();
+    meter = await evaluate(`(() => ({
+      text: document.querySelector('#hintUsage').textContent,
+      warn: document.querySelector('#hintUsage').classList.contains('warn'),
+    }))()`);
+    assert.match(meter.text, /ctx ~5\.0k/);
+    assert.equal(meter.warn, false);
   });
 
   await test("slash palette, background jobs, application menu, and recovery banner are live controls", async () => {
@@ -374,28 +428,305 @@ async function run() {
     await evaluate(`document.querySelector('.change-file').click()`);
     assert.equal(await evaluate(`document.querySelector('.change-file').getAttribute('aria-expanded')`), "true");
     await evaluate(`document.querySelector('#changesCloseBtn').click()`);
-    await evaluate(`document.querySelector('#undoLastBtn').click()`);
+    // Undoing the last remaining file empties the card entirely. The review
+    // drawer is the only undo path now — the inline card's "Undo last" button
+    // and its all-sessions counterpart in the inspector are both gone.
+    await evaluate(`document.querySelector('#reviewAllBtn').click()`);
+    await pause(60);
+    await evaluate(`document.querySelector('#reviewUndoBtn').click()`);
     await pause(60);
     assert.equal(await evaluate(`document.querySelector('#inspectorChangesCount').textContent`), "");
     assert.equal(await evaluate(`document.querySelector('.inline-changes-card') === null`), true);
   });
 
-  await test("approval and question cards send selected decisions", async () => {
+  await test("inline changes card folds past two files and unfolds on demand", async () => {
+    const diffFor = (file) => [
+      `diff --git a/${file} b/${file}`, "index 5555555..6666666 100644", `--- a/${file}`, `+++ b/${file}`,
+      "@@ -1 +1,2 @@", " x", "+y", "",
+    ].join("\n");
+    for (const file of ["one.js", "two.js", "three.js", "four.js"]) {
+      await emit({ type: "file_edited", path: file, diff: diffFor(file) });
+    }
+    const readCard = `(() => ({
+      files: document.querySelectorAll('.inline-changes-list button:not(.inline-changes-more)').length,
+      more: (document.querySelector('.inline-changes-more') || {}).textContent || null,
+      actions: [...document.querySelectorAll('.inline-changes-actions button')].map((b) => b.textContent),
+    }))()`;
+    // Compact: two files, the rest behind the fold, and Review changes is the
+    // only action left on the card.
+    assert.deepEqual(await evaluate(readCard), {
+      files: 2, more: "··· 2 more files", actions: ["Review changes"],
+    });
+    await evaluate(`document.querySelector('.inline-changes-more').click()`);
+    assert.deepEqual(await evaluate(readCard), {
+      files: 4, more: "··· show less", actions: ["Review changes"],
+    });
+    // And back — the fold is a toggle, not a one-way reveal.
+    await evaluate(`document.querySelector('.inline-changes-more').click()`);
+    assert.deepEqual(await evaluate(readCard), {
+      files: 2, more: "··· 2 more files", actions: ["Review changes"],
+    });
+    // Clear the card so the later scenarios see the same transcript they did
+    // before this test existed.
+    await evaluate(`resetChanges()`);
+    assert.equal(await evaluate(`document.querySelector('.inline-changes-card') === null`), true);
+  });
+
+  await test("all three themes switch cleanly and only matrix mounts the rain", async () => {
+    const readTheme = `(() => ({
+      theme: document.documentElement.dataset.theme,
+      rain: Boolean(document.querySelector('#matrixRain')),
+      bg: getComputedStyle(document.body).backgroundColor,
+    }))()`;
+    const pick = (name) => `document.querySelector('#setTheme .seg-btn[data-theme="${name}"]').click()`;
+    assert.equal(await evaluate(`document.querySelectorAll('#setTheme .seg-btn').length`), 3);
+
+    await evaluate(pick("light"));
+    let state = await evaluate(readTheme);
+    assert.equal(state.theme, "light");
+    assert.equal(state.rain, false);
+    const lightBg = state.bg;
+
+    await evaluate(pick("matrix"));
+    await pause(60);
+    state = await evaluate(readTheme);
+    assert.equal(state.theme, "matrix");
+    assert.equal(state.rain, true, "matrix theme must mount the rain canvas");
+    assert.notEqual(state.bg, lightBg, "matrix must repaint the surface tokens");
+    // Decoration only: it must never sit in the accessibility tree or eat clicks.
+    assert.equal(await evaluate(`document.querySelector('#matrixRain').getAttribute('aria-hidden')`), "true");
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('#matrixRain')).pointerEvents`), "none");
+
+    if (process.env.MAGENTRA_UI_CAPTURE_MATRIX) {
+      // Settings view, so the shot covers both the theme and the selector that
+      // reaches it. Needs MAGENTRA_UI_CAPTURE set too — that is what shows the
+      // window, and a hidden window composites no fresh frames to capture.
+      await evaluate(`document.querySelector('#navSettings').click()`);
+      await pause(1500); // let the rain build a few frames of trails first
+      fs.writeFileSync(process.env.MAGENTRA_UI_CAPTURE_MATRIX, (await windowRef.capturePage()).toPNG());
+      await evaluate(`showView('console')`); // back to the transcript for the rest of the suite
+      await pause(60);
+    }
+
+    // Leaving the theme tears the canvas down rather than hiding it, so no
+    // animation frame survives in the other two themes.
+    // Rain opacity dial: only present under matrix, drives the canvas opacity,
+    // and hides the canvas outright at 0 while staying mounted.
+    await evaluate(pick("matrix"));
+    await pause(60);
+    const readRain = `(() => ({
+      rowShown: !document.querySelector('#setRainRow').classList.contains('hidden'),
+      field: document.querySelector('#setRainOpacity').value,
+      opacity: document.querySelector('#matrixRain') && document.querySelector('#matrixRain').style.opacity,
+      saved: JSON.parse(localStorage.getItem('magentra-ui')).rainOpacity,
+    }))()`;
+    const setRain = (v) => `(() => {
+      const el = document.querySelector('#setRainOpacity');
+      el.value = '${v}';
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`;
+    let rain = await evaluate(readRain);
+    assert.equal(rain.rowShown, true, "rain dial must be visible under matrix");
+    // Ships faint, not full — a legible fraction at the default dial.
+    assert.equal(rain.field, "0.35");
+    assert.equal(rain.saved, 0.35);
+    assert.ok(Number(rain.opacity) > 0 && Number(rain.opacity) < 0.2, "default is faint");
+
+    // Full strength is a fixed base fraction; read it by pinning the dial to 1.
+    await evaluate(setRain("1"));
+    await pause(60);
+    const fullOpacity = Number((await evaluate(readRain)).opacity);
+    assert.ok(fullOpacity > 0 && fullOpacity < 1, "full strength is a legible fraction, not 1");
+
+    await evaluate(setRain("0.5"));
+    await pause(60);
+    rain = await evaluate(readRain);
+    assert.equal(rain.saved, 0.5);
+    assert.ok(Math.abs(Number(rain.opacity) - fullOpacity * 0.5) < 0.001, "0.5 dial must halve the canvas opacity");
+
+    await evaluate(setRain("0"));
+    await pause(60);
+    rain = await evaluate(readRain);
+    assert.equal(rain.saved, 0);
+    assert.equal(Number(rain.opacity), 0, "0 dial hides the rain");
+    assert.equal(await evaluate(`Boolean(document.querySelector('#matrixRain'))`), true, "0 keeps the canvas mounted, just invisible");
+
+    // Out of range clamps and rewrites the field.
+    await evaluate(setRain("5"));
+    await pause(60);
+    rain = await evaluate(readRain);
+    assert.deepEqual({ field: rain.field, saved: rain.saved }, { field: "1", saved: 1 });
+    await evaluate(setRain("1"));
+    await pause(60);
+
+    await evaluate(pick("workbench"));
+    await pause(60);
+    state = await evaluate(readTheme);
+    assert.equal(state.theme, "workbench");
+    assert.equal(state.rain, false, "leaving matrix must unmount the rain canvas");
+    assert.equal(await evaluate(`document.querySelector('#setRainRow').classList.contains('hidden')`), true,
+      "rain dial must hide outside matrix");
+
+    // The choice persists like every other UI setting.
+    await evaluate(pick("matrix"));
+    await pause(60);
+    assert.equal(await evaluate(`JSON.parse(localStorage.getItem('magentra-ui')).theme`), "matrix");
+    await evaluate(pick("workbench"));
+    await pause(60);
+  });
+
+  await test("UI scale zooms the whole interface, clamps, persists, and resets", async () => {
+    await evaluate(`document.querySelector('#navSettings').click()`);
+    await pause();
+    // Baseline in CSS pixels. Page zoom shrinks the layout viewport, so a
+    // scaled-up interface reports a *smaller* innerWidth while the sidebar
+    // keeps its 264px token — that ratio is what proves the chrome scaled with
+    // the text rather than only the type ramp moving.
+    const readScale = `(() => ({
+      field: document.querySelector('#setZoom').value,
+      saved: JSON.parse(localStorage.getItem('magentra-ui')).zoom,
+      viewport: window.innerWidth,
+      sidebar: document.querySelector('#sidebar').getBoundingClientRect().width,
+    }))()`;
+    // Ships at 1.2, so the interface opens gently enlarged.
+    assert.equal((await evaluate(readScale)).saved, 1.2);
+
+    const setScale = (v) => `(() => {
+      const el = document.querySelector('#setZoom');
+      el.value = '${v}';
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`;
+
+    // Pin an unzoomed baseline for the breakpoint reasoning below — independent
+    // of whatever the ship default happens to be.
+    await evaluate(setScale("1"));
+    await pause(80);
+    const base = await evaluate(readScale);
+    assert.equal(base.field, "1");
+    assert.equal(base.saved, 1);
+    assert.ok(base.viewport > 1120, "test window at 1.0 must start above the widest breakpoint");
+
+    // A gentle scale stays inside the same breakpoint: the viewport shrinks
+    // while the sidebar keeps its 264px token, so every pixel of chrome grew
+    // by the same factor as the text. That is the whole point of using page
+    // zoom over a font-size multiplier — the layout tokens are hard pixels and
+    // would not have moved.
+    await evaluate(setScale("1.1"));
+    await pause(80);
+    let state = await evaluate(readScale);
+    assert.equal(state.field, "1.1");
+    assert.equal(state.saved, 1.1);
+    assert.ok(state.viewport < base.viewport, "zooming in must shrink the layout viewport");
+    assert.equal(Math.round(state.sidebar), Math.round(base.sidebar));
+
+    // A large scale crosses the responsive breakpoints, and the workbench
+    // collapses exactly as it does when the window narrows — the stylesheet's
+    // media queries re-evaluate against the scaled viewport for free.
+    await evaluate(setScale("1.5"));
+    await pause(80);
+    state = await evaluate(readScale);
+    assert.equal(state.saved, 1.5);
+    assert.ok(state.viewport < 1120, "1.5x must drop the viewport past the first breakpoint");
+    assert.ok(state.sidebar < base.sidebar, "crossing the breakpoint must collapse the sidebar rail");
+
+    await evaluate(setScale("0.5"));
+    await pause(80);
+    state = await evaluate(readScale);
+    assert.equal(state.saved, 0.5);
+    assert.ok(state.viewport > base.viewport, "zooming out must grow the layout viewport");
+
+    // Out of range clamps to the boundary and rewrites the field, so the box
+    // never disagrees with the interface it just scaled.
+    await evaluate(setScale("7"));
+    await pause(80);
+    state = await evaluate(readScale);
+    assert.deepEqual({ field: state.field, saved: state.saved }, { field: "2", saved: 2 });
+    await evaluate(setScale("0.1"));
+    await pause(80);
+    assert.equal((await evaluate(readScale)).saved, 0.5);
+    // Garbage falls back to 1.0 rather than NaN-ing the zoom factor.
+    await evaluate(setScale("abc"));
+    await pause(80);
+    assert.equal((await evaluate(readScale)).saved, 1);
+
+    await evaluate(setScale("1.75"));
+    await pause(80);
+    await evaluate(`document.querySelector('#setZoomResetBtn').click()`);
+    await pause(80);
+    state = await evaluate(readScale);
+    assert.deepEqual({ field: state.field, saved: state.saved }, { field: "1", saved: 1 });
+    assert.equal(state.viewport, base.viewport, "reset must restore the original viewport");
+
+    // Zoom moved outside the setting — what the native View▸Zoom accelerators
+    // do — is adopted when the settings view next opens, so the field can
+    // never sit at a stale 1.0 over a zoomed interface.
+    await evaluate(`showView('console')`);
+    await evaluate(`window.magentra.setZoom(1.4)`);
+    await pause(80);
+    await evaluate(`document.querySelector('#navSettings').click()`);
+    await pause(80);
+    state = await evaluate(readScale);
+    assert.deepEqual({ field: state.field, saved: state.saved }, { field: "1.4", saved: 1.4 });
+    // And a factor beyond the supported range snaps back into it.
+    await evaluate(`showView('console')`);
+    await evaluate(`window.magentra.setZoom(4)`);
+    await pause(80);
+    await evaluate(`document.querySelector('#navSettings').click()`);
+    await pause(80);
+    assert.equal((await evaluate(readScale)).saved, 2);
+
+    await evaluate(`document.querySelector('#setZoomResetBtn').click()`);
+    await pause(80);
+    assert.equal((await evaluate(readScale)).viewport, base.viewport);
+    await evaluate(`showView('console')`);
+    await pause(60);
+  });
+
+  await test("approval and question cards send selected decisions and notes", async () => {
     await emit({ type: "permission_request", id: "p1", description: "Remove generated file", input: { command: "rm generated.js" } });
     assert.equal(await evaluate(`document.querySelector('#deleteModal').classList.contains('hidden')`), false);
     // No subject means nothing durable to grant — "always allow" must stay hidden
     // rather than silently behaving like a one-off allow.
     assert.equal(await evaluate(`document.querySelector('#allowAlwaysBtn').classList.contains('hidden')`), true);
+    // A note typed on the card rides out with whatever decision is picked.
+    await evaluate(`document.querySelector('#permissionNote').value = 'watch the siblings'`);
     await evaluate(`document.querySelector('#allowBtn').click()`);
     await pause();
-    assert.deepEqual(permissions.at(-1), { id: "p1", decision: "allow_once" });
+    assert.deepEqual(permissions.at(-1), { id: "p1", decision: "allow_once", message: "watch the siblings" });
+    // The note field resets before the next card so nothing leaks across prompts.
+    assert.equal(await evaluate(`document.querySelector('#permissionNote').value`), "");
 
     // With a subject, the durable grant is offered and sends allow_always.
+    // No note this time — the frame must carry no message. Without a `grant`,
+    // the hint promises the EXACT command (deletion-guard prompts).
     await emit({ type: "permission_request", id: "p2", description: "rm -rf ./build", input: { command: "rm -rf ./build" }, subject: "rm -rf ./build" });
     assert.equal(await evaluate(`document.querySelector('#allowAlwaysBtn').classList.contains('hidden')`), false);
+    assert.match(await evaluate(`document.querySelector('#allowAlwaysHint').textContent`), /exact command/);
     await evaluate(`document.querySelector('#allowAlwaysBtn').click()`);
     await pause();
     assert.deepEqual(permissions.at(-1), { id: "p2", decision: "allow_always" });
+
+    // With a `grant`, the hint states the command shape the grant will cover.
+    await emit({ type: "permission_request", id: "p2a", description: "mkdir -p x", input: { command: "mkdir -p x" }, subject: "mkdir -p x", grant: "mkdir" });
+    assert.match(await evaluate(`document.querySelector('#allowAlwaysHint').textContent`), /every “mkdir …” command/);
+    await evaluate(`document.querySelector('#allowAlwaysBtn').click()`);
+    await pause();
+    assert.deepEqual(permissions.at(-1), { id: "p2a", decision: "allow_always" });
+
+    // Fresh card: initial focus must be on the default action, NOT the note
+    // textarea — a bare "y" keystroke resolves the card instead of typing.
+    await emit({ type: "permission_request", id: "p2b", description: "ls", input: { command: "ls" } });
+    assert.equal(await evaluate(`document.activeElement.id`), "allowBtn");
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'y', bubbles: true }))`);
+    await pause();
+    assert.deepEqual(permissions.at(-1), { id: "p2b", decision: "allow_once" });
+
+    // Deny carries the note too (the engine folds it into the refusal).
+    await emit({ type: "permission_request", id: "p3", description: "drop table users", input: { command: "drop table users" } });
+    await evaluate(`document.querySelector('#permissionNote').value = 'use a soft delete instead'`);
+    await evaluate(`document.querySelector('#denyBtn').click()`);
+    await pause();
+    assert.deepEqual(permissions.at(-1), { id: "p3", decision: "deny", message: "use a soft delete instead" });
 
     await emit({ type: "question_request", questions: [{
       header: "Scope", question: "Which surface?", multiSelect: false,
@@ -441,7 +772,7 @@ async function run() {
     assert.equal(frames.filter((f) => f.type === "question_response").length - responsesBefore, 3);
 
     // GFM tables render as real tables once the turn finalizes.
-    await emit({ type: "text_delta", text: "Results:\n\n| Setting | Default |\n|---|---:|\n| theme | workbench |\n| commands | auto |\n" });
+    await emit({ type: "text_delta", text: "Results:\n\n| Setting | Default |\n|---|---:|\n| theme | workbench |\n| deletions | ask |\n" });
     await emit({ type: "turn_finished", contextTokens: 10, totalCostUsd: 0, stopReason: "end_turn" });
     const table = await evaluate(`(() => {
       const t = document.querySelector('.md-table');
@@ -457,19 +788,19 @@ async function run() {
       wrapped: true,
       headers: ["Setting", "Default"],
       aligned: "right",
-      rows: [["theme", "workbench"], ["commands", "auto"]],
+      rows: [["theme", "workbench"], ["deletions", "ask"]],
     });
   });
 
   await test("skills view, chips, recommended set, and create-skill wizard are functional", async () => {
     await emit({ type: "modes_updated", modes: [
-      { id: "grill", name: "Grill", description: "Challenge assumptions", why: "Stress-test plans before code", active: false, recommended: false, conflicts: [] },
+      { id: "reshape", name: "Reshape", description: "Deliberate restructuring", why: "Enable for large refactors", active: false, recommended: false, conflicts: [] },
       { id: "prover", name: "Prover", description: "Prove every change", why: "Enable when correctness matters", active: false, recommended: true, conflicts: [] },
     ] });
-    // Hero chip toggles a skill through the shared set_modes path.
+    // Hero chip toggles a skill through the shared set_modes path (reshape is a hero).
     await evaluate(`document.querySelector('.mode-chip.hero').click()`);
     await pause();
-    assert.ok(modes.some((active) => active.includes("grill")));
+    assert.ok(modes.some((active) => active.includes("reshape")));
     // The summary chip opens the Skills view; both cards render with badges + why.
     await evaluate(`document.querySelector('#skillsSummary').click()`);
     await pause();
@@ -483,6 +814,16 @@ async function run() {
     // The ? explainer reveals the why copy.
     await evaluate(`document.querySelectorAll('.skill-why-btn')[0].click()`);
     assert.equal(await evaluate(`document.querySelectorAll('.skill-why:not(.hidden)').length`), 1);
+    // Every card has an export button. It asks the engine for the .md
+    // (export_skill), and on the reply saves it via main (saveSkillExport) — so
+    // built-ins export too, not only on-disk skills.
+    assert.equal(await evaluate(`document.querySelectorAll('.skill-export-btn').length`), 2);
+    await evaluate(`[...document.querySelectorAll('.skill-card')].find((c) => c.querySelector('.skill-name').textContent === 'Prover').querySelector('.skill-export-btn').click()`);
+    await pause();
+    assert.ok(frames.some((frame) => frame.type === "export_skill" && frame.id === "prover"));
+    await emit({ type: "skill_export", ok: true, id: "prover", filename: "prover.md", text: "---\\nkind: discipline\\nname: Prover\\n---\\n\\nProve it." });
+    await pause();
+    assert.ok(calls.some((call) => call.name === "saveSkillExport" && call.args[0].filename === "prover.md"));
     // A card toggle flips the discipline via set_modes.
     modes.length = 0;
     await evaluate(`[...document.querySelectorAll('.skill-card')].find((c) => c.querySelector('.skill-name').textContent === 'Prover').querySelector('.skill-toggle').click()`);
@@ -497,15 +838,22 @@ async function run() {
     await evaluate(`document.querySelector('#skillsRecommendBtn').click()`);
     await pause();
     assert.ok(modes.some((active) => active.includes("prover")));
-    // Create-skill wizard: describe → generate_skill frame → draft preview → install_skill frame.
+    // Create-skill wizard: describe → generateSkill (main resolves any profile)
+    // → draft preview → install_skill frame. Reachable from Settings too.
     await evaluate(`document.querySelector('#skillCreateBtn').click()`);
     assert.equal(await evaluate(`document.querySelector('#skillWizard').classList.contains('hidden')`), false);
+    // The "author with" model picker is populated (no enforcement UI any more).
+    assert.ok(await evaluate(`document.querySelectorAll('#skillModelSelect option').length > 0`), "the author-with model picker is populated");
     await evaluate(`(() => {
       document.querySelector('#skillDescInput').value = 'Always write rollback SQL beside every migration';
+      document.querySelector('#skillContextInput').value = 'when editing files under db/migrations';
       document.querySelector('#skillWizGenerate').click();
     })()`);
     await pause();
-    assert.ok(frames.some((frame) => frame.type === "generate_skill" && frame.kind === "discipline"));
+    const genCall = calls.filter((call) => call.name === "generateSkill").pop();
+    assert.equal(genCall.args[0].kind, "discipline");
+    assert.equal(genCall.args[0].context, "when editing files under db/migrations");
+    assert.ok(genCall.args[0].model, "the chosen author model rides along");
     await emit({ type: "skill_draft", ok: true, suggestedFilename: "sql-rollback.md", text: "---\\nkind: discipline\\nname: SQL Rollback\\n---\\n\\nAlways pair migrations with rollbacks." });
     state = await evaluate(`(() => ({
       step2: !document.querySelector('#skillWizStep2').classList.contains('hidden'),
@@ -523,14 +871,14 @@ async function run() {
     await evaluate(`document.querySelector('#skillsCloseBtn').click()`);
   });
 
-  await test("the teaching tour walks all nine steps and is replayable", async () => {
+  await test("the teaching tour walks all eight steps and is replayable", async () => {
     await evaluate(`startTour(true)`);
     let state = await evaluate(`(() => ({
       visible: !document.querySelector('#tourOverlay').classList.contains('hidden'),
       label: document.querySelector('#tourStepLabel').textContent,
     }))()`);
-    assert.deepEqual(state, { visible: true, label: "1 / 9" });
-    for (let i = 0; i < 8; i++) await evaluate(`document.querySelector('#tourNext').click()`);
+    assert.deepEqual(state, { visible: true, label: "1 / 8" });
+    for (let i = 0; i < 7; i++) await evaluate(`document.querySelector('#tourNext').click()`);
     assert.equal(await evaluate(`document.querySelector('#tourNext').textContent`), "FINISH ▸");
     await evaluate(`document.querySelector('#tourNext').click()`);
     assert.equal(await evaluate(`document.querySelector('#tourOverlay').classList.contains('hidden')`), true);
@@ -551,6 +899,15 @@ async function run() {
     assert.equal(await evaluate(`getComputedStyle(document.documentElement).fontSize`), "15px");
     assert.equal(await evaluate(`document.documentElement.dataset.detail`), "cinematic");
     assert.ok(frames.some((frame) => frame.type === "set_deletion_guard" && frame.enabled === false));
+    // The auto-compact limit is UI-set and pushed to the engine as set_compact_limit.
+    await evaluate(`(() => { const el = document.querySelector('#setCompactLimit'); el.value = '80000'; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await pause();
+    assert.ok(frames.some((frame) => frame.type === "set_compact_limit" && frame.limit === 80000), "UI limit rides to the engine");
+    // 0 turns it off; a tiny value floors to keep it usable.
+    await evaluate(`(() => { const el = document.querySelector('#setCompactLimit'); el.value = '0'; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await pause();
+    assert.ok(frames.some((frame) => frame.type === "set_compact_limit" && frame.limit === 0));
+    assert.equal(await evaluate(`document.querySelector('#setCompactLimit').value`), "0");
     await evaluate(`document.querySelector('#setKeyReveal').click()`);
     await pause();
     assert.equal(await evaluate(`document.querySelector('#setApiKey').value`), "test-key");
@@ -576,24 +933,47 @@ async function run() {
     assert.equal(await evaluate(`document.body.dataset.view`), "console");
     assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.command === "clear"));
     windowRef.webContents.send("test:setup-required", { workspace: WORKSPACE });
-    await pause();
+    await pause(80);
     assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), false);
     await evaluate(`(() => {
+      document.querySelector('#wizName').value = 'My Endpoint';
+      const base = document.querySelector('#wizBaseUrl');
+      base.value = 'https://api.test/v1';
+      base.dispatchEvent(new Event('input'));
+      const model = document.querySelector('#wizModel');
+      model.value = 'deepseek-ai/DeepSeek-V4-Flash';
+      model.dispatchEvent(new Event('input'));
       document.querySelector('#wizApiKey').value = 'wizard-test-key';
       document.querySelector('#wizApiKey').dispatchEvent(new Event('input'));
       document.querySelector('#wizTestBtn').click();
     })()`);
     await pause();
     assert.equal(await evaluate(`document.querySelector('#wizStatus').textContent`), "link established");
+    // SAVE & CONNECT saves the profile globally, then applies it to the workspace.
     await evaluate(`document.querySelector('#wizStartBtn').click()`);
     await pause();
-    assert.ok(calls.filter((call) => call.name === "writeEnv").length >= 2);
+    const savedProfile = calls.filter((call) => call.name === "saveProfile").pop();
+    assert.equal(savedProfile.args[0].name, "My Endpoint");
+    assert.ok(calls.some((call) => call.name === "applyProfile"));
     assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
   });
 
   await test("custom endpoint wizard: pasted URL normalizes, keyless + self-signed works, model stays aligned", async () => {
     windowRef.webContents.send("test:setup-required", { workspace: WORKSPACE });
-    await pause();
+    await pause(80);
+    // Presets are just Custom / Ollama / LM Studio — no provider branding — and
+    // the local servers are auto-detected: Ollama enabled, LM Studio grayed out
+    // with a hover reason.
+    let detect = await evaluate(`(() => ({
+      presets: [...document.querySelectorAll('.wiz-preset')].map((b) => b.dataset.preset),
+      ollamaDisabled: document.querySelector('[data-preset="ollama"]').disabled,
+      lmDisabled: document.querySelector('[data-preset="lmstudio"]').disabled,
+      lmTitle: document.querySelector('[data-preset="lmstudio"]').title,
+    }))()`);
+    assert.deepEqual(detect.presets, ["custom", "ollama", "lmstudio"]);
+    assert.equal(detect.ollamaDisabled, false);
+    assert.equal(detect.lmDisabled, true);
+    assert.match(detect.lmTitle, /LM Studio/);
     await evaluate(`document.querySelector('[data-preset="custom"]').click()`);
     let state = await evaluate(`(() => ({
       insecureVisible: !document.querySelector('#wizInsecureRow').hidden,
@@ -602,6 +982,7 @@ async function run() {
     assert.deepEqual(state, { insecureVisible: true, hintVisible: true });
     // Paste the full completions URL a script would use, keyless, self-signed.
     await evaluate(`(() => {
+      document.querySelector('#wizName').value = 'Coder GW';
       const base = document.querySelector('#wizBaseUrl');
       base.value = 'https://gw.example/coder/v1/chat/completions';
       base.dispatchEvent(new Event('input'));
@@ -618,13 +999,16 @@ async function run() {
     assert.equal(testCall.args[0].apiKey, "");
     // The field now shows the base that will actually be saved.
     assert.equal(await evaluate(`document.querySelector('#wizBaseUrl').value`), "https://gw.example/coder/v1");
-    // IGNITE proceeds keyless without an "untested" warning (TEST just passed).
+    // SAVE & CONNECT proceeds keyless without an "untested" warning (TEST passed);
+    // the saved profile carries the normalized base, model, and TLS opt-in.
     await evaluate(`document.querySelector('#wizStartBtn').click()`);
     await pause();
-    const envCall = calls.filter((c) => c.name === "writeEnv").pop();
-    assert.equal(envCall.args[0].insecureTls, true);
-    assert.equal(envCall.args[0].baseUrl, "https://gw.example/coder/v1");
-    assert.equal(envCall.args[0].model, "qwen3.6-35b-a3b");
+    const saveCall = calls.filter((c) => c.name === "saveProfile").pop();
+    assert.equal(saveCall.args[0].name, "Coder GW");
+    assert.equal(saveCall.args[0].insecureTls, true);
+    assert.equal(saveCall.args[0].baseUrl, "https://gw.example/coder/v1");
+    assert.equal(saveCall.args[0].model, "qwen3.6-35b-a3b");
+    assert.ok(calls.some((c) => c.name === "applyProfile"));
     assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
     // The engine announces the configured model — the composer picker follows
     // without the user touching it, even for an id outside the preset list.
@@ -637,6 +1021,132 @@ async function run() {
     assert.deepEqual(state, { select: "__custom__", custom: "qwen3.6-35b-a3b", customVisible: true });
     // Restore the default model for the remaining scenarios.
     await emit({ type: "session_started", sessionId: "sess-restore", model: MODEL, commands: [], rateCard: {} });
+  });
+
+  await test("connection profiles: dock opens the picker, USE applies, delete removes", async () => {
+    // The two wizard scenarios above saved "My DeepInfra" and "Coder GW".
+    const dockCount = await evaluate(`document.querySelectorAll('#dock .dock-btn').length`);
+    // The Connect button sits immediately left of Settings.
+    const order = await evaluate(`(() => {
+      const btns = [...document.querySelectorAll('#dock .dock-btn')].map((b) => b.id);
+      return { connectBeforeSettings: btns.indexOf('navSetupConn') === btns.indexOf('navSettings') - 1 };
+    })()`);
+    assert.equal(order.connectBeforeSettings, true);
+    assert.ok(dockCount >= 2);
+
+    // Open the connections wizard from the dock (a workspace is open → apply mode).
+    await evaluate(`document.querySelector('#navSetupConn').click()`);
+    await pause(80);
+    let state = await evaluate(`(() => ({
+      open: !document.querySelector('#setupWizard').classList.contains('hidden'),
+      rows: document.querySelectorAll('#wizProfilesList .wiz-profile-row').length,
+      useButtons: document.querySelectorAll('.wiz-profile-use').length,
+      names: [...document.querySelectorAll('.wiz-profile-name')].map((n) => n.textContent),
+    }))()`);
+    assert.equal(state.open, true);
+    assert.equal(state.rows, 2);
+    assert.equal(state.useButtons, 2, "USE is offered in apply mode");
+    assert.ok(state.names.includes("My Endpoint") && state.names.includes("Coder GW"));
+
+    // Clicking a profile loads it for editing with a blank key field; TEST must
+    // then point main at the stored key by id (not send an empty key → 401).
+    await evaluate(`document.querySelector('.wiz-profile-info').click()`);
+    await pause();
+    assert.equal(await evaluate(`document.querySelector('#wizApiKey').value`), "", "loaded profile leaves the key blank");
+    await evaluate(`document.querySelector('#wizTestBtn').click()`);
+    await pause();
+    const profileTest = calls.filter((c) => c.name === "testConnection").pop();
+    assert.ok(profileTest.args[0].profileId, "TEST forwards the profile id so main can use the stored key");
+    // Re-open cleanly for the USE/delete flow (editing state was just set).
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
+    await pause();
+    await evaluate(`document.querySelector('#navSetupConn').click()`);
+    await pause(80);
+
+    // USE applies that profile and closes the wizard.
+    await evaluate(`document.querySelector('.wiz-profile-use').click()`);
+    await pause();
+    assert.ok(calls.some((c) => c.name === "applyProfile" && typeof c.args[0] === "string"));
+    assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
+
+    // Reopen and delete a profile — the row disappears and the store shrinks.
+    await evaluate(`document.querySelector('#navSetupConn').click()`);
+    await pause(80);
+    await evaluate(`document.querySelector('.wiz-profile-del').click()`);
+    await pause();
+    assert.ok(calls.some((c) => c.name === "deleteProfile"));
+    assert.equal(await evaluate(`document.querySelectorAll('#wizProfilesList .wiz-profile-row').length`), 1);
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
+    assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
+    // USE left the engine unlinked (awaiting the new connection); relink for the
+    // remaining scenarios exactly as a real session_started would.
+    await emit({ type: "session_started", sessionId: "sess-prof", model: MODEL, commands: [], rateCard: {} });
+  });
+
+  await test("connection profiles: consecutive saves accumulate, never overwrite", async () => {
+    await evaluate(`document.querySelector('#navSetupConn').click()`);
+    await pause(80);
+    const before = await evaluate(`document.querySelectorAll('#wizProfilesList .wiz-profile-row').length`);
+    const buildAndSave = (name) => `(() => {
+      document.querySelector('#wizName').value = '${name}';
+      const base = document.querySelector('#wizBaseUrl');
+      base.value = 'https://api.test/v1';
+      base.dispatchEvent(new Event('input'));
+      const model = document.querySelector('#wizModel');
+      model.value = 'some/model';
+      model.dispatchEvent(new Event('input'));
+      document.querySelector('#wizSaveProfileBtn').click();
+    })()`;
+    await evaluate(buildAndSave("Alpha"));
+    await pause();
+    // The form resets after a save, so the next SAVE PROFILE builds a NEW one.
+    assert.equal(await evaluate(`document.querySelector('#wizName').value`), "");
+    await evaluate(buildAndSave("Beta"));
+    await pause();
+    const after = await evaluate(`(() => ({
+      rows: document.querySelectorAll('#wizProfilesList .wiz-profile-row').length,
+      names: [...document.querySelectorAll('.wiz-profile-name')].map((n) => n.textContent),
+    }))()`);
+    assert.equal(after.rows, before + 2, "each save adds a distinct profile");
+    assert.ok(after.names.includes("Alpha") && after.names.includes("Beta"), "the first save must survive the second");
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
+  });
+
+  await test("Esc closes an open stage view back to the console", async () => {
+    await evaluate(`document.querySelector('#navSettings').click()`);
+    await pause();
+    assert.equal(await evaluate(`document.body.dataset.view`), "settings");
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
+    await pause();
+    assert.equal(await evaluate(`document.body.dataset.view`), "console");
+  });
+
+  await test("session report opens as a line-by-line modal and Esc closes it", async () => {
+    const report =
+      "Session\n\n" +
+      "  Total duration (API):  3s\n" +
+      "  Context now:            ~10.7k tokens\n" +
+      "  Context breakdown (~estimated):\n" +
+      "      System prompt:  ~3.3k tokens\n" +
+      "      Free space:     ~53.3k tokens (until auto-compact at ~64.0k)\n" +
+      "  Skills loaded:         0\n" +
+      "  Disciplines active:    0 of 9";
+    await emit({ type: "session_report", text: report });
+    const state = await evaluate(`(() => ({
+      open: !document.querySelector('#sessionModal').classList.contains('hidden'),
+      rows: document.querySelectorAll('#sessionModalBody .sr-line').length,
+      keys: [...document.querySelectorAll('#sessionModalBody .sr-key')].map(e => e.textContent),
+      hasHooks: document.querySelector('#sessionModalBody').textContent.toLowerCase().includes('hook'),
+      hasMcp: document.querySelector('#sessionModalBody').textContent.toLowerCase().includes('mcp'),
+    }))()`);
+    assert.equal(state.open, true, "modal should open on session_report");
+    assert.ok(state.rows >= 6, `expected multiple rows, got ${state.rows}`);
+    assert.ok(state.keys.includes("Context now:"), "should split label/value rows");
+    assert.equal(state.hasHooks, false, "must not surface hooks stats");
+    assert.equal(state.hasMcp, false, "must not surface MCP stats");
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
+    await pause();
+    assert.equal(await evaluate(`document.querySelector('#sessionModal').classList.contains('hidden')`), true, "Esc should close the modal");
   });
 
   await test("responsive workbench collapses navigation and overlays inspector", async () => {

@@ -43,7 +43,7 @@ these same two operations.
 
 ### 2. NDJSON over stdio (the `engine/host` binary)
 
-The host process (`engine --cwd <workspace> [--mode …] [--dangerously-bypass]`) is a
+The host process (`engine --cwd <workspace>`) is a
 newline-delimited-JSON server — the desktop app spawns exactly this per open workspace:
 
 - Each `CoreEvent` is written to **stdout** as one JSON object followed by `\n`.
@@ -70,7 +70,6 @@ These structured types appear as fields inside events and requests.
 
 | Type | Definition |
 | --- | --- |
-| `PermissionMode` | `"default" \| "acceptEdits" \| "bypass"` |
 | `PermissionDecision` | `"allow_once" \| "allow_session" \| "deny"` |
 | `TaskStatus` | `"pending" \| "in_progress" \| "completed"` |
 | `TaskItem` | `{ id, subject, description, activeForm?, status: TaskStatus, owner?, blocks: string[], blockedBy: string[], metadata? }` |
@@ -99,7 +98,7 @@ Emitted once when a session begins (on `start()`, after `/clear`, and after a re
 | `sessionId` | string | Stable id; also the transcript filename stem. |
 | `cwd` | string | Absolute working directory. |
 | `model` | string | Configured model id. |
-| `mode` | `PermissionMode` | Active permission mode. |
+| `overdrive` | boolean | Whether OVERDRIVE (the fully-autonomous stance) is active for the session. |
 | `commands` | `SlashCommandInfo[]` | The engine's slash-command registry, so the frontend palette can never drift. |
 | `rateCard` | `Record<string, { input, output, cacheRead?, cacheWrite?, contextWindow }>` | Per-model $/1M rates + context windows — the built-in table with user `pricing` overrides applied. The frontend's single source for model hints; it must keep no pricing copy of its own. |
 
@@ -314,17 +313,6 @@ natural `"exit"` carries `{ code, description, outputFile }`; a task stopped via
 
 ```json
 {"type":"background_notification","taskId":"bash_a1b2c3d4","kind":"exit","payload":{"code":0,"description":"Run the test suite","outputFile":"/home/me/proj/.magentra/tasks/bash_a1b2c3d4.output"}}
-```
-
-### `mode_changed`
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `type` | `"mode_changed"` | |
-| `mode` | `PermissionMode` | The new mode. |
-
-```json
-{"type":"mode_changed","mode":"acceptEdits"}
 ```
 
 ### `command_output`
@@ -544,8 +532,8 @@ Answer to a `permission_request`.
 | --- | --- | --- |
 | `type` | `"permission_response"` | |
 | `id` | string | The id from the `permission_request`. |
-| `decision` | `PermissionDecision` | `allow_once`, `allow_session`, or `deny`. |
-| `message` | string? | Optional note shown to the model on denial. |
+| `decision` | `PermissionDecision` | `allow_once`, `allow_session`, `allow_always`, or `deny`. |
+| `message` | string? | Optional user note, valid with ANY decision: on deny it is folded into the refusal the model reads; on any allow it reaches the model as a system reminder alongside the call's results. |
 
 ```json
 {"type":"permission_response","id":"perm_3b9d","decision":"allow_once"}
@@ -572,19 +560,6 @@ call, every running tool, and any subagent.
 
 ```json
 {"type":"interrupt"}
-```
-
-### `set_mode`
-
-Changes the permission mode; the engine echoes a `mode_changed` event.
-
-| Field | Type |
-| --- | --- |
-| `type` | `"set_mode"` |
-| `mode` | `PermissionMode` |
-
-```json
-{"type":"set_mode","mode":"acceptEdits"}
 ```
 
 ### `set_deletion_guard`
@@ -630,7 +605,7 @@ while a build is in flight, or once a crew exists, does not start another.
 | `args` | string? | Remaining argument text. |
 
 ```json
-{"type":"slash_command","command":"mode","args":"acceptEdits"}
+{"type":"slash_command","command":"overdrive","args":"on"}
 ```
 
 ### `bang_command`

@@ -239,7 +239,8 @@ function onSessionStarted(event) {
   // A fresh session (boot, or /clear) is a fresh bill and an empty window.
   sessionModel = event.model;
   resetSessionMeter();
-  // A fresh session boots with guard on + bypass; re-assert the user's safety choices.
+  // A fresh session boots with the guard on and OVERDRIVE off; re-assert the
+  // user's saved safety choices.
   applySafetySettings(true);
   resetChanges();
   engineErrorBannerShown = false;
@@ -277,16 +278,14 @@ function syncActivityUi() {
   if (!workspaceOpen) return; // landing page: composer stays disabled regardless
   // Clearing mid-turn would swap the engine's session out from under it.
   clearBtnEl.disabled = busy;
-  // The composer stays usable during a turn — a message typed now queues and
-  // sends on turn end. It locks only when there are no credentials (a prompt
-  // would go into a dead engine).
+  // The composer stays usable during a turn — a message typed now steers the
+  // running turn (commands still queue for turn end). It locks only when there
+  // are no credentials (a prompt would go into a dead engine).
   promptInputEl.disabled = !engineLinked;
   promptInputEl.placeholder = !engineLinked
     ? "Engine not linked — open Settings → Connection or the setup wizard"
     : busy
-      ? uiSettings.overdrive
-        ? "steering — messages join the running turn"
-        : "Queue a follow-up — sends when the turn ends"
+      ? "Message joins the running turn to steer it…"
       : "Ask Magentra anything…";
 }
 
@@ -357,10 +356,10 @@ function onTurnFinished(event) {
 
   if (event) {
     // contextTokens = how full the window is NOW (engine-computed, cache-aware).
-    // totalCostUsd = the engine's own whole-session bill (every model in the
-    // tree at its own rate) — the renderer never prices tokens itself.
+    // contextWarn = the engine flags when it has grown past the /compact nudge
+    // point; the counter tints on it. Cost is intentionally never shown.
     contextTokens = event.contextTokens ?? contextTokens;
-    if (typeof event.totalCostUsd === "number") sessionCostUsd = event.totalCostUsd;
+    contextWarn = event.contextWarn === true;
     updateSessionMeter();
   }
 
@@ -525,6 +524,66 @@ function onCommandOutput(event) {
   }
 }
 
+// The /session report opens in its own modal (Esc-closable) rather than as a
+// one-line console note — the report is multi-line and reads far better laid out
+// row by row. The engine sends the whole formatted text; we render each source
+// line as a row, preserving its indent and splitting "label:  value" pairs so
+// headers, fields, and sub-fields are visually distinct.
+function renderSessionReport(text) {
+  sessionModalBodyEl.textContent = "";
+  const lines = text.replace(/\s+$/, "").split("\n");
+  for (const raw of lines) {
+    if (raw.trim() === "") {
+      const gap = document.createElement("div");
+      gap.className = "sr-gap";
+      sessionModalBodyEl.appendChild(gap);
+      continue;
+    }
+    const indent = raw.length - raw.replace(/^ +/, "").length;
+    const content = raw.trim();
+    const row = document.createElement("div");
+    row.className = indent === 0 ? "sr-line sr-head" : indent >= 6 ? "sr-line sr-sub" : "sr-line";
+    if (indent > 0) row.style.paddingLeft = `${Math.min(indent, 8) * 0.7}em`;
+    // "label:  value" (two+ spaces before the value) splits into key/value;
+    // a trailing-colon line is a section header for the rows beneath it.
+    const m = content.match(/^(.*?:)\s{2,}(.+)$/);
+    if (m) {
+      const key = document.createElement("span");
+      key.className = "sr-key";
+      key.textContent = m[1];
+      const val = document.createElement("span");
+      val.className = "sr-val";
+      val.textContent = m[2];
+      row.append(key, val);
+    } else {
+      if (content.endsWith(":")) row.classList.add("sr-section");
+      row.textContent = content;
+    }
+    sessionModalBodyEl.appendChild(row);
+  }
+}
+
+function openSessionModal(text) {
+  renderSessionReport(text);
+  sessionModalEl.classList.remove("hidden");
+  openModalA11y(sessionModalEl, sessionModalDoneEl);
+}
+
+function closeSessionModal() {
+  if (sessionModalEl.classList.contains("hidden")) return;
+  sessionModalEl.classList.add("hidden");
+  closeModalA11y();
+}
+
+if (sessionModalCloseEl) sessionModalCloseEl.addEventListener("click", closeSessionModal);
+if (sessionModalDoneEl) sessionModalDoneEl.addEventListener("click", closeSessionModal);
+if (sessionModalEl) {
+  // Click on the backdrop (outside the box) closes, like the other overlays.
+  sessionModalEl.addEventListener("click", (e) => {
+    if (e.target === sessionModalEl) closeSessionModal();
+  });
+}
+
 function onPermissionRequest(event) {
   permissionQueue.push(event);
   if (!activePermission) showNextPermission();
@@ -547,15 +606,32 @@ function showNextPermission() {
   // would silently behave like ALLOW ONCE.
   const grantable = typeof activePermission.subject === "string" && activePermission.subject !== "";
   if (allowAlwaysBtnEl) allowAlwaysBtnEl.classList.toggle("hidden", !grantable);
-  if (allowAlwaysHintEl) allowAlwaysHintEl.classList.toggle("hidden", !grantable);
+  if (allowAlwaysHintEl) {
+    allowAlwaysHintEl.classList.toggle("hidden", !grantable);
+    // The engine says what "always allow" would remember: a command shape
+    // ("mkdir", "git push") when it can derive one, else this exact command.
+    allowAlwaysHintEl.textContent =
+      typeof activePermission.grant === "string" && activePermission.grant !== ""
+        ? `“Always allow” covers every “${activePermission.grant} …” command in this workspace — other commands still ask.`
+        : "“Always allow” remembers this exact command for this workspace — anything else still asks.";
+  }
+  // Each card starts with a blank note — never carry one card's note onto the next.
+  if (permissionNoteEl) permissionNoteEl.value = "";
   deleteModalEl.classList.remove("hidden");
-  openModalA11y(deleteModalEl);
+  // Initial focus goes to the default action, NOT the note textarea (the
+  // first focusable in DOM order) — otherwise the single-key shortcuts
+  // (Y/A/N) land in the note as typed text. The note is opt-in via Tab/click.
+  openModalA11y(deleteModalEl, allowBtnEl);
   announce(`Approval required: ${subject}`);
 }
 
 function resolvePermission(decision) {
   if (!activePermission) return;
-  window.magentra.respondPermission(activePermission.id, decision);
+  // An optional note rides out with ANY decision — the engine folds it into the
+  // refusal on deny, and delivers it as a system reminder on any allow.
+  const note = permissionNoteEl ? permissionNoteEl.value.trim() : "";
+  window.magentra.respondPermission(activePermission.id, decision, note);
+  if (permissionNoteEl) permissionNoteEl.value = "";
   deleteModalEl.classList.add("hidden");
   closeModalA11y();
   activePermission = null;
@@ -568,6 +644,7 @@ function resolvePermission(decision) {
 function clearPermissionState() {
   permissionQueue = [];
   activePermission = null;
+  if (permissionNoteEl) permissionNoteEl.value = "";
   deleteModalEl.classList.add("hidden");
   closeModalA11y();
 }
@@ -841,11 +918,12 @@ function handleEngineEvent(event) {
     case "command_output":
       onCommandOutput(event);
       break;
+    case "session_report":
+      openSessionModal(event.text || "");
+      announce("Session report opened.");
+      break;
     case "task_list_updated":
       onTaskListUpdated(event);
-      break;
-    case "mode_changed":
-      onModeChanged(event);
       break;
     case "overdrive_changed":
       onOverdriveChanged(event);
@@ -862,6 +940,9 @@ function handleEngineEvent(event) {
       break;
     case "skill_draft":
       onSkillDraft(event);
+      break;
+    case "skill_export":
+      onSkillExport(event);
       break;
     case "missions_updated":
       onMissionsUpdated(event);

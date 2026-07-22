@@ -1,13 +1,12 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import { loadBackpackIndex } from "../knowledge/backpack/index.js";
 import {
   STATE_DIR_NAME,
   type CoreEvent,
   type PermissionDecision,
-  type PermissionMode,
   type TaskItem,
   type Usage,
 } from "@magentra/protocol";
@@ -38,13 +37,13 @@ import {
 import { areaFacts, graphSummary, planAtlasAreas, projectName } from "../knowledge/atlasPlan.js";
 import { loadOrBuildGraph, type GraphData } from "../knowledge/graph.js";
 import { loadStandards } from "../knowledge/standards.js";
-import { contextWindowFor } from "../config/pricing.js";
+import { formatTokens } from "../config/pricing.js";
 import { BackgroundManager } from "../scheduling/background.js";
 import { FileState } from "./fileState.js";
 import type { HookRunner } from "../agent/hooks.js";
 import type { ModeEngine } from "../ma/modes.js";
 import { PermissionEngine, type PermissionRequestPayload } from "./permissions.js";
-import { buildSystemPrompt } from "../agent/prompts.js";
+import { buildSystemPrompt, skillsBlock } from "../agent/prompts.js";
 import { DEBUG_DIR, commandRunsRepro, reproScriptRelPath } from "../ma/debug.js";
 import { SearchLog, evaluateReuseGate, type ReuseGateResult } from "../knowledge/reuseGate.js";
 import { buildSymbolIndex, loadOrBuildSymbolIndex, type SymbolIndexData } from "../knowledge/symbols.js";
@@ -68,6 +67,30 @@ import { Transcript, syntheticToolResults, unansweredToolUseIds } from "../state
 
 const DEFAULT_OUTPUT_LIMIT = 40_000;
 
+/** Conversation-content tokens (message history, not system/tools) after which a
+ * session earns an auto-generated title. Below this the generic default stands —
+ * there isn't enough said yet to summarize meaningfully. */
+const AUTO_NAME_MIN_TOKENS = 2_000;
+
+const AUTO_NAME_ROLE = "You name chat sessions for a coding assistant's sidebar.";
+const AUTO_NAME_INSTRUCTION =
+  "Read the conversation excerpt below and reply with ONLY a short title (3–6 words) " +
+  "naming what it is about. No quotes, no trailing punctuation, no prefix like 'Title:' — just the title itself.";
+
+/** Normalizes a model-authored title into a clean sidebar label: first line only,
+ * quotes/markdown/trailing punctuation stripped, whitespace collapsed, capped to a
+ * few words. Returns "" when nothing usable remains (caller then skips renaming). */
+function cleanSessionTitle(raw: string): string {
+  let s = (raw || "").split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
+  s = s.replace(/^["'`*_#\s]+/, "").replace(/["'`*_\s]+$/, ""); // surrounding quotes/markdown
+  s = s.replace(/^(?:title|session|chat|name)\s*[:\-]\s*/i, ""); // stray "Title:" prefix
+  s = s.replace(/[.。!?！？]+$/, "").replace(/\s+/g, " ").trim(); // trailing punctuation + inner runs
+  if (!s) return "";
+  const words = s.split(" ");
+  if (words.length > 8) s = words.slice(0, 8).join(" ");
+  return s.slice(0, 60);
+}
+
 /** Per-turn cap on auto-recovery / length-continuation nudges (see runTurn). */
 const MAX_AUTO_NUDGES = 3;
 
@@ -83,18 +106,18 @@ const WRAPUP_NUDGE_TEXT =
 const LENGTH_CONTINUATION_TEXT =
   "<system-reminder>Your previous response was cut off by the output-token limit. Continue exactly where you left off.</system-reminder>";
 
-// OVERDRIVE stall handling: with every numeric cap lifted, the only brake is
+// Stall handling: with the interactive numeric caps lifted, the brake is
 // noticing that rounds have stopped producing anything new. Three consecutive
 // identical rounds (same tool calls, same results) = a stall; the first two
 // stalls force a strategy pivot, the third forces one concrete question to the
 // user — never a silent surrender, never an infinite burn.
-const OVERDRIVE_PIVOT_TEXT =
-  "<system-reminder>OVERDRIVE stall: your last rounds repeated the same actions with the same results. This approach is not working — abandon it entirely and try a genuinely different strategy (different tool, different angle, different decomposition). Do not re-issue the failing action.</system-reminder>";
+const STALL_PIVOT_TEXT =
+  "<system-reminder>Stall: your last rounds repeated the same actions with the same results. This approach is not working — abandon it entirely and try a genuinely different strategy (different tool, different angle, different decomposition). Do not re-issue the failing action.</system-reminder>";
 
-const OVERDRIVE_ASK_TEXT =
-  "<system-reminder>OVERDRIVE stall: strategy pivots have not produced progress either. Stop attempting now. Ask the user ONE concrete question with AskUserQuestion: state what you are trying to achieve, what keeps failing and why you think so, and offer the options you see (with your recommendation). If asking is unavailable (you are a subagent), end the turn instead with a clear report of the blocker.</system-reminder>";
+const STALL_ASK_TEXT =
+  "<system-reminder>Stall: strategy pivots have not produced progress either. Stop attempting now. Ask the user ONE concrete question with AskUserQuestion: state what you are trying to achieve, what keeps failing and why you think so, and offer the options you see (with your recommendation). If asking is unavailable (you are a subagent), end the turn instead with a clear report of the blocker.</system-reminder>";
 
-// The OVERDRIVE end check. Deliberately generic: it judges only against the
+// The end-of-turn self check. Deliberately generic: it judges only against the
 // user's query — it must never assume builds, tests, or any other ritual, and
 // the model decides what evidence the query itself calls for.
 // The OVERDRIVE system-prompt section. The autonomy contract: plan first,
@@ -109,11 +132,32 @@ You own this query end to end: plan, act, verify, deliver — without stopping f
 - Deletions inside the workspace run without prompting. That is license to clean up after yourself, not to be careless; anything outside the workspace still asks.
 - Do not stop early: the turn ends only when every part of the query is handled and your self-check passes.`;
 
-const OVERDRIVE_SELF_VERIFY_TEXT =
-  "<system-reminder>OVERDRIVE internal self-check — this is NOT a new user message and the user is NOT waiting for another reply. Your entire output for this step must be either the single word DONE or continued work. Nothing else. Do not greet, do not re-answer, do not summarize, do not introduce yourself.\n\nDecide silently: is every part of the user's original query already fully handled (a conversational message with nothing to do counts as handled), and did this turn leave nothing unnecessary behind (scratch files, duplicated helpers, abandoned attempts)?\n- If YES → output exactly: DONE\n- If NO → do the remaining work now (call tools / write the fix / clean up). Whatever you write in this case IS shown to the user; the DONE token never is.\n\nJudge only against the query itself — never invent verification rituals (builds, tests) it did not ask for.</system-reminder>";
+const SELF_VERIFY_TEXT =
+  "<system-reminder>Internal self-check — this is NOT a new user message and the user is NOT waiting for another reply. Your entire output for this step must be either the single word DONE or continued work. Nothing else. Do not greet, do not re-answer, do not summarize, do not introduce yourself.\n\nDecide silently: is every part of the user's original query already fully handled (a conversational message with nothing to do counts as handled), and did this turn leave nothing unnecessary behind (scratch files, duplicated helpers, abandoned attempts)?\n- If YES → output exactly: DONE\n- If NO → do the remaining work now (call tools / write the fix / clean up). Whatever you write in this case IS shown to the user; the DONE token never is.\n\nJudge only against the query itself — never invent verification rituals (builds, tests) it did not ask for.</system-reminder>";
 
 /** The machine-read sentinel a self-verify round answers with when nothing is left to do. */
 const SELF_VERIFY_DONE_RE = /^\s*DONE[.!…]?\s*$/i;
+
+// ── Clarify pre-layer ───────────────────────────────────────────────────────
+// Before acting on an open-ended request ("build a game", "improve this
+// app"), the same main model first judges whether guessing the unstated
+// choices wrong would force a redo — and only then asks the user up to three
+// concrete multiple-choice questions. Strictly fail-open: any inference
+// error, malformed verdict, or interrupt proceeds without clarifying.
+const CLARIFY_SYSTEM = `You are the clarify pre-layer of an autonomous coding agent. You see ONE incoming user request (plus a snippet of the previous exchange for context) and decide: should the agent ask clarifying questions BEFORE starting, or just start?
+
+Reply with STRICT JSON only — no markdown fences, no prose:
+  {"clarify": false}
+or
+  {"clarify": true, "questions": [{"question": "...?", "header": "max 12 chars", "options": [{"label": "...", "description": "..."}, ...], "multiSelect": false}]}
+
+Set clarify=true ONLY when BOTH hold:
+1. The request is genuinely open-ended: the deliverable's core shape is unstated (kind/genre/technology/scope/audience) — e.g. "build a game", "draw me something", "improve this app".
+2. Guessing wrong would waste real work — the user would likely ask for a redo.
+
+Set clarify=false for everything else: concrete tasks naming a target, questions or explanations, conversational messages, follow-ups whose context already fixes the shape, and anything where a sensible default exists and adjusting later is cheap. When unsure, prefer false — asking needlessly is friction.
+
+Questions: at most 3, each one decision-changing (never a detail that could be adjusted later), 2-4 mutually distinct options with a one-line description each; put your recommended option first with " (Recommended)" appended to its label. multiSelect true only when choices genuinely combine.`;
 
 const PLAN_FIRST_REMINDER =
   "The task list is empty. If this request needs more than a couple of steps, first create a plan with TaskCreate — one task per step, the last one a verification task stating the expected end state — before making any edits. Trivial requests can proceed directly.";
@@ -233,14 +277,22 @@ export class Session {
    * Session-scoped, persisted in the meta snapshot so /resume restores it.
    */
   private overdrive = false;
+  /** Auto-compact at this many context tokens; 0 = off (nothing auto-compacts).
+   *  Its ONLY source is the UI's set_compact_limit frame — no settings key, no
+   *  /settings path — so the value can never disagree with what the UI shows. */
+  private autoCompactLimit = 0;
   /** While true, streamAssistantTurn accumulates text/thinking but does not
    *  emit it — used to run the OVERDRIVE self-verify round silently so a clean
    *  "DONE" never reaches the UI as a second message. */
   private suppressAssistantText = false;
   /** Usage totals of the most recently completed turn (undefined before the first turn ends). */
   lastTurnUsage: Usage | undefined;
-  /** User-assigned session name (rename_session); persisted in the meta snapshot. */
+  /** User-assigned OR auto-generated session name; persisted in the meta snapshot.
+   *  A manual rename sets this too, which blocks auto-naming from overriding it. */
   label: string | undefined;
+  /** True once auto-naming has run (or been superseded by a manual name) — it
+   *  fires at most once per session so the sidebar title doesn't churn. */
+  private autoNameDone = false;
   /** True once the empty-task-list plan-first reminder has fired and the list has stayed empty since. */
   private planReminderFired = false;
   /** True once the missing-atlas reminder has fired for this session. */
@@ -248,11 +300,9 @@ export class Session {
   /** True once the first-turn `/atlas` hint has fired (once per session, never for subagents). */
   private atlasHintFired = false;
   private readonly hooks: HookRunner | undefined;
-  /** Reuse gate: tokenized record of related searches/queries made this session. */
+  /** Reuse check: tokenized record of related searches/queries made this session. */
   private readonly searchLog = new SearchLog();
-  /** Reuse gate: target paths already refused once, so the confirm-retry passes. */
-  private readonly reuseBlocked = new Set<string>();
-  /** Reuse gate: the workspace symbol index, loaded once then refreshed incrementally. */
+  /** Reuse check: the workspace symbol index, loaded once then refreshed incrementally. */
   private symbolIndexCache: SymbolIndexData | undefined;
   /** debug.ma repro oracle: the designated repro script has been observed exiting nonzero (bug reproduced) — unlocks the repro-failed gate. */
   private reproFailedObserved = false;
@@ -306,12 +356,11 @@ export class Session {
     this.permissions =
       opts.permissionEngine ??
       new PermissionEngine(
-        opts.settings.permissionMode,
         opts.settings.permissions,
         async (req, approvalSource) => {
         // Unattended runs never block on a human: deny with a reason instead.
-        // In the default bypass-mode unattended run, only the deletion guard
-        // reaches here — so destructive calls are exactly what this refuses.
+        // Unattended runs use the OVERDRIVE stance, so only the deletion
+        // guard reaches here — destructive calls are exactly what this refuses.
         if (this.unattended) {
           this.transcript.append({
             kind: "permission",
@@ -338,16 +387,17 @@ export class Session {
         return res;
       },
         // "Always allow" writes the grant into this workspace's settings, so
-        // the same command stops asking in later sessions too.
-        (tool, subject) => {
+        // the same command (or command shape, for prefix grants) stops asking
+        // in later sessions too.
+        (tool, subject, prefix = false) => {
           // The in-memory settings object outlives this session — /clear builds
           // the next one from it. Without this, a grant would be forgotten
           // until the app restarted and re-read the file it just wrote.
           const exact = opts.settings.permissions.allowExact;
-          if (!exact.some((g) => g.tool === tool && g.subject === subject)) {
-            exact.push({ tool, subject });
+          if (!exact.some((g) => g.tool === tool && g.subject === subject && (g.prefix === true) === prefix)) {
+            exact.push({ tool, subject, ...(prefix ? { prefix: true } : {}) });
           }
-          addExactPermission(this.cwd, tool, subject);
+          addExactPermission(this.cwd, tool, subject, prefix);
         },
     );
     this.services = {
@@ -441,31 +491,14 @@ export class Session {
     );
   }
 
-  /** The permission mode that was active when OVERDRIVE engaged, for restore on disable. */
-  private modeBeforeOverdrive: PermissionMode | undefined;
-
-  /** OVERDRIVE toggle. Emits the state change so every frontend can sync its indicator. */
+  /** OVERDRIVE toggle. The permission stance flips with it (allow-all vs
+   *  ask-for-commands); the turn-loop policy is identical in both states.
+   *  Emits the state change so every frontend can sync its indicator. */
   setOverdrive(enabled: boolean): void {
     if (this.overdrive === enabled) return;
     this.overdrive = enabled;
     this.permissions.setOverdrive(enabled);
     this.setPromptSection("overdrive", enabled ? OVERDRIVE_PROMPT_SECTION : undefined);
-    // The mode's contract is "nothing blocks the flow" — a default-mode ask
-    // prompt would. Engaging raises the permission floor to bypass; disabling
-    // restores the prior mode unless the user changed it mid-run themselves.
-    if (enabled) {
-      this.modeBeforeOverdrive = this.permissions.getMode();
-      if (this.modeBeforeOverdrive !== "bypass") {
-        this.permissions.setMode("bypass");
-        this.emit({ type: "mode_changed", mode: "bypass" });
-      }
-    } else {
-      if (this.modeBeforeOverdrive !== undefined && this.permissions.getMode() === "bypass") {
-        this.permissions.setMode(this.modeBeforeOverdrive);
-        this.emit({ type: "mode_changed", mode: this.modeBeforeOverdrive });
-      }
-      this.modeBeforeOverdrive = undefined;
-    }
     this.emit({ type: "overdrive_changed", enabled });
   }
 
@@ -508,11 +541,19 @@ export class Session {
     }
   }
 
-  /** One-shot completion on the small model, no tools; returns concatenated text. */
-  async runInference(opts: { system: string; user: string; maxTokens: number }): Promise<string> {
+  /** One-shot completion with no tools; returns concatenated text. Runs on the
+   *  small model unless `model` overrides it (the clarify pre-layer runs on
+   *  the main model by design). */
+  async runInference(opts: {
+    system: string;
+    user: string;
+    maxTokens: number;
+    model?: string;
+    provider?: Provider;
+  }): Promise<string> {
     let text = "";
-    const stream = this.provider.stream({
-      model: this.settings.smallModel ?? this.settings.model,
+    const stream = (opts.provider ?? this.provider).stream({
+      model: opts.model ?? this.settings.smallModel ?? this.settings.model,
       system: opts.system,
       messages: [{ role: "user", content: [{ type: "text", text: opts.user }] }],
       tools: [],
@@ -610,13 +651,13 @@ export class Session {
       }
     }
     const baseSettings = crew ? { ...this.settings, model: crewModel ?? this.settings.model } : this.settings;
-    // OVERDRIVE children inherit the lifted budgets — a capped child inside an
-    // uncapped run is a hidden stop. Budgets only: the child gets no self-verify
-    // rung or prompt section (its parent judges its result), and an explicit
-    // spawn-time iteration cap (e.g. the atlas pipeline's) still wins.
-    const liftedSettings = this.overdrive
-      ? { ...baseSettings, maxIterationsPerTurn: Number.MAX_SAFE_INTEGER, maxTokensPerTurn: Number.MAX_SAFE_INTEGER }
-      : baseSettings;
+    // Interactive children inherit the lifted budgets — a capped child inside
+    // an uncapped run is a hidden stop. An explicit spawn-time iteration cap
+    // (e.g. the atlas pipeline's) still wins, and unattended (mission) runs
+    // keep their configured budgets so a scheduled run stays bounded.
+    const liftedSettings = this.unattended
+      ? baseSettings
+      : { ...baseSettings, maxIterationsPerTurn: Number.MAX_SAFE_INTEGER, maxTokensPerTurn: Number.MAX_SAFE_INTEGER };
     const childSettings =
       opts.maxIterations !== undefined
         ? { ...liftedSettings, maxIterationsPerTurn: opts.maxIterations }
@@ -1018,6 +1059,50 @@ export class Session {
     }
   }
 
+  /**
+   * Clarify pre-layer: judges the incoming request with the MAIN model and,
+   * when it is genuinely open-ended, asks the user up to three shape-defining
+   * multiple-choice questions before any work starts. Returns the answers as
+   * a text block to ride with the user message, or undefined to just start.
+   * Strictly fail-open — a broken verdict must never cost the user the turn.
+   */
+  private async maybeClarify(userText: string): Promise<string | undefined> {
+    // Compact recent context so a follow-up ("improve it") is judged with the
+    // preceding exchange in view instead of looking open-ended in isolation.
+    const recent = this.messages
+      .slice(-4)
+      .map((m) => ({ role: m.role, text: assistantText(m) }))
+      .filter((m) => m.text.trim().length > 0)
+      .slice(-2)
+      .map((m) => `${m.role}: ${m.text.length > 400 ? `${m.text.slice(0, 400)}…` : m.text}`)
+      .join("\n");
+    let raw: string;
+    try {
+      raw = await this.runInference({
+        system: CLARIFY_SYSTEM,
+        user: `${recent ? `Previous exchange:\n${recent}\n\n` : ""}Incoming request:\n${userText}`,
+        maxTokens: 600,
+        model: this.settings.model,
+      });
+    } catch {
+      return undefined;
+    }
+    const questions = parseClarifyVerdict(raw);
+    if (questions === undefined) return undefined;
+    this.emit({ type: "command_output", text: "🧭 open-ended request — clarifying before starting" });
+    let answers: Record<string, string[]>;
+    try {
+      answers = await this.opts.askUser(`q_${randomBytes(4).toString("hex")}`, questions);
+    } catch {
+      return undefined;
+    }
+    const lines = questions.map((q, idx) => {
+      const selected = answers[`q:${idx}`] ?? answers[q.question] ?? [];
+      return `${q.question}\n-> ${selected.length > 0 ? selected.join(", ") : "(no answer)"}`;
+    });
+    return `<system-reminder>Clarify pre-layer: before starting, the user answered these questions — honor the answers as requirements. Unanswered questions are yours to decide sensibly:\n\n${lines.join("\n\n")}</system-reminder>`;
+  }
+
   /** Runs one full user turn: model call -> tool calls -> ... -> final text. */
   async runTurn(userText: string): Promise<void> {
     if (this.busy) throw new Error("session is already processing a turn");
@@ -1082,6 +1167,14 @@ export class Session {
 
     this.emit({ type: "turn_started", turnId });
 
+    // Clarify pre-layer: on a genuinely open-ended request, the few
+    // shape-defining questions come BEFORE any work. Root attended turns
+    // only — children report to their parent, unattended runs have no user.
+    let clarification: string | undefined;
+    if (this.settings.clarify && !this.opts.child && !this.unattended) {
+      clarification = await this.maybeClarify(userText);
+    }
+
     // OVERDRIVE safety net: before an uncapped autonomous turn starts, park a
     // dangling stash commit of the working tree so anything an in-workspace
     // deletion later removes stays recoverable. Root sessions only — children
@@ -1101,25 +1194,31 @@ export class Session {
       this.atlasReminderFired = true;
     }
 
-    this.pushMessage({ role: "user", content: this.withReminders([{ type: "text", text: userText }]) });
+    this.pushMessage({
+      role: "user",
+      content: this.withReminders([
+        { type: "text", text: userText },
+        ...(clarification !== undefined ? [{ type: "text" as const, text: clarification }] : []),
+      ]),
+    });
 
     let stopReason: string = "end_turn";
     let stopHookFired = false;
     let lastBatchHadError = false;
     let nudgeCount = 0;
-    // OVERDRIVE: the signal-driven recovery rungs (length cutoff, failed batch,
-    // open tasks) may fire without limit — giving up after three saves is
-    // itself a stop. The wrap-up rung keeps the cap; the self-verify rung
-    // demands a proper closing statement in this mode anyway.
-    const nudgeLimit = this.overdrive ? Number.POSITIVE_INFINITY : MAX_AUTO_NUDGES;
-    // Once per turn (re-armed when mid-run steering arrives): the OVERDRIVE
-    // end check that gates a clean break on "is the query truly handled".
+    // The interactive root turn runs uncapped — the stall detector is the
+    // brake. Only unattended (mission) runs and children keep the numeric
+    // budgets: a mission's budgetTokens must bound a run nobody is watching,
+    // and an explicit spawn-time child cap must still be enforced.
+    const capped = this.unattended || (this.opts.child ?? false);
+    // Once per turn (re-armed when mid-run steering arrives): the end check
+    // that gates a clean break on "is the query truly handled".
     let selfVerifyFired = false;
     // True for exactly the one streamed response that answers the self-verify
     // injection — that response is buffered (not shown live) so a clean DONE
     // stays invisible and only genuine follow-up work reaches the user.
     let verifyBuffered = false;
-    // OVERDRIVE stall detector state: the previous round's signature (tool
+    // Stall detector state: the previous round's signature (tool
     // calls + results), how many consecutive rounds matched it, and how many
     // strategy pivots have been spent (2 pivots, then ask the user).
     let lastRoundSig = "";
@@ -1148,9 +1247,9 @@ export class Session {
     };
     try {
       for (let iteration = 0; ; iteration++) {
-        // OVERDRIVE lifts the per-turn budgets entirely: the turn runs until
-        // the query is handled (self-verify rung) or the user interrupts.
-        if (!this.overdrive && iteration >= this.settings.maxIterationsPerTurn) {
+        // Interactive root turns run uncapped: the turn runs until the query
+        // is handled (self-verify rung) or the user interrupts.
+        if (capped && iteration >= this.settings.maxIterationsPerTurn) {
           this.emit({
             type: "command_output",
             text: `⏸ Iteration cap reached (${iteration} tool rounds) — send any message to continue.`,
@@ -1158,7 +1257,7 @@ export class Session {
           stopReason = "max_iterations";
           break;
         }
-        if (!this.overdrive && turnUsage.outputTokens > this.settings.maxTokensPerTurn) {
+        if (capped && turnUsage.outputTokens > this.settings.maxTokensPerTurn) {
           this.emit({
             type: "command_output",
             text: `⏸ Turn token budget reached (${turnUsage.outputTokens} output tokens) — send any message to continue.`,
@@ -1179,7 +1278,7 @@ export class Session {
         turnUsage.cacheReadTokens += end.usage.cacheReadTokens;
         turnUsage.cacheWriteTokens += end.usage.cacheWriteTokens;
 
-        // OVERDRIVE self-verify result: this one response was streamed silently.
+        // Self-verify result: this one response was streamed silently.
         // A bare DONE means the query was already handled — end the turn with
         // no second message. Anything else is genuine follow-up work or a
         // revised answer, so reveal the buffered text now and let it flow.
@@ -1191,7 +1290,11 @@ export class Session {
             // Record the sentinel so history stays well-formed; it is never
             // rendered. The user's single original answer stands as the reply.
             if (assistant.content.length > 0) this.pushMessage(assistant);
-            this.emit({ type: "command_output", text: "✓ overdrive: verified — nothing left to do" });
+            // The status chatter is OVERDRIVE identity flavor; the plain
+            // stance verifies just as silently as it works.
+            if (this.overdrive) {
+              this.emit({ type: "command_output", text: "✓ overdrive: verified — nothing left to do" });
+            }
             stopReason = "end_turn";
             break;
           }
@@ -1229,7 +1332,7 @@ export class Session {
           // LAYER 3: the provider cut the response off at the output-token
           // limit with no tool calls pending — resume rather than ending the
           // turn on a truncated answer.
-          if (stopReason === "max_tokens" && nudgeCount < nudgeLimit) {
+          if (stopReason === "max_tokens") {
             nudgeCount++;
             this.emit({ type: "command_output", text: "↻ continuing after output-length cutoff" });
             this.pushMessage({ role: "user", content: [{ type: "text", text: LENGTH_CONTINUATION_TEXT }] });
@@ -1258,9 +1361,9 @@ export class Session {
           // LAYER 2: the previous tool-result batch had a failure and the
           // turn is ending regardless of what the final text says — weak
           // models sometimes bury a failure under a long non-answer. Nudge
-          // it to keep going, capped so a persistently failing model still
-          // terminates.
-          if (stopReason === "end_turn" && lastBatchHadError && nudgeCount < nudgeLimit) {
+          // it to keep going; the stall detector terminates a model that
+          // keeps failing identically.
+          if (stopReason === "end_turn" && lastBatchHadError) {
             nudgeCount++;
             this.emit({
               type: "command_output",
@@ -1274,7 +1377,7 @@ export class Session {
           // pending or in-progress work — nudge the model to finish or
           // explicitly justify leaving it open. Checked after error-recovery
           // (a failure takes priority) and before the wrap-up nudge.
-          if (stopReason === "end_turn" && !lastBatchHadError && nudgeCount < nudgeLimit) {
+          if (stopReason === "end_turn" && !lastBatchHadError) {
             const incomplete = this.tasks.list().filter((t) => t.status === "pending" || t.status === "in_progress");
             if (incomplete.length > 0) {
               nudgeCount++;
@@ -1284,18 +1387,20 @@ export class Session {
             }
           }
 
-          // OVERDRIVE self-verify rung: the first time the turn tries to end
-          // cleanly, make the model check the outcome against the original
-          // query (completeness + economy) before the break is allowed. Runs
-          // after the signal rungs above — a real failure or open task list
-          // always outranks a politeness check — and before the wrap-up rung,
-          // which it subsumes in this mode.
-          if (this.overdrive && stopReason === "end_turn" && !selfVerifyFired) {
+          // Self-verify rung: the first time the turn tries to end cleanly,
+          // make the model check the outcome against the original query
+          // (completeness + economy) before the break is allowed. Runs after
+          // the signal rungs above — a real failure or open task list always
+          // outranks a politeness check — and before the wrap-up rung, which
+          // it subsumes.
+          if (stopReason === "end_turn" && !selfVerifyFired) {
             selfVerifyFired = true;
             verifyBuffered = true;
             this.suppressAssistantText = true; // the verify answer streams silently
-            this.emit({ type: "command_output", text: "⚡ overdrive: self-verifying against the original query" });
-            this.pushMessage({ role: "user", content: [{ type: "text", text: OVERDRIVE_SELF_VERIFY_TEXT }] });
+            if (this.overdrive) {
+              this.emit({ type: "command_output", text: "⚡ overdrive: self-verifying against the original query" });
+            }
+            this.pushMessage({ role: "user", content: [{ type: "text", text: SELF_VERIFY_TEXT }] });
             continue;
           }
 
@@ -1333,11 +1438,11 @@ export class Session {
           this.remind(ERROR_BATCH_REMINDER);
           for (const text of this.opts.modeEngine?.afterErrorInjections() ?? []) this.remind(text);
         }
-        // OVERDRIVE stall detector: a round that exactly repeats the previous
-        // one (same calls, same results) produced nothing new. Three in a row
-        // is a stall — force a strategy pivot; after two spent pivots, force
-        // one concrete question to the user instead of burning forever.
-        if (this.overdrive) {
+        // Stall detector: a round that exactly repeats the previous one (same
+        // calls, same results) produced nothing new. Three in a row is a
+        // stall — force a strategy pivot; after two spent pivots, force one
+        // concrete question to the user instead of burning forever.
+        {
           const sig = JSON.stringify([toolCalls.map((c) => c.name + c.json), results]);
           identicalRounds = sig === lastRoundSig ? identicalRounds + 1 : 0;
           lastRoundSig = sig;
@@ -1345,11 +1450,11 @@ export class Session {
             identicalRounds = 0;
             if (pivotCount < 2) {
               pivotCount++;
-              this.emit({ type: "command_output", text: `⚡ overdrive: stall detected — forcing strategy pivot ${pivotCount}/2` });
-              this.remind(OVERDRIVE_PIVOT_TEXT);
+              this.emit({ type: "command_output", text: `⚡ stall detected — forcing strategy pivot ${pivotCount}/2` });
+              this.remind(STALL_PIVOT_TEXT);
             } else {
-              this.emit({ type: "command_output", text: "⚡ overdrive: still stalled after pivots — asking the user" });
-              this.remind(OVERDRIVE_ASK_TEXT);
+              this.emit({ type: "command_output", text: "⚡ still stalled after pivots — asking the user" });
+              this.remind(STALL_ASK_TEXT);
             }
           }
         }
@@ -1358,7 +1463,7 @@ export class Session {
         // that final round (teaching, not enforcement): a weak model that
         // over-explores otherwise ends the turn cut off mid-exploration with
         // no final answer — the atlas build was the canonical casualty.
-        if (!this.overdrive && iteration === this.settings.maxIterationsPerTurn - 2) {
+        if (capped && iteration === this.settings.maxIterationsPerTurn - 2) {
           this.remind(
             "Final tool round: the per-turn iteration cap is reached after this response. Give your complete final answer now — further tool calls will be cut off.",
           );
@@ -1409,27 +1514,27 @@ export class Session {
       this.suppressAssistantText = false;
       this.abortController = undefined;
       this.lastTurnUsage = turnUsage;
-      const totalCostUsd = this.stats.totalCost(this.settings);
       this.emit({
         type: "turn_finished",
         turnId,
         stopReason,
         usage: turnUsage,
         contextTokens: this.stats.contextTokens,
-        ...(totalCostUsd !== undefined ? { totalCostUsd } : {}),
+        // Cost is intentionally not surfaced: our token counting and a
+        // provider's billing can diverge, so any figure risks misinforming.
+        ...(this.contextOverWarnThreshold() ? { contextWarn: true } : {}),
         ...(this.overdrive && this.overdriveSnapshotRef !== undefined
           ? { overdriveSnapshot: this.overdriveSnapshotRef }
           : {}),
       });
-      // Snapshot the tree-wide ledger + mode so /resume restores real
-      // accounting instead of a $0.00 session. Children share the root's
-      // ledger, so only the root writes it.
+      // Snapshot the tree-wide ledger so /resume restores real accounting
+      // instead of a $0.00 session. Children share the root's ledger, so only
+      // the root writes it.
       if (!this.opts.child) {
         this.transcript.append({
           kind: "meta",
           data: {
             stats: this.stats.snapshot(),
-            mode: this.permissions.getMode(),
             model: this.settings.model,
             overdrive: this.overdrive,
             ...(this.label !== undefined ? { label: this.label } : {}),
@@ -1501,6 +1606,15 @@ export class Session {
     // took, and the context size it reveals. Shared with the parent session, so
     // a crew/subagent's spend lands in the same /session report.
     this.stats.recordResponse(model, end.usage, Date.now() - apiStartedAt);
+    // Provider omitted usage (some do on very large prompts): recordResponse
+    // kept the prior size, but this turn's history may have grown. Fall back to
+    // a conservative estimate from the real messages so the compaction safety
+    // still sees roughly the true size instead of a stale, too-small number.
+    const measured =
+      end.usage.inputTokens + end.usage.cacheReadTokens + end.usage.cacheWriteTokens + end.usage.outputTokens;
+    if (measured === 0) {
+      this.stats.contextTokens = Math.max(this.stats.contextTokens, this.estimateContextTokens());
+    }
 
     if (thinking) blocks.push({ type: "thinking", thinking });
     if (text) blocks.push({ type: "text", text });
@@ -1547,8 +1661,13 @@ export class Session {
       }
 
       const input = parsed.data as never;
-      const subject = tool.permissionSubject?.(input);
+      let subject = tool.permissionSubject?.(input);
       const description = tool.describeInput?.(input);
+      // A file edit that escapes the workspace must ask (it auto-runs inside).
+      // Surface the absolute path as the subject so the prompt names it and an
+      // "always allow" can grant that exact path.
+      const editOutsidePath = tool.isFileEdit ? this.fileEditOutsideWorkspace(input) : undefined;
+      if (editOutsidePath && subject === undefined) subject = editOutsidePath;
       planned.push({
         call,
         parallel: tool.permissionClass === "read" || tool.parallelSafe === true,
@@ -1583,12 +1702,9 @@ export class Session {
           }
           if (tool.name === "Write") {
             const gate = this.evaluateWriteReuseGate(input);
-            // OVERDRIVE never blocks the flow: a would-be block becomes the
-            // same text as a reminder — the signal survives, the refusal doesn't.
-            if (gate.kind === "block") {
-              if (!this.overdrive) return { content: gate.text, isError: true };
-              this.remind(gate.text);
-            }
+            // The reuse check never blocks the flow — the reminder rides
+            // along with the allowed Write (silent refusals were the root of
+            // "it suddenly stops").
             if (gate.kind === "remind") this.remind(gate.text);
           }
           if (this.hooks?.has("PreToolUse")) {
@@ -1614,6 +1730,8 @@ export class Session {
             // dirs) must hold even outside OVERDRIVE. The tool sees its own
             // effective cwd via the context.
             tool.deletionScope?.(input, { ...this.toolContext(), callId: call.id }),
+            // A file edit landing outside the workspace is not auto-safe.
+            editOutsidePath !== undefined,
           );
           if (outcome.source !== "user") {
             this.transcript.append({
@@ -1626,6 +1744,13 @@ export class Session {
           }
           if (!outcome.allowed) {
             return { content: outcome.message ?? "Permission denied.", isError: true };
+          }
+          // A note attached to an APPROVAL rides along with this round's
+          // results — the user let the call run but wants it steered.
+          if (outcome.note !== undefined && outcome.note.trim() !== "") {
+            this.remind(
+              `The user approved this ${tool.name} call but attached a note — read it and adjust your approach accordingly:\n${outcome.note.trim()}`,
+            );
           }
           this.emit({
             type: "tool_call_started",
@@ -1736,6 +1861,27 @@ export class Session {
   }
 
   /**
+   * The absolute target of a file-edit call when it lands OUTSIDE the workspace,
+   * else undefined. File edits auto-run inside the workspace (the frictionless
+   * default), but an edit that escapes the tree — a shell profile, an SSH key,
+   * a system file — is exactly what a prompt-injection would attempt, so it must
+   * ask first. Reads the path field structurally (no dependency on @magentra/tools).
+   */
+  private fileEditOutsideWorkspace(input: unknown): string | undefined {
+    if (typeof input !== "object" || input === null) return undefined;
+    const rec = input as Record<string, unknown>;
+    const raw =
+      typeof rec.file_path === "string" ? rec.file_path
+      : typeof rec.path === "string" ? rec.path
+      : typeof rec.notebook_path === "string" ? rec.notebook_path
+      : undefined;
+    if (!raw) return undefined;
+    const abs = isAbsolute(raw) ? resolve(raw) : resolve(this.cwd, raw);
+    const root = resolve(this.cwd);
+    return abs !== root && !abs.startsWith(root + sep) ? abs : undefined;
+  }
+
+  /**
    * Reuse gate for a Write call. Reads `file_path`/`content` structurally (this
    * module must not depend on @magentra/tools) and delegates to the pure
    * evaluator. Fails open on any throw — the gate must never break a Write.
@@ -1754,7 +1900,6 @@ export class Session {
         this.settings.reuseCheck,
         this.searchLog,
         (p) => this.fileState.wasRead(p),
-        this.reuseBlocked,
         () => this.loadSymbolIndex(),
       );
     } catch {
@@ -1781,11 +1926,134 @@ export class Session {
     this.transcript.append({ kind: "message", message: msg });
   }
 
-  /** Summarize the oldest span when the context estimate crosses the threshold. */
+  /**
+   * A conservative token estimate of the current message history, used only when
+   * the provider gave no usage to measure from. ~3.5 chars/token (deliberately
+   * low, so it OVER-counts) — better to compact a little early than to
+   * under-count and overflow the provider.
+   */
+  private estimateContextTokens(): number {
+    let chars = 0;
+    for (const m of this.messages) chars += JSON.stringify(m.content).length;
+    return this.estimateTokens(chars);
+  }
+
+  /** Estimated token weight of the CONVERSATION alone (message history), excluding
+   * the fixed system prompt + tool schemas. Auto-naming keys off this so the
+   * ~12k baseline of an empty chat doesn't count as "enough to summarize". */
+  conversationTokens(): number {
+    return this.estimateContextTokens();
+  }
+
+  /** A compact plain-text digest of the conversation for summarization: user and
+   * assistant prose only (tool calls/results skipped as noise), oldest first,
+   * truncated to maxChars — the topic is usually set early. */
+  private conversationDigest(maxChars: number): string {
+    const parts: string[] = [];
+    for (const m of this.messages) {
+      if (m.role !== "user" && m.role !== "assistant") continue;
+      const text = m.content
+        .filter((b): b is { type: "text"; text: string } => b.type === "text")
+        .map((b) => b.text)
+        .join(" ")
+        .trim();
+      if (!text) continue;
+      parts.push(`${m.role === "user" ? "User" : "Assistant"}: ${text}`);
+      if (parts.join("\n").length >= maxChars) break;
+    }
+    return parts.join("\n").slice(0, maxChars);
+  }
+
+  /**
+   * Once the conversation is substantial enough to summarize, generate a short
+   * title for it — a cheap smallModel call — so the sidebar stops showing the
+   * generic default name. Returns the new label (for the engine to persist +
+   * broadcast), or undefined when it isn't due: too early, already named
+   * (manually or auto), or generation produced nothing usable. Fires at most once
+   * per session. The engine calls this only after a turn settles (model is free);
+   * `runInference` is stateless so it never disturbs the live conversation.
+   */
+  async maybeAutoName(): Promise<string | undefined> {
+    if (this.autoNameDone || this.label) return undefined;
+    if (this.conversationTokens() < AUTO_NAME_MIN_TOKENS) return undefined;
+    this.autoNameDone = true; // claim before the await so two settling turns can't both fire
+    try {
+      const raw = await this.runInference({
+        system: AUTO_NAME_ROLE,
+        user: `${AUTO_NAME_INSTRUCTION}\n\n---\n${this.conversationDigest(4000)}\n---`,
+        maxTokens: 24,
+      });
+      const label = cleanSessionTitle(raw);
+      if (!label) {
+        this.autoNameDone = false; // nothing usable — let a later turn try again
+        return undefined;
+      }
+      this.label = label;
+      return label;
+    } catch {
+      this.autoNameDone = false; // transient failure — retry on a later turn
+      return undefined;
+    }
+  }
+
+  /** Rough token count from a character length (or a string), ~3.5 chars/token,
+   * rounded up. Deliberately low chars/token so it over-counts rather than under. */
+  private estimateTokens(input: string | number): number {
+    const chars = typeof input === "number" ? input : input.length;
+    return Math.ceil(chars / 3.5);
+  }
+
+  /**
+   * A composition estimate of what currently fills the context, for the /session
+   * report. Each part is an ESTIMATE (~3.5 chars/token) of its own size — the
+   * measured total (`stats.contextTokens`, from provider usage) is the source of
+   * truth and will not sum to these exactly. Skills physically live inside the
+   * system string; they are broken out so their weight is visible on its own.
+   * `limit` is the user's auto-compact limit (0 = none set), used to show free
+   * space; without a limit there is no window to compute free space against.
+   */
+  contextBreakdown(): {
+    systemPrompt: number;
+    tools: number;
+    skills: number;
+    messages: number;
+    limit: number;
+  } {
+    const skillsText = skillsBlock(this.opts.skills ?? []) ?? "";
+    const skills = this.estimateTokens(skillsText);
+    // System prompt without the skills block, so the two don't double-count.
+    const systemPrompt = Math.max(0, this.estimateTokens(this.buildSystemPrompt()) - skills);
+    const tools = this.estimateTokens(JSON.stringify(this.toolSchemas()));
+    const messages = this.estimateContextTokens();
+    return { systemPrompt, tools, skills, messages, limit: this.autoCompactLimit };
+  }
+
+  /** Set the auto-compact token limit. 0 (or invalid) disables auto-compaction.
+   * The ONLY source of this value is the UI's set_compact_limit frame — there is
+   * deliberately no settings key or /settings path, so it can never disagree. */
+  setAutoCompactLimit(limit: number): void {
+    this.autoCompactLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+  }
+
+  /** True when the context is within 10% of the user's auto-compact limit — the
+   * UI tints its counter as it approaches. False when no limit is set. The engine
+   * never guesses the model window; this is purely the user's own chosen number. */
+  contextOverWarnThreshold(): boolean {
+    return this.autoCompactLimit > 0 && this.stats.contextTokens >= Math.floor(this.autoCompactLimit * 0.9);
+  }
+
+  /**
+   * Compaction is either MANUAL (`/compact`, force) or fires at a limit the user
+   * set in the UI. With no limit set (the default) nothing is compacted
+   * automatically — the engine never guesses the model's usable window (it varies
+   * by provider, tier, and endpoint, so any guess misinforms). The user knows
+   * their own model's size and sets the limit if they want one. Returns whether
+   * it compacted.
+   */
   async maybeCompact(force = false): Promise<boolean> {
-    const window = contextWindowFor(this.settings.model, this.settings);
-    const threshold = window * this.settings.compactionThreshold;
-    if (!force && this.stats.contextTokens < threshold) return false;
+    if (!force) {
+      if (this.autoCompactLimit <= 0 || this.stats.contextTokens < this.autoCompactLimit) return false;
+    }
 
     // Keep the most recent messages (a shorter tail under /compact force, so a
     // small history can still be squeezed), but never split a tool_use from
@@ -1814,12 +2082,14 @@ export class Session {
     // The original skill reminders likely lived in the summarized span — let
     // the next turn re-establish them in the surviving conversation.
     this.injectedSkillReminders.clear();
-    // An automatic (threshold) compaction must not be silent — mid-turn it
-    // would otherwise look like the agent quietly forgot the conversation.
+    // An auto-compaction (non-forced) must not be silent — mid-turn it would
+    // otherwise look like the agent quietly forgot the conversation. The note
+    // names WHY it happened (the user's limit) and where to change it, so it is
+    // never a mystery. Forced /compact prints its own confirmation elsewhere.
     if (!force) {
       this.emit({
         type: "command_output",
-        text: `🗜 context compacted automatically (${before} tokens — over ${Math.round(this.settings.compactionThreshold * 100)}% of the ${window}-token window)`,
+        text: `🗜 Auto-compacted (~${formatTokens(before)} tokens summarized): the context reached your auto-compact limit of ${formatTokens(this.autoCompactLimit)} tokens. Raise or turn it off in Settings → Context.`,
       });
     }
     return true;
@@ -1895,6 +2165,51 @@ function finalAssistantText(session: Session): string {
     if (text.trim()) return text;
   }
   return NO_SUBAGENT_TEXT;
+}
+
+/**
+ * Parses the clarify pre-layer's verdict into protocol-shaped questions.
+ * Returns undefined for clarify:false, malformed JSON, or nothing usable —
+ * every failure path means "just start" (fail-open by design).
+ */
+function parseClarifyVerdict(
+  raw: string,
+): Array<{ question: string; header: string; options: Array<{ label: string; description: string }>; multiSelect: boolean }> | undefined {
+  const jsonText = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const rec = parsed as Record<string, unknown>;
+  if (rec.clarify !== true || !Array.isArray(rec.questions)) return undefined;
+  const questions = rec.questions
+    .slice(0, 3)
+    .flatMap((q) => {
+      if (typeof q !== "object" || q === null) return [];
+      const qr = q as Record<string, unknown>;
+      if (typeof qr.question !== "string" || qr.question.trim() === "" || !Array.isArray(qr.options)) return [];
+      const options = qr.options
+        .slice(0, 4)
+        .flatMap((o) => {
+          if (typeof o !== "object" || o === null) return [];
+          const or = o as Record<string, unknown>;
+          if (typeof or.label !== "string" || or.label.trim() === "") return [];
+          return [{ label: or.label, description: typeof or.description === "string" ? or.description : "" }];
+        });
+      if (options.length < 2) return [];
+      return [
+        {
+          question: qr.question,
+          header: typeof qr.header === "string" && qr.header.trim() !== "" ? qr.header.slice(0, 12) : "Clarify",
+          options,
+          multiSelect: qr.multiSelect === true,
+        },
+      ];
+    });
+  return questions.length > 0 ? questions : undefined;
 }
 
 /** Total length of the text blocks in an assistant message (used to detect a bare give-up). */

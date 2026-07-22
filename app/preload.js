@@ -1,6 +1,6 @@
 "use strict";
 
-const { contextBridge, ipcRenderer, webUtils } = require("electron");
+const { contextBridge, ipcRenderer, webUtils, webFrame } = require("electron");
 
 contextBridge.exposeInMainWorld("magentra", {
   getConfig: () => ipcRenderer.invoke("config:get"),
@@ -13,7 +13,8 @@ contextBridge.exposeInMainWorld("magentra", {
   setModes: (activeIds) => ipcRenderer.send("engine:setModes", activeIds),
   interrupt: () => ipcRenderer.send("engine:interrupt"),
   restartEngine: () => ipcRenderer.send("engine:restart"),
-  respondPermission: (id, decision) => ipcRenderer.send("engine:permission", { id, decision }),
+  respondPermission: (id, decision, message) =>
+    ipcRenderer.send("engine:permission", message ? { id, decision, message } : { id, decision }),
   addDoc: (agentId, filePath) => ipcRenderer.invoke("team:addDoc", { agentId, filePath }),
   createTeamTemplate: () => ipcRenderer.invoke("team:createTemplate"),
   reloadTeam: () => ipcRenderer.send("team:reload"),
@@ -22,6 +23,17 @@ contextBridge.exposeInMainWorld("magentra", {
   pickDoc: (agentId) => ipcRenderer.invoke("team:pickDoc", agentId),
   writeEnv: (payload) => ipcRenderer.invoke("setup:writeEnv", payload),
   testConnection: (payload) => ipcRenderer.invoke("setup:testConnection", payload),
+  // Which local model servers (Ollama, LM Studio) are present on this machine.
+  detectLocalServers: () => ipcRenderer.invoke("connections:detectLocal"),
+  // Skill authoring (main resolves a chosen profile into a connection) and
+  // export (main saves the engine-supplied .md via a save dialog).
+  generateSkill: (payload) => ipcRenderer.invoke("skills:generate", payload),
+  saveSkillExport: (payload) => ipcRenderer.invoke("skills:saveExport", payload),
+  // Global connection profiles (reusable across workspaces).
+  listProfiles: () => ipcRenderer.invoke("profiles:list"),
+  saveProfile: (payload) => ipcRenderer.invoke("profiles:save", payload),
+  deleteProfile: (id) => ipcRenderer.invoke("profiles:delete", id),
+  applyProfile: (id) => ipcRenderer.invoke("profiles:apply", { id }),
   getWebSearch: () => ipcRenderer.invoke("settings:getWebSearch"),
   setWebSearch: (enabled) => ipcRenderer.invoke("settings:setWebSearch", enabled),
   getAppInfo: () => ipcRenderer.invoke("app:info"),
@@ -29,6 +41,23 @@ contextBridge.exposeInMainWorld("magentra", {
   openLogs: () => ipcRenderer.invoke("app:openLogs"),
   connectionInfo: () => ipcRenderer.invoke("connection:info"),
   setTitleBarTheme: (theme) => ipcRenderer.send("app:titleBarTheme", theme),
+  // Whole-interface scale. Page zoom rather than a font-size multiplier: the
+  // layout tokens (--sidebar-w, --topbar-h, radii, borders) are hard pixels,
+  // so only zoom moves the chrome along with the text.
+  setZoom: (factor) => {
+    try {
+      webFrame.setZoomFactor(factor);
+    } catch {
+      // A frame that cannot zoom just stays at 1.0 — never fatal.
+    }
+  },
+  getZoom: () => {
+    try {
+      return webFrame.getZoomFactor();
+    } catch {
+      return 1;
+    }
+  },
   revealKey: () => ipcRenderer.invoke("connection:revealKey"),
   getPathForFile: (file) => {
     try {

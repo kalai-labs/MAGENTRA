@@ -145,9 +145,10 @@ function sendSlashCommand(trimmed) {
   hideSlashPop();
 }
 
-// Messages typed while a turn is running wait here and flush one per turn end
-// (each starts its own turn), so the user can queue follow-ups instead of
-// being locked out of the composer for the whole turn.
+// Slash/bang commands typed while a turn is running wait here and flush one per
+// turn end (each starts its own turn). Plain messages no longer queue — they
+// steer the running turn immediately (see sendMessage) — but commands can't
+// steer, so they still queue.
 const messageQueue = [];
 
 function renderQueueChip() {
@@ -228,19 +229,23 @@ function sendMessage() {
   const text = promptInputEl.value;
   if (!text.trim() || !engineLinked) return;
 
-  // Mid-turn under OVERDRIVE: steer the running turn instead of queueing. The
-  // text joins the turn at its next boundary rather than starting a new one.
-  if (busy && uiSettings.overdrive) {
-    window.magentra.send({ type: "steer_message", text });
-    appendSysNote(`⚡ steering — "${text.replace(/\s+/g, " ").trim().slice(0, 80)}"`);
-    promptInputEl.value = "";
-    autoGrow(promptInputEl);
-    return;
-  }
-  // Mid-turn: queue instead of dropping the input. It flushes on turn end.
   if (busy) {
-    messageQueue.push(text);
-    renderQueueChip();
+    const trimmed = text.trim();
+    const isCommand = (trimmed.startsWith("/") || trimmed.startsWith("!")) && !text.includes("\n");
+    // Commands can't steer a running turn — steer_message carries plain text to
+    // the model, not a slash/bang command — so they still queue for turn end.
+    if (isCommand) {
+      messageQueue.push(text);
+      renderQueueChip();
+      promptInputEl.value = "";
+      autoGrow(promptInputEl);
+      return;
+    }
+    // Mid-turn plain text steers the running turn: it joins the turn at its next
+    // boundary rather than starting a new one. Available in every stance now,
+    // not only OVERDRIVE.
+    window.magentra.send({ type: "steer_message", text });
+    appendSysNote(`↳ steering — "${text.replace(/\s+/g, " ").trim().slice(0, 80)}"`);
     promptInputEl.value = "";
     autoGrow(promptInputEl);
     return;
@@ -344,13 +349,16 @@ stopBtnEl.addEventListener("click", hardStop);
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (closeOpenMenu()) return; // an open menu is the topmost surface
-  if (closePermissionMenu()) return;
   if (!reviewDrawerEl.classList.contains("hidden")) {
     closeReviewDrawer();
     return;
   }
   if (shortcutSheetEl && !shortcutSheetEl.classList.contains("hidden")) {
     toggleShortcutSheet();
+    return;
+  }
+  if (sessionModalEl && !sessionModalEl.classList.contains("hidden")) {
+    closeSessionModal();
     return;
   }
   if (slashVisible) {
@@ -379,6 +387,14 @@ window.addEventListener("keydown", (e) => {
     resolvePermission("deny");
     return;
   }
+  // A non-console stage view (Settings, Skills, Changes, Crew, Sessions,
+  // Missions) is a full-surface "popup tab" — Esc returns to the console, the
+  // same as its ✕. Sits below the modals above and above the stop-work
+  // fallback, so Esc closes an open view before it interrupts a running turn.
+  if (document.body.dataset.view && document.body.dataset.view !== "console") {
+    showView("console");
+    return;
+  }
   if (busy || backgroundJobs.size > 0) {
     e.preventDefault();
     hardStop();
@@ -402,6 +418,18 @@ clearBtnEl.addEventListener("click", requestClear);
 navConsoleEl.addEventListener("click", () => {
   if (workspaceOpen) requestClear();
 });
+
+// "Welcome page": re-initialize the renderer to the start screen. A full reload
+// is the safe way back — boot() always lands on the start page, so there is no
+// half-torn-down workspace state to get wrong. The engine keeps running in the
+// background and the conversation stays saved (resume it from Sessions), so a
+// busy turn only needs a heads-up, not a block.
+if (navHomeEl) {
+  navHomeEl.addEventListener("click", () => {
+    if (busy && !window.confirm("Return to the welcome page? This conversation stays saved — resume it anytime from Sessions.")) return;
+    window.location.reload();
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Keyboard power layer. "mod" is Ctrl on Linux/Windows, Cmd on macOS — every
@@ -428,6 +456,15 @@ function toggleShortcutSheet() {
 window.addEventListener("keydown", (e) => {
   // Approval modal focused: single-key answer (buttons also spell these out).
   if (!deleteModalEl.classList.contains("hidden") && !isMod(e)) {
+    // Typing in the note must not fire the single-key answers. Enter there
+    // triggers the card's default (allow once); Shift+Enter adds a newline.
+    if (e.target === permissionNoteEl) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        resolvePermission("allow_once");
+      }
+      return;
+    }
     const k = e.key.toLowerCase();
     if (k === "y") {
       e.preventDefault();
@@ -484,12 +521,15 @@ function dismissSetupWizard() {
   setupWizardEl.classList.add("hidden");
   closeModalA11y();
   maybeStartTour();
+  // Opened to manage profiles over a working (or no) workspace: closing is
+  // silent. The stranded-engine guidance only applies when there is genuinely
+  // no linked engine behind the wizard.
   if (!engineLinked) {
     // The composer is locked (syncActivityUi) — give the stranded user the
     // way back on a banner instead of only a note that scrolls away.
     showEngineErrorBanner("Engine not linked — this workspace has no credentials yet.", "credential");
+    appendSysNote("engine not linked — add credentials any time in SETTINGS → CONNECTION, or ⇆ Connect");
   }
-  appendSysNote("engine not linked — add credentials any time in SETTINGS → CONNECTION");
 }
 if (wizCloseBtnEl) wizCloseBtnEl.addEventListener("click", dismissSetupWizard);
 

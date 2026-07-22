@@ -1,5 +1,5 @@
 import type { Usage } from "@magentra/protocol";
-import { estimateCost, formatDuration, formatTokens, formatUsd, pricingFor } from "../config/pricing.js";
+import { formatDuration, formatTokens } from "../config/pricing.js";
 import type { Settings } from "../config/settings.js";
 
 /**
@@ -23,6 +23,19 @@ import type { Settings } from "../config/settings.js";
  * two classic ways to get this wrong; both produce a context number that has no
  * relationship to how full the window actually is.
  */
+/**
+ * A per-part estimate of what fills the context now, sourced from the live
+ * session (system prompt, tool schemas, skills, message history). Every field is
+ * an estimate; `limit` is the user's auto-compact token limit (0 = none set).
+ */
+export interface ContextBreakdown {
+  systemPrompt: number;
+  tools: number;
+  skills: number;
+  messages: number;
+  limit: number;
+}
+
 export class SessionStats {
   /** Wall-clock start of the session (ms epoch). */
   readonly startedAt: number;
@@ -57,7 +70,16 @@ export class SessionStats {
     entry.cacheWriteTokens += usage.cacheWriteTokens;
     this.byModel.set(model, entry);
     this.apiMs += apiMs;
-    this.contextTokens = contextSizeOf(usage);
+    // Context size is read from the response's own usage. Some providers
+    // intermittently omit usage on very large prompts (or a stream ends without
+    // a usage frame), which reports as all-zeros — but a real response always
+    // had a prompt, so zero means "not measured", NOT "the context emptied".
+    // Collapsing to 0 there would blind the compaction safety (the next turn
+    // would think the window is empty and never compact, then overflow), so a
+    // zero measurement retains the last known size. Compaction is what actually
+    // shrinks contextTokens, and it sets it explicitly.
+    const measured = contextSizeOf(usage);
+    if (measured > 0) this.contextTokens = measured;
   }
 
   /** Serializable view for the transcript `meta` record, restored by /resume. */
@@ -123,33 +145,18 @@ export class SessionStats {
   }
 
   /**
-   * Session cost, summed per model at that model's own rate card. Returns
-   * undefined only when NO model used this session has a rate card at all;
-   * a partially-priced session reports what it can price (unpriced models
-   * contribute their token counts but nothing to the total).
+   * The `/session` report — the whole-session summary a user reads at the end.
+   * Cost is deliberately omitted: our token counting and a provider's billing
+   * can diverge, so any dollar figure risks misinforming. Token counts (which
+   * we measure directly) stay; context is shown "~" to signal it is an estimate.
    */
-  totalCost(settings?: Settings): number | undefined {
-    let total = 0;
-    let priced = false;
-    for (const [model, usage] of this.byModel) {
-      const cost = estimateCost(usage, pricingFor(model, settings));
-      if (cost !== undefined) {
-        total += cost;
-        priced = true;
-      }
-    }
-    return priced ? total : undefined;
-  }
-
-  /** The `/session` report — the whole-session summary a user reads at the end. */
-  format(settings?: Settings, now: number = Date.now()): string {
+  format(_settings?: Settings, now: number = Date.now(), breakdown?: ContextBreakdown): string {
     const lines: string[] = ["Session", ""];
-    const cost = this.totalCost(settings);
-    lines.push(`  Total cost:            ${cost === undefined ? "— (no rate card for this model)" : formatUsd(cost)}`);
     lines.push(`  Total duration (API):  ${formatDuration(this.apiMs)}`);
     lines.push(`  Total duration (wall): ${formatDuration(now - this.startedAt)}`);
     lines.push(`  Total code changes:    ${this.linesAdded} lines added, ${this.linesRemoved} lines removed`);
-    lines.push(`  Context now:           ${formatTokens(this.contextTokens)} tokens`);
+    lines.push(`  Context now:            ~${formatTokens(this.contextTokens)} tokens`);
+    if (breakdown) lines.push(...this.formatBreakdown(breakdown));
 
     if (this.byModel.size === 0) {
       lines.push("  Usage by model:        (no model calls yet)");
@@ -157,16 +164,37 @@ export class SessionStats {
     }
     lines.push("  Usage by model:");
     for (const [model, usage] of this.byModel) {
-      const modelCost = estimateCost(usage, pricingFor(model, settings));
-      const priced = modelCost === undefined ? "" : ` (${formatUsd(modelCost)})`;
       lines.push(
         `      ${model}:  ${formatTokens(usage.inputTokens)} input, ` +
           `${formatTokens(usage.outputTokens)} output, ` +
           `${formatTokens(usage.cacheReadTokens)} cache read, ` +
-          `${formatTokens(usage.cacheWriteTokens)} cache write${priced}`,
+          `${formatTokens(usage.cacheWriteTokens)} cache write`,
       );
     }
     return lines.join("\n");
+  }
+
+  /**
+   * The "what's filling the context" lines under `/session`. Estimated per-part
+   * sizes (system prompt, tools, skills, message history), plus free space when
+   * the user has set an auto-compact limit to measure against. All approximate —
+   * they show the shape of the context, not an exact accounting; the measured
+   * "Context now" above is the true total.
+   */
+  private formatBreakdown(b: ContextBreakdown): string[] {
+    const lines: string[] = ["  Context breakdown (~estimated):"];
+    const pad = (label: string) => `${label}:`.padEnd(16);
+    lines.push(`      ${pad("System prompt")}~${formatTokens(b.systemPrompt)} tokens`);
+    lines.push(`      ${pad("System tools")}~${formatTokens(b.tools)} tokens`);
+    if (b.skills > 0) lines.push(`      ${pad("Skills")}~${formatTokens(b.skills)} tokens`);
+    lines.push(`      ${pad("Messages")}~${formatTokens(b.messages)} tokens`);
+    if (b.limit > 0) {
+      const free = Math.max(0, b.limit - this.contextTokens);
+      lines.push(`      ${pad("Free space")}~${formatTokens(free)} tokens (until auto-compact at ~${formatTokens(b.limit)})`);
+    } else {
+      lines.push("      (no auto-compact limit set — no fixed window to measure free space against; set one in Settings → Context)");
+    }
+    return lines;
   }
 }
 

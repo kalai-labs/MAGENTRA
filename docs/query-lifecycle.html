@@ -178,8 +178,8 @@
 
   <div class="detail">
     <div class="mono" style="font-size:13px; line-height:1.9; white-space:pre-wrap;">for (let iteration = 0; ; iteration++) {
-  <span style="color:var(--stop)">if (iteration &gt;= maxIterationsPerTurn) break;   // cap: 50</span>
-  <span style="color:var(--stop)">if (turnUsage.outputTokens &gt; maxTokensPerTurn) break;  // 200k</span>
+  <span style="color:var(--stop)">if (iteration &gt;= maxIterationsPerTurn) break;   // ∞ interactive · finite only when capped</span>
+  <span style="color:var(--stop)">if (turnUsage.outputTokens &gt; maxTokensPerTurn) break;  // ∞ interactive · finite only when capped</span>
 
   const { assistant, toolCalls, end } = await streamAssistantTurn();
 
@@ -194,12 +194,13 @@
 }</div>
   </div>
 
-  <h3>Guards before the model is even called</h3>
+  <h3>Guards before the model is even called — capped runs only</h3>
+  <p>Interactive root turns run <b>uncapped</b>: <code>maxIterationsPerTurn</code> and <code>maxTokensPerTurn</code> default to <code>MAX_SAFE_INTEGER</code>, so neither break ever fires. The caps only bite when <code>capped</code> is set — <b>unattended (mission) runs and child sessions</b>. The stall detector, not these caps, is the brake on an interactive turn.</p>
   <div class="ladder">
-    <div class="rung halt"><div class="h"><span>Iteration cap — 50 tool rounds</span><span class="badge halt">ENDS TURN</span></div>
-      <p><code>session.ts:1024</code> · emits <code>⏸ Iteration cap reached — send any message to continue</code>, sets <code>stopReason = "max_iterations"</code>. A warning reminder is injected one round early at <code>:1170</code> so the model gets a chance to land a final answer.</p></div>
-    <div class="rung halt"><div class="h"><span>Per-turn output budget — 200,000 tokens</span><span class="badge halt">ENDS TURN</span></div>
-      <p><code>session.ts:1032</code> · emits <code>⏸ Turn token budget reached</code>. Counts <em>billed output across the whole turn</em>, not context size.</p></div>
+    <div class="rung halt"><div class="h"><span>Iteration cap — unattended &amp; capped children</span><span class="badge halt">ENDS CAPPED TURN</span></div>
+      <p><code>session.ts</code> · When <code>capped</code>, emits <code>⏸ Iteration cap reached — send any message to continue</code> and sets <code>stopReason = "max_iterations"</code>. Interactive children default to <code>MAX_SAFE_INTEGER</code> unless given an explicit spawn-time cap.</p></div>
+    <div class="rung halt"><div class="h"><span>Per-turn output budget — unattended &amp; capped children</span><span class="badge halt">ENDS CAPPED TURN</span></div>
+      <p><code>session.ts</code> · When <code>capped</code>, emits <code>⏸ Turn token budget reached</code>. Counts <em>billed output across the whole turn</em>, not context size. A mission's <code>budget:</code> key overrides the token ceiling.</p></div>
   </div>
 
   <h3>The nudge ladder — what happens when the model stops calling tools</h3>
@@ -223,21 +224,19 @@
   </div>
 
   <div class="note warn">
-    <b>MAX_AUTO_NUDGES = 3 is a ceiling on persistence, not on stopping</b>
-    Rungs 2, 4, 5 and 6 all share one counter (<code>session.ts:72</code>). Once three nudges are spent, every one of them goes silent and the turn ends at rung 7 — even if tasks are still open and the last tool call failed. If the goal is fewer premature stops, <em>raising</em> this number is the lever. Lowering or removing the ladder makes stopping more frequent, not less.
+    <b>MAX_AUTO_NUDGES = 3 now caps only the wrap-up nudge</b>
+    The old ceiling that could silence the whole ladder is gone. The signal-driven rungs — length cutoff (rung 2), failed batch (rung 4) and open tasks (rung 5) — now nudge <em>without limit</em> in every turn. <code>MAX_AUTO_NUDGES = 3</code> (<code>session.ts:72</code>) survives, but the shared <code>nudgeCount</code> counter it guards is spent only by rung 6, the wrap-up nudge (<span class="mono">↻ requesting a work summary</span>). Once three wrap-up nudges are spent the turn can end at rung 7 — but a failed tool call or an open task will still keep it going.
   </div>
 
-  <h3>The OVERDRIVE branch</h3>
-  <p>With <code>/overdrive on</code> (or the composer toggle) the same loop runs under a different policy — implemented as guards on the existing rungs, not a second loop:</p>
+  <h3>OVERDRIVE — same loop, different policy</h3>
+  <p>The turn loop is now <b>identical in both stances</b>. The rungs below run in <em>every</em> turn regardless of OVERDRIVE; toggling OVERDRIVE (<code>/overdrive on</code> or the composer toggle) changes the permission stance and adds cosmetics, not the loop's shape.</p>
   <div class="ladder">
-    <div class="rung keepgoing"><div class="h"><span>Caps skipped</span><span class="badge go">UNCAPPED</span></div>
-      <p>The iteration cap, per-turn token budget, and final-round warning are all bypassed while overdrive is on; the signal-driven rungs (length cutoff, failed batch, open tasks) nudge without limit. The wrap-up rung keeps its cap.</p></div>
-    <div class="rung keepgoing"><div class="h"><span>Self-verify rung</span><span class="badge go">CONTINUES ONCE</span></div>
-      <p>The first clean end-attempt injects a completeness + economy self-check judged only against the user's query — no assumed builds or tests. Fires once per turn; mid-run steering re-arms it.</p></div>
-    <div class="rung halt"><div class="h"><span>Stall detector</span><span class="badge halt">PIVOT → ASK</span></div>
-      <p>Three consecutive identical rounds (same tool calls, same results) force a strategy pivot; after two spent pivots the model must ask the user one concrete question. The only brake in the mode.</p></div>
-    <div class="rung keepgoing"><div class="h"><span>Mid-run steering</span><span class="badge go">JOINS LIVE</span></div>
-      <p><code>steer_message</code> text lands at the next message boundary of the running turn instead of waiting in the composer queue. A pre-turn <code>git stash create</code> snapshot backs every root turn.</p></div>
+    <div class="rung keepgoing"><div class="h"><span>Self-verify rung — every turn</span><span class="badge go">CONTINUES ONCE</span></div>
+      <p>On the first clean end-attempt of any turn, a completeness + economy self-check is injected, judged only against the user's query — no assumed builds or tests. The verify reply is buffered; a bare <code>DONE</code> ends the turn invisibly. Fires once per turn; mid-run steering re-arms it. The <code>⚡ overdrive: self-verifying…</code> / <code>✓ overdrive: verified</code> status lines are emitted only when OVERDRIVE is on — the rung runs silently otherwise.</p></div>
+    <div class="rung halt"><div class="h"><span>Stall detector — every turn</span><span class="badge halt">PIVOT → ASK</span></div>
+      <p>Three consecutive identical rounds (same tool calls, same results) force a strategy pivot; after two spent pivots the model must ask the user one concrete question. Messages: <code>⚡ stall detected — forcing strategy pivot N/2</code> then <code>⚡ still stalled after pivots — asking the user</code> (<code>STALL_PIVOT_TEXT</code> / <code>STALL_ASK_TEXT</code>). This is the brake that replaces the caps on an interactive turn.</p></div>
+    <div class="rung keepgoing"><div class="h"><span>What OVERDRIVE alone changes</span><span class="badge go">POLICY + COSMETICS</span></div>
+      <p>The allow-all permission stance; the deletion scope-split (workspace-scoped deletions skip the guard); a pre-turn <code>git stash create</code> snapshot on every root turn; the OVERDRIVE system-prompt section; the status-line chatter; and the frontend identity/cinematic. Mid-run steering is universal now: typing while any turn runs sends <code>steer_message</code>, which lands at the next message boundary of the running turn (slash/bang commands still queue for turn end).</p></div>
   </div>
 
   <h3>Failure and interrupt paths</h3>
@@ -247,7 +246,7 @@
 <!-- ─────────── STOPS ─────────── -->
 <section class="panel" data-panel="stops" hidden>
   <h2>Every way a turn can stop</h2>
-  <p>Thirteen distinct mechanisms (plan mode and its approval gate were removed 2026-07-20). The distinction that matters most: <b class="mono">user-facing</b> stops raise a prompt you can see and answer; <b class="mono">silent</b> stops return an error to the <em>model</em> only — from the outside they look like the agent simply refusing or giving up.</p>
+  <p>Thirteen distinct mechanisms (removed 2026-07-20: plan mode and its approval gate, the three-way permission modes — now a two-state stance, OVERDRIVE off vs on — and the reuse gate's block mode, which is reminder-only now. Added the same day: the clarify pre-layer). The distinction that matters most: <b class="mono">user-facing</b> stops raise a prompt you can see and answer; <b class="mono">silent</b> stops return an error to the <em>model</em> only — from the outside they look like the agent simply refusing or giving up.</p>
 
   <div class="chips" id="chips">
     <button class="chip" aria-pressed="true" data-f="all">All</button>
@@ -264,18 +263,18 @@
   </div>
 
   <div class="note go">
-    <b>OVERDRIVE changes this table</b>
-    While overdrive is on: the iteration cap, token budget, and nudge ceiling rows do not fire; the reuse gate only reminds; and deletions provably scoped inside the workspace skip the guard (everything unprovable — history rewrites, out-of-tree paths, substitution, root wildcards — still asks). One thing never skips: deleting a <code>.magentra</code> state directory always asks, even here.
+    <b>What OVERDRIVE changes in this table — and what's now universal</b>
+    The loop-level rows are no longer stance-dependent: the iteration cap, token budget, and nudge ceiling behave the same whether OVERDRIVE is on or off (they are an unattended/capped concept, not an OVERDRIVE one). OVERDRIVE alone changes exactly two things here: the permission stance flips to <b>allow-all</b> (the ask-prompt row goes quiet), and deletions provably scoped inside the workspace skip the guard (everything unprovable — history rewrites, out-of-tree paths, substitution, root wildcards — still asks). One thing never skips, in either stance: deleting a <code>.magentra</code> state directory always asks.
   </div>
 
   <div class="note stop">
-    <b>The deletion guard outranks everything — including bypass mode</b>
-    <code>permissions.ts:123</code> runs <em>before</em> allow-rule matching and before the mode default. Only two tools define a <code>deletionSubject</code>: <code>Bash</code> (rm patterns, forced history rewrite, <code>git checkout</code> discard, <code>find -delete</code>, destructive <code>mv</code>, SQL/kubectl teardown — <code>bash.ts:91</code>) and <code>Worktree</code> with <code>action: "remove"</code>. It never records a session-allow, so it re-fires on every non-identical call. A deletion targeting a folder <em>named</em> <code>.magentra</code> (the app's own state dir) is "protected": it always asks in every mode — beating the "allow deletions" setting, explicit allow rules, and OVERDRIVE — and never offers "always allow".
+    <b>The deletion guard outranks everything — in both stances</b>
+    <code>permissions.ts:123</code> runs <em>before</em> allow-rule matching and before the stance default. Only two tools define a <code>deletionSubject</code>: <code>Bash</code> (rm patterns, forced history rewrite, <code>git checkout</code> discard, <code>find -delete</code>, destructive <code>mv</code>, SQL/kubectl teardown — <code>bash.ts:91</code>) and <code>Worktree</code> with <code>action: "remove"</code>. It never records a session-allow, so it re-fires on every non-identical call. A deletion targeting a folder <em>named</em> <code>.magentra</code> (the app's own state dir) is "protected" (<code>deletionScope === "protected"</code>, now computed in both stances): it always asks — beating the "allow deletions" setting, explicit allow rules, and OVERDRIVE — and never offers "always allow".
   </div>
 
   <div class="note warn">
     <b>Unattended mode inverts every human gate into an auto-deny</b>
-    <code>session.ts:275</code> — in a mission run, <code>requestApproval</code> never prompts; it denies with an explanation, and <code>askUser</code> rejects outright. Combined with the point above, the net effect is that in an unattended mission the <em>only</em> thing that reliably gets refused is destructive work. Subagents are hard-blocked from both channels in every mode (<code>session.ts:581</code>).
+    <code>session.ts:275</code> — a mission run takes the allow-all stance (<code>permissions.setOverdrive(true)</code>), but the unattended flag still auto-denies anything that insists on asking: <code>requestApproval</code> never prompts — it denies with an explanation — and <code>askUser</code> rejects outright. Combined with the point above, the net effect is that in an unattended mission the <em>only</em> thing that reliably gets refused is destructive work. Subagents are hard-blocked from both channels in both stances (<code>session.ts:581</code>).
   </div>
 </section>
 
@@ -306,7 +305,7 @@
     <li><span class="i">B</span><div><b>Skill turn-start injections</b> — once per <em>conversation</em>, not per turn<span class="ref">session.ts:985 · guarded by injectedSkillReminders; ~140 tokens/turn saved</span></div></li>
     <li><span class="i">C</span><div><b>No-atlas nudge</b> — once per session<span class="ref">session.ts:1010</span></div></li>
     <li><span class="i">D</span><div><b>Error-batch reminder</b> + skill after-error injections, mid-loop<span class="ref">session.ts:1162</span></div></li>
-    <li><span class="i">E</span><div><b>Final-round cap warning</b> at <code>iteration === max - 2</code><span class="ref">session.ts:1170</span></div></li>
+    <li><span class="i">E</span><div><b>Final-round cap warning</b> — capped runs only, at <code>iteration === max - 2</code>; interactive root turns are uncapped and never see it<span class="ref">session.ts:1170</span></div></li>
   </ol>
 
   <h3>Compaction</h3>
@@ -353,9 +352,10 @@
   <p>Read from your settings files and session transcripts on 2026-07-20 — not defaults.</p>
 
   <div class="grid2">
-    <div class="card"><h4>Permission mode</h4><div class="kv">
-      <div><span>App launch flag</span><span class="mono">--dangerously-bypass</span></div>
-      <div><span>Observed in transcripts</span><span class="mono">bypass</span></div>
+    <div class="card"><h4>Permission stance</h4><div class="kv">
+      <div><span>Engine launch args</span><span class="mono">--serve --cwd</span></div>
+      <div><span>Stance</span><span class="mono">OVERDRIVE toggle</span></div>
+      <div><span>OVERDRIVE off</span><span>commands ask · edits free</span></div>
       <div><span>Deletion guard</span><span class="pill on">still active</span></div>
     </div></div>
     <div class="card"><h4>Active discipline skills</h4><div class="kv">
@@ -365,14 +365,15 @@
       <div><span>grill / reshape / debug</span><span class="pill off">off</span></div>
     </div></div>
     <div class="card"><h4>Loop budgets</h4><div class="kv">
-      <div><span>maxIterationsPerTurn</span><span class="mono">50</span></div>
-      <div><span>maxTokensPerTurn</span><span class="mono">200,000</span></div>
-      <div><span>MAX_AUTO_NUDGES</span><span class="mono">3</span></div>
+      <div><span>Interactive root turns</span><span class="mono">uncapped</span></div>
+      <div><span>maxIterationsPerTurn</span><span class="mono">50 · capped runs</span></div>
+      <div><span>maxTokensPerTurn</span><span class="mono">200,000 · capped runs</span></div>
+      <div><span>MAX_AUTO_NUDGES</span><span class="mono">3 · wrap-up only</span></div>
     </div></div>
-    <div class="card"><h4>Reuse gate</h4><div class="kv">
-      <div><span>reuseCheck.mode</span><span class="pill on">gate</span></div>
-      <div><span>blockThreshold</span><span class="mono">0.75</span></div>
-      <div><span>Visibility</span><span class="pill silent">silent</span></div>
+    <div class="card"><h4>Reuse check</h4><div class="kv">
+      <div><span>reuseCheck.mode</span><span class="pill off">remind</span></div>
+      <div><span>Blocks?</span><span class="pill off">never — reminder only</span></div>
+      <div><span>Firm wording at</span><span class="mono">≥ 0.75</span></div>
     </div></div>
   </div>
 
@@ -402,16 +403,16 @@
   <p>Ranked by how often each is likely to interrupt a real working session, given the configuration above.</p>
 
   <ol class="steps">
-    <li><span class="i">1</span><div><b>Reuse gate refusing new-file Writes</b> — on by default, silent, and reads from the outside as the agent simply declining to do the work. Setting <code>reuseCheck.mode</code> to <code>"remind"</code> keeps the signal and drops the block.<span class="ref">reuseGate.ts:83 · enforced session.ts:1387</span></div></li>
-    <li><span class="i">2</span><div><b>Iteration cap at 50</b> — a genuinely long refactor hits this and the turn dies mid-flight with <code>⏸</code>. The one-round-early warning helps only if the model heeds it.<span class="ref">session.ts:1024</span></div></li>
-    <li><span class="i">3</span><div><b>Nudge cap at 3</b> — the ladder that keeps the agent working gives up after three saves. On a model that errors often, this is exhausted early and the turn then ends at the first quiet moment.<span class="ref">session.ts:72</span></div></li>
+    <li><span class="i">1</span><div><b>Reuse gate refusing new-file Writes <span class="muted">— resolved by the redesign</span></b> — historically on by default, silent, and read from the outside as the agent simply declining to do the work. The check never blocks anymore: the reminder (closest matches, firm wording for near-duplicates) rides along with the allowed Write.<span class="ref">reuseGate.ts · session.ts</span></div></li>
+    <li><span class="i">2</span><div><b>Iteration cap at 50 <span class="muted">— resolved by the redesign</span></b> — historically a genuinely long refactor hit this and the turn died mid-flight with <code>⏸</code>. Interactive root turns now run uncapped (<code>MAX_SAFE_INTEGER</code>); the cap survives only for unattended mission runs and explicitly-capped children.<span class="ref">session.ts</span></div></li>
+    <li><span class="i">3</span><div><b>Nudge cap at 3 <span class="muted">— resolved by the redesign</span></b> — the ladder used to give up after three saves. The signal rungs (length cutoff, failed batch, open tasks) now nudge without limit; <code>MAX_AUTO_NUDGES</code> caps only the wrap-up nudge.<span class="ref">session.ts:72</span></div></li>
     <li><span class="i">4</span><div><b>Plan-first reminder</b> — advisory, but a strong standing instruction toward planning on every empty-task-list turn.<span class="ref">session.ts:972</span></div></li>
     <li><span class="i">5</span><div><b>Read-before-write freshness</b> — refuses Write/Edit on a file not read this session. Not configurable. Usually correct, occasionally a loop when the model doesn't re-read.<span class="ref">fileState.ts:35 · write.ts:31, edit.ts:41</span></div></li>
   </ol>
 
   <div class="note">
     <b>What not to remove</b>
-    The nudge ladder, the dangling-<code>tool_use</code> repair in the <code>catch</code>, and the compaction boundary walk are all load-bearing <em>against</em> stopping. Stripping "planning stops" indiscriminately would take the ladder with it and make premature termination more common, not less. The removable set is small and specific: the reuse gate's block mode, the iteration cap's value, the nudge cap's value, and the plan-first reminder's wording.
+    The nudge ladder, the dangling-<code>tool_use</code> repair in the <code>catch</code>, and the compaction boundary walk are all load-bearing <em>against</em> stopping. Stripping "planning stops" indiscriminately would take the ladder with it and make premature termination more common, not less. The historically removable levers are all handled now: the reuse gate's block mode is gone (reminder-only), and the iteration/nudge caps no longer apply to interactive turns. What remains adjustable is the plan-first reminder's wording.
   </div>
 </section>
 
@@ -450,7 +451,7 @@ const STAGES = [
       ["stdin is decoded into frames, each forwarded to <code>engine.send(frame)</code>","serve.ts:39 · ndjson.ts:12"],
       ["stdin EOF or SIGTERM triggers interrupt, drain, close","serve.ts:26"]
     ],
-    note:["The app always launches the engine with <code>--serve --dangerously-bypass --cwd &lt;workspace&gt;</code>.","main.js:272"] },
+    note:["The app always launches the engine with <code>--serve --cwd &lt;workspace&gt;</code> — no permission flag; the stance is set at runtime by the OVERDRIVE toggle.","main.js:272"] },
 
   { id:"turn", n:"Stage 4", t:"Session.runTurn", w:"session.ts", h:"Turn setup",
     steps:[
@@ -483,16 +484,16 @@ const STAGES = [
       ["Parallelism decided: <code>permissionClass === \"read\" || parallelSafe</code>","session.ts:1357"],
       ["Search-evidence logged for the reuse gate","session.ts:1361"],
       ["<b>Skill gates</b> — never / tasks-exist / repro-failed","session.ts:1368"],
-      ["<b>Reuse gate</b> on Write — block or remind","session.ts:1387"],
+      ["<b>Reuse check</b> on Write — reminder only, never blocks","session.ts"],
       ["<b>PreToolUse hook</b> — can block","session.ts:1402"],
-      ["<b>permissions.check()</b> — deletion guard, allow rules, mode default","session.ts:1406"],
+      ["<b>permissions.check()</b> — deletion guard, allow rules, stance default","session.ts:1406"],
       ["<code>tool_call_started</code> emitted, then <code>tool.execute()</code>","session.ts:1419, :1427"],
       ["Output truncated to the tool's byte limit","session.ts:1429"],
       ["<b>PostToolUse hook</b> — advisory reminder only, never blocks","session.ts:1430"],
       ["Read-only calls run concurrently; mutating calls strictly sequential so prompts can't race","session.ts:1457"],
       ["<code>tool_call_finished</code> per call; results returned in original call order","session.ts:1472"]
     ],
-    note:["Note the ordering — <b>gates run before permissions</b>. A skill gate or reuse-gate refusal never reaches the permission system at all, which is why bypass mode doesn't lift them.",""] },
+    note:["Note the ordering — <b>gates run before permissions</b>. A skill gate or reuse-gate refusal never reaches the permission system at all, which is why OVERDRIVE's allow-all stance doesn't lift them.",""] },
 
   { id:"back", n:"Stage 7", t:"Render", w:"landing.js", h:"Events → DOM",
     steps:[
@@ -509,24 +510,24 @@ const STAGES = [
 ];
 
 const STOPS = [
-  { m:"Permission ask prompt", loc:"permissions.ts:171", tr:"modeDefault(tool) returns \"ask\" — any non-read/interact tool in default mode with no allow rule", v:"user", d:"on in <code>default</code> mode", dis:"<code>permissionMode: \"bypass\"</code>, allow rules, or a session grant", tags:["user","autonomy"] },
-  { m:"Deletion guard", loc:"permissions.ts:123", tr:"tool.deletionSubject() returns a string — Bash destructive patterns, Worktree remove", v:"user", d:"<b>on in every mode, bypass included</b>", dis:"the app's \"allow deletions\" toggle, or an exact subject-scoped allow rule — except a folder named .magentra, which always asks and cannot be waived", tags:["user","ondefault","autonomy"] },
+  { m:"Clarify pre-layer", loc:"session.ts", tr:"the main model judges the incoming request genuinely open-ended (unstated shape AND a wrong guess would force a redo) — then up to 3 multiple-choice questions come before any work", v:"user", d:"<b>on by default</b>", dis:"<code>clarify: false</code> in settings", tags:["user","ondefault"] },
+  { m:"Permission ask prompt", loc:"permissions.ts", tr:"stanceDefault(tool) returns \"ask\" — with OVERDRIVE off, a command/network tool (execute etc.) with no allow rule. Reads, interactions and file edits (isFileEdit) are auto-allowed and never ask", v:"user", d:"on when OVERDRIVE off — commands only", dis:"turn OVERDRIVE on (allow-all), add an allow rule, or grant once/session/always at the prompt", tags:["user","ondefault","autonomy"] },
+  { m:"Deletion guard", loc:"permissions.ts:123", tr:"tool.deletionSubject() returns a string — Bash destructive patterns, Worktree remove", v:"user", d:"<b>on in both stances, OVERDRIVE included</b>", dis:"the app's \"allow deletions\" toggle, or an exact subject-scoped allow rule — except a folder named .magentra (deletionScope \"protected\"), which always asks in both stances and cannot be waived", tags:["user","ondefault","autonomy"] },
   { m:"AskUserQuestion", loc:"askUserQuestion.ts:31", tr:"the model calls it", v:"user", d:"tool always registered", dis:"no config switch — only unattended mode short-circuits it", tags:["user","autonomy"] },
   { m:"UserPromptSubmit hook", loc:"session.ts:949", tr:"a configured hook returns blocked", v:"user", d:"off unless configured", dis:"remove the hook", tags:["user"] },
   { m:"Skill gate — tasks-exist", loc:"session.ts:1373", tr:"an active skill gates Write/Edit until the task list is non-empty", v:"silent", d:"off — grill &amp; reshape inactive", dis:"deactivate the skill", tags:["silent","autonomy"] },
   { m:"Skill gate — repro-failed", loc:"session.ts:1379", tr:"debug.ma: edits locked until the repro script is seen failing", v:"silent", d:"off — debug inactive", dis:"deactivate the skill", tags:["silent","autonomy"] },
   { m:"Skill gate — never", loc:"session.ts:1370", tr:"a workspace skill declares an unconditional block", v:"silent", d:"off — no builtin uses it", dis:"deactivate the skill", tags:["silent"] },
-  { m:"Reuse gate", loc:"reuseGate.ts:83", tr:"a new-file Write resembling existing code, with no related search this session", v:"silent", d:"<b>on — mode \"gate\"</b>", dis:"<code>reuseCheck.mode: \"remind\"</code> or <code>\"off\"</code>", tags:["silent","ondefault","autonomy"] },
   { m:"PreToolUse hook", loc:"session.ts:1402", tr:"a configured hook returns blocked", v:"silent", d:"off unless configured", dis:"remove the hook", tags:["silent"] },
-  { m:"Iteration cap", loc:"session.ts:1024", tr:"50 tool rounds in one turn", v:"user", d:"<b>on — 50</b>", dis:"raise <code>maxIterationsPerTurn</code> / <code>MAGENTRA_MAX_ITERATIONS</code>", tags:["user","ondefault","autonomy"] },
-  { m:"Per-turn token budget", loc:"session.ts:1032", tr:"200k billed output tokens in one turn", v:"user", d:"<b>on — 200,000</b>", dis:"raise <code>maxTokensPerTurn</code>", tags:["user","ondefault","autonomy"] },
-  { m:"Nudge cap exhausted", loc:"session.ts:72", tr:"3 auto-recovery nudges spent — the ladder goes silent", v:"silent", d:"<b>on — 3</b>", dis:"raise <code>MAX_AUTO_NUDGES</code> (code constant, not a setting)", tags:["silent","ondefault","autonomy"] },
+  { m:"Iteration cap", loc:"session.ts", tr:"maxIterationsPerTurn tool rounds in one turn", v:"user", d:"<b>off for interactive root turns (∞); on only for unattended runs &amp; capped children</b>", dis:"n/a for interactive; for capped runs raise <code>maxIterationsPerTurn</code> / <code>MAGENTRA_MAX_ITERATIONS</code>", tags:["user","autonomy"] },
+  { m:"Per-turn token budget", loc:"session.ts", tr:"maxTokensPerTurn billed output tokens in one turn", v:"user", d:"<b>off for interactive root turns (∞); on only for unattended runs &amp; capped children</b>", dis:"n/a for interactive; for capped runs raise <code>maxTokensPerTurn</code> (a mission <code>budget:</code> overrides it)", tags:["user","autonomy"] },
+  { m:"Nudge cap exhausted", loc:"session.ts:72", tr:"MAX_AUTO_NUDGES=3 wrap-up nudges spent — the signal rungs (length cutoff, failed batch, open tasks) are now unlimited and unaffected", v:"silent", d:"<b>on — 3, wrap-up nudge only</b>", dis:"raise <code>MAX_AUTO_NUDGES</code> (code constant, not a setting)", tags:["silent","ondefault","autonomy"] },
   { m:"Read-before-write freshness", loc:"fileState.ts:35", tr:"Write/Edit on a file not read this session, or changed on disk since", v:"silent", d:"<b>on — not configurable</b>", dis:"none", tags:["silent","ondefault"] }
 ];
 
-const CORE_EV = ["session_started","turn_started","text_delta","thinking_delta","tool_call_started","tool_call_finished","tool_output_delta","retry_status","agent_spawned","agent_finished","permission_request","question_request","task_list_updated","file_edited","background_notification","mode_changed","command_output","session_list","turn_finished","error","skill_draft","skills_updated","modes_updated","team_updated","backpack_progress","session_restored","model_catalog","cwd_changed","missions_updated"];
+const CORE_EV = ["session_started","turn_started","text_delta","thinking_delta","tool_call_started","tool_call_finished","tool_output_delta","retry_status","agent_spawned","agent_finished","permission_request","question_request","task_list_updated","file_edited","background_notification","overdrive_changed","command_output","session_list","turn_finished","error","skill_draft","skills_updated","modes_updated","team_updated","backpack_progress","session_restored","model_catalog","cwd_changed","missions_updated"];
 const CORE_HOT = new Set(["permission_request","question_request"]);
-const FRONT_EV = ["user_message","permission_response","question_response","steer_message","interrupt","set_mode","set_deletion_guard","slash_command","bang_command","resume_session","delete_session","stop_background","rename_session","archive_session","list_sessions","set_modes","reload_team","generate_skill","install_skill"];
+const FRONT_EV = ["user_message","permission_response","question_response","steer_message","interrupt","set_overdrive","set_deletion_guard","slash_command","bang_command","resume_session","delete_session","stop_background","rename_session","archive_session","list_sessions","set_modes","reload_team","generate_skill","install_skill"];
 const FRONT_HOT = new Set(["permission_response","question_response","steer_message","interrupt"]);
 
 // tabs

@@ -63,7 +63,10 @@
    hardcoded anywhere below, it is a bug — it will not survive a theme switch.
    --------------------------------------------------------------------------- */
 
-/* Dark — the default instrument-panel look. */
+/* Dark — the instrument-panel look. `light` is the default theme, but the
+   bare `:root` fallback stays on dark: it only ever applies to a document with
+   no data-theme at all, and a half-painted dark shell reads as intentional
+   where a half-painted light one reads as broken. */
 :root,
 html[data-theme="workbench"] {
   --color-scheme: dark;
@@ -191,6 +194,94 @@ html[data-theme="light"] {
   --shadow-drawer: -16px 0 40px rgba(15, 25, 40, 0.12);
   --shadow-inspector: -16px 0 40px rgba(15, 25, 40, 0.16);
   --scrim: rgba(18, 28, 40, 0.42);
+}
+
+/* Matrix — phosphor-on-black CRT. Same token contract as the other two, so
+   every rule below is already themed; the only structural addition is the
+   falling-glyph canvas (see #matrixRain), which renderer/modules/rain.js
+   mounts behind the UI while this theme is active.
+
+   `--sidebar` and `--panel` are the one deliberate break from the other
+   themes' opaque surfaces: they carry a small alpha so the rain reads through
+   the chrome instead of only in the gutters. Everything text sits directly on
+   — `--well`, `--raised` — stays fully opaque so code and inputs keep their
+   contrast no matter what is falling behind them. */
+html[data-theme="matrix"] {
+  --color-scheme: dark;
+
+  --accent: #25ee6b;
+  --accent-hi: #8dffb4;
+  --accent-ink: #011a0a;
+  --accent-rgb: 37, 238, 107;
+  --accent-soft: rgba(var(--accent-rgb), 0.13);
+  /* Success sits in the same hue family as the accent here — unavoidable in a
+     green world — so it separates by brightness instead, reading as a flash
+     against the accent's steady phosphor. */
+  --green: #7bff9e;
+  --green-rgb: 123, 255, 158;
+  --green-soft: rgba(var(--green-rgb), 0.13);
+  --amber: #ffbb33;
+  --amber-rgb: 255, 187, 51;
+  --amber-soft: rgba(var(--amber-rgb), 0.13);
+  --red: #ff5f70;
+  --red-rgb: 255, 95, 112;
+  --red-soft: rgba(var(--red-rgb), 0.13);
+  /* OVERDRIVE hot hue — orange stays as far from the phosphor as any status
+     color in this theme gets, which is exactly what the mode needs. */
+  --od-accent: #ff9d1f;
+  --od-accent-hi: #ffc470;
+  --od-accent-ink: #2a1400;
+  --od-accent-rgb: 255, 157, 31;
+  --od-accent-soft: rgba(var(--od-accent-rgb), 0.15);
+
+  --bg: #030705;
+  --bg-rgb: 3, 7, 5;
+  --sidebar: rgba(4, 11, 7, 0.93);
+  --panel: rgba(6, 16, 10, 0.92);
+  --raised: #0c1f14;
+  --well: #010402;
+  --hover: #14301d;
+  --border: #17402a;
+  --border-hi: #22603c;
+  --border-strong: #2f8452;
+
+  --text: #b9f5cd;
+  --text-hi: #e9fff1;
+  --text-dim: #7fcf99;
+  --text-faint: #52926a;
+
+  --diff-add-text: #9dffbb;
+  --diff-del-text: #ffa3ad;
+  --error-text: #ff9aa5;
+
+  --scroll-thumb: #1c4a30;
+  --scroll-thumb-hi: #2b6f47;
+  --selection: rgba(var(--accent-rgb), 0.28);
+
+  --shadow: 0 18px 48px rgba(0, 0, 0, 0.62);
+  --shadow-composer: 0 10px 28px rgba(0, 0, 0, 0.4);
+  --shadow-composer-focus: 0 0 0 1px rgba(var(--accent-rgb), 0.2), 0 12px 32px rgba(0, 0, 0, 0.45);
+  --shadow-drawer: -16px 0 40px rgba(0, 0, 0, 0.45);
+  --shadow-inspector: -16px 0 40px rgba(0, 0, 0, 0.5);
+  --scrim: rgba(0, 8, 3, 0.8);
+}
+
+/* The rain canvas. `z-index: -1` puts it above the page background (which the
+   body's --bg fill propagates to) and below every in-flow element, so it can
+   never overlap or intercept UI no matter what the layout does — the panels
+   simply let it through via their alpha. Only present while the matrix theme
+   is active; rain.js mounts and unmounts the node. */
+#matrixRain {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* Opacity is driven from rain.js (RAIN_BASE_OPACITY × the user's dial), not
+     set here — the transcript column has no surface of its own, so loose text
+     sits directly on the rain and the dial is what keeps it legible. */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -336,6 +427,11 @@ body.platform-mac .sidebar-brand { padding-top: 16px; height: 60px; }
 .sidebar-primary:hover { border-color: var(--border-strong); background: var(--hover); }
 .sidebar-primary .dock-glyph { color: var(--accent); font-size: 1.1rem; }
 .sidebar-primary .dock-label { font-size: max(10px, 0.83rem); font-weight: 650; }
+/* "Welcome page" sits just under New conversation — quieter (secondary). */
+.sidebar-home { margin: 0 12px 4px; width: calc(100% - 24px); height: 30px; display: flex; align-items: center; gap: 9px; padding: 0 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--text-dim); text-align: left; }
+.sidebar-home:hover { color: var(--text-hi); background: var(--hover); border-color: var(--border-hi); }
+.sidebar-home .dock-glyph { font-size: 1rem; }
+.sidebar-home .dock-label { font-size: max(10px, 0.8rem); }
 
 .sidebar-section { min-height: 0; padding: 7px 8px 0; }
 .sidebar-section-workspaces { flex: none; }
@@ -597,6 +693,10 @@ h1.md-h { font-size: 1.3rem; } h2.md-h { font-size: 1.16rem; } h3.md-h { font-si
 .inline-changes-list button { width: 100%; min-height: 30px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text-dim); font: 0.72rem var(--mono); text-align: left; }
 .inline-changes-list button:hover { color: var(--text); background: var(--hover); }
 .inline-changes-list button span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The fold/unfold row. Centered and quieter than a file row so it reads as a
+   control rather than as one more changed file. */
+.inline-changes-more { justify-content: center !important; color: var(--text-faint) !important; letter-spacing: 0.06em; }
+.inline-changes-more:hover { color: var(--accent-hi) !important; }
 .inline-changes-actions { display: flex; justify-content: flex-end; gap: 6px; padding: 8px; border-top: 1px solid var(--border); }
 .inline-changes-actions button { min-height: 30px; padding: 0 11px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); color: var(--text); font-size: max(10px, 0.72rem); }
 .inline-changes-actions button:hover { border-color: var(--border-hi); background: var(--hover); }
@@ -645,24 +745,15 @@ body.review-open .composer-toolbar > select.composer-select { min-width: 150px; 
 .composer-tool:hover, .composer-select:hover { color: var(--text-hi); border-color: var(--border-hi); }
 .composer-select { max-width: 210px; padding: 0 9px; }
 select.composer-select { color-scheme: var(--color-scheme); }
-.permission-wrap { position: relative; }
-#permissionMenuBtn { min-width: 150px; display: flex; align-items: center; gap: 6px; }
-.permission-shield { color: var(--accent); }
-.chevron { margin-left: auto; color: var(--text-faint); }
-.permission-menu { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 31; width: 330px; padding: 6px; border: 1px solid var(--border-hi); border-radius: var(--radius); background: var(--raised); box-shadow: var(--shadow); }
-.permission-option { width: 100%; display: grid; grid-template-columns: 18px 1fr; gap: 8px; padding: 9px; border: 0; border-radius: var(--radius-sm); background: transparent; text-align: left; }
-.permission-option:hover { background: var(--hover); }
-.permission-option strong { display: block; color: var(--text); font-size: max(10px, 0.78rem); }
-.permission-option small { display: block; margin-top: 2px; color: var(--text-faint); font-size: max(10px, 0.69rem); line-height: 1.35; }
-.permission-radio { width: 12px; height: 12px; margin-top: 2px; border: 1px solid var(--border-hi); border-radius: 50%; }
-.permission-option[aria-checked="true"] .permission-radio { border: 3px solid var(--accent); }
-.permission-option[aria-checked="true"] strong { color: var(--accent-hi); }
 .composer-actions { margin-left: auto; display: flex; gap: 6px; }
 .send-btn, .stop-btn { width: 30px; border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-size: 1rem; font-weight: 800; }
 .send-btn:hover { background: var(--accent-hi); }
 .stop-btn { border-color: var(--red); background: var(--red-soft); color: var(--red); }
 #hintLine { display: none; }
 .hint-usage { margin-left: auto; color: var(--text-faint); font-size: max(10px, 0.69rem); font-variant-numeric: tabular-nums; }
+/* Context past the /compact nudge point — amber, a calm "getting large", never
+   alarming red. Applies to both the composer hint and the inspector readout. */
+.hint-usage.warn, #inspectorUsage.warn { color: var(--amber); font-weight: 600; }
 
 /* OVERDRIVE composer toggle — also the active-state indicator (glyph + label). */
 .overdrive-btn { display: flex; align-items: center; gap: 5px; padding: 0 10px; font-weight: 700; letter-spacing: 0.03em; }
@@ -894,9 +985,13 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .skill-desc { color: var(--text-dim); font-size: max(10px, 0.78rem); line-height: 1.5; }
 .skill-why { padding: 8px 10px; border-left: 2px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--raised); color: var(--text); font-size: max(10px, 0.75rem); line-height: 1.5; }
 .skill-conflicts { color: var(--amber); font-size: max(10px, 0.7rem); }
-.skill-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: auto; }
+.skill-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
 .skill-foot code { font-size: max(10px, 0.68rem); }
 .skill-kind { color: var(--text-faint); font-size: max(10px, 0.67rem); }
+/* Export sits at the far right of the card foot; quiet until hovered. */
+.skill-export-btn { flex: none; margin-left: auto; padding: 3px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); color: var(--text-dim); font-size: max(10px, 0.66rem); white-space: nowrap; }
+.skill-export-btn:hover { color: var(--accent-hi); border-color: var(--accent); }
+.skill-export-btn:disabled { opacity: 0.5; }
 #skillsRecommendBtn { margin-left: auto; padding: 6px 11px; border: 1px solid var(--amber); border-radius: var(--radius-sm); background: var(--amber-soft); color: var(--amber); font-size: max(10px, 0.72rem); font-weight: 650; }
 #skillsRecommendBtn:hover { background: rgba(var(--amber-rgb), 0.22); }
 #skillCreateBtn { padding: 6px 11px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-ink); font-size: max(10px, 0.72rem); font-weight: 700; }
@@ -908,6 +1003,11 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .skill-wiz-box { width: min(680px, 94vw); }
 .skill-kind-seg { margin-bottom: 8px; }
 .skill-kind-seg .seg-btn { flex: 1; padding: 8px 10px; }
+.skill-wiz-field { width: 100%; margin-top: 8px; padding: 8px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); }
+.skill-wiz-row { display: flex; align-items: center; gap: 10px; margin-top: 9px; }
+.skill-wiz-label { width: 96px; flex: none; color: var(--text-dim); font-size: max(10px, 0.72rem); }
+.skill-wiz-select { flex: 1; min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); color-scheme: var(--color-scheme); }
+#skillModelHint { margin-top: 5px; }
 #skillDescInput, #skillDraftText { width: 100%; margin-top: 8px; padding: 10px 11px; resize: vertical; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); color: var(--text-hi); line-height: 1.5; }
 #skillDraftText { font: 0.76rem/1.5 var(--mono); min-height: 300px; }
 #skillWizStatus, #skillWizStatus2 { margin-right: auto; color: var(--amber); font-size: max(10px, 0.72rem); }
@@ -958,6 +1058,12 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .set-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
 .set-label { width: 92px; flex: none; color: var(--text-dim); font-size: max(10px, 0.75rem); }
 .set-row select, .set-row input, #promptModalInput { min-width: 0; flex: 1; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); color-scheme: var(--color-scheme); }
+/* A scale value is three characters wide — the shared `flex: 1` input rule
+   would stretch it across the card and read as a text field. */
+.set-number { flex: none !important; width: 88px; font-variant-numeric: tabular-nums; }
+.set-suffix { color: var(--text-dim); font-size: max(10px, 0.72rem); }
+.set-inline-btn { padding: 6px 10px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); color: var(--text-dim); font-size: max(10px, 0.68rem); }
+.set-inline-btn:hover { color: var(--text-hi); background: var(--hover); }
 .set-note { margin-top: 6px; color: var(--text-faint); font-size: max(10px, 0.71rem); line-height: 1.5; }
 .seg { display: flex; overflow: hidden; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); }
 .seg-btn { padding: 6px 10px; border: 0; border-left: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: max(10px, 0.68rem); }
@@ -977,11 +1083,25 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
    Modals, setup, failure recovery
    ----------------------------------------------------------------------- */
 
-#deleteModal, #setupWizard, #shortcutSheet, #promptModal, #overdriveDialog { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--scrim); backdrop-filter: blur(4px); }
+#deleteModal, #setupWizard, #shortcutSheet, #promptModal, #overdriveDialog, #sessionModal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--scrim); backdrop-filter: blur(4px); }
 .modal-box, .wiz-box { width: min(560px, 92vw); padding: 19px 20px; border: 1px solid var(--border-hi); border-radius: 13px; background: var(--panel); box-shadow: var(--shadow); }
 .modal-title, .wiz-title { margin-bottom: 6px; color: var(--text-hi); font-size: 0.9rem; font-weight: 700; }
 .modal-sub, .wiz-sub { margin-bottom: 10px; color: var(--text-dim); font-size: max(10px, 0.76rem); line-height: 1.5; }
 #deleteSubject { max-height: 180px; overflow: auto; padding: 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); color: var(--text-hi); font-size: max(10px, 0.75rem); white-space: pre-wrap; }
+/* /session report modal — a wider box with a scrollable, row-by-row body. */
+.session-modal-box { width: min(620px, 94vw); }
+.session-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.session-modal-close { padding: 2px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); color: var(--text-dim); font-size: 0.8rem; line-height: 1.4; }
+.session-modal-close:hover { color: var(--text-hi); border-color: var(--border-hi); }
+.session-report { max-height: min(62vh, 520px); overflow: auto; margin-top: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); }
+.sr-line { display: flex; gap: 10px; align-items: baseline; font-size: max(11px, 0.8rem); line-height: 1.7; color: var(--text); }
+.sr-line.sr-head { color: var(--text-hi); font-weight: 700; letter-spacing: 0.02em; }
+.sr-line.sr-section { color: var(--text-hi); font-weight: 600; }
+.sr-line.sr-sub { color: var(--text-dim); }
+.sr-key { color: var(--text-dim); white-space: nowrap; }
+.sr-val { color: var(--text-hi); font-variant-numeric: tabular-nums; }
+.sr-line.sr-sub .sr-val { color: var(--text); }
+.sr-gap { height: 8px; }
 .modal-actions, .wiz-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 13px; }
 .modal-actions button, .wiz-actions button { padding: 8px 12px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); font-size: max(10px, 0.74rem); }
 #allowBtn { color: var(--amber); border-color: var(--amber); } #denyBtn { color: var(--red); }
@@ -991,6 +1111,9 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 #allowAlwaysBtn { color: var(--text-dim); }
 #allowAlwaysBtn:hover { color: var(--text-hi); border-color: var(--border-strong); }
 .modal-hint { margin-top: 9px; color: var(--text-faint); font-size: max(10px, 0.71rem); line-height: 1.45; }
+.modal-note { width: 100%; margin-top: 11px; padding: 8px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); color: var(--text-hi); font-size: max(10px, 0.75rem); line-height: 1.45; resize: vertical; outline: 0; font-family: inherit; }
+.modal-note:focus { border-color: rgba(var(--accent-rgb), 0.72); }
+.modal-note::placeholder { color: var(--text-faint); }
 .shortcut-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin-top: 10px; }
 .shortcut-list dt { color: var(--text); font-size: max(10px, 0.75rem); } .shortcut-list dd { color: var(--text-faint); font-size: max(10px, 0.75rem); }
 .wiz-box { position: relative; width: min(540px, 92vw); }
@@ -998,6 +1121,10 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .wiz-presets { display: flex; gap: 5px; margin-bottom: 13px; }
 .wiz-preset { flex: 1; padding: 7px 3px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); color: var(--text-dim); font-size: max(10px, 0.65rem); }
 .wiz-preset.on { color: var(--accent-hi); border-color: var(--accent); background: var(--accent-soft); }
+/* Auto-detected as absent: unclickable, dimmed, and its title explains why on
+   hover. `disabled` already blocks the click; this is the visual half. */
+.wiz-preset:disabled, .wiz-preset-off { opacity: 0.4; cursor: not-allowed; }
+.wiz-preset:disabled:hover, .wiz-preset-off:hover { background: var(--raised); color: var(--text-dim); }
 .wiz-field { display: block; margin-bottom: 9px; }
 .wiz-field > span { display: block; margin-bottom: 4px; color: var(--text-faint); font-size: max(10px, 0.65rem); font-weight: 700; letter-spacing: 0.08em; }
 .wiz-field input { width: 100%; padding: 8px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); }
@@ -1013,33 +1140,30 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 #wizStartBtn:hover { background: var(--accent-hi); }
 .wiz-note { margin-top: 10px; color: var(--text-faint); font-size: max(10px, 0.68rem); line-height: 1.5; }
 
-/* First-run autonomy notice: amber (an advisory, not the red of a failure). */
-.autonomy-notice {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 12px 0;
-  padding: 11px 13px;
-  border: 1px solid rgba(var(--amber-rgb), 0.45);
-  border-radius: var(--radius);
-  background: var(--amber-soft);
-  color: var(--text);
-  font-size: max(10px, 0.79rem);
-  line-height: 1.5;
-}
-.autonomy-notice strong { color: var(--text-hi); }
-.autonomy-notice-btn {
-  flex: none;
-  align-self: flex-start;
-  padding: 6px 11px;
-  border: 1px solid var(--amber);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--amber);
-  font-size: max(10px, 0.68rem);
-  font-weight: 700;
-}
-.autonomy-notice-btn:hover { color: var(--accent-ink); background: var(--amber); }
+/* The wizard now carries a profile list + a build form — cap its height and let
+   the box scroll rather than run off the viewport on a short window. */
+.wiz-box { max-height: min(88vh, 760px); overflow-y: auto; }
+
+/* Welcome-page action row: the primary Open workspace + the secondary
+   Set-up-connections sit side by side. */
+.empty-actions { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; justify-content: center; }
+.empty-secondary { margin-top: 8px; padding: 9px 15px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); color: var(--text); font-size: max(10px, 0.8rem); font-weight: 600; }
+.empty-secondary:hover { border-color: var(--border-strong); background: var(--hover); color: var(--text-hi); }
+
+/* Saved-profile picker at the top of the wizard. */
+.wiz-profiles { margin-bottom: 13px; }
+.wiz-profiles-head, .wiz-build-head { margin-bottom: 7px; color: var(--text-faint); font-size: max(10px, 0.65rem); font-weight: 700; letter-spacing: 0.08em; }
+.wiz-build-head { margin-top: 4px; }
+.wiz-profiles-list { display: flex; flex-direction: column; gap: 5px; }
+.wiz-profile-row { display: flex; align-items: stretch; gap: 5px; }
+.wiz-profile-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); text-align: left; }
+.wiz-profile-info:hover { border-color: var(--border-hi); background: var(--hover); }
+.wiz-profile-name { color: var(--text-hi); font-size: max(10px, 0.78rem); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wiz-profile-meta { color: var(--text-dim); font-size: max(10px, 0.68rem); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wiz-profile-use { flex: none; padding: 0 12px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--accent-hi); font-size: max(10px, 0.7rem); font-weight: 700; }
+.wiz-profile-use:hover { background: var(--accent); color: var(--accent-ink); }
+.wiz-profile-del { flex: none; width: 34px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); font-size: 0.85rem; }
+.wiz-profile-del:hover { border-color: rgba(var(--red-rgb), 0.55); background: var(--red-soft); }
 
 .engine-banner { display: flex; align-items: center; gap: 10px; margin: 10px 0; padding: 11px 12px; border-color: rgba(var(--red-rgb), 0.5); background: var(--red-soft); }
 .engine-banner span { min-width: 0; flex: 1; }
@@ -1060,7 +1184,7 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
   .logo-text, .sidebar-primary .dock-label,
   .sidebar-section, .dock-label, .sidebar-status span { display: none; }
   .sidebar-brand { justify-content: center; padding: 0; }
-  .sidebar-primary { justify-content: center; padding: 0; }
+  .sidebar-primary, .sidebar-home { justify-content: center; padding: 0; }
   .sidebar-tools { grid-template-columns: 1fr; }
   .dock-btn { height: 38px; }
   .sidebar-status { justify-content: center; padding: 0; }
@@ -1075,8 +1199,6 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
   #transcript { padding: 16px 14px 10px; }
   #composer { padding: 0 14px 12px; }
   .composer-toolbar { flex-wrap: wrap; }
-  #permissionMenuBtn { min-width: 130px; }
-  .permission-menu { width: min(330px, calc(100vw - 86px)); }
   .view-head, #changesList, #sessionsList, #labList, #teamRoster, .set-grid { padding-left: 14px; padding-right: 14px; }
   .session-row, .lab-row { grid-template-columns: 1fr; }
   .session-actions, .lab-actions { flex-direction: row; }

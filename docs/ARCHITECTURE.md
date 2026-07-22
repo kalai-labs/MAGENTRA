@@ -24,8 +24,8 @@ app/             # the desktop app (Electron) — the engine's only frontend tod
 ### Frontends
 
 The engine has exactly one process boundary: `engine/host`, a headless binary that
-speaks the protocol as NDJSON over stdio (`--cwd <workspace> [--mode …]
-[--dangerously-bypass]`). The desktop app (`app/`) spawns exactly that process per
+speaks the protocol as NDJSON over stdio (`--cwd <workspace>`). The desktop app
+(`app/`) spawns exactly that process per
 open workspace and renders the event stream:
 
 - `app/main.js` — Electron main process: window, the engine child process, IPC.
@@ -100,12 +100,12 @@ Core → frontend events: `session_started` (with the slash-command registry in
 `retry_status`, `text_delta`, `thinking_delta`, `tool_call_started`,
 `tool_call_finished`, `agent_spawned`, `agent_finished`, `permission_request`,
 `question_request`, `task_list_updated`, `file_edited` (unified diff),
-`background_notification`, `mode_changed`, `command_output`, `session_list`,
+`background_notification`, `overdrive_changed`, `command_output`, `session_list`,
 `turn_finished`, `error`, `modes_updated`, `team_updated`, `backpack_progress`,
 `session_restored`, `model_catalog`, `cwd_changed`, `missions_updated`.
 
 Frontend → core requests: `user_message`, `permission_response`, `question_response`,
-`interrupt`, `set_mode`, `set_deletion_guard`, `slash_command`,
+`interrupt`, `set_overdrive`, `set_deletion_guard`, `slash_command`,
 `bang_command`, `resume_session`, `delete_session`, `stop_background`,
 `rename_session`, `archive_session`, `list_sessions`, `set_modes`, `reload_team`.
 
@@ -138,10 +138,10 @@ execution, and subagent.
 
 ### Permission engine
 
-Modes: `default` (mutating tools prompt), `acceptEdits` (file edits auto-approved,
-Bash still prompts), `plan` (read-only enforcement), `bypass` (explicit
-`--dangerously-bypass` opt-in). Settings rules (`allow`/`deny` lists matching tool name +
-argument glob, e.g. `Bash(git status*)`) resolve as: deny > allow > mode default.
+Two stances: normal (reads, interactions, and file edits auto-approved; commands
+prompt) and OVERDRIVE (nothing prompts except the deletion guard). Settings rules
+(`allow`/`deny` lists matching tool name + argument glob, e.g. `Bash(git status*)`)
+resolve as: deny > allow > stance default.
 Approvals flow over the protocol; allow-always writes a session rule. Every decision is
 logged to the transcript.
 

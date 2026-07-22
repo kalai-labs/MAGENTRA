@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="workbench" data-motion="full" data-detail="engineer">
+<html lang="en" data-theme="light" data-motion="full" data-detail="engineer">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; font-src 'self';" />
@@ -21,6 +21,9 @@
 
     <button class="sidebar-primary active" id="navConsole" title="New conversation" aria-label="New conversation">
       <span class="dock-glyph">＋</span><span class="dock-label">New conversation</span>
+    </button>
+    <button class="sidebar-home hidden" id="navHome" title="Back to the welcome page" aria-label="Back to the welcome page">
+      <span class="dock-glyph">⌂</span><span class="dock-label">Welcome page</span>
     </button>
 
     <section class="sidebar-section sidebar-section-workspaces" aria-labelledby="workspacesSidebarTitle">
@@ -70,6 +73,9 @@
         <span class="dock-glyph">±</span><span class="dock-label">Changes</span>
         <span id="dockChangesCount" class="dock-badge hidden">0</span>
       </button>
+      <button class="dock-btn" id="navSetupConn" title="Set up connections" aria-label="Set up connections">
+        <span class="dock-glyph">⇆</span><span class="dock-label">Connect</span>
+      </button>
       <button class="dock-btn" id="navSettings" title="Settings" aria-label="Settings">
         <span class="dock-glyph">⚙</span><span class="dock-label">Settings</span>
       </button>
@@ -108,7 +114,10 @@
           <div class="empty-mark" aria-hidden="true">M</div>
           <h1>Bring a workspace. Leave with reviewed work.</h1>
           <p class="empty-tag">Magentra plans, edits, verifies, and keeps every decision visible.</p>
-          <button id="pickFolderBtn">Open workspace</button>
+          <div class="empty-actions">
+            <button id="pickFolderBtn">Open workspace</button>
+            <button id="welcomeSetupConnBtn" class="empty-secondary" title="Build reusable connection profiles">⇆ Set up connections</button>
+          </div>
           <div id="recentList" class="recent-list hidden"></div>
         </div>
       </main>
@@ -131,39 +140,26 @@
           <textarea id="promptInput" rows="2" placeholder="Ask Magentra anything…" spellcheck="false" disabled></textarea>
           <div class="composer-toolbar">
             <button id="attachBtn" class="composer-tool" title="Attach context" aria-label="Attach context">＋</button>
-            <div class="permission-wrap">
-              <button id="permissionMenuBtn" class="composer-select" aria-haspopup="menu" aria-expanded="false">
-                <span class="permission-shield">◇</span><span id="permissionMenuLabel">Ask before changes</span><span class="chevron">⌄</span>
-              </button>
-              <div id="permissionMenu" class="permission-menu hidden" role="menu">
-                <button class="permission-option" data-permission="ask" role="menuitemradio" aria-checked="true">
-                  <span class="permission-radio"></span><span><strong>Ask before changes</strong><small>Review consequential commands before they run.</small></span>
-                </button>
-                <button class="permission-option" data-permission="auto" role="menuitemradio" aria-checked="false">
-                  <span class="permission-radio"></span><span><strong>Autonomous</strong><small>Apply edits automatically; file deletions still follow the deletion guard.</small></span>
-                </button>
-              </div>
-            </div>
             <button id="overdriveBtn" class="composer-select overdrive-btn" aria-pressed="false" title="OVERDRIVE — fully autonomous mode (self-verifying, no caps)">
               <span class="od-btn-glyph">⚡</span><span class="od-btn-label">OVERDRIVE</span>
             </button>
-            <select id="modelSelect" class="composer-select" title="Model (price per 1M tokens, in/out)">
-              <option value="openai/gpt-oss-120b">GPT-OSS 120B — $0.04 / $0.17</option>
-              <option value="deepseek-ai/DeepSeek-V4-Flash" selected>DeepSeek V4 Flash — $0.09 / $0.18</option>
-              <option value="Qwen/Qwen3-14B">Qwen3 14B — $0.12 / $0.24</option>
-              <option value="google/gemma-4-26B-A4B-it">Gemma 4 26B — $0.07 / $0.34</option>
-              <option value="google/gemma-4-31B-it">Gemma 4 31B — $0.13 / $0.38</option>
-              <option value="deepseek-ai/DeepSeek-V3.2">DeepSeek V3.2 — $0.26 / $0.38</option>
-              <option value="Qwen/Qwen3.6-35B-A3B">Qwen3.6 35B — $0.15 / $0.95</option>
-              <option value="Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo">Qwen3 Coder 480B — $0.30 / $1.00</option>
-              <option value="MiniMaxAI/MiniMax-M2.5">MiniMax M2.5 — $0.15 / $1.15</option>
-              <option value="XiaomiMiMo/MiMo-V2.5">MiMo V2.5 — $0.40 / $2.00</option>
-              <option value="zai-org/GLM-5">GLM-5 — $0.60 / $2.08</option>
-              <option value="moonshotai/Kimi-K2.5">Kimi K2.5 — $0.45 / $2.25</option>
-              <option value="deepseek-ai/DeepSeek-V4-Pro">DeepSeek V4 Pro — $1.30 / $2.60</option>
-              <option value="zai-org/GLM-5.2">GLM-5.2 — $0.93 / $3.00</option>
-              <option value="moonshotai/Kimi-K2.7-Code">Kimi K2.7 Code — $0.74 / $3.50</option>
-              <option value="moonshotai/Kimi-K2.6">Kimi K2.6 — $0.75 / $3.50</option>
+            <select id="modelSelect" class="composer-select" title="Model">
+              <option value="openai/gpt-oss-120b">GPT-OSS 120B</option>
+              <option value="deepseek-ai/DeepSeek-V4-Flash" selected>DeepSeek V4 Flash</option>
+              <option value="Qwen/Qwen3-14B">Qwen3 14B</option>
+              <option value="google/gemma-4-26B-A4B-it">Gemma 4 26B</option>
+              <option value="google/gemma-4-31B-it">Gemma 4 31B</option>
+              <option value="deepseek-ai/DeepSeek-V3.2">DeepSeek V3.2</option>
+              <option value="Qwen/Qwen3.6-35B-A3B">Qwen3.6 35B</option>
+              <option value="Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo">Qwen3 Coder 480B</option>
+              <option value="MiniMaxAI/MiniMax-M2.5">MiniMax M2.5</option>
+              <option value="XiaomiMiMo/MiMo-V2.5">MiMo V2.5</option>
+              <option value="zai-org/GLM-5">GLM-5</option>
+              <option value="moonshotai/Kimi-K2.5">Kimi K2.5</option>
+              <option value="deepseek-ai/DeepSeek-V4-Pro">DeepSeek V4 Pro</option>
+              <option value="zai-org/GLM-5.2">GLM-5.2</option>
+              <option value="moonshotai/Kimi-K2.7-Code">Kimi K2.7 Code</option>
+              <option value="moonshotai/Kimi-K2.6">Kimi K2.6</option>
               <option value="__custom__">Custom…</option>
             </select>
             <input id="customModel" class="composer-select hidden" type="text" placeholder="provider/model-id" spellcheck="false" />
@@ -177,7 +173,7 @@
         </div>
         <div id="hintLine">
           <span id="hintModel">deepseek-ai/DeepSeek-V4-Flash</span>
-          <span id="hintAuto" class="hint-auto">asks before acting · deletions always ask</span>
+          <span id="hintAuto" class="hint-auto">asks before commands · deletions always ask</span>
         </div>
       </footer>
     </section>
@@ -200,7 +196,7 @@
         <span class="view-title">◈ SKILLS</span>
         <span id="skillsSub" class="view-sub">no skills active</span>
         <button id="skillsRecommendBtn" class="hidden" title="Enable the recommended discipline set">★ ENABLE RECOMMENDED</button>
-        <button id="skillCreateBtn" title="Describe a skill — Magentra writes the file, you approve it">＋ CREATE SKILL</button>
+        <button id="skillCreateBtn" title="Describe a skill — Magentra writes the file, you approve it">＋ BUILD NEW SKILL</button>
         <button id="skillsCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
       </div>
       <div id="skillsList"></div>
@@ -268,10 +264,18 @@
           <div class="set-row">
             <span class="set-label">Theme</span>
             <div class="seg" id="setTheme">
-              <button class="seg-btn on" data-theme="workbench">DARK</button>
-              <button class="seg-btn" data-theme="light">LIGHT</button>
+              <button class="seg-btn on" data-theme="light">LIGHT</button>
+              <button class="seg-btn" data-theme="workbench">DARK</button>
+              <button class="seg-btn" data-theme="matrix">MATRIX</button>
             </div>
           </div>
+
+          <div class="set-row hidden" id="setRainRow">
+            <span class="set-label">Rain</span>
+            <input id="setRainOpacity" class="set-number" type="number" min="0" max="1" step="0.05" value="0.35"
+                   inputmode="decimal" aria-describedby="setRainNote">
+          </div>
+          <p class="set-note hidden" id="setRainNote">Matrix rain strength — 0.0 (off) to 1.0 (full). Only affects the Matrix theme.</p>
 
           <div class="set-row">
             <span class="set-label">Text size</span>
@@ -282,6 +286,14 @@
               <button class="seg-btn" data-size="15">XL</button>
             </div>
           </div>
+
+          <div class="set-row">
+            <span class="set-label">UI scale</span>
+            <input id="setZoom" class="set-number" type="number" min="0.5" max="2" step="0.05" value="1.2"
+                   inputmode="decimal" aria-describedby="setZoomNote">
+            <button id="setZoomResetBtn" class="set-inline-btn" title="Back to 1.0">RESET</button>
+          </div>
+          <p class="set-note" id="setZoomNote">Scales the entire interface — text, spacing, panels, controls. 0.5 to 2.0; 1.0 is normal.</p>
 
           <div class="set-row">
             <span class="set-label">Motion</span>
@@ -305,6 +317,17 @@
         </div>
 
         <div class="set-card">
+          <div class="set-card-title">CONTEXT</div>
+          <div class="set-row">
+            <span class="set-label">Auto-compact at</span>
+            <input id="setCompactLimit" class="set-number" type="number" min="0" step="1000" value="32000"
+                   inputmode="numeric" aria-describedby="setCompactNote">
+            <span class="set-suffix">tokens</span>
+          </div>
+          <p class="set-note" id="setCompactNote">When the conversation reaches this many context tokens, older history is summarized automatically to keep it flowing. Set to <strong>0</strong> to turn auto-compaction off and manage it yourself with <code>/compact</code>. This is the only place it's set — pick a value you know fits your model (real context size varies by provider).</p>
+        </div>
+
+        <div class="set-card">
           <div class="set-card-title">SAFETY</div>
           <div class="set-row">
             <span class="set-label">Deletions</span>
@@ -313,14 +336,7 @@
               <button class="seg-btn" data-deletions="allow">ALLOW</button>
             </div>
           </div>
-          <div class="set-row">
-            <span class="set-label">Commands</span>
-            <div class="seg" id="setCommands">
-              <button class="seg-btn on" data-commands="auto">AUTONOMOUS</button>
-              <button class="seg-btn" data-commands="ask">ASK ALWAYS</button>
-            </div>
-          </div>
-          <p class="set-note">AUTONOMOUS (the default) lets the agent run commands without asking; destructive ones still prompt because of the Deletions guard above. ASK ALWAYS pauses before every consequential command — never for reading. Setting Deletions to ALLOW removes the last prompt, so the agent deletes without asking.</p>
+          <p class="set-note">Consequential commands ask for approval before they run — never for reading or file edits. Engage OVERDRIVE (in the composer) for a fully autonomous run with no prompts. Destructive commands prompt on top of that because of the Deletions guard above; setting Deletions to ALLOW removes that last prompt too.</p>
           <div class="set-row">
             <span class="set-label">Web search</span>
             <div class="seg" id="setWebSearch">
@@ -365,10 +381,18 @@
             <dt>atlas</dt><dd>the whole-design map of this workspace at <code>.magentra/ATLAS.md</code>; <code>/atlas</code> builds or refreshes it.</dd>
             <dt>mission</dt><dd>a saved directive file under <code>.magentra/missions/</code> that the lab runs on demand, on a loop, or on a cron schedule (MISSIONS in the dock).</dd>
             <dt>task list</dt><dd>the live plan of record in the TASKS rail — the current work items, ending with a verification task.</dd>
-            <dt>skills</dt><dd>Markdown files under <code>.magentra/skills/</code> that shape the agent. A <em>discipline</em> applies to every turn while enabled (nothing is locked — all off by default); an <em>action</em> runs on demand. Toggle in the Skills view or with <code>/skills</code>; create your own with ＋ CREATE SKILL.</dd>
-            <dt>deletion guard</dt><dd>destructive commands always ask first — in every permission mode — unless Deletions is set to ALLOW above.</dd>
+            <dt>skills</dt><dd>Markdown files under <code>.magentra/skills/</code> that shape the agent. A <em>discipline</em> applies to every turn while enabled (nothing is locked — all off by default); an <em>action</em> runs on demand. Toggle in the Skills view or with <code>/skills</code>; create your own with ＋ BUILD NEW SKILL.</dd>
+            <dt>deletion guard</dt><dd>destructive commands always ask first — even in OVERDRIVE — unless Deletions is set to ALLOW above.</dd>
             <dt>session</dt><dd>one conversation with its own transcript, cost ledger, and task list, saved under <code>.magentra/sessions/</code> (SESSIONS in the dock resumes them).</dd>
           </dl>
+        </div>
+
+        <div class="set-card">
+          <div class="set-card-title">SKILLS</div>
+          <p class="set-note">Skills shape how the agent works — a <em>discipline</em> is a standing rule applied every turn, an <em>action</em> is an on-demand recipe. Describe one in plain language and Magentra drafts it.</p>
+          <div class="set-actions">
+            <button id="settingsBuildSkillBtn">＋ BUILD NEW SKILL ▸</button>
+          </div>
         </div>
 
         <div class="set-card">
@@ -406,7 +430,6 @@
           <dt>Workspace</dt><dd id="inspectorWorkspace">—</dd>
           <dt>Session</dt><dd id="inspectorSession">—</dd>
           <dt>Model</dt><dd id="inspectorModel">—</dd>
-          <dt>Permissions</dt><dd id="inspectorPermissions">Ask before changes</dd>
           <dt>Usage</dt><dd id="inspectorUsage">—</dd>
         </dl>
       </div>
@@ -421,7 +444,6 @@
       <div id="inspectorChangesList" class="inspector-list"></div>
       <div class="inspector-actions">
         <button id="reviewAllBtn" disabled>Review all</button>
-        <button id="undoLastBtn" disabled>Undo last</button>
       </div>
     </section>
 
@@ -466,6 +488,20 @@
     </div>
   </div>
 
+  <!-- ── session report (/session) ─────────────────────────────────────── -->
+  <div id="sessionModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="sessionModalTitle">
+    <div class="modal-box session-modal-box">
+      <div class="session-modal-head">
+        <div class="modal-title" id="sessionModalTitle">SESSION</div>
+        <button id="sessionModalClose" class="session-modal-close" aria-label="Close (Esc)">✕</button>
+      </div>
+      <div class="session-report" id="sessionModalBody"></div>
+      <div class="modal-actions">
+        <button id="sessionModalDone">CLOSE (Esc)</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── keyboard cheat sheet (?) ───────────────────────────────────────── -->
   <div id="shortcutSheet" class="hidden" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
     <div class="modal-box">
@@ -494,6 +530,7 @@
       <p class="modal-sub">The agent wants to run:</p>
       <pre id="deleteSubject"></pre>
       <p id="allowAlwaysHint" class="modal-hint hidden">“Always allow” remembers this exact command for this workspace — anything else still asks.</p>
+      <textarea id="permissionNote" class="modal-note" rows="1" spellcheck="false" placeholder="Optional note to the agent…"></textarea>
       <div class="modal-actions">
         <button id="denyBtn">DENY (N / Esc)</button>
         <button id="allowAlwaysBtn">ALWAYS ALLOW (A)</button>
@@ -509,11 +546,21 @@
       <div id="skillWizStep1">
         <p class="modal-sub">Describe what you want in plain language. Magentra writes the skill file; you review and edit it before anything is installed.</p>
         <div class="seg skill-kind-seg" id="skillKindSeg">
-          <button class="seg-btn on" data-skillkind="discipline">DISCIPLINE — always on</button>
-          <button class="seg-btn" data-skillkind="action">ACTION — on demand</button>
+          <button class="seg-btn on" data-skillkind="discipline">DISCIPLINE — a standing rule</button>
+          <button class="seg-btn" data-skillkind="action">ACTION — an on-demand recipe</button>
         </div>
-        <p id="skillKindHint" class="set-note">A discipline shapes every turn while enabled — rules, reminders, even tool gates the engine enforces.</p>
-        <textarea id="skillDescInput" rows="5" spellcheck="false" placeholder="e.g. Before editing any SQL file, require an EXPLAIN plan in the task notes, and always add a rollback statement alongside every migration."></textarea>
+        <p id="skillKindHint" class="set-note">Always-on while enabled: it shapes <em>every</em> turn — rules the agent follows, reminders it gets, even tool gates the engine enforces. <em>e.g.</em> “investigate before editing,” or “always write a failing test before the fix.”</p>
+        <textarea id="skillDescInput" rows="4" spellcheck="false" placeholder="e.g. Before editing any SQL file, require an EXPLAIN plan in the task notes, and always add a rollback statement alongside every migration."></textarea>
+
+        <input id="skillContextInput" class="skill-wiz-field" type="text" spellcheck="false"
+               placeholder="Optional — when should it apply? triggers or an example situation" />
+
+        <div class="skill-wiz-row">
+          <span class="skill-wiz-label">Author with</span>
+          <select id="skillModelSelect" class="skill-wiz-select"></select>
+        </div>
+        <p class="set-note" id="skillModelHint">Uses your workspace connection. Pick a stronger model here if a draft comes out poorly.</p>
+
         <div class="modal-actions">
           <span id="skillWizStatus"></span>
           <button id="skillWizCancel">CANCEL (Esc)</button>
@@ -537,7 +584,7 @@
     <div class="modal-box overdrive-box">
       <div class="modal-title" id="overdriveDialogTitle">⚡ OVERDRIVE</div>
       <ul class="overdrive-points">
-        <li>Fully autonomous — no iteration or token caps. The agent runs until the job is done.</li>
+        <li>Fully autonomous — nothing asks. Commands run without approval prompts until the job is done.</li>
         <li>Before it ends, it self-verifies its work against your original query.</li>
         <li>It may delete files inside the workspace without asking. Anything outside the workspace still prompts.</li>
         <li>Keep typing while it runs — your messages join the running turn to steer it.</li>
@@ -579,23 +626,32 @@
     </div>
   </div>
 
-  <!-- ── first-run wizard ───────────────────────────────────────────────── -->
-  <div id="setupWizard" class="hidden" role="dialog" aria-modal="true" aria-label="Engine setup">
+  <!-- ── connection wizard: saved profiles + build-new ──────────────────── -->
+  <div id="setupWizard" class="hidden" role="dialog" aria-modal="true" aria-label="Set up connections">
     <div class="wiz-box">
-      <button id="wizCloseBtn" class="wiz-close" title="Not now (Esc)" aria-label="Not now (Esc)">✕</button>
-      <div class="wiz-title"><span class="logo-mark">▮</span> LINK YOUR ENGINE</div>
-      <p class="wiz-sub">This workspace has no credentials yet. Choose a provider and Magentra will write a local <code>.env</code> for it.</p>
+      <button id="wizCloseBtn" class="wiz-close" title="Close (Esc)" aria-label="Close (Esc)">✕</button>
+      <div class="wiz-title"><span class="logo-mark">▮</span> SET UP CONNECTIONS</div>
+      <p class="wiz-sub" id="wizSub">This workspace has no connection yet. Pick a saved profile, or build a new one below.</p>
+
+      <div class="wiz-profiles" id="wizProfiles" hidden>
+        <div class="wiz-profiles-head">SAVED PROFILES</div>
+        <div id="wizProfilesList" class="wiz-profiles-list"></div>
+      </div>
+
+      <div class="wiz-build-head" id="wizBuildHead">＋ NEW PROFILE</div>
+
+      <label class="wiz-field"><span>PROFILE NAME</span>
+        <input id="wizName" type="text" spellcheck="false" placeholder="e.g. DeepInfra — DeepSeek" />
+      </label>
 
       <div class="wiz-presets">
-        <button class="wiz-preset on" data-preset="deepinfra">DEEPINFRA</button>
-        <button class="wiz-preset" data-preset="anthropic">ANTHROPIC</button>
+        <button class="wiz-preset on" data-preset="custom">CUSTOM</button>
         <button class="wiz-preset" data-preset="ollama">OLLAMA</button>
         <button class="wiz-preset" data-preset="lmstudio">LM STUDIO</button>
-        <button class="wiz-preset" data-preset="custom">CUSTOM</button>
       </div>
 
       <label class="wiz-field"><span>BASE URL</span>
-        <input id="wizBaseUrl" type="text" spellcheck="false" value="https://api.deepinfra.com/v1/openai" />
+        <input id="wizBaseUrl" type="text" spellcheck="false" value="" placeholder="https://your-endpoint/v1" />
         <span id="wizBaseUrlHint" class="wiz-field-hint" hidden>Paste the exact URL your client calls — even <code>…/v1/chat/completions</code> — Magentra derives the base.</span>
       </label>
       <label class="wiz-check" id="wizInsecureRow" hidden>
@@ -607,7 +663,7 @@
         <button id="wizKeyHint" class="wiz-key-hint" type="button" hidden></button>
       </label>
       <label class="wiz-field"><span>MODEL</span>
-        <input id="wizModel" type="text" spellcheck="false" value="deepseek-ai/DeepSeek-V4-Flash" list="wizModels" />
+        <input id="wizModel" type="text" spellcheck="false" value="" placeholder="provider/model-id" list="wizModels" />
         <!-- options are filled per provider preset by setup.js -->
         <datalist id="wizModels"></datalist>
       </label>
@@ -618,9 +674,10 @@
       <div class="wiz-actions">
         <span id="wizStatus"></span>
         <button id="wizTestBtn">TEST</button>
-        <button id="wizStartBtn">IGNITE ▸</button>
+        <button id="wizSaveProfileBtn">SAVE PROFILE</button>
+        <button id="wizStartBtn">SAVE &amp; CONNECT ▸</button>
       </div>
-      <p class="wiz-note" id="wizNote">The key is written to <code>.env</code> beside your code and never leaves this machine.</p>
+      <p class="wiz-note" id="wizNote">Profiles are saved to <code>~/.magentra/profiles.json</code> (owner-only, this machine). Connecting also writes the key to the workspace <code>.env</code>.</p>
     </div>
   </div>
 
@@ -634,6 +691,7 @@
        this exact order (each builds on what the ones above it define). -->
   <script src="modules/dom.js"></script>
   <script src="modules/state.js"></script>
+  <script src="modules/rain.js"></script>
   <script src="modules/util.js"></script>
   <script src="modules/markdown.js"></script>
   <script src="modules/views.js"></script>

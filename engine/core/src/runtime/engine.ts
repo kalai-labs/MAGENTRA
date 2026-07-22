@@ -7,7 +7,6 @@ import {
   type CoreEvent,
   type FrontendRequest,
   type PermissionDecision,
-  type PermissionMode,
   type RestoredMessage,
   type SessionSummary,
   type SlashCommandInfo,
@@ -16,7 +15,7 @@ import type { ContentBlock, Msg, Provider } from "@magentra/providers";
 import { AsyncQueue } from "../util/asyncQueue.js";
 import { CronScheduler } from "../scheduling/cron.js";
 import { HookRunner } from "../agent/hooks.js";
-import { loadModes, ModeEngine, parseSkillMd } from "../ma/modes.js";
+import { BUILTIN_SKILL_FILES, loadModes, ModeEngine, parseSkillMd } from "../ma/modes.js";
 import { parseFrontmatter } from "../config/frontmatter.js";
 import { loadSkills } from "../agent/skills.js";
 import { loadAtlas } from "../knowledge/atlas.js";
@@ -98,12 +97,11 @@ export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTi
   maxTokensPerTurn: "nextTurn",
   maxIterationsPerTurn: "nextTurn",
   contextWindow: "nextTurn",
-  compactionThreshold: "nextTurn",
   retention: "session",
   // Rates are read at report time (/session, status bar), so a new price applies
   // to the whole session's accumulated usage the moment it is set.
   pricing: "session",
-  permissionMode: "session",
+  clarify: "nextTurn",
   permissions: "clear",
   hooks: "restart",
   mcpServers: "restart",
@@ -238,6 +236,7 @@ export class Engine {
             input: req.input,
             ...(req.description !== undefined ? { description: req.description } : {}),
             ...(req.subject !== undefined ? { subject: req.subject } : {}),
+            ...(req.grant !== undefined ? { grant: req.grant } : {}),
           });
         }),
       askUser: (id, questions) =>
@@ -332,7 +331,7 @@ export class Engine {
       sessionId: this.session.id,
       cwd: this.opts.cwd,
       model: this.opts.settings.model,
-      mode: this.session.permissions.getMode(),
+      overdrive: this.session.isOverdrive(),
       skills: (this.opts.skills ?? []).map((s) => ({ name: s.name, description: s.description })),
     });
     this.emit({ type: "task_list_updated", tasks: this.session.tasks.list() });
@@ -438,7 +437,7 @@ export class Engine {
    */
   private skillGenBusy = false;
 
-  private startSkillGeneration(description: string, kind: "discipline" | "action"): void {
+  private startSkillGeneration(description: string, kind: "discipline" | "action", opts: SkillGenOptions = {}): void {
     if (this.skillGenBusy) {
       this.emit({ type: "command_output", text: "🧩 a skill generation is already running." });
       return;
@@ -454,7 +453,7 @@ export class Engine {
       kind: "start",
       payload: { description: "generating skill" },
     });
-    void this.generateSkill(description.trim(), kind)
+    void this.generateSkill(description.trim(), kind, opts)
       .then((draft) => this.emit({ type: "skill_draft", ...draft }))
       .catch((err: Error) => this.emit({ type: "skill_draft", ok: false, error: err.message }))
       .finally(() => {
@@ -471,23 +470,42 @@ export class Engine {
   private async generateSkill(
     description: string,
     kind: "discipline" | "action",
+    opts: SkillGenOptions = {},
   ): Promise<{ ok: boolean; text?: string; suggestedFilename?: string; error?: string }> {
     const takenIds = this.modeEngine.list().map((m) => m.id);
+    // Author with a different provider entirely when a profile connection was
+    // passed (the app resolved it); otherwise use the session's own provider and
+    // the chosen/default model.
+    let authorProvider: Provider | undefined;
+    let authorModel = opts.model ?? this.opts.settings.model;
+    if (opts.connection) {
+      authorProvider = createProviderForEndpoint({
+        provider: opts.connection.provider === "anthropic" ? "anthropic" : "openai-compatible",
+        apiKey: opts.connection.apiKey,
+        ...(opts.connection.baseUrl ? { baseUrl: opts.connection.baseUrl } : {}),
+      });
+      authorModel = opts.connection.model || authorModel;
+    }
     let feedback = "";
     let lastError = "";
     for (let attempt = 0; attempt < 3; attempt++) {
-      const raw = await this.session.spawnAgent({
-        agentType: "explore",
-        description: "author a skill file",
-        maxIterations: 4,
-        roleOverride: SKILL_AUTHOR_ROLE,
-        prompt: buildSkillPrompt(description, kind, takenIds) + feedback,
+      // A single completion — NOT an agentic explore loop. Authoring one small
+      // file needs no tools; the old explore agent could spend minutes reading
+      // workspace files and still return prose instead of a file. runInference
+      // is one focused call, on the chosen model (defaulting to the session's
+      // main model — skill authoring wants the capable model, not smallModel).
+      const raw = await this.session.runInference({
+        system: SKILL_AUTHOR_ROLE,
+        user: buildSkillPrompt(description, kind, takenIds, opts) + feedback,
+        maxTokens: 4096,
+        model: authorModel,
+        ...(authorProvider ? { provider: authorProvider } : {}),
       });
-      const text = stripCodeFence(raw);
+      const text = repairSkillText(raw);
       const check = this.validateSkillText(text, kind);
       if (check.ok) return { ok: true, text, suggestedFilename: check.filename };
       lastError = check.error;
-      feedback = `\n\nYour previous attempt was rejected by the validator:\n${check.error}\nProduce the corrected complete file.`;
+      feedback = `\n\nYour previous attempt was rejected by the validator:\n${check.error}\nReturn ONLY the corrected file, starting with the "---" line — no sentence before it.`;
     }
     return { ok: false, error: `Generation failed validation after 3 attempts: ${lastError}` };
   }
@@ -577,6 +595,37 @@ export class Engine {
   }
 
   /**
+   * export_skill: hand the app a skill's .md text so it can save it anywhere.
+   * A workspace file wins (it may be a customized override); otherwise the
+   * built-in's shipped text — so every skill in the list can be exported, not
+   * just user-authored ones.
+   */
+  private exportSkill(id: string): void {
+    if (typeof id !== "string" || !/^[a-z0-9][a-z0-9_-]*$/.test(id)) {
+      this.emit({ type: "skill_export", ok: false, id: String(id), error: "invalid skill id" });
+      return;
+    }
+    const dir = join(this.opts.cwd, ".magentra", "skills");
+    for (const rel of [`${id}.md`, join(id, "SKILL.md")]) {
+      const p = join(dir, rel);
+      try {
+        if (statSync(p).isFile()) {
+          this.emit({ type: "skill_export", ok: true, id, filename: `${id}.md`, text: readFileSync(p, "utf8") });
+          return;
+        }
+      } catch {
+        // not this candidate — try the next / fall through to built-ins
+      }
+    }
+    const builtin = BUILTIN_SKILL_FILES.find((b) => b.id === id);
+    if (builtin) {
+      this.emit({ type: "skill_export", ok: true, id, filename: `${id}.md`, text: builtin.text });
+      return;
+    }
+    this.emit({ type: "skill_export", ok: false, id, error: `no source found for skill "${id}"` });
+  }
+
+  /**
    * The single seam for starting exclusive session work — a user turn, /compact,
    * or /build-crew. Two invariants it exists to hold:
    *   1. Exclusive work never overlaps a running turn: if the session is mid-turn
@@ -603,8 +652,35 @@ export class Engine {
         this.busy = false;
         this.gcStateFiles();
         this.flushPendingBangs();
+        void this.maybeAutoNameSession();
       });
     return true;
+  }
+
+  /**
+   * After a turn settles, give a still-unnamed but now-substantial session an
+   * auto-generated title (see {@link Session.maybeAutoName}). Persisted to the
+   * transcript meta and broadcast via `session_list`, exactly like a manual
+   * rename, so the sidebar updates. Best-effort and fire-and-forget: any failure
+   * is swallowed and a manual name always wins (the session's own guard skips
+   * naming once a label exists).
+   */
+  private async maybeAutoNameSession(): Promise<void> {
+    try {
+      const label = await this.session.maybeAutoName();
+      if (!label) return;
+      this.session.transcript.append({
+        kind: "meta",
+        data: { ...(Transcript.latestMeta(this.session.transcript.file) ?? {}), label },
+      });
+      this.emit({ type: "session_list", sessions: this.listSessions() });
+      this.emit({
+        type: "command_output",
+        text: `✎ Named this chat “${label}”. Rename it anytime by clicking its name in the sidebar.`,
+      });
+    } catch {
+      // Naming is a nicety — never let it disrupt the session.
+    }
   }
 
   currentSession(): Session {
@@ -671,13 +747,15 @@ export class Engine {
         });
         break;
       }
-      case "set_mode":
-        this.session.permissions.setMode(request.mode);
-        this.emit({ type: "mode_changed", mode: request.mode });
-        break;
       case "set_overdrive":
         this.overdriveEnabled = request.enabled;
         this.session.setOverdrive(request.enabled);
+        break;
+      case "set_model":
+        this.handleSetModel(request.model);
+        break;
+      case "set_compact_limit":
+        this.session.setAutoCompactLimit(request.limit);
         break;
       case "set_deletion_guard":
         this.session.setDeletionPolicy(!request.enabled);
@@ -739,10 +817,18 @@ export class Engine {
         this.reloadTeam();
         break;
       case "generate_skill":
-        this.startSkillGeneration(request.description, request.kind);
+        this.startSkillGeneration(request.description, request.kind, {
+          ...(request.model ? { model: request.model } : {}),
+          ...(request.context ? { context: request.context } : {}),
+          ...(request.enforce ? { enforce: request.enforce } : {}),
+          ...(request.connection ? { connection: request.connection } : {}),
+        });
         break;
       case "install_skill":
         this.installSkill(request.filename, request.text);
+        break;
+      case "export_skill":
+        this.exportSkill(request.id);
         break;
       default:
         // The wire accepts any {type: string} object, so an unknown type can
@@ -999,23 +1085,14 @@ export class Engine {
         }
         break;
       }
-      case "mode":
-        if (args === "default" || args === "acceptEdits" || args === "bypass") {
-          this.session.permissions.setMode(args);
-          this.emit({ type: "mode_changed", mode: args });
-          this.emit({ type: "command_output", text: `Permission mode: ${args}` });
-        } else {
-          this.emit({ type: "command_output", text: "Usage: /mode default|acceptEdits|bypass" });
-        }
-        break;
       case "session":
         // The end-of-session bill: cost per model at that model's own rates,
         // API vs wall time, code churn, and the CURRENT context size (no % of a
         // window — the real limit varies per model/endpoint, so a percentage
         // would be confidently wrong; the raw number is always true).
         this.emit({
-          type: "command_output",
-          text: `${this.session.stats.format(this.opts.settings)}\n${this.extensionLines()}`,
+          type: "session_report",
+          text: `${this.session.stats.format(this.opts.settings, Date.now(), this.session.contextBreakdown())}\n${this.extensionLines()}`,
         });
         break;
       case "sessions":
@@ -1084,27 +1161,16 @@ export class Engine {
     return lines.join("\n");
   }
 
-  /** Loaded-extension summary lines, shared by /skills and /session. */
+  /** Loaded-extension summary lines, shared by /skills and /session. Only
+   * user-facing features are reported here — hooks and MCP servers are internal
+   * plumbing that isn't surfaced as a product feature yet, so they get no stats
+   * line (a "0 configured" readout for a feature the user has no way to use only
+   * misinforms). Add them back here if/when they ship as real features. */
   private extensionLines(): string {
-    const settings = this.opts.settings;
-    const hookCount = Object.values(settings.hooks).reduce(
-      (n, matchers) => n + (matchers ?? []).reduce((m, entry) => m + entry.hooks.length, 0),
-      0,
-    );
-    const mcpCount = Object.keys(settings.mcpServers).length;
-    // Connected = servers that actually contributed tools (mcp__<server>__<tool>).
-    const mcpConnected = new Set(
-      this.opts.registry
-        .list()
-        .map((t) => (t.name.startsWith("mcp__") ? t.name.split("__")[1] : undefined))
-        .filter(Boolean),
-    ).size;
     const disciplines = this.modeEngine.list();
     const activeDisciplines = disciplines.filter((m) => m.active).length;
     return [
       `  Skills loaded:         ${(this.opts.skills ?? []).length}`,
-      `  Hooks configured:      ${hookCount}`,
-      `  MCP servers:           ${mcpConnected} connected of ${mcpCount} configured`,
       `  Disciplines active:    ${activeDisciplines} of ${disciplines.length}`,
     ].join("\n");
   }
@@ -1236,15 +1302,26 @@ export class Engine {
    * live session, so a fresh session via /clear always sees it) and report when it takes
    * effect. Returns the human-readable timing note for the command output.
    */
+  /**
+   * Live model swap (set_model frame): persist it and push it into the running
+   * session so the NEXT turn uses it — no engine restart, so the conversation
+   * and session id survive. Silent on success (the frontend shows its own note);
+   * only a rejected value surfaces a message.
+   */
+  private handleSetModel(model: string): void {
+    const trimmed = typeof model === "string" ? model.trim() : "";
+    if (!trimmed) return;
+    try {
+      const applied = setSetting(this.opts.cwd, "model", trimmed, "auto");
+      this.applySettingLive(applied.key, applied.value);
+    } catch (err) {
+      this.emit({ type: "command_output", text: `model unchanged: ${(err as Error).message}` });
+    }
+  }
+
   private applySettingLive(key: string, value: string | number | boolean): string {
     setSettingPath(this.opts.settings as unknown as Record<string, unknown>, key, value);
     const topKey = key.split(".")[0] as keyof typeof settingsSchema.shape;
-    // permissionMode is the one setting we can push into the live session at once.
-    if (topKey === "permissionMode") {
-      const mode = value as PermissionMode;
-      this.session.permissions.setMode(mode);
-      this.emit({ type: "mode_changed", mode });
-    }
     if (topKey === "retention") this.gcStateFiles();
     // A passthrough key outside the schema can't reach here (setSetting rejects it),
     // but default to /clear timing rather than crash if one ever does.
@@ -1603,10 +1680,10 @@ export class Engine {
 
   /**
    * Runs one mission as a full orchestrator turn. Unattended runs (scheduler-
-   * fired, or the /mission start loop) get the mission's permission mode
-   * (default bypass — the deletion guard still fires and is auto-denied via the
-   * session's unattended flag), never block on approvals or questions, honor
-   * the mission's token budget, and end with a notification. Every run appends
+   * fired, or the /mission start loop) take the OVERDRIVE permission stance
+   * (the deletion guard still fires and is auto-denied via the session's
+   * unattended flag), never block on approvals or questions, honor the
+   * mission's token budget, and end with a notification. Every run appends
    * to the mission's log; an active continuous mission re-arms its next run.
    */
   private runMission(mission: Mission, unattended: boolean): void {
@@ -1614,8 +1691,6 @@ export class Engine {
       const cwd = this.opts.cwd;
       const session = this.session;
       const settings = this.opts.settings;
-      const savedLiveMode = session.permissions.getMode();
-      const savedSettingsMode = settings.permissionMode;
       const savedBudget = settings.maxTokensPerTurn;
       this.emit({
         type: "command_output",
@@ -1624,11 +1699,11 @@ export class Engine {
       let ok = false;
       try {
         if (unattended) {
-          const mode = mission.mode ?? "bypass";
-          session.permissions.setMode(mode);
-          // Specialist children constructed during the run copy settings at
-          // spawn time — the mode must be visible there too.
-          settings.permissionMode = mode;
+          // Nobody is present to answer an ask prompt, so the run takes the
+          // allow-all stance; the session's unattended flag auto-denies
+          // whatever still insists on asking (deletion guard, questions).
+          // Stance only — the session's own OVERDRIVE identity is untouched.
+          session.permissions.setOverdrive(true);
           session.setUnattended(true);
         }
         if (mission.budgetTokens !== undefined) settings.maxTokensPerTurn = mission.budgetTokens;
@@ -1637,8 +1712,8 @@ export class Engine {
         ok = true;
       } finally {
         session.setUnattended(false);
-        session.permissions.setMode(savedLiveMode);
-        settings.permissionMode = savedSettingsMode;
+        // Restore the stance to the session's own OVERDRIVE state.
+        session.permissions.setOverdrive(session.isOverdrive());
         settings.maxTokensPerTurn = savedBudget;
         this.appendMissionLog(mission.id, {
           ts: new Date().toISOString(),
@@ -1855,7 +1930,7 @@ export class Engine {
       state.active[mission.id] = { startedAt: new Date().toISOString() };
       saveContinuousState(this.opts.cwd, state);
       say(
-        `🔁 continuous mission "${mission.id}" started — it runs now, then again after every ~${mission.cooldownSeconds ?? 300}s of idle time until /mission stop ${mission.id}. Runs are unattended: mode ${mission.mode ?? "bypass"}, destructive calls auto-denied${mission.budgetTokens ? `, budget ${mission.budgetTokens} output tokens per run` : ""}. The loop survives restarts.`,
+        `🔁 continuous mission "${mission.id}" started — it runs now, then again after every ~${mission.cooldownSeconds ?? 300}s of idle time until /mission stop ${mission.id}. Runs are unattended: nothing asks, destructive calls auto-denied${mission.budgetTokens ? `, budget ${mission.budgetTokens} output tokens per run` : ""}. The loop survives restarts.`,
       );
       // The loop is unattended from run one — it must never depend on a human.
       this.emitMissionsUpdated();
@@ -2110,16 +2185,11 @@ export class Engine {
     const file = join(this.opts.cwd, STATE_DIR_NAME, "sessions", `${known.id}.jsonl`);
     try {
       const { messages, meta } = Transcript.replay(file);
-      // Restore the session's accounting ledger and permission mode from the
-      // latest meta snapshot; transcripts that predate meta records (or carry
-      // a corrupt one) fall back to fresh stats and the configured mode.
+      // Restore the session's accounting ledger from the latest meta
+      // snapshot; transcripts that predate meta records (or carry a corrupt
+      // one) fall back to fresh stats.
       this.session = this.createSession(id, messages, SessionStats.fromSnapshot(meta?.stats));
       if (typeof meta?.label === "string") this.session.label = meta.label;
-      const mode = meta?.mode;
-      if (isPermissionMode(mode)) {
-        this.session.permissions.setMode(mode);
-        this.emit({ type: "mode_changed", mode });
-      }
       // The resumed session's own OVERDRIVE state wins over the engine's
       // current toggle; transcripts predating the flag leave it untouched.
       if (typeof meta?.overdrive === "boolean") {
@@ -2151,7 +2221,7 @@ export class Engine {
     if (id === this.session.id) {
       this.session.label = trimmed;
       // Merge into the latest snapshot: a bare {label} record would otherwise
-      // become the newest meta and hide stats/model/mode from resume.
+      // become the newest meta and hide stats/model/overdrive from resume.
       this.session.transcript.append({
         kind: "meta",
         data: { ...(Transcript.latestMeta(this.session.transcript.file) ?? {}), label: trimmed },
@@ -2237,7 +2307,7 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
   { cmd: "/atlas", args: "[force]", desc: "map the codebase into .magentra/ATLAS.md (force overwrites hand edits)" },
   { cmd: "/clear", args: "", desc: "start a fresh session (history cleared)" },
   { cmd: "/compact", args: "", desc: "compact the conversation now" },
-  { cmd: "/session", args: "", desc: "this session's bill: cost per model, API/wall time, code churn, context now" },
+  { cmd: "/session", args: "", desc: "this session's usage: tokens per model, API/wall time, code churn, context now" },
   { cmd: "/tasks", args: "", desc: "show the task list" },
   { cmd: "/skills", args: "[on|off <id>]", desc: "list skills (disciplines + on-demand), or toggle a discipline (session only)" },
   { cmd: "/lab", args: "[load|save]", desc: "one-file lab blueprint (magentricks.md): load applies it, save snapshots it" },
@@ -2267,8 +2337,7 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
       "  /mission schedule <id>    run it on its cron schedule (durable) · unschedule removes",
     ],
   },
-  { cmd: "/mode", args: "<default|acceptEdits|bypass>", desc: "set permission mode" },
-  { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous turn loop: no caps, self-verified completion" },
+  { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous stance: nothing asks, self-verified completion" },
   { cmd: "/styles", args: "[on|off <id>]", desc: "deprecated alias for /skills" },
   { cmd: "/debug", args: "<prompt>", desc: "reproduce-first debugging mode (off: /debug off)" },
   { cmd: "/settings", args: "[global] [k v]", desc: "show settings, or set one (add global to save to ~/.magentra)" },
@@ -2316,11 +2385,6 @@ function buildRateCard(
     };
   }
   return card;
-}
-
-/** Narrows a value read from disk to a PermissionMode before trusting it. */
-function isPermissionMode(value: unknown): value is PermissionMode {
-  return value === "default" || value === "acceptEdits" || value === "bypass";
 }
 
 /** Concatenated text of a message's text blocks. */
@@ -2443,12 +2507,35 @@ response must be EXACTLY the content of one skill .md file — no code fences, n
 commentary before or after it. You may read a few workspace files first if the
 skill should reference real project conventions, but keep it brief.`;
 
+/** Optional knobs the wizard passes into skill authoring. */
+type SkillGenOptions = {
+  model?: string;
+  context?: string;
+  enforce?: "remind" | "block";
+  connection?: { provider: "anthropic" | "openai-compat"; baseUrl?: string; apiKey: string; model: string };
+};
+
 /** The format the generator must produce, per kind — kept in one place so the wizard and validator agree. */
-function buildSkillPrompt(description: string, kind: "discipline" | "action", takenIds: string[]): string {
+function buildSkillPrompt(
+  description: string,
+  kind: "discipline" | "action",
+  takenIds: string[],
+  opts: SkillGenOptions = {},
+): string {
+  const contextLine = opts.context && opts.context.trim()
+    ? `\n\nWhen it should apply / extra detail from the user:\n"""\n${opts.context.trim()}\n"""`
+    : "";
+  const enforceLine =
+    kind === "discipline" && opts.enforce === "block"
+      ? `\n\nThe user wants this ENFORCED, not just advisory: include a "gate:" frontmatter line that blocks the relevant tools (e.g. Write, Edit) until the condition holds, with a short, specific refusal message.`
+      : kind === "discipline"
+        ? `\n\nThe user wants a REMINDER, not a hard block: rely on the directive and a short "## On turn start" reminder — do NOT add a gate: line.`
+        : "";
+
   const common = `The user wants a new ${kind} skill. Their description:
 """
 ${description}
-"""
+"""${contextLine}${enforceLine}
 
 Already-taken skill ids (choose a DIFFERENT short kebab-case id): ${takenIds.join(", ")}.`;
 
@@ -2507,4 +2594,17 @@ function stripCodeFence(raw: string): string {
   const text = raw.trim();
   const m = /^```(?:markdown|md)?\n([\s\S]*?)\n```$/.exec(text);
   return m ? m[1]! : text;
+}
+
+/**
+ * Coax a model's reply into the exact file the validator expects: unwrap a code
+ * fence, then — the common failure — drop any preamble sentence the model wrote
+ * before the actual `---` frontmatter, so a chatty-but-correct draft validates
+ * instead of being thrown away over a leading "Here's your skill:".
+ */
+function repairSkillText(raw: string): string {
+  const text = stripCodeFence(raw).trim();
+  const lines = text.split("\n");
+  const start = lines.findIndex((l) => l.trim() === "---");
+  return start > 0 ? lines.slice(start).join("\n").trim() : text;
 }

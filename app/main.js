@@ -20,6 +20,7 @@ const {
 const { logEvent, setLogWorkspace, flushLog, initFallbackLog, activeLogsDir } = require("./main/logging.js");
 const { resolveWorkspaceFile, undoWorkspaceDiffs } = require("./main/changes.js");
 const { testEndpoint, validateCredentialPayload } = require("./main/connection.js");
+const { readProfiles, upsertProfile, deleteProfile, findProfile, sanitizeProfile } = require("./main/profiles.js");
 
 const SMOKE = process.argv.includes("--smoke");
 
@@ -144,7 +145,7 @@ function stopEngine() {
 }
 
 // Frames that represent an explicit user action: dropping one silently reads
-// as "the app ignored me". State-sync frames (set_mode, set_modes,
+// as "the app ignored me". State-sync frames (set_modes,
 // set_deletion_guard, reload_team) are re-sent on session start, so their
 // drops stay quiet by design — the renderer fires them before any engine runs.
 const USER_ACTION_FRAMES = new Set([
@@ -163,10 +164,20 @@ const USER_ACTION_FRAMES = new Set([
   "archive_session",
 ]);
 
+// The generate_skill frame can carry a resolved profile's API key (to author
+// with a different provider). It must reach the engine over stdin but must NOT
+// land in the log — redact it in the logged copy only.
+function redactFrameForLog(frame) {
+  if (frame && typeof frame === "object" && frame.connection && typeof frame.connection === "object" && "apiKey" in frame.connection) {
+    return { ...frame, connection: { ...frame.connection, apiKey: frame.connection.apiKey ? "<redacted>" : "" } };
+  }
+  return frame;
+}
+
 function writeToEngine(frame) {
   if (engineChild && engineChild.stdin.writable) {
     engineChild.stdin.write(JSON.stringify(frame) + "\n");
-    logEvent("ui", frame);
+    logEvent("ui", redactFrameForLog(frame));
     return;
   }
   logEvent("sys", { ev: "engine-write-dropped", type: frame && frame.type });
@@ -268,7 +279,7 @@ function startEngine(workspace, model) {
   }
 
   const entry = engineEntryPoint();
-  const args = [...entry.args, "--serve", "--dangerously-bypass", "--cwd", workspace];
+  const args = [...entry.args, "--serve", "--cwd", workspace];
 
   const env = {
     ...process.env,
@@ -659,8 +670,9 @@ function rememberWindowState() {
 // THEME_TITLEBAR in renderer/modules/state.js.
 const TITLEBAR_HEIGHT = 36;
 const THEME_CHROME = {
-  workbench: { color: "#0e1114", symbolColor: "#ced6dd", background: "#0b0e11" },
   light: { color: "#e7ebf0", symbolColor: "#36424f", background: "#eef1f5" },
+  workbench: { color: "#0e1114", symbolColor: "#ced6dd", background: "#0b0e11" },
+  matrix: { color: "#040a06", symbolColor: "#b9f5cd", background: "#030705" },
 };
 const themeChrome = (name) => THEME_CHROME[name] || THEME_CHROME[DEFAULT_THEME];
 
@@ -763,10 +775,18 @@ ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
   }
   const validated = validateCredentialPayload(payload);
   if (!validated.ok) return validated;
-  const { apiKey, model, provider, baseUrl, contextWindow, insecureTls } = validated;
 
   const workspace = currentConfig.workspace;
   if (!workspace) return { ok: false, error: "no workspace" };
+  return applyValidatedConnection(workspace, validated);
+});
+
+/** Commit a validated connection to a workspace: the API key to its .env, the
+ * rest to its .magentra/settings.json, then (re)start the engine on it. Shared
+ * by the setup wizard's writeEnv and by applying a saved global profile, so
+ * both paths land credentials identically. */
+function applyValidatedConnection(workspace, validated) {
+  const { apiKey, model, provider, baseUrl, contextWindow, insecureTls } = validated;
 
   const envVarName = provider === "anthropic" ? "ANTHROPIC_API_KEY" : "DEEPINFRA_API_KEY";
 
@@ -858,6 +878,179 @@ ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
   logEvent("sys", { ev: "env-written", provider });
   startEngine(workspace, model);
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Global connection profiles: the reusable layer above per-workspace creds.
+// Build/save profiles once (even before any workspace is open); apply one to
+// the active workspace to connect it. The raw key never crosses back to the
+// renderer — list/save return sanitized records, and apply reads the stored
+// key here in main.
+// ---------------------------------------------------------------------------
+
+/** True if an executable named `bin` sits on PATH — how "is Ollama installed"
+ * is answered without spawning anything. Windows also tries PATHEXT suffixes. */
+function commandOnPath(bin) {
+  const dirs = (process.env.PATH || "").split(path.delimiter).filter(Boolean);
+  const exts = process.platform === "win32"
+    ? (process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean)
+    : [""];
+  for (const dir of dirs) {
+    for (const ext of exts) {
+      try {
+        const candidate = path.join(dir, bin + ext);
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return true;
+      } catch {
+        // unreadable PATH entry — skip
+      }
+    }
+  }
+  return false;
+}
+
+/** Short probe of a local server's HTTP port — any answer at all (even a 404)
+ * means something is listening. Covers a server that is running but whose CLI
+ * is not on PATH (a portable install, a container). */
+async function probeLocal(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 500);
+  try {
+    await fetch(url, { signal: controller.signal });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Which local model servers are present on this machine — installed (on PATH)
+ * or already running. Drives the grayed-out OLLAMA / LM STUDIO presets. */
+async function detectLocalServers() {
+  const ollamaInstalled = commandOnPath("ollama");
+  const lmsInstalled = commandOnPath("lms") || commandOnPath("lm-studio");
+  const [ollamaUp, lmsUp] = await Promise.all([
+    ollamaInstalled ? Promise.resolve(true) : probeLocal("http://127.0.0.1:11434/api/version"),
+    lmsInstalled ? Promise.resolve(true) : probeLocal("http://127.0.0.1:1234/v1/models"),
+  ]);
+  return {
+    ollama: ollamaUp ? { available: true } : { available: false, reason: "Ollama wasn't found on this PC" },
+    lmstudio: lmsUp ? { available: true } : { available: false, reason: "LM Studio wasn't found on this PC" },
+  };
+}
+
+ipcMain.handle("connections:detectLocal", () => detectLocalServers());
+
+// Skill generation, routed through main so it can resolve a chosen connection
+// profile into a full connection (the renderer never holds a profile's key).
+// Without a profileId it is a plain passthrough to the engine's generate_skill.
+ipcMain.handle("skills:generate", (_evt, payload) => {
+  if (!payload || typeof payload !== "object") return { ok: false, error: "invalid payload" };
+  if (!engineChild) return { ok: false, error: "Open a workspace and connect an engine first." };
+  const description = typeof payload.description === "string" ? payload.description.trim() : "";
+  if (!description) return { ok: false, error: "Describe the skill first." };
+  const frame = { type: "generate_skill", description, kind: payload.kind === "action" ? "action" : "discipline" };
+  if (typeof payload.context === "string" && payload.context.trim()) frame.context = payload.context.trim();
+  if (typeof payload.profileId === "string" && payload.profileId) {
+    const profile = findProfile(payload.profileId);
+    if (!profile) return { ok: false, error: "profile not found" };
+    frame.connection = {
+      provider: profile.provider === "anthropic" ? "anthropic" : "openai-compat",
+      ...(profile.baseUrl ? { baseUrl: profile.baseUrl } : {}),
+      apiKey: typeof profile.apiKey === "string" ? profile.apiKey : "",
+      model: profile.model || "",
+    };
+  } else if (typeof payload.model === "string" && payload.model) {
+    frame.model = payload.model;
+  }
+  writeToEngine(frame);
+  return { ok: true };
+});
+
+// Save a skill's .md (text supplied by the engine's skill_export) to a chosen
+// location. The engine sources the text — including built-ins — so every skill
+// exports, not only on-disk ones.
+ipcMain.handle("skills:saveExport", async (_evt, payload) => {
+  const filename = payload && typeof payload.filename === "string" ? payload.filename : "";
+  const text = payload && typeof payload.text === "string" ? payload.text : "";
+  if (!/^[a-z0-9][a-z0-9_-]*\.md$/.test(filename) || text.length === 0) {
+    return { ok: false, error: "nothing to export" };
+  }
+  if (!mainWindow) return { ok: false, error: "no window" };
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: "Export skill",
+    defaultPath: filename,
+    filters: [{ name: "Markdown", extensions: ["md"] }],
+  });
+  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+  try {
+    fs.writeFileSync(result.filePath, text.endsWith("\n") ? text : text + "\n", "utf8");
+  } catch (err) {
+    return { ok: false, error: `failed to write: ${err && err.message ? err.message : String(err)}` };
+  }
+  logEvent("sys", { ev: "skill-exported" });
+  return { ok: true, path: result.filePath };
+});
+
+ipcMain.handle("profiles:list", () => readProfiles().map(sanitizeProfile));
+
+ipcMain.handle("profiles:save", (_evt, payload) => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { ok: false, error: "invalid payload" };
+  }
+  const name = typeof payload.name === "string" ? payload.name.trim() : "";
+  if (!name) return { ok: false, error: "profile name required" };
+
+  // Editing a profile without re-typing its key keeps the stored one — mirrors
+  // the workspace card's "empty field means keep the saved key".
+  let connection = payload;
+  if (payload.id && (!payload.apiKey || !String(payload.apiKey).trim())) {
+    const existing = findProfile(payload.id);
+    if (existing && typeof existing.apiKey === "string") connection = { ...payload, apiKey: existing.apiKey };
+  }
+  const validated = validateCredentialPayload(connection);
+  if (!validated.ok) return validated;
+
+  const { list, id } = upsertProfile({
+    id: typeof payload.id === "string" ? payload.id : undefined,
+    name,
+    baseUrl: validated.baseUrl,
+    apiKey: validated.apiKey,
+    model: validated.model,
+    provider: validated.provider,
+    ...(validated.contextWindow !== undefined ? { contextWindow: validated.contextWindow } : {}),
+    ...(validated.insecureTls ? { insecureTls: true } : {}),
+  });
+  logEvent("sys", { ev: "profile-saved" });
+  return { ok: true, id, profiles: list.map(sanitizeProfile) };
+});
+
+ipcMain.handle("profiles:delete", (_evt, id) => {
+  if (typeof id !== "string" || !id) return { ok: false, error: "invalid id" };
+  const list = deleteProfile(id);
+  logEvent("sys", { ev: "profile-deleted" });
+  return { ok: true, profiles: list.map(sanitizeProfile) };
+});
+
+ipcMain.handle("profiles:apply", (_evt, payload) => {
+  const id = payload && typeof payload === "object" ? payload.id : payload;
+  if (typeof id !== "string" || !id) return { ok: false, error: "invalid id" };
+  const workspace = currentConfig.workspace;
+  if (!workspace) return { ok: false, error: "no workspace open" };
+  const profile = findProfile(id);
+  if (!profile) return { ok: false, error: "profile not found" };
+  const validated = validateCredentialPayload({
+    baseUrl: profile.baseUrl,
+    apiKey: typeof profile.apiKey === "string" ? profile.apiKey : "",
+    model: profile.model,
+    provider: profile.provider,
+    contextWindow: profile.contextWindow,
+    insecureTls: profile.insecureTls === true,
+  });
+  if (!validated.ok) return validated;
+  const result = applyValidatedConnection(workspace, validated);
+  if (result.ok) logEvent("sys", { ev: "profile-applied" });
+  return result;
 });
 
 /** The saved key for the current workspace (first *_API_KEY line of .env). */
@@ -897,6 +1090,13 @@ ipcMain.handle("setup:testConnection", async (_evt, payload) => {
   // An empty key field with a saved key means "test the saved connection".
   if (payload && typeof payload === "object" && payload.useSavedKey) {
     payload = { ...payload, apiKey: savedWorkspaceKey() };
+  }
+  // Testing a saved profile with a blank key field: resolve the key from the
+  // profile store (the renderer never holds it). Without this, TEST sends no
+  // key and a hosted endpoint rejects it 401 though the profile is valid.
+  if (payload && typeof payload === "object" && payload.profileId && !String(payload.apiKey || "").trim()) {
+    const profile = findProfile(payload.profileId);
+    if (profile && typeof profile.apiKey === "string") payload = { ...payload, apiKey: profile.apiKey };
   }
   const validated = validateCredentialPayload(payload);
   if (!validated.ok) return validated;
@@ -1001,7 +1201,15 @@ ipcMain.handle("config:setModel", (_evt, model) => {
   currentConfig = { ...currentConfig, model: trimmed };
   writeConfig(currentConfig);
   logEvent("sys", { ev: "model-changed", model: currentConfig.model });
-  if (currentConfig.workspace) {
+  // Change the model on the LIVE session (takes effect next turn) rather than
+  // respawning the engine — a restart would start a fresh session and drop the
+  // current conversation. The persisted config above still makes the new model
+  // the default a future (re)start uses via MAGENTRA_MODEL.
+  if (currentConfig.workspace && engineChild) {
+    writeToEngine({ type: "set_model", model: trimmed });
+  } else if (currentConfig.workspace) {
+    // No live engine to update (not yet linked / crashed) — bring one up on the
+    // chosen model so the picker still connects.
     startEngine(currentConfig.workspace, currentConfig.model);
     sendToRenderer("engine:restarted", { model: currentConfig.model });
   }
@@ -1129,8 +1337,8 @@ ipcMain.on("engine:restart", () => {
   sendToRenderer("engine:restarted", { model: currentConfig.model });
 });
 
-ipcMain.on("engine:permission", (_evt, { id, decision }) => {
-  writeToEngine({ type: "permission_response", id, decision });
+ipcMain.on("engine:permission", (_evt, { id, decision, message }) => {
+  writeToEngine({ type: "permission_response", id, decision, ...(message ? { message } : {}) });
 });
 
 // ---------------------------------------------------------------------------

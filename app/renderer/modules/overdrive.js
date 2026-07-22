@@ -22,8 +22,11 @@ function applyOverdriveShell() {
     overdriveBtnEl.setAttribute("aria-pressed", on ? "true" : "false");
     overdriveBtnEl.title = on
       ? "OVERDRIVE active — fully autonomous. Click to disengage."
-      : "OVERDRIVE — fully autonomous mode (self-verifying, no caps)";
+      : "OVERDRIVE — fully autonomous stance (nothing asks)";
   }
+  // The footer safety hint reads OVERDRIVE state, so keep it in step on every
+  // change — including engine-driven ones that skip applySafetySettings.
+  renderSafetyHint();
 }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +67,7 @@ function engageOverdrive(fromUser) {
   saveUiSettings();
   applySafetySettings(false); // sends set_overdrive (the changed toggle)
   applyOverdriveShell();
-  syncActivityUi(); // busy placeholder flips to the steering hint
+  syncActivityUi(); // repaint composer/footer for the new safety stance
   if (fromUser) {
     playOverdriveCinematic();
     announce("OVERDRIVE engaged — fully autonomous mode.");

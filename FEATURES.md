@@ -29,32 +29,33 @@ land?), not on the model's prose.
 
 - [ ] **Turn loop** — user message → streamed thinking/text → tool calls → turn end. `llm`
 - [ ] **Interrupt** — a running turn stops promptly, including pending question rounds. `llm`
-- [ ] **Iteration cap** — a turn stops at `maxIterationsPerTurn`, and the model is warned on its final round so it answers instead of being cut off. `pure` + `llm`
-- [ ] **Turn token budget** — a turn stops at `maxTokensPerTurn`. `pure`
-- [ ] **Auto-recovery nudges** — a failed tool batch, an output-length cutoff, and an empty task list each inject the right reminder, capped. `pure`
+- [ ] **Interactive turns run uncapped** — no iteration cap, no per-turn token budget, unlimited signal-driven recovery nudges (failed batch, length cutoff, open tasks); the wrap-up nudge keeps its cap and the stall detector is the brake. `pure`
+- [ ] **Bounded runs stay bounded** — unattended (mission) runs and explicitly capped children respect `maxIterationsPerTurn`/`maxTokensPerTurn`, with the final-round warning. `pure` + `llm`
+- [ ] **Self-verify rung** — the first clean end-attempt injects the completeness+economy self-check (query-shaped evidence, no invented rituals); a silent DONE ends the turn with one visible reply; fires once per turn, re-armed by steering. `llm`
+- [ ] **Stall detector** — three consecutive identical rounds (same calls, same results) force a strategy pivot; after two pivots, the model must ask the user one concrete question. `pure` + `llm`
+- [ ] **Reuse gate reminds, never blocks** — a would-be new-file Write block becomes a reminder; the signal survives, the refusal doesn't. `pure`
+- [ ] **Mid-run steering (both stances)** — typing while a turn runs sends `steer_message`: the text joins the running turn at its next message boundary, re-arms self-verify, refunds pivots; when the turn already ended, it becomes a normal user turn. Slash/bang commands still queue for turn end. `llm`
 - [ ] **Context accounting** — `contextTokens` is the *last* request's whole prompt (input + cacheRead + cacheWrite) plus its reply, and does NOT accumulate across rounds. `pure`
 - [ ] **Usage accounting** — billed usage DOES accumulate, per model, across the session and every subagent. `pure`
 - [ ] **Provider usage normalization** — OpenAI-compatible `prompt_tokens` (whole prompt) minus `cached_tokens` (a subset) yields disjoint classes; Anthropic already reports them disjoint. Getting this wrong double-counts cache. `pure`
 - [ ] **Cost estimate** — four token classes billed at four different rates; no rate card ⇒ no cost shown (never a fabricated `$0.00`). `pure`
 - [ ] **`/session` report** — cost, API vs wall time, code churn, context now, usage per model. `pure`
 - [ ] **Compaction** — the oldest span is summarized when context crosses the threshold; the summary replaces it and context resets. `llm`
-- [ ] **Permission modes** — `default` / `acceptEdits` / `bypass` resolve each tool class correctly; deny-rule beats allow-rule beats mode. `pure`
-- [ ] **Deletion guard** — destructive Bash always asks, *even in bypass*, until explicitly disabled. Covers `rm`, `mv`, force-push, `DROP TABLE`, … `pure` + `proc`
-- [ ] **Protected state dir** — deleting a folder *named* `.magentra` (or a glob/unparseable command that could hit one) always asks, in every mode; it beats the "allow deletions" setting, explicit allow rules, OVERDRIVE, and never offers "always allow". Deeper paths like `.magentra/worktrees/foo` stay routine. `pure`
+- [ ] **Permission stances** — exactly two: normal (reads/interactions/file edits allowed, commands ask with once/session/always grants) and OVERDRIVE (everything allowed); deny-rule beats allow-rule beats stance. `pure`
+- [ ] **Approval note** — the approval card takes an optional note with ANY decision: on deny it becomes the refusal reason the model reads; on allow it reaches the model as a reminder with that round's results. `pure` + `llm`
+- [ ] **Command-shape always-allow** — "Always allow" on an ordinary command remembers its shape (`mkdir …` covers all mkdir; `git push`/`npm run build` keep the subcommand/script; compound or substituted commands stay literal); the card states the scope; shape grants persist across sessions and never override the deletion guard. `pure`
+- [ ] **Clarify pre-layer** — a genuinely open-ended request ("build a game", "improve this app") triggers up to three shape-defining multiple-choice questions BEFORE any work, judged by the main model; concrete/trivial/follow-up requests never trigger it; fail-open on any error; root attended turns only; `clarify: false` disables. `llm`
+- [ ] **Deletion guard** — destructive Bash always asks, *in both stances*, until explicitly disabled. Covers `rm`, `mv`, force-push, `DROP TABLE`, … `pure` + `proc`
+- [ ] **Protected state dir** — deleting a folder *named* `.magentra` (or a glob/unparseable command that could hit one) always asks, in both stances; it beats the "allow deletions" setting, explicit allow rules, OVERDRIVE, and never offers "always allow". Deeper paths like `.magentra/worktrees/foo` stay routine. `pure`
 - [ ] **File freshness** — Edit/Write on a file changed on disk since it was read is refused. `fs`
 
-## OVERDRIVE — fully-autonomous turn loop
+## OVERDRIVE — fully-autonomous stance
 
-When ON (composer toggle, `/overdrive on`, or `set_overdrive`), a turn runs until the query is handled; when OFF, none of the below applies. State is session-scoped, survives `/clear` within the run, and `/resume` restores it from the transcript meta.
+When ON (composer toggle, `/overdrive on`, or `set_overdrive`), nothing asks: the permission stance flips to allow-all and the shell shifts identity. The turn loop itself (uncapped, self-verify, stall detector, reuse-gate reminders) is identical in both states. State is session-scoped, survives `/clear` within the run, and `/resume` restores it from the transcript meta.
 
-- [ ] **Caps lifted** — no iteration cap, no per-turn token budget, unlimited signal-driven recovery nudges (failed batch, length cutoff, open tasks); the wrap-up nudge keeps its cap. `pure`
-- [ ] **Self-verify rung** — the first clean end-attempt injects the completeness+economy self-check (query-shaped evidence, no invented rituals); fires once per turn, re-armed by steering. `llm`
-- [ ] **Stall detector** — three consecutive identical rounds (same calls, same results) force a strategy pivot; after two pivots, the model must ask the user one concrete question. `pure` + `llm`
-- [ ] **Reuse gate softens** — a would-be new-file Write block becomes a reminder; the signal survives, the refusal doesn't. `pure`
+- [ ] **Allow-all stance** — commands, network, everything runs unprompted; only the deletion guard and the `.magentra` protection still ask. `pure`
 - [ ] **Deletion scope-split** — deletions provably inside the workspace skip the guard (rm/del/find/mv with analyzable paths, judged against Bash's tracked cwd); history rewrites, substitution, `~`, root wildcards, out-of-tree paths, and `.magentra` state dirs still ask. `pure`
 - [ ] **Pre-turn snapshot** — a `git stash create` ref is parked before each root turn and reported as `overdriveSnapshot` on `turn_finished` (tracked files only; absent on a clean tree). `fs`
-- [ ] **Mid-run steering** — `steer_message` joins the running turn at its next message boundary, re-arms self-verify, refunds pivots; when the turn already ended, it becomes a normal user turn. `llm`
-- [ ] **Budget inheritance** — subagents spawned during an overdrive turn get uncapped budgets (an explicit spawn cap still wins); they still cannot ask the user. `pure`
 - [ ] **Prompt contract** — the OVERDRIVE system-prompt section (plan-first, consequence-thinking, query-shaped evidence, ask-rubric, cleanup license) is present exactly while ON. `pure`
 
 ## Agent
@@ -87,7 +88,7 @@ When ON (composer toggle, `/overdrive on`, or `set_overdrive`), a turn runs unti
 - [ ] **Atlas freshness** — a hand-edited atlas is never clobbered without `force`. `fs`
 - [ ] **Import graph** — built lazily on first query; `blast` finds importers, `deps` finds dependencies. `fs`
 - [ ] **Symbol index** — updates incrementally as files change, with no explicit rebuild. `fs`
-- [ ] **Reuse gate** — a new file whose symbol collides with existing code is refused *once*, unless the agent already searched/read something related; the re-issued write always passes. `fs` + `llm`
+- [ ] **Reuse check** — a new file whose symbols resemble existing code (with no related search/read this session) gets a reminder listing the closest matches — firm wording for near-duplicates — alongside the allowed Write; it never refuses. `fs` + `llm`
 - [ ] **STANDARDS.md** — re-read every turn (not cached at boot), capped at 16 KB with a truncation notice. `fs` + `llm`
 - [ ] **Backpack RAG — build** — the ladder `raw → noted → embedded → brief` runs, caches on file signature, and reports progress. `llm` (embeddings are a real API call)
 - [ ] **Backpack RAG — retrieval** — `BackpackSearch` returns the chunk that actually answers the question, and the agent uses it. `llm`
