@@ -424,7 +424,38 @@ export type FrontendRequest =
   /** Export a skill's .md text (built-in or workspace file) for the app to save. */
   | { type: "export_skill"; id: string }
   /** Write a (re-validated) skill file into .magentra/skills/ and reload both skill kinds. */
-  | { type: "install_skill"; filename: string; text: string };
+  | { type: "install_skill"; filename: string; text: string }
+  /** Create a mission from the UI mission-builder's human-friendly inputs; the
+   *  engine assembles .magentra/missions/<id>.md (frontmatter + charter) and
+   *  reloads. See buildMissionFile. */
+  | { type: "create_mission"; draft: MissionDraft };
+
+/** The mission-builder's inputs in human terms — the engine turns these into a
+ *  mission file, the inverse of loadMissions. */
+export interface MissionDraft {
+  /** File id: lowercase [a-z0-9_-]; becomes the filename. */
+  id: string;
+  /** Display name (required). */
+  name: string;
+  /** One-sentence purpose, shown in listings. */
+  description?: string;
+  /** The charter: what to investigate — the question and scope (required). */
+  investigate: string;
+  /** What a complete result looks like; appended to the charter. */
+  done?: string;
+  /** Comma-separated search terms, as typed; the engine normalizes them. */
+  keywords?: string;
+  /** Workspace-relative report path; default .magentra/missions/out/<id>/report.md. */
+  deliverable?: string;
+  /** Optional 5-field cron for scheduled runs. */
+  schedule?: string;
+  /** Mark it a standing/looping mission (/mission start loops it). */
+  continuous?: boolean;
+  /** Cooldown between continuous runs, e.g. "15m". */
+  cooldown?: string;
+  /** Output-token budget per run. */
+  budget?: number;
+}
 
 export type Frame =
   | ({ kind: "event" } & CoreEvent)

@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("magentra", {
   // Attach-context picker: opens a file dialog and returns read/extracted text
   // for each chosen file (≤2 MB each). The renderer folds it into the message.
   pickContextFiles: (opts) => ipcRenderer.invoke("context:pickFiles", opts),
+  // Mission builder "Browse…": pick a report location inside the workspace.
+  pickMissionDeliverable: (defaultRel) => ipcRenderer.invoke("mission:pickDeliverable", defaultRel),
   undoChanges: (relPath, diffs) => ipcRenderer.invoke("changes:undo", { relPath, diffs }),
   setModel: (model) => ipcRenderer.invoke("config:setModel", model),
   send: (frame) => ipcRenderer.send("engine:send", frame),

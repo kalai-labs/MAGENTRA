@@ -235,6 +235,14 @@ function renderMissions() {
           ? missionActionButton("STOP", "Halt the continuous loop", `stop ${m.id}`, { danger: true })
           : missionActionButton("START", "Loop this mission: run, cool down, run again", `start ${m.id}`, { disabled: busy, toConsole: true }),
       );
+    } else if (m.running) {
+      // A one-off run in progress: hard-stop it (the global stop, surfaced here).
+      const stop = document.createElement("button");
+      stop.className = "lab-btn danger";
+      stop.textContent = "STOP";
+      stop.title = "Stop the running mission";
+      stop.addEventListener("click", () => window.magentra.interrupt());
+      actions.appendChild(stop);
     }
     if (m.schedule) {
       actions.appendChild(
@@ -243,6 +251,7 @@ function renderMissions() {
           : missionActionButton("SCHEDULE", `Arm the cron schedule (${m.schedule})`, `schedule ${m.id}`),
       );
     }
+    actions.appendChild(missionDeleteButton(m));
 
     row.appendChild(main);
     row.appendChild(actions);
@@ -274,17 +283,129 @@ function resetLabView() {
 
 navLabEl.addEventListener("click", () => showView("lab"));
 labCloseBtnEl.addEventListener("click", () => showView("console"));
-labNewBtnEl.addEventListener("click", async () => {
-  const id = await showPromptModal({
-    title: "NEW MISSION",
-    hint: "Mission id — becomes .magentra/missions/<id>.md (lowercase letters, digits, - or _).",
-    placeholder: "lit-scan",
+labNewBtnEl.addEventListener("click", openMissionBuilder);
+
+/** DELETE with a two-click arm — window.confirm is unreliable in this renderer,
+ *  so the first click arms ("CONFIRM?"), a second within 3s removes the mission
+ *  (the engine stops/unschedules it first; past reports are kept). */
+function missionDeleteButton(m) {
+  const btn = document.createElement("button");
+  btn.className = "lab-btn danger";
+  btn.textContent = "DELETE";
+  btn.title = `Remove the mission "${m.id}" (its past reports are kept)`;
+  let armed = false;
+  let timer = null;
+  btn.addEventListener("click", () => {
+    if (!armed) {
+      armed = true;
+      btn.textContent = "CONFIRM?";
+      btn.classList.add("armed");
+      timer = setTimeout(() => {
+        armed = false;
+        btn.textContent = "DELETE";
+        btn.classList.remove("armed");
+      }, 3000);
+      return;
+    }
+    if (timer) clearTimeout(timer);
+    sendMissionCommand(`delete ${m.id}`);
   });
-  if (!id || !id.trim()) return;
-  const trimmed = id.trim();
-  if (!/^[a-z0-9_-]+$/.test(trimmed)) {
-    appendSysNote(`mission: "${trimmed}" is not a valid id (lowercase letters, digits, - or _)`);
-    return;
+  return btn;
+}
+
+// ── Mission builder modal ──────────────────────────────────────────────────
+// Collects the mission in plain language, then sends a create_mission frame; the
+// engine assembles .magentra/missions/<id>.md (see buildMissionFile) and reloads.
+const mf = (id) => document.getElementById(id);
+let missionIdEdited = false;
+
+function slugifyMissionId(name) {
+  return (name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+}
+
+function setMissionStatus(text, isError) {
+  const el = mf("missionModalStatus");
+  if (!el) return;
+  el.textContent = text || "";
+  el.classList.toggle("err", Boolean(isError));
+}
+
+function syncMissionAutomation() {
+  const mode = mf("mfAutomation").value;
+  mf("mfCooldownField").classList.toggle("hidden", mode !== "continuous");
+  mf("mfScheduleField").classList.toggle("hidden", mode !== "schedule");
+}
+
+function openMissionBuilder() {
+  if (!missionModalEl) return;
+  for (const id of ["mfName", "mfId", "mfDescription", "mfInvestigate", "mfDone", "mfKeywords", "mfDeliverable", "mfCooldown", "mfSchedule", "mfBudget"]) {
+    const el = mf(id);
+    if (el) el.value = "";
   }
-  sendMissionCommand(`new ${trimmed}`);
-});
+  mf("mfAutomation").value = "manual";
+  syncMissionAutomation();
+  missionIdEdited = false;
+  setMissionStatus("");
+  missionModalEl.classList.remove("hidden");
+  openModalA11y(missionModalEl, mf("mfName"));
+}
+
+function closeMissionBuilder() {
+  if (!missionModalEl || missionModalEl.classList.contains("hidden")) return;
+  missionModalEl.classList.add("hidden");
+  closeModalA11y();
+}
+
+function submitMissionBuilder() {
+  const name = mf("mfName").value.trim();
+  const investigate = mf("mfInvestigate").value.trim();
+  const id = mf("mfId").value.trim() || slugifyMissionId(name);
+  if (!name) return setMissionStatus("A name is required.", true), mf("mfName").focus();
+  if (!investigate) return setMissionStatus("Describe what the mission should investigate.", true), mf("mfInvestigate").focus();
+  if (!/^[a-z0-9_-]+$/.test(id)) return setMissionStatus("Invalid file id — lowercase letters, digits, - or _.", true), mf("mfId").focus();
+
+  const mode = mf("mfAutomation").value;
+  const budget = parseInt(mf("mfBudget").value, 10);
+  const draft = {
+    id,
+    name,
+    description: mf("mfDescription").value.trim() || undefined,
+    investigate,
+    done: mf("mfDone").value.trim() || undefined,
+    keywords: mf("mfKeywords").value.trim() || undefined,
+    deliverable: mf("mfDeliverable").value.trim() || undefined,
+    continuous: mode === "continuous" || undefined,
+    cooldown: mode === "continuous" ? mf("mfCooldown").value.trim() || undefined : undefined,
+    schedule: mode === "schedule" ? mf("mfSchedule").value.trim() || undefined : undefined,
+    budget: Number.isFinite(budget) && budget > 0 ? budget : undefined,
+  };
+  window.magentra.send({ type: "create_mission", draft });
+  closeMissionBuilder();
+  showView("lab");
+}
+
+async function browseMissionDeliverable() {
+  if (!window.magentra.pickMissionDeliverable) return;
+  const id = mf("mfId").value.trim() || slugifyMissionId(mf("mfName").value) || "mission";
+  const res = await window.magentra.pickMissionDeliverable(`report-${id}.md`);
+  if (res && res.ok && res.path) mf("mfDeliverable").value = res.path;
+  else if (res && res.error) setMissionStatus(res.error, true);
+}
+
+if (missionModalEl) {
+  mf("mfName").addEventListener("input", () => {
+    if (!missionIdEdited) mf("mfId").value = slugifyMissionId(mf("mfName").value);
+  });
+  mf("mfId").addEventListener("input", () => {
+    missionIdEdited = true;
+  });
+  mf("mfAutomation").addEventListener("change", syncMissionAutomation);
+  mf("mfBrowse").addEventListener("click", () => void browseMissionDeliverable());
+  missionModalEl.querySelectorAll(".mf-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      mf("mfSchedule").value = chip.dataset.cron || "";
+    });
+  });
+  mf("missionModalCreate").addEventListener("click", submitMissionBuilder);
+  mf("missionModalCancel").addEventListener("click", closeMissionBuilder);
+}

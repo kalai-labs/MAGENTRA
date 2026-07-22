@@ -427,11 +427,12 @@ body.platform-mac .sidebar-brand { padding-top: 16px; height: 60px; }
 .sidebar-primary:hover { border-color: var(--border-strong); background: var(--hover); }
 .sidebar-primary .dock-glyph { color: var(--accent); font-size: 1.1rem; }
 .sidebar-primary .dock-label { font-size: max(10px, 0.83rem); font-weight: 650; }
-/* "Welcome page" sits just under New conversation — quieter (secondary). */
-.sidebar-home { margin: 0 12px 4px; width: calc(100% - 24px); height: 30px; display: flex; align-items: center; gap: 9px; padding: 0 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--text-dim); text-align: left; }
-.sidebar-home:hover { color: var(--text-hi); background: var(--hover); border-color: var(--border-hi); }
-.sidebar-home .dock-glyph { font-size: 1rem; }
-.sidebar-home .dock-label { font-size: max(10px, 0.8rem); }
+/* "Welcome page" sits just under New conversation — a quiet secondary link, so
+   it is deliberately smaller and borderless (not a second primary-sized bar). */
+.sidebar-home { margin: 0 12px 6px; width: calc(100% - 24px); height: 24px; display: flex; align-items: center; gap: 7px; padding: 0 9px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); text-align: left; }
+.sidebar-home:hover { color: var(--text-hi); background: var(--hover); }
+.sidebar-home .dock-glyph { font-size: 0.9rem; }
+.sidebar-home .dock-label { font-size: max(10px, 0.74rem); }
 
 .sidebar-section { min-height: 0; padding: 7px 8px 0; }
 .sidebar-section-workspaces { flex: none; }
@@ -1114,6 +1115,25 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .sr-gap { height: 8px; }
 .modal-actions, .wiz-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 13px; }
 .modal-actions button, .wiz-actions button { padding: 8px 12px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); font-size: max(10px, 0.74rem); }
+/* Mission builder form */
+.mission-box { width: min(600px, 94vw); }
+.mission-form { display: flex; flex-direction: column; gap: 11px; max-height: min(62vh, 560px); overflow-y: auto; padding: 2px 3px; }
+.mf-field { display: flex; flex-direction: column; gap: 4px; }
+.mf-label { font-size: max(10px, 0.72rem); color: var(--text-dim); font-weight: 600; }
+.mf-req { color: var(--accent); font-style: normal; }
+.mf-hint { font-size: max(9px, 0.66rem); color: var(--text-faint); line-height: 1.45; }
+.mf-field input, .mf-field textarea, .mf-select { width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); color: var(--text); font: inherit; font-size: max(10px, 0.76rem); }
+.mf-field textarea { resize: vertical; line-height: 1.45; }
+.mf-field input:focus, .mf-field textarea:focus, .mf-select:focus { outline: none; border-color: var(--accent); }
+.mf-row { display: flex; gap: 7px; }
+.mf-row input { flex: 1; }
+.mf-browse { padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); color: var(--text-dim); font-size: max(10px, 0.72rem); white-space: nowrap; }
+.mf-browse:hover { border-color: var(--accent); color: var(--text-hi); }
+.mf-chip { margin-left: 5px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--raised); color: var(--text-dim); font-size: max(9px, 0.66rem); }
+.mf-chip:hover { border-color: var(--accent); color: var(--text-hi); }
+#missionModalStatus { margin-right: auto; font-size: max(10px, 0.72rem); color: var(--text-faint); }
+#missionModalStatus.err { color: var(--red); }
+.lab-btn.armed { border-color: var(--red); color: var(--red); font-weight: 700; }
 #allowBtn { color: var(--amber); border-color: var(--amber); } #denyBtn { color: var(--red); }
 /* The durable grant sits between deny and allow-once: available, not the
    default reach. Quieter than #allowBtn so one click never feels like the

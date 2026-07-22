@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { MissionDraft } from "@magentra/protocol";
 import { scanFrontmatter } from "../crew/team.js";
 
 /**
@@ -255,6 +256,37 @@ export function saveContinuousState(cwd: string, state: ContinuousState): void {
  * {@link loadMissions}: valid frontmatter with a humanized name, example
  * keywords to replace, the default deliverable path, and a short body scaffold.
  */
+/**
+ * Assemble a mission .md from the UI builder's structured, human-language inputs
+ * — the inverse of {@link loadMissions}. Frontmatter values are single-line
+ * (newlines collapsed); the body is the "investigate" charter plus an optional
+ * "what counts as done" paragraph. Guaranteed to round-trip cleanly back through
+ * loadMissions (name + non-empty body are always present). The caller validates
+ * `id`/`name`/`investigate` before calling.
+ */
+export function buildMissionFile(draft: MissionDraft): string {
+  const line = (s: string) => s.replace(/\r?\n/g, " ").trim();
+  const fm: string[] = [`name: ${line(draft.name)}`];
+  if (draft.description?.trim()) fm.push(`description: ${line(draft.description)}`);
+  const keywords = (draft.keywords ?? "")
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean)
+    .join(", ");
+  if (keywords) fm.push(`keywords: ${keywords}`);
+  fm.push(`deliverable: ${draft.deliverable?.trim() || `.magentra/missions/out/${draft.id}/report.md`}`);
+  if (draft.schedule?.trim()) fm.push(`schedule: ${line(draft.schedule)}`);
+  if (draft.continuous) fm.push("continuous: true");
+  if (draft.cooldown?.trim()) fm.push(`cooldown: ${line(draft.cooldown)}`);
+  if (typeof draft.budget === "number" && Number.isFinite(draft.budget) && draft.budget > 0) {
+    fm.push(`budget: ${Math.floor(draft.budget)}`);
+  }
+
+  const body: string[] = [draft.investigate.trim()];
+  if (draft.done?.trim()) body.push(`\nWhat counts as done: ${draft.done.trim()}`);
+  return `---\n${fm.join("\n")}\n---\n${body.join("\n")}\n`;
+}
+
 export function missionTemplate(id: string): string {
   const name = id
     .split(/[-_]+/)

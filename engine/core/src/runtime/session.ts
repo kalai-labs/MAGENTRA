@@ -160,7 +160,7 @@ Set clarify=false for everything else: concrete tasks naming a target, questions
 Questions: at most 3, each one decision-changing (never a detail that could be adjusted later), 2-4 mutually distinct options with a one-line description each; put your recommended option first with " (Recommended)" appended to its label. multiSelect true only when choices genuinely combine.`;
 
 const PLAN_FIRST_REMINDER =
-  "The task list is empty. If this request needs more than a couple of steps, first create a plan with TaskCreate — one task per step, the last one a verification task stating the expected end state — before making any edits. Trivial requests can proceed directly.";
+  "Nothing is on the task board yet. When a request will take several moves to finish, lay it out first with TaskCreate — one entry per move, closing with a check task that names the end state you'll confirm — before you touch any files. A quick one-off needs no board; just handle it.";
 
 const NO_ATLAS_REMINDER =
   "No design atlas exists for this workspace. Suggest the user run /atlas to generate one — a mapped atlas speeds up every future session. For non-trivial multi-module work you may instead create .magentra/ATLAS.md yourself: each module, one-line purpose, public interface, key dependencies — modules and boundaries, not a file listing, compact (fits in 12KB).";

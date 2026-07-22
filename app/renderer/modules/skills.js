@@ -395,9 +395,6 @@ function onSkillDraft(event) {
 }
 
 if (skillCreateBtnEl) skillCreateBtnEl.addEventListener("click", openSkillWizard);
-// Also reachable from Settings, so the feature is discoverable without first
-// finding the Skills view (which only appears once a workspace is open).
-if (settingsBuildSkillBtnEl) settingsBuildSkillBtnEl.addEventListener("click", openSkillWizard);
 if (skillWizCancelEl) skillWizCancelEl.addEventListener("click", closeSkillWizard);
 if (skillWizBackEl) {
   skillWizBackEl.addEventListener("click", () => {
