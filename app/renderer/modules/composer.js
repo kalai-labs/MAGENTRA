@@ -585,11 +585,12 @@ navConsoleEl.addEventListener("click", () => {
 // busy turn only needs a heads-up, not a block.
 if (navHomeEl) {
   navHomeEl.addEventListener("click", () => {
-    // Just reload to the start page. The engine keeps running and the
-    // conversation is saved (resume it from Sessions), so no confirmation is
-    // needed — and window.confirm is unreliable in the Electron renderer: while
-    // a turn was busy it returned falsy and silently swallowed the click, which
-    // is why this button "did nothing". A busy turn only needs a heads-up note.
+    // Reload to the start page: boot() always lands on the welcome screen with
+    // the recent-workspaces list, and the engine keeps running with the
+    // conversation saved (resume it from Sessions), so a busy turn only needs a
+    // heads-up note, not a block. The reload itself is enabled by the main
+    // process's will-navigate guard, which now allows the shell to reload
+    // itself — the unconditional block used to swallow this click.
     if (busy) appendSysNote("Returning to the welcome page — this conversation stays saved; resume it anytime from Sessions.");
     window.location.reload();
   });

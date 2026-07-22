@@ -907,9 +907,12 @@ function createWindow() {
   mainWindow.on("unmaximize", rememberWindowState);
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  mainWindow.webContents.on("will-navigate", (event) => {
-    event.preventDefault();
-  });
+  // will-navigate is governed centrally by the app-level "web-contents-created"
+  // handler below — it fires for this window too. Keeping the navigation policy
+  // in one place is deliberate: a second per-window listener here would ALSO
+  // have to allow the "Welcome page" reload, and a stray preventDefault() in
+  // either listener cancels the navigation for both (which is exactly the bug
+  // that made the home button do nothing).
 
   let rendererCrashed = false;
   mainWindow.webContents.once("did-finish-load", () => {
@@ -1542,7 +1545,13 @@ process.on("uncaughtException", (err) => {
 
 app.on("web-contents-created", (_evt, contents) => {
   contents.setWindowOpenHandler(() => ({ action: "deny" }));
-  contents.on("will-navigate", (event) => {
+  contents.on("will-navigate", (event, url) => {
+    // Allow a document to reload ITSELF — a reload is a navigation to the
+    // current URL, and the "Welcome page" home button (composer.js) returns to
+    // the start screen by reloading the renderer. Block navigation anywhere
+    // else (external links, foreign origins) for the main window and any child
+    // contents alike. This is the single source of truth for navigation policy.
+    if (url === contents.getURL()) return;
     event.preventDefault();
   });
 });

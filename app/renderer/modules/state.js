@@ -33,6 +33,7 @@ const OP_VERBS = {
 let streamEl = null;
 let currentAssistantEl = null;
 let currentThinkingEl = null; // live reasoning block for the current turn segment
+let compactingCardEl = null; // in-transcript indicator shown while /compact runs
 let currentAgentsRow = null;
 let agentCards = new Map(); // key -> card record
 let toolRows = new Map(); // id -> { rowEl, detailEl, glyphEl }

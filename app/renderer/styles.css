@@ -410,9 +410,12 @@ body.platform-mac .sidebar-brand { padding-top: 16px; height: 60px; }
 .menu-hint { color: var(--text-faint); font-size: max(10px, 0.72rem); }
 .menu-sep { height: 1px; margin: 5px 7px; background: var(--border); }
 
+/* New conversation + Welcome-page home share one row: the home button is not a
+   second stacked bar but a compact icon button sitting right beside it. */
+.sidebar-primary-row { display: flex; align-items: stretch; gap: 6px; margin: 6px 12px 2px; }
 .sidebar-primary {
-  margin: 6px 12px 2px;
-  width: calc(100% - 24px);
+  flex: 1 1 auto;
+  min-width: 0;
   height: 34px;
   display: flex;
   align-items: center;
@@ -427,12 +430,23 @@ body.platform-mac .sidebar-brand { padding-top: 16px; height: 60px; }
 .sidebar-primary:hover { border-color: var(--border-strong); background: var(--hover); }
 .sidebar-primary .dock-glyph { color: var(--accent); font-size: 1.1rem; }
 .sidebar-primary .dock-label { font-size: max(10px, 0.83rem); font-weight: 650; }
-/* "Welcome page" sits just under New conversation — a quiet secondary link, so
-   it is deliberately smaller and borderless (not a second primary-sized bar). */
-.sidebar-home { margin: 0 12px 6px; width: calc(100% - 24px); height: 24px; display: flex; align-items: center; gap: 7px; padding: 0 9px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); text-align: left; }
-.sidebar-home:hover { color: var(--text-hi); background: var(--hover); }
-.sidebar-home .dock-glyph { font-size: 0.9rem; }
-.sidebar-home .dock-label { font-size: max(10px, 0.74rem); }
+/* The home button reads as a real, tappable control (bordered, same height as
+   New conversation) with a crisp, prominent house icon — not a faint link. */
+.sidebar-home {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-sm);
+  background: var(--raised);
+  color: var(--text-dim);
+}
+.sidebar-home:hover { border-color: var(--accent); background: var(--hover); color: var(--accent); }
+.home-icon { width: 19px; height: 19px; display: block; }
 
 .sidebar-section { min-height: 0; padding: 7px 8px 0; }
 .sidebar-section-workspaces { flex: none; }
@@ -809,6 +823,21 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .job-bar::after { content: ""; position: absolute; top: 0; bottom: 0; left: -40%; width: 40%; border-radius: 2px; background: rgb(var(--accent-rgb) / 0.9); animation: jobBar 1.1s ease-in-out infinite; }
 @keyframes jobBar { 0% { left: -40%; } 100% { left: 100%; } }
 @media (prefers-reduced-motion: reduce) { .job-bar::after { animation: none; left: 0; width: 100%; opacity: 0.5; } }
+
+/* /compact indicator, shown in the transcript. Deliberately restrained: a small
+   accent spinner, a quiet label, and an indeterminate sweep — no emoji, no fake
+   percentage. It clears itself when compaction finishes. */
+.compacting { display: flex; align-items: center; gap: 11px; margin: 12px 0; padding: 11px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); color: var(--text); }
+.compacting-spinner { flex: 0 0 auto; width: 14px; height: 14px; border: 2px solid var(--border-strong); border-top-color: var(--accent); border-radius: 50%; animation: compactSpin 0.72s linear infinite; }
+.compacting-label { flex: 0 0 auto; font-size: max(11px, 0.8rem); font-weight: 600; letter-spacing: 0.01em; color: var(--text-dim); }
+.compacting-track { position: relative; flex: 1 1 auto; height: 3px; border-radius: 2px; overflow: hidden; background: rgb(var(--accent-rgb) / 0.14); }
+.compacting-track::after { content: ""; position: absolute; top: 0; bottom: 0; left: -35%; width: 35%; border-radius: 2px; background: linear-gradient(90deg, transparent, rgb(var(--accent-rgb) / 0.95), transparent); animation: compactSweep 1.25s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+@keyframes compactSpin { to { transform: rotate(360deg); } }
+@keyframes compactSweep { 0% { left: -35%; } 100% { left: 100%; } }
+@media (prefers-reduced-motion: reduce) {
+  .compacting-spinner { animation: none; }
+  .compacting-track::after { animation: none; left: 0; width: 100%; opacity: 0.5; }
+}
 #attachChips { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 7px; }
 .attach-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--raised); color: var(--text-dim); font-size: max(10px, 0.69rem); max-width: 100%; }
 .attach-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1094,7 +1123,7 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
    Modals, setup, failure recovery
    ----------------------------------------------------------------------- */
 
-#deleteModal, #setupWizard, #shortcutSheet, #promptModal, #overdriveDialog, #sessionModal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--scrim); backdrop-filter: blur(4px); }
+#deleteModal, #missionModal, #setupWizard, #shortcutSheet, #promptModal, #overdriveDialog, #sessionModal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--scrim); backdrop-filter: blur(4px); }
 .modal-box, .wiz-box { width: min(560px, 92vw); padding: 19px 20px; border: 1px solid var(--border-hi); border-radius: 13px; background: var(--panel); box-shadow: var(--shadow); }
 .modal-title, .wiz-title { margin-bottom: 6px; color: var(--text-hi); font-size: 0.9rem; font-weight: 700; }
 .modal-sub, .wiz-sub { margin-bottom: 10px; color: var(--text-dim); font-size: max(10px, 0.76rem); line-height: 1.5; }
@@ -1214,6 +1243,11 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
   .logo-text, .sidebar-primary .dock-label,
   .sidebar-section, .dock-label, .sidebar-status span { display: none; }
   .sidebar-brand { justify-content: center; padding: 0; }
+  /* No room for two buttons side by side in the icon rail — stack them, each a
+     centered icon spanning the rail. */
+  .sidebar-primary-row { flex-direction: column; gap: 4px; margin: 6px 8px 2px; }
+  .sidebar-primary { flex: 0 0 auto; }
+  .sidebar-home { width: auto; }
   .sidebar-primary, .sidebar-home { justify-content: center; padding: 0; }
   .sidebar-tools { grid-template-columns: 1fr; }
   .dock-btn { height: 38px; }

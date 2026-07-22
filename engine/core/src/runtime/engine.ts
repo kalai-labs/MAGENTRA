@@ -1063,7 +1063,7 @@ export class Engine {
             const did = await this.session.maybeCompact(true);
             this.emit({
               type: "command_output",
-              text: did ? "🗜 Conversation compacted." : "Nothing to compact yet.",
+              text: did ? "Conversation compacted." : "Nothing to compact yet.",
             });
           } finally {
             this.emit({

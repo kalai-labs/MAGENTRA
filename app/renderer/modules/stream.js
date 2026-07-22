@@ -48,6 +48,39 @@ function appendSysNote(text) {
   return el;
 }
 
+/* Compaction concerns the conversation itself, so its progress belongs in the
+ * transcript rather than the detached-jobs chip under the composer. A calm,
+ * emoji-free indicator (label + indeterminate sweep) sits in the chat while the
+ * engine summarizes; removeCompactingCard() clears it when the engine reports
+ * the compact job exited, and the context counter refreshes on the
+ * context_update that accompanies it. */
+function showCompactingCard() {
+  if (!streamEl || compactingCardEl) return;
+  finalizeAssistantEl();
+  const el = document.createElement("div");
+  el.className = "compacting";
+  el.setAttribute("role", "status");
+  el.setAttribute("aria-live", "polite");
+  const spinner = document.createElement("span");
+  spinner.className = "compacting-spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  const label = document.createElement("span");
+  label.className = "compacting-label";
+  label.textContent = "Compacting conversation";
+  const track = document.createElement("span");
+  track.className = "compacting-track";
+  track.setAttribute("aria-hidden", "true");
+  el.append(spinner, label, track);
+  compactingCardEl = el;
+  withAutoScroll(() => streamEl.appendChild(el));
+}
+
+function removeCompactingCard() {
+  if (!compactingCardEl) return;
+  compactingCardEl.remove();
+  compactingCardEl = null;
+}
+
 function appendSysError(text) {
   finalizeAssistantEl();
   // Before a workspace opens there is no stream yet, but a boot/IPC error must
