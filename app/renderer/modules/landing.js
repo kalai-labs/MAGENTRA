@@ -524,6 +524,66 @@ function onCommandOutput(event) {
   }
 }
 
+// The /session report opens in its own modal (Esc-closable) rather than as a
+// one-line console note — the report is multi-line and reads far better laid out
+// row by row. The engine sends the whole formatted text; we render each source
+// line as a row, preserving its indent and splitting "label:  value" pairs so
+// headers, fields, and sub-fields are visually distinct.
+function renderSessionReport(text) {
+  sessionModalBodyEl.textContent = "";
+  const lines = text.replace(/\s+$/, "").split("\n");
+  for (const raw of lines) {
+    if (raw.trim() === "") {
+      const gap = document.createElement("div");
+      gap.className = "sr-gap";
+      sessionModalBodyEl.appendChild(gap);
+      continue;
+    }
+    const indent = raw.length - raw.replace(/^ +/, "").length;
+    const content = raw.trim();
+    const row = document.createElement("div");
+    row.className = indent === 0 ? "sr-line sr-head" : indent >= 6 ? "sr-line sr-sub" : "sr-line";
+    if (indent > 0) row.style.paddingLeft = `${Math.min(indent, 8) * 0.7}em`;
+    // "label:  value" (two+ spaces before the value) splits into key/value;
+    // a trailing-colon line is a section header for the rows beneath it.
+    const m = content.match(/^(.*?:)\s{2,}(.+)$/);
+    if (m) {
+      const key = document.createElement("span");
+      key.className = "sr-key";
+      key.textContent = m[1];
+      const val = document.createElement("span");
+      val.className = "sr-val";
+      val.textContent = m[2];
+      row.append(key, val);
+    } else {
+      if (content.endsWith(":")) row.classList.add("sr-section");
+      row.textContent = content;
+    }
+    sessionModalBodyEl.appendChild(row);
+  }
+}
+
+function openSessionModal(text) {
+  renderSessionReport(text);
+  sessionModalEl.classList.remove("hidden");
+  openModalA11y(sessionModalEl, sessionModalDoneEl);
+}
+
+function closeSessionModal() {
+  if (sessionModalEl.classList.contains("hidden")) return;
+  sessionModalEl.classList.add("hidden");
+  closeModalA11y();
+}
+
+if (sessionModalCloseEl) sessionModalCloseEl.addEventListener("click", closeSessionModal);
+if (sessionModalDoneEl) sessionModalDoneEl.addEventListener("click", closeSessionModal);
+if (sessionModalEl) {
+  // Click on the backdrop (outside the box) closes, like the other overlays.
+  sessionModalEl.addEventListener("click", (e) => {
+    if (e.target === sessionModalEl) closeSessionModal();
+  });
+}
+
 function onPermissionRequest(event) {
   permissionQueue.push(event);
   if (!activePermission) showNextPermission();
@@ -857,6 +917,10 @@ function handleEngineEvent(event) {
       break;
     case "command_output":
       onCommandOutput(event);
+      break;
+    case "session_report":
+      openSessionModal(event.text || "");
+      announce("Session report opened.");
       break;
     case "task_list_updated":
       onTaskListUpdated(event);

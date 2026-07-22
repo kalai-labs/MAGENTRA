@@ -357,6 +357,10 @@ window.addEventListener("keydown", (e) => {
     toggleShortcutSheet();
     return;
   }
+  if (sessionModalEl && !sessionModalEl.classList.contains("hidden")) {
+    closeSessionModal();
+    return;
+  }
   if (slashVisible) {
     // Normally consumed by the composer's own keydown (which stops
     // propagation); this is a safety net if focus wandered.

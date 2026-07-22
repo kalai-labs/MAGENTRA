@@ -1083,11 +1083,25 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
    Modals, setup, failure recovery
    ----------------------------------------------------------------------- */
 
-#deleteModal, #setupWizard, #shortcutSheet, #promptModal, #overdriveDialog { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--scrim); backdrop-filter: blur(4px); }
+#deleteModal, #setupWizard, #shortcutSheet, #promptModal, #overdriveDialog, #sessionModal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--scrim); backdrop-filter: blur(4px); }
 .modal-box, .wiz-box { width: min(560px, 92vw); padding: 19px 20px; border: 1px solid var(--border-hi); border-radius: 13px; background: var(--panel); box-shadow: var(--shadow); }
 .modal-title, .wiz-title { margin-bottom: 6px; color: var(--text-hi); font-size: 0.9rem; font-weight: 700; }
 .modal-sub, .wiz-sub { margin-bottom: 10px; color: var(--text-dim); font-size: max(10px, 0.76rem); line-height: 1.5; }
 #deleteSubject { max-height: 180px; overflow: auto; padding: 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); color: var(--text-hi); font-size: max(10px, 0.75rem); white-space: pre-wrap; }
+/* /session report modal — a wider box with a scrollable, row-by-row body. */
+.session-modal-box { width: min(620px, 94vw); }
+.session-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.session-modal-close { padding: 2px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); color: var(--text-dim); font-size: 0.8rem; line-height: 1.4; }
+.session-modal-close:hover { color: var(--text-hi); border-color: var(--border-hi); }
+.session-report { max-height: min(62vh, 520px); overflow: auto; margin-top: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); }
+.sr-line { display: flex; gap: 10px; align-items: baseline; font-size: max(11px, 0.8rem); line-height: 1.7; color: var(--text); }
+.sr-line.sr-head { color: var(--text-hi); font-weight: 700; letter-spacing: 0.02em; }
+.sr-line.sr-section { color: var(--text-hi); font-weight: 600; }
+.sr-line.sr-sub { color: var(--text-dim); }
+.sr-key { color: var(--text-dim); white-space: nowrap; }
+.sr-val { color: var(--text-hi); font-variant-numeric: tabular-nums; }
+.sr-line.sr-sub .sr-val { color: var(--text); }
+.sr-gap { height: 8px; }
 .modal-actions, .wiz-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 13px; }
 .modal-actions button, .wiz-actions button { padding: 8px 12px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); font-size: max(10px, 0.74rem); }
 #allowBtn { color: var(--amber); border-color: var(--amber); } #denyBtn { color: var(--red); }

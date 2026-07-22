@@ -67,6 +67,30 @@ import { Transcript, syntheticToolResults, unansweredToolUseIds } from "../state
 
 const DEFAULT_OUTPUT_LIMIT = 40_000;
 
+/** Conversation-content tokens (message history, not system/tools) after which a
+ * session earns an auto-generated title. Below this the generic default stands —
+ * there isn't enough said yet to summarize meaningfully. */
+const AUTO_NAME_MIN_TOKENS = 2_000;
+
+const AUTO_NAME_ROLE = "You name chat sessions for a coding assistant's sidebar.";
+const AUTO_NAME_INSTRUCTION =
+  "Read the conversation excerpt below and reply with ONLY a short title (3–6 words) " +
+  "naming what it is about. No quotes, no trailing punctuation, no prefix like 'Title:' — just the title itself.";
+
+/** Normalizes a model-authored title into a clean sidebar label: first line only,
+ * quotes/markdown/trailing punctuation stripped, whitespace collapsed, capped to a
+ * few words. Returns "" when nothing usable remains (caller then skips renaming). */
+function cleanSessionTitle(raw: string): string {
+  let s = (raw || "").split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
+  s = s.replace(/^["'`*_#\s]+/, "").replace(/["'`*_\s]+$/, ""); // surrounding quotes/markdown
+  s = s.replace(/^(?:title|session|chat|name)\s*[:\-]\s*/i, ""); // stray "Title:" prefix
+  s = s.replace(/[.。!?！？]+$/, "").replace(/\s+/g, " ").trim(); // trailing punctuation + inner runs
+  if (!s) return "";
+  const words = s.split(" ");
+  if (words.length > 8) s = words.slice(0, 8).join(" ");
+  return s.slice(0, 60);
+}
+
 /** Per-turn cap on auto-recovery / length-continuation nudges (see runTurn). */
 const MAX_AUTO_NUDGES = 3;
 
@@ -263,8 +287,12 @@ export class Session {
   private suppressAssistantText = false;
   /** Usage totals of the most recently completed turn (undefined before the first turn ends). */
   lastTurnUsage: Usage | undefined;
-  /** User-assigned session name (rename_session); persisted in the meta snapshot. */
+  /** User-assigned OR auto-generated session name; persisted in the meta snapshot.
+   *  A manual rename sets this too, which blocks auto-naming from overriding it. */
   label: string | undefined;
+  /** True once auto-naming has run (or been superseded by a manual name) — it
+   *  fires at most once per session so the sidebar title doesn't churn. */
+  private autoNameDone = false;
   /** True once the empty-task-list plan-first reminder has fired and the list has stayed empty since. */
   private planReminderFired = false;
   /** True once the missing-atlas reminder has fired for this session. */
@@ -1908,6 +1936,64 @@ export class Session {
     let chars = 0;
     for (const m of this.messages) chars += JSON.stringify(m.content).length;
     return this.estimateTokens(chars);
+  }
+
+  /** Estimated token weight of the CONVERSATION alone (message history), excluding
+   * the fixed system prompt + tool schemas. Auto-naming keys off this so the
+   * ~12k baseline of an empty chat doesn't count as "enough to summarize". */
+  conversationTokens(): number {
+    return this.estimateContextTokens();
+  }
+
+  /** A compact plain-text digest of the conversation for summarization: user and
+   * assistant prose only (tool calls/results skipped as noise), oldest first,
+   * truncated to maxChars — the topic is usually set early. */
+  private conversationDigest(maxChars: number): string {
+    const parts: string[] = [];
+    for (const m of this.messages) {
+      if (m.role !== "user" && m.role !== "assistant") continue;
+      const text = m.content
+        .filter((b): b is { type: "text"; text: string } => b.type === "text")
+        .map((b) => b.text)
+        .join(" ")
+        .trim();
+      if (!text) continue;
+      parts.push(`${m.role === "user" ? "User" : "Assistant"}: ${text}`);
+      if (parts.join("\n").length >= maxChars) break;
+    }
+    return parts.join("\n").slice(0, maxChars);
+  }
+
+  /**
+   * Once the conversation is substantial enough to summarize, generate a short
+   * title for it — a cheap smallModel call — so the sidebar stops showing the
+   * generic default name. Returns the new label (for the engine to persist +
+   * broadcast), or undefined when it isn't due: too early, already named
+   * (manually or auto), or generation produced nothing usable. Fires at most once
+   * per session. The engine calls this only after a turn settles (model is free);
+   * `runInference` is stateless so it never disturbs the live conversation.
+   */
+  async maybeAutoName(): Promise<string | undefined> {
+    if (this.autoNameDone || this.label) return undefined;
+    if (this.conversationTokens() < AUTO_NAME_MIN_TOKENS) return undefined;
+    this.autoNameDone = true; // claim before the await so two settling turns can't both fire
+    try {
+      const raw = await this.runInference({
+        system: AUTO_NAME_ROLE,
+        user: `${AUTO_NAME_INSTRUCTION}\n\n---\n${this.conversationDigest(4000)}\n---`,
+        maxTokens: 24,
+      });
+      const label = cleanSessionTitle(raw);
+      if (!label) {
+        this.autoNameDone = false; // nothing usable — let a later turn try again
+        return undefined;
+      }
+      this.label = label;
+      return label;
+    } catch {
+      this.autoNameDone = false; // transient failure — retry on a later turn
+      return undefined;
+    }
   }
 
   /** Rough token count from a character length (or a string), ~3.5 chars/token,

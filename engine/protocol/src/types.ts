@@ -192,6 +192,9 @@ export type CoreEvent =
   /** OVERDRIVE (fully-autonomous turn-loop policy) was toggled; frontends sync their indicator to this. */
   | { type: "overdrive_changed"; enabled: boolean }
   | { type: "command_output"; text: string }
+  /** The /session report — the whole formatted summary, shown by frontends in a
+   * dedicated modal (line-by-line) rather than a single inline console note. */
+  | { type: "session_report"; text: string }
   | { type: "session_list"; sessions: SessionSummary[] }
   | {
       type: "turn_finished";

@@ -1121,6 +1121,34 @@ async function run() {
     assert.equal(await evaluate(`document.body.dataset.view`), "console");
   });
 
+  await test("session report opens as a line-by-line modal and Esc closes it", async () => {
+    const report =
+      "Session\n\n" +
+      "  Total duration (API):  3s\n" +
+      "  Context now:            ~10.7k tokens\n" +
+      "  Context breakdown (~estimated):\n" +
+      "      System prompt:  ~3.3k tokens\n" +
+      "      Free space:     ~53.3k tokens (until auto-compact at ~64.0k)\n" +
+      "  Skills loaded:         0\n" +
+      "  Disciplines active:    0 of 9";
+    await emit({ type: "session_report", text: report });
+    const state = await evaluate(`(() => ({
+      open: !document.querySelector('#sessionModal').classList.contains('hidden'),
+      rows: document.querySelectorAll('#sessionModalBody .sr-line').length,
+      keys: [...document.querySelectorAll('#sessionModalBody .sr-key')].map(e => e.textContent),
+      hasHooks: document.querySelector('#sessionModalBody').textContent.toLowerCase().includes('hook'),
+      hasMcp: document.querySelector('#sessionModalBody').textContent.toLowerCase().includes('mcp'),
+    }))()`);
+    assert.equal(state.open, true, "modal should open on session_report");
+    assert.ok(state.rows >= 6, `expected multiple rows, got ${state.rows}`);
+    assert.ok(state.keys.includes("Context now:"), "should split label/value rows");
+    assert.equal(state.hasHooks, false, "must not surface hooks stats");
+    assert.equal(state.hasMcp, false, "must not surface MCP stats");
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
+    await pause();
+    assert.equal(await evaluate(`document.querySelector('#sessionModal').classList.contains('hidden')`), true, "Esc should close the modal");
+  });
+
   await test("responsive workbench collapses navigation and overlays inspector", async () => {
     windowRef.setSize(800, 620);
     await pause(80);

@@ -652,8 +652,35 @@ export class Engine {
         this.busy = false;
         this.gcStateFiles();
         this.flushPendingBangs();
+        void this.maybeAutoNameSession();
       });
     return true;
+  }
+
+  /**
+   * After a turn settles, give a still-unnamed but now-substantial session an
+   * auto-generated title (see {@link Session.maybeAutoName}). Persisted to the
+   * transcript meta and broadcast via `session_list`, exactly like a manual
+   * rename, so the sidebar updates. Best-effort and fire-and-forget: any failure
+   * is swallowed and a manual name always wins (the session's own guard skips
+   * naming once a label exists).
+   */
+  private async maybeAutoNameSession(): Promise<void> {
+    try {
+      const label = await this.session.maybeAutoName();
+      if (!label) return;
+      this.session.transcript.append({
+        kind: "meta",
+        data: { ...(Transcript.latestMeta(this.session.transcript.file) ?? {}), label },
+      });
+      this.emit({ type: "session_list", sessions: this.listSessions() });
+      this.emit({
+        type: "command_output",
+        text: `✎ Named this chat “${label}”. Rename it anytime by clicking its name in the sidebar.`,
+      });
+    } catch {
+      // Naming is a nicety — never let it disrupt the session.
+    }
   }
 
   currentSession(): Session {
@@ -1064,7 +1091,7 @@ export class Engine {
         // window — the real limit varies per model/endpoint, so a percentage
         // would be confidently wrong; the raw number is always true).
         this.emit({
-          type: "command_output",
+          type: "session_report",
           text: `${this.session.stats.format(this.opts.settings, Date.now(), this.session.contextBreakdown())}\n${this.extensionLines()}`,
         });
         break;
@@ -1134,27 +1161,16 @@ export class Engine {
     return lines.join("\n");
   }
 
-  /** Loaded-extension summary lines, shared by /skills and /session. */
+  /** Loaded-extension summary lines, shared by /skills and /session. Only
+   * user-facing features are reported here — hooks and MCP servers are internal
+   * plumbing that isn't surfaced as a product feature yet, so they get no stats
+   * line (a "0 configured" readout for a feature the user has no way to use only
+   * misinforms). Add them back here if/when they ship as real features. */
   private extensionLines(): string {
-    const settings = this.opts.settings;
-    const hookCount = Object.values(settings.hooks).reduce(
-      (n, matchers) => n + (matchers ?? []).reduce((m, entry) => m + entry.hooks.length, 0),
-      0,
-    );
-    const mcpCount = Object.keys(settings.mcpServers).length;
-    // Connected = servers that actually contributed tools (mcp__<server>__<tool>).
-    const mcpConnected = new Set(
-      this.opts.registry
-        .list()
-        .map((t) => (t.name.startsWith("mcp__") ? t.name.split("__")[1] : undefined))
-        .filter(Boolean),
-    ).size;
     const disciplines = this.modeEngine.list();
     const activeDisciplines = disciplines.filter((m) => m.active).length;
     return [
       `  Skills loaded:         ${(this.opts.skills ?? []).length}`,
-      `  Hooks configured:      ${hookCount}`,
-      `  MCP servers:           ${mcpConnected} connected of ${mcpCount} configured`,
       `  Disciplines active:    ${activeDisciplines} of ${disciplines.length}`,
     ].join("\n");
   }
