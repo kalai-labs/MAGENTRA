@@ -2028,6 +2028,16 @@ export class Session {
     return { systemPrompt, tools, skills, messages, limit: this.autoCompactLimit };
   }
 
+  /** An estimate of the whole context right now — system prompt + tool schemas +
+   * skills + surviving message history — used to seed `contextTokens` after a
+   * compaction (before the next response measures it exactly) so the meter never
+   * reads a misleading ~0 for a window that still holds the system prompt and
+   * the summary. */
+  private estimateContextNow(): number {
+    const b = this.contextBreakdown();
+    return b.systemPrompt + b.tools + b.skills + b.messages;
+  }
+
   /** Set the auto-compact token limit. 0 (or invalid) disables auto-compaction.
    * The ONLY source of this value is the UI's set_compact_limit frame — there is
    * deliberately no settings key or /settings path, so it can never disagree. */
@@ -2076,12 +2086,22 @@ export class Session {
       `<system-reminder>Earlier conversation was compacted. Summary of the compacted span:\n\n${summaryText}\n\nContinue the work; do not wrap up early on account of the compaction.</system-reminder>`;
     this.messages = [{ role: "user", content: [{ type: "text", text: summaryMessage }] }, ...tail];
     this.transcript.append({ kind: "compaction", replacedCount: head.length, summary: summaryMessage });
-    // The window was just emptied; the next response reports its true new size.
-    // (Cost/usage totals stay — compaction does not un-bill what was spent.)
-    this.stats.contextTokens = 0;
+    // Reset the measured size to a fresh ESTIMATE of the compacted window
+    // (system prompt + tools + skills + summary + surviving tail) — NOT zero.
+    // The window is far from empty, and a ~0 reading would both misinform the
+    // context meter and disarm the compaction safety until the next response
+    // re-measures. (Cost/usage totals stay — compaction does not un-bill spend.)
+    this.stats.contextTokens = this.estimateContextNow();
     // The original skill reminders likely lived in the summarized span — let
     // the next turn re-establish them in the surviving conversation.
     this.injectedSkillReminders.clear();
+    // A manual /compact runs outside any turn, so no turn_finished will carry
+    // the new size — push it now so the frontend's context meter updates.
+    this.emit({
+      type: "context_update",
+      contextTokens: this.stats.contextTokens,
+      ...(this.contextOverWarnThreshold() ? { contextWarn: true } : {}),
+    });
     // An auto-compaction (non-forced) must not be silent — mid-turn it would
     // otherwise look like the agent quietly forgot the conversation. The note
     // names WHY it happened (the user's limit) and where to change it, so it is

@@ -192,6 +192,13 @@ export type CoreEvent =
   /** OVERDRIVE (fully-autonomous turn-loop policy) was toggled; frontends sync their indicator to this. */
   | { type: "overdrive_changed"; enabled: boolean }
   | { type: "command_output"; text: string }
+  /**
+   * The context window's size changed OUTSIDE a turn — currently only a manual
+   * `/compact`, which shrinks the window with no turn_finished to carry the new
+   * figure. Frontends update their context meter from this exactly as they do
+   * from turn_finished.contextTokens.
+   */
+  | { type: "context_update"; contextTokens: number; contextWarn?: boolean }
   /** The /session report — the whole formatted summary, shown by frontends in a
    * dedicated modal (line-by-line) rather than a single inline console note. */
   | { type: "session_report"; text: string }

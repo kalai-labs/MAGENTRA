@@ -1043,12 +1043,31 @@ export class Engine {
         this.startAtlasBuild(args?.trim() === "force");
         break;
       case "compact":
+        // Wrapped in a background_notification so the frontend shows a "working"
+        // indicator — compaction runs outside a turn, so turn_started never fires
+        // and the UI would otherwise look frozen. Flagged not stoppable: aborting
+        // mid-summary would leave the history half-rewritten.
         this.startExclusive("compacting", async () => {
-          const did = await this.session.maybeCompact(true);
           this.emit({
-            type: "command_output",
-            text: did ? "Conversation compacted." : "Nothing to compact yet.",
+            type: "background_notification",
+            taskId: "compact",
+            kind: "start",
+            payload: { description: "Compacting conversation", stoppable: false },
           });
+          try {
+            const did = await this.session.maybeCompact(true);
+            this.emit({
+              type: "command_output",
+              text: did ? "🗜 Conversation compacted." : "Nothing to compact yet.",
+            });
+          } finally {
+            this.emit({
+              type: "background_notification",
+              taskId: "compact",
+              kind: "exit",
+              payload: { description: "Compacting conversation" },
+            });
+          }
         });
         break;
       case "tasks": {

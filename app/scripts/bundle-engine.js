@@ -22,6 +22,14 @@ const OUT_DIR = path.join(APP_DIR, "build-resources", "engine");
 const OUT_FILE = path.join(OUT_DIR, "engine.cjs");
 const RIPGREP_SHIM = path.join(APP_DIR, "shims", "ripgrep-shim.cjs");
 
+// The composer's "attach context" file picker reads files in the Electron main
+// process, and reuses the engine's own dependency-free document extractor
+// (PDF/DOCX/…) rather than reimplementing it. That extractor is engine ESM, so
+// it ships to packaged builds as this standalone bundle next to engine.cjs.
+// (In development main.js imports engine/core/dist directly — no bundle needed.)
+const DOC_EXTRACT_ENTRY = path.join(REPO_ROOT, "engine", "core", "src", "knowledge", "docs.ts");
+const DOC_EXTRACT_OUT = path.join(OUT_DIR, "doc-extract.mjs");
+
 // The binaries come from the @vscode/ripgrep platform packages in node_modules.
 // Packaging filters (build.win / build.linux / build.mac) pick rg.exe vs rg per
 // artifact. `--target win|linux|mac` (repeatable) names the OS(es) this run is
@@ -75,6 +83,19 @@ async function main() {
     // bundle. Swap in a plain-CJS shim pointing at the rg copied in below.
     alias: { "@vscode/ripgrep": RIPGREP_SHIM },
     logLevel: "info",
+  });
+
+  // Standalone document extractor for the desktop shell's attach-context picker.
+  await esbuild.build({
+    entryPoints: [DOC_EXTRACT_ENTRY],
+    outfile: DOC_EXTRACT_OUT,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node20",
+    minify: true,
+    legalComments: "none",
+    sourcemap: false,
   });
 
   for (const { target: rgTarget, src, dest } of RIPGREP) {

@@ -40,6 +40,7 @@ const sendBtnEl = document.getElementById("sendBtn");
 const stopBtnEl = document.getElementById("stopBtn");
 const clearBtnEl = document.getElementById("clearBtn");
 const attachBtnEl = document.getElementById("attachBtn");
+const attachChipsEl = document.getElementById("attachChips");
 const hintModelEl = document.getElementById("hintModel");
 const deleteModalEl = document.getElementById("deleteModal");
 const deleteSubjectEl = document.getElementById("deleteSubject");

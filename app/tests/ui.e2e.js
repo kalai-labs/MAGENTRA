@@ -42,6 +42,8 @@ function apiResult(name, args) {
       return { ok: true, models: [MODEL], ...(baseUrl ? { baseUrl } : {}) };
     }
     case "pickDoc": return { ok: true, path: "/tmp/context.md" };
+    case "pickContextFiles":
+      return { ok: true, files: [{ name: "context.md", ok: true, bytes: 24, kind: "text", text: "hello from an attached file" }] };
     case "detectLocalServers":
       // Ollama present, LM Studio absent — exercises both the enabled and the
       // grayed-out-with-a-reason paths.
@@ -273,12 +275,18 @@ async function run() {
 
   await test("attach, model, and composer controls act on runtime state", async () => {
     await evaluate(`document.querySelector('#teamCloseBtn').click()`);
+    // Attach button opens the file picker; a readable file becomes a pending chip.
     await evaluate(`document.querySelector('#attachBtn').click()`);
-    assert.equal(await evaluate(`document.querySelector('#promptInput').value`), "@");
+    await pause();
+    assert.ok(calls.some((call) => call.name === "pickContextFiles"));
+    assert.equal(await evaluate(`document.querySelectorAll('#attachChips .attach-chip').length`), 1);
+    // Sending folds the attachment text into the outgoing message beside the prompt.
     await evaluate(`(() => { const input = document.querySelector('#promptInput'); input.value = 'Explain this workspace'; input.dispatchEvent(new Event('input')); input.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true})); })()`);
     await pause();
-    assert.ok(frames.some((frame) => frame.type === "user_message" && frame.text === "Explain this workspace"));
+    assert.ok(frames.some((frame) => frame.type === "user_message" && frame.text.includes("hello from an attached file") && frame.text.includes("Explain this workspace")));
     assert.equal(await evaluate(`document.querySelectorAll('.msg-user').length > 0`), true);
+    // Chips clear once the message is sent.
+    assert.equal(await evaluate(`document.querySelectorAll('#attachChips .attach-chip').length`), 0);
     await evaluate(`(() => { const select = document.querySelector('#modelSelect'); select.value = 'Qwen/Qwen3-14B'; select.dispatchEvent(new Event('change')); })()`);
     await pause();
     assert.ok(calls.some((call) => call.name === "setModel" && call.args[0] === "Qwen/Qwen3-14B"));

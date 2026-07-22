@@ -5,6 +5,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const os = require("node:os");
 const { spawn } = require("node:child_process");
+const { pathToFileURL } = require("node:url");
 
 const {
   DEFAULT_MODEL,
@@ -508,6 +509,157 @@ ipcMain.handle("team:pickDoc", async (_evt, agentId) => {
   } catch (err) {
     const message = err && err.message ? err.message : String(err);
     logEvent("sys", { ev: "team-doc-add-failed", agentId, error: message });
+    return { ok: false, error: message };
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Attach-context file reading (composer "+" button)
+//
+// Files the user attaches are read here in the main process; the renderer folds
+// their text into the next message. Binary documents (PDF, DOCX, …) are
+// text-extracted with the engine's OWN extractor — reused, never reimplemented.
+// A hard 2 MB ceiling per file guards against loading a huge blob into memory
+// or the model's context window.
+// ---------------------------------------------------------------------------
+// Caps apply to the WHOLE pending set (attachments accumulate across repeated
+// "+" clicks), not one dialog batch — the renderer passes its current pending
+// count/bytes and the reader enforces the remaining budget as it goes, so it
+// never reads a file it would only reject.
+const MAX_ATTACH_FILES = 15;
+const MAX_ATTACH_TOTAL_BYTES = 2 * 1024 * 1024;
+const DOC_EXTS = new Set([".pdf", ".docx", ".pptx", ".xlsx", ".rtf", ".odt", ".epub"]);
+// Text/code extensions the picker offers (no leading dot — dialog filter form).
+const TEXT_EXTS = [
+  "txt", "md", "markdown", "js", "mjs", "cjs", "ts", "tsx", "jsx", "json", "jsonc",
+  "py", "rb", "go", "rs", "java", "kt", "c", "h", "cc", "cpp", "hpp", "cs", "php",
+  "swift", "sh", "bash", "zsh", "yaml", "yml", "toml", "ini", "cfg", "conf", "xml",
+  "html", "htm", "css", "scss", "sql", "csv", "tsv", "log", "env", "gradle",
+];
+// Document extensions in dialog-filter form, derived from DOC_EXTS (single source).
+const DOC_EXTS_LIST = [...DOC_EXTS].map((e) => e.slice(1));
+
+// The engine's document extractor, loaded lazily and cached (undefined = tried
+// and unavailable). Packaged: the standalone doc-extract.mjs bundled next to
+// engine.cjs. Development: engine/core's compiled ESM from the workspace (needs
+// `npm run build`, which dev already requires).
+let docExtractor;
+let docExtractorTried = false;
+async function loadDocExtractor() {
+  if (docExtractorTried) return docExtractor;
+  docExtractorTried = true;
+  const candidate = app.isPackaged
+    ? path.join(process.resourcesPath, "engine", "doc-extract.mjs")
+    : path.join(__dirname, "..", "engine", "core", "dist", "knowledge", "docs.js");
+  try {
+    if (fs.existsSync(candidate)) {
+      docExtractor = await import(pathToFileURL(candidate).href);
+    }
+  } catch (err) {
+    logEvent("sys", { ev: "doc-extractor-load-failed", error: err && err.message ? err.message : String(err) });
+    docExtractor = undefined;
+  }
+  return docExtractor;
+}
+
+function formatBytes(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Read one attachment for the composer. `remainingBudget` is how many bytes are
+ *  still free in the total 2 MB allowance; a file bigger than that is rejected
+ *  before it is read (memory-safe). Returns a plain record and never throws, so
+ *  one unreadable pick doesn't sink the whole selection. */
+async function readAttachment(filePath, remainingBudget) {
+  const name = path.basename(filePath);
+  let stat;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    return { name, ok: false, error: "could not read file" };
+  }
+  if (!stat.isFile()) return { name, ok: false, error: "not a file" };
+  if (stat.size > remainingBudget) {
+    const error =
+      stat.size > MAX_ATTACH_TOTAL_BYTES
+        ? `too large (${formatBytes(stat.size)} > ${formatBytes(MAX_ATTACH_TOTAL_BYTES)} total limit)`
+        : `would exceed the ${formatBytes(MAX_ATTACH_TOTAL_BYTES)} total (only ${formatBytes(Math.max(0, remainingBudget))} left)`;
+    return { name, ok: false, error };
+  }
+
+  let buf;
+  try {
+    buf = fs.readFileSync(filePath);
+  } catch {
+    return { name, ok: false, error: "could not read file" };
+  }
+  const ext = path.extname(filePath).toLowerCase();
+
+  if (DOC_EXTS.has(ext)) {
+    const extractor = await loadDocExtractor();
+    if (!extractor || typeof extractor.extractDocumentText !== "function") {
+      return { name, ok: false, error: "document text extraction is unavailable in this build" };
+    }
+    try {
+      const res = extractor.extractDocumentText(filePath, buf);
+      if (!res || !res.text || !res.text.trim()) {
+        return { name, ok: false, error: "no extractable text (scanned or encrypted?)" };
+      }
+      return { name, ok: true, bytes: stat.size, kind: res.kind, text: res.text };
+    } catch (err) {
+      return { name, ok: false, error: `extraction failed: ${err && err.message ? err.message : String(err)}` };
+    }
+  }
+
+  // Everything else is treated as UTF-8 text. A NUL byte is the cheap, reliable
+  // tell for "this is binary" — reject rather than paste mojibake into a prompt.
+  if (buf.includes(0)) {
+    return { name, ok: false, error: "looks like a binary file — not text-readable" };
+  }
+  return { name, ok: true, bytes: stat.size, kind: "text", text: buf.toString("utf8") };
+}
+
+ipcMain.handle("context:pickFiles", async (_evt, opts = {}) => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: "Attach context",
+      properties: ["openFile", "multiSelections"],
+      // The FIRST filter is active when the dialog opens, so it lists every
+      // attachable type — otherwise PDFs/docs are hidden until the user manually
+      // switches the filter dropdown. The narrower filters and "All Files"
+      // follow for when someone wants to restrict the view.
+      filters: [
+        { name: "Attachable files", extensions: [...TEXT_EXTS, ...DOC_EXTS_LIST] },
+        { name: "Documents", extensions: DOC_EXTS_LIST },
+        { name: "Text & code", extensions: TEXT_EXTS },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (result.canceled || result.filePaths.length === 0) return { ok: false };
+
+    // Start from what the composer already holds, so the 15-file / 2 MB caps
+    // cover the whole pending set rather than resetting each pick.
+    let count = Number.isFinite(opts.pendingCount) ? Math.max(0, opts.pendingCount) : 0;
+    let bytes = Number.isFinite(opts.pendingBytes) ? Math.max(0, opts.pendingBytes) : 0;
+    const files = [];
+    for (const fp of result.filePaths) {
+      if (count >= MAX_ATTACH_FILES) {
+        files.push({ name: path.basename(fp), ok: false, error: `attachment limit reached (max ${MAX_ATTACH_FILES} files)` });
+        continue;
+      }
+      const rec = await readAttachment(fp, MAX_ATTACH_TOTAL_BYTES - bytes);
+      if (rec.ok) {
+        count += 1;
+        bytes += rec.bytes;
+      }
+      files.push(rec);
+    }
+    return { ok: true, files };
+  } catch (err) {
+    const message = err && err.message ? err.message : String(err);
+    logEvent("sys", { ev: "context-pick-failed", error: message });
     return { ok: false, error: message };
   }
 });

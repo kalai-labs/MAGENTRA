@@ -472,10 +472,6 @@ if (sidebarSessionsRefreshEl) sidebarSessionsRefreshEl.addEventListener("click",
 if (sidebarMissionNewEl) sidebarMissionNewEl.addEventListener("click", () => labNewBtnEl.click());
 if (attachBtnEl) attachBtnEl.addEventListener("click", () => {
   if (!workspaceOpen || promptInputEl.disabled) return;
-  const start = promptInputEl.selectionStart || 0;
-  const end = promptInputEl.selectionEnd || start;
-  promptInputEl.setRangeText("@", start, end, "end");
-  promptInputEl.focus();
-  promptInputEl.dispatchEvent(new Event("input"));
+  void openAttachPicker(); // defined in composer.js (shared renderer scope)
 });
 if (logoEl) logoEl.addEventListener("click", () => showView("console"));

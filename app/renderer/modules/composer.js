@@ -119,6 +119,7 @@ function resetLocalViewForClear(preserveTasks = false) {
   currentThinkingEl = null;
   currentWorkGroup = null;
   clearMessageQueue();
+  clearAttachments();
   updateAgentMeter();
   if (!preserveTasks) onTaskListUpdated({ tasks: [] });
 }
@@ -150,6 +151,135 @@ function sendSlashCommand(trimmed) {
 // steer the running turn immediately (see sendMessage) — but commands can't
 // steer, so they still queue.
 const messageQueue = [];
+
+// ---------------------------------------------------------------------------
+// Attach context: the composer "+" button reads files (code, text, PDF/DOCX/…,
+// ≤2 MB each — enforced in the main process) and holds them here until the next
+// message, whose text they are folded into. Chips above the composer show what
+// is pending; ✕ removes one.
+// ---------------------------------------------------------------------------
+const pendingAttachments = [];
+
+// Hard ceiling on one outgoing message (typed text + folded-in attachments).
+// The ~4-chars/token estimate is deliberately rough: the point is to stop a
+// multi-megabyte paste from blowing up the model context or wedging the UI, not
+// to bill precisely.
+const MAX_MESSAGE_TOKENS = 100_000;
+const CHARS_PER_TOKEN = 4;
+const MAX_MESSAGE_CHARS = MAX_MESSAGE_TOKENS * CHARS_PER_TOKEN;
+
+/** True (and complains in the transcript) when `text` exceeds the per-message
+ *  ceiling. Callers must abort the send without clearing the draft. */
+function messageOverCap(text) {
+  if (text.length <= MAX_MESSAGE_CHARS) return false;
+  const approxK = Math.round(text.length / CHARS_PER_TOKEN / 1000);
+  appendSysError(
+    `Message too large (~${approxK}k tokens, limit ${MAX_MESSAGE_TOKENS / 1000}k). ` +
+      "Trim the text or remove an attachment, then send again.",
+  );
+  return true;
+}
+
+function renderAttachChips() {
+  if (!attachChipsEl) return;
+  if (pendingAttachments.length === 0) {
+    attachChipsEl.classList.add("hidden");
+    attachChipsEl.textContent = "";
+    return;
+  }
+  attachChipsEl.classList.remove("hidden");
+  attachChipsEl.textContent = "";
+  pendingAttachments.forEach((att, idx) => {
+    const chip = document.createElement("span");
+    chip.className = "attach-chip";
+    const label = document.createElement("span");
+    label.textContent = `📎 ${att.name} · ${formatBytes(att.bytes)}`;
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "attach-x";
+    x.title = "Remove attachment";
+    x.textContent = "✕";
+    x.addEventListener("click", () => {
+      pendingAttachments.splice(idx, 1);
+      renderAttachChips();
+    });
+    chip.append(label, x);
+    attachChipsEl.appendChild(chip);
+  });
+}
+
+function clearAttachments() {
+  pendingAttachments.length = 0;
+  renderAttachChips();
+}
+
+/** Prefix `raw` with each pending attachment, wrapped in a clear delimiter and
+ *  a preamble that tells the model the contents are inline and NOT on disk — so
+ *  it uses the provided text instead of trying to Read/Glob a bare filename (an
+ *  attached file is a snapshot, not a workspace path). Returns `raw` unchanged
+ *  when nothing is attached. */
+function composeWithAttachments(raw) {
+  if (pendingAttachments.length === 0) return raw;
+  const n = pendingAttachments.length;
+  const preamble =
+    `[The user attached ${n} file${n === 1 ? "" : "s"} to this message; the full ` +
+    "contents are inlined below. These are snapshots pasted into the message — they " +
+    "are NOT saved in the workspace or anywhere on disk, so do not use Read, Glob, " +
+    "Bash, or any tool to open or locate them; work from the text provided here.]";
+  const blocks = pendingAttachments
+    .map(
+      (a) =>
+        `===== BEGIN ATTACHED FILE: ${a.name} (${formatBytes(a.bytes)}) =====\n` +
+        `${a.text}\n` +
+        `===== END ATTACHED FILE: ${a.name} =====`,
+    )
+    .join("\n\n");
+  const prompt = raw.trim();
+  return prompt ? `${preamble}\n\n${blocks}\n\n${prompt}` : `${preamble}\n\n${blocks}`;
+}
+
+/** Open the OS file picker and stash the readable results as pending
+ *  attachments. Unreadable / oversized picks are reported but skipped. */
+async function openAttachPicker() {
+  // Pass the current pending totals so the 15-file / 2 MB caps span every "+"
+  // click, not just this one dialog batch (main enforces against these).
+  const pendingBytes = pendingAttachments.reduce((sum, a) => sum + (a.bytes || 0), 0);
+  let res;
+  try {
+    res = await window.magentra.pickContextFiles({ pendingCount: pendingAttachments.length, pendingBytes });
+  } catch (err) {
+    appendSysError(`attach failed: ${err && err.message ? err.message : err}`);
+    return;
+  }
+  if (!res || res.ok !== true) {
+    if (res && res.error) appendSysError(`attach failed: ${res.error}`);
+    return; // canceled, or nothing chosen
+  }
+  let added = 0;
+  let skipped = 0;
+  for (const f of res.files) {
+    if (f && f.ok) {
+      pendingAttachments.push({ name: f.name, bytes: f.bytes, text: f.text });
+      added += 1;
+    } else if (f) {
+      // Per-file reason (main spells out which cap was hit: 15-file, 2 MB total,
+      // too large, unreadable, extraction failed…), so nothing fails silently.
+      appendSysError(`📎 couldn't attach ${f.name} — ${f.error || "unreadable"}`);
+      skipped += 1;
+    }
+  }
+  if (added > 0) renderAttachChips();
+  // A summary whenever anything was turned away, so a partial/blocked pick never
+  // looks like a no-op. The per-file lines above carry the exact limit; this just
+  // states the outcome and what the composer is now holding.
+  if (skipped > 0) {
+    const totalBytes = pendingAttachments.reduce((sum, a) => sum + (a.bytes || 0), 0);
+    appendSysNote(
+      `📎 ${added} attached, ${skipped} skipped — now holding ${pendingAttachments.length} ` +
+        `file${pendingAttachments.length === 1 ? "" : "s"} · ${formatBytes(totalBytes)}.`,
+    );
+  }
+}
 
 function renderQueueChip() {
   if (!queueChipEl) return;
@@ -185,28 +315,46 @@ const promptHistory = [];
 let promptHistIdx = -1; // -1 = not browsing
 
 function dispatch(text) {
-  if (text.trim()) {
+  const trimmed = text.trim();
+  const isCommand = (trimmed.startsWith("/") || trimmed.startsWith("!")) && !text.includes("\n");
+
+  // Commands never carry attachments; a plain turn folds any pending files in.
+  const outgoing = isCommand ? text : composeWithAttachments(text);
+  // Guard before any state changes so an over-cap send leaves the draft intact.
+  if (!isCommand && messageOverCap(outgoing)) return false;
+
+  if (trimmed) {
+    // Only the raw typed text is recalled by ArrowUp — attachment bodies would
+    // bloat history and never belong in a re-edit.
     promptHistory.push(text);
     if (promptHistory.length > 100) promptHistory.shift();
   }
   promptHistIdx = -1;
-  const trimmed = text.trim();
-  if (trimmed.startsWith("/") && !text.includes("\n")) {
+
+  if (isCommand && trimmed.startsWith("/")) {
     sendSlashCommand(trimmed);
-    return;
+    return true;
   }
   // "! <command>" runs a shell command directly; its output lands in the
   // conversation as context (the engine defers it while a turn is running).
-  if (trimmed.startsWith("!") && !text.includes("\n")) {
+  if (isCommand && trimmed.startsWith("!")) {
     const cmd = trimmed.slice(1).trim();
     if (cmd) {
       appendSysNote(`! ${cmd}`);
       window.magentra.send({ type: "bang_command", cmd });
     }
-    return;
+    return true;
   }
-  appendUserMessage(text);
-  window.magentra.send({ type: "user_message", text });
+
+  // The transcript shows the typed text (plus a note of what was attached) — not
+  // the full inlined file bodies, which the model receives via `outgoing`.
+  appendUserMessage(trimmed ? text : `📎 ${pendingAttachments.map((a) => a.name).join(", ")}`);
+  if (pendingAttachments.length > 0) {
+    appendSysNote(`📎 attached ${pendingAttachments.map((a) => a.name).join(", ")}`);
+  }
+  window.magentra.send({ type: "user_message", text: outgoing });
+  clearAttachments();
+  return true;
 }
 
 /** Flush the next queued message when the engine goes idle. One per turn end:
@@ -227,7 +375,8 @@ function clearMessageQueue() {
 
 function sendMessage() {
   const text = promptInputEl.value;
-  if (!text.trim() || !engineLinked) return;
+  // An attachments-only send (empty typed text) is valid.
+  if ((!text.trim() && pendingAttachments.length === 0) || !engineLinked) return;
 
   if (busy) {
     const trimmed = text.trim();
@@ -241,17 +390,23 @@ function sendMessage() {
       autoGrow(promptInputEl);
       return;
     }
-    // Mid-turn plain text steers the running turn: it joins the turn at its next
-    // boundary rather than starting a new one. Available in every stance now,
-    // not only OVERDRIVE.
-    window.magentra.send({ type: "steer_message", text });
-    appendSysNote(`↳ steering — "${text.replace(/\s+/g, " ").trim().slice(0, 80)}"`);
+    // Mid-turn plain text (optionally with attachments) steers the running turn:
+    // it joins the turn at its next boundary rather than starting a new one.
+    // Available in every stance now, not only OVERDRIVE.
+    const outgoing = composeWithAttachments(text);
+    if (messageOverCap(outgoing)) return; // leave draft + attachments in place
+    const steerLabel = trimmed
+      ? text.replace(/\s+/g, " ").trim().slice(0, 80)
+      : `📎 ${pendingAttachments.map((a) => a.name).join(", ")}`;
+    window.magentra.send({ type: "steer_message", text: outgoing });
+    appendSysNote(`↳ steering — "${steerLabel}"`);
+    clearAttachments();
     promptInputEl.value = "";
     autoGrow(promptInputEl);
     return;
   }
 
-  dispatch(text);
+  if (!dispatch(text)) return; // over-cap: keep the draft + attachments
   promptInputEl.value = "";
   autoGrow(promptInputEl);
 }

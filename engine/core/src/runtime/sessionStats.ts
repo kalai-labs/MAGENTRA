@@ -155,7 +155,7 @@ export class SessionStats {
     lines.push(`  Total duration (API):  ${formatDuration(this.apiMs)}`);
     lines.push(`  Total duration (wall): ${formatDuration(now - this.startedAt)}`);
     lines.push(`  Total code changes:    ${this.linesAdded} lines added, ${this.linesRemoved} lines removed`);
-    lines.push(`  Context now:            ~${formatTokens(this.contextTokens)} tokens`);
+    lines.push(`  Context now:            ~${formatTokens(this.contextNowValue(breakdown))} tokens`);
     if (breakdown) lines.push(...this.formatBreakdown(breakdown));
 
     if (this.byModel.size === 0) {
@@ -181,6 +181,20 @@ export class SessionStats {
    * they show the shape of the context, not an exact accounting; the measured
    * "Context now" above is the true total.
    */
+  /**
+   * The context size to display: the measured total when a provider response has
+   * reported one, otherwise the per-part estimate (system prompt + tools + skills
+   * + message history). `contextTokens` is 0 before the first response, but the
+   * window is NOT empty then — the system prompt and tool schemas always occupy
+   * it — so showing ~0 would be plainly wrong. The estimate keeps the figure
+   * honest until a response measures it exactly.
+   */
+  private contextNowValue(b?: ContextBreakdown): number {
+    if (this.contextTokens > 0) return this.contextTokens;
+    if (!b) return 0;
+    return b.systemPrompt + b.tools + b.skills + b.messages;
+  }
+
   private formatBreakdown(b: ContextBreakdown): string[] {
     const lines: string[] = ["  Context breakdown (~estimated):"];
     const pad = (label: string) => `${label}:`.padEnd(16);
@@ -189,7 +203,7 @@ export class SessionStats {
     if (b.skills > 0) lines.push(`      ${pad("Skills")}~${formatTokens(b.skills)} tokens`);
     lines.push(`      ${pad("Messages")}~${formatTokens(b.messages)} tokens`);
     if (b.limit > 0) {
-      const free = Math.max(0, b.limit - this.contextTokens);
+      const free = Math.max(0, b.limit - this.contextNowValue(b));
       lines.push(`      ${pad("Free space")}~${formatTokens(free)} tokens (until auto-compact at ~${formatTokens(b.limit)})`);
     } else {
       lines.push("      (no auto-compact limit set — no fixed window to measure free space against; set one in Settings → Context)");
