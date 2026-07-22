@@ -34,9 +34,20 @@ let status = 1;
 try {
   // npm puts node_modules/.bin on PATH for script children, so the bare name
   // resolves; shell:true covers the .cmd shim on Windows.
+  // electron-builder turns on GitHub publishing implicitly when it detects CI
+  // (CI=true). We never want that: the Release workflow uploads the artifacts
+  // itself with `gh release upload`, and the packaging step carries no
+  // GH_TOKEN, so the implicit publish throws after a successful build. Force it
+  // off. A caller who wants publishing can still pass `--publish` explicitly —
+  // an argv-supplied flag wins over this one.
   const result = spawnSync(
     "electron-builder",
-    [...process.argv.slice(2), `-c.electronVersion=${electronVersion}`],
+    [
+      "--publish",
+      "never",
+      ...process.argv.slice(2),
+      `-c.electronVersion=${electronVersion}`,
+    ],
     {
       stdio: "inherit",
       shell: true,
