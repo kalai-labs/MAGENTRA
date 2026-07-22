@@ -26,12 +26,6 @@ export interface ModelPricing {
  * with `/settings pricing.<model>.input <rate>` (see {@link pricingFor}).
  */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
-  // Anthropic — cache write is 1.25x input, cache read is 0.1x input.
-  "claude-opus-4-8": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-  "claude-sonnet-5": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-  "claude-haiku-4-5": { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
-
-  // DeepInfra-hosted open models (the rate card the desktop app already shipped).
   "deepseek-ai/DeepSeek-V4-Flash": { input: 0.09, output: 0.18, cacheRead: 0.018 },
   "deepseek-ai/DeepSeek-V3.2": { input: 0.26, output: 0.38, cacheRead: 0.13 },
   "openai/gpt-oss-120b": { input: 0.039, output: 0.17 },
@@ -62,17 +56,7 @@ export function pricingFor(model: string, settings?: Settings): ModelPricing | u
  * family ships multiple window sizes.
  */
 const MODEL_CONTEXT_WINDOWS: [pattern: string, tokens: number][] = [
-  ["claude-", 200_000],
-  ["DeepSeek-V4", 160_000],
-  ["DeepSeek-V3", 128_000],
-  ["gpt-oss", 128_000],
-  ["Qwen3-Coder-480B", 256_000],
-  ["Qwen3", 128_000],
-  ["gemma-4", 128_000],
-  ["MiniMax", 200_000],
-  ["MiMo", 128_000],
-  ["GLM-5", 200_000],
-  ["Kimi-K2", 256_000],
+
 ];
 
 /**
