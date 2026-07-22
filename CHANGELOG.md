@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.7.1.0 — 2026-07-22
+
+### Bug fixes
+
+- fix at CI distribution script ([a03030c](https://github.com/kalai-labs/MAGENTRA/commit/a03030c8ec17af75262c28accaab151238b93128))
+
+[Compare with v0.7.0.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.7.0.0...v0.7.1.0)
+
 ## 0.7.0.0 — 2026-07-22
 
 ### Features
