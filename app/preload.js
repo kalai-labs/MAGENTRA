@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld("magentra", {
   chooseWorkspace: () => ipcRenderer.invoke("workspace:choose"),
   openWorkspace: (workspace) => ipcRenderer.invoke("workspace:open", workspace),
   openWorkspaceFile: (relPath) => ipcRenderer.invoke("workspace:openFile", relPath),
+  // Attach-context picker: opens a file dialog and returns read/extracted text
+  // for each chosen file (≤2 MB each). The renderer folds it into the message.
+  pickContextFiles: (opts) => ipcRenderer.invoke("context:pickFiles", opts),
   undoChanges: (relPath, diffs) => ipcRenderer.invoke("changes:undo", { relPath, diffs }),
   setModel: (model) => ipcRenderer.invoke("config:setModel", model),
   send: (frame) => ipcRenderer.send("engine:send", frame),

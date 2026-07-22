@@ -308,14 +308,17 @@ function onTurnStarted() {
  * the only way the UI learns the engine is busy without a turn — turn_started
  * never fires for it.
  */
-const backgroundJobMeta = new Map(); // taskId -> description
+const backgroundJobMeta = new Map(); // taskId -> { description, stoppable }
 
 function onBackgroundNotification(event) {
   if (!event || typeof event.taskId !== "string") return;
   if (event.kind === "start") {
     backgroundJobs.add(event.taskId);
-    const desc = event.payload && event.payload.description;
-    backgroundJobMeta.set(event.taskId, typeof desc === "string" ? desc : event.taskId);
+    const p = event.payload || {};
+    const description = typeof p.description === "string" ? p.description : event.taskId;
+    // Default stoppable (the atlas build is); a job opts out with stoppable:false
+    // when aborting it mid-flight would corrupt state (e.g. compaction).
+    backgroundJobMeta.set(event.taskId, { description, stoppable: p.stoppable !== false });
   } else {
     backgroundJobs.delete(event.taskId); // "exit" and anything else terminal
     backgroundJobMeta.delete(event.taskId);
@@ -324,26 +327,35 @@ function onBackgroundNotification(event) {
   syncActivityUi();
 }
 
-/** Running background jobs, each with its own stop — under the composer so
- * detached work is always visible and individually killable. */
+/** Running background jobs, each with an indeterminate progress bar (the work
+ * has no known duration) and, when the job allows it, its own stop — under the
+ * composer so detached work is always visible and individually killable. */
 function renderBackgroundJobs() {
   if (!jobsChipEl) return;
   jobsChipEl.textContent = "";
   jobsChipEl.classList.toggle("hidden", backgroundJobMeta.size === 0);
-  for (const [taskId, description] of backgroundJobMeta) {
+  for (const [taskId, meta] of backgroundJobMeta) {
     const row = document.createElement("span");
     row.className = "job-row";
     const label = document.createElement("span");
-    label.textContent = `⏳ ${description}`;
+    label.textContent = `⏳ ${meta.description}`;
     label.title = taskId;
-    const stopBtn = document.createElement("button");
-    stopBtn.className = "job-stop";
-    stopBtn.textContent = "STOP";
-    stopBtn.title = `Stop background task ${taskId}`;
-    stopBtn.addEventListener("click", () => {
-      window.magentra.send({ type: "stop_background", taskId });
-    });
-    row.append(label, stopBtn);
+    row.appendChild(label);
+    // Indeterminate shimmer: signals "running" honestly without faking a percent.
+    const bar = document.createElement("span");
+    bar.className = "job-bar";
+    bar.setAttribute("aria-hidden", "true");
+    row.appendChild(bar);
+    if (meta.stoppable) {
+      const stopBtn = document.createElement("button");
+      stopBtn.className = "job-stop";
+      stopBtn.textContent = "STOP";
+      stopBtn.title = `Stop background task ${taskId}`;
+      stopBtn.addEventListener("click", () => {
+        window.magentra.send({ type: "stop_background", taskId });
+      });
+      row.appendChild(stopBtn);
+    }
     jobsChipEl.appendChild(row);
   }
 }
@@ -917,6 +929,13 @@ function handleEngineEvent(event) {
       break;
     case "command_output":
       onCommandOutput(event);
+      break;
+    case "context_update":
+      // The window changed outside a turn (a manual /compact) — mirror what
+      // turn_finished does for the context meter, minus the turn bookkeeping.
+      contextTokens = event.contextTokens ?? contextTokens;
+      contextWarn = event.contextWarn === true;
+      updateSessionMeter();
       break;
     case "session_report":
       openSessionModal(event.text || "");
