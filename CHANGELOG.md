@@ -7,6 +7,20 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.8.0.0 — 2026-07-22
+
+### Features
+
+- new attach file ability ([6f11758](https://github.com/kalai-labs/MAGENTRA/commit/6f117583fe92b36823e90b33bd275d4bb023706b))
+
+### Bug fixes
+
+- removed hardcoded things ([b2b2a53](https://github.com/kalai-labs/MAGENTRA/commit/b2b2a53ee245fe27541ed453b691dc50e35838b0))
+- bug fixed from ui ([7be8c06](https://github.com/kalai-labs/MAGENTRA/commit/7be8c06c1106f2c73a317406ae0a6f5eb738ac9c))
+- fixed ui bugs ([1b780b2](https://github.com/kalai-labs/MAGENTRA/commit/1b780b25cd4835733ab398c02066bd8630ff9cdd))
+
+[Compare with v0.7.1.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.7.1.0...v0.8.0.0)
+
 ## 0.7.1.0 — 2026-07-22
 
 ### Bug fixes
