@@ -664,6 +664,35 @@ ipcMain.handle("context:pickFiles", async (_evt, opts = {}) => {
   }
 });
 
+// Mission builder "Browse…": pick where a mission's report is written. A mission
+// writes its deliverable with the engine's Write tool, which is workspace-scoped,
+// so the path MUST resolve inside the workspace — a pick outside it is rejected.
+// Returns the chosen path workspace-relative (forward slashes), ready for the
+// mission file's `deliverable:` key.
+ipcMain.handle("mission:pickDeliverable", async (_evt, defaultRel) => {
+  try {
+    const workspace = currentConfig.workspace;
+    if (!workspace) return { ok: false, error: "no workspace open" };
+    const rel = typeof defaultRel === "string" && defaultRel.trim() ? defaultRel.trim() : "report.md";
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: "Where to save the mission report",
+      defaultPath: path.join(workspace, rel),
+      filters: [
+        { name: "Markdown", extensions: ["md"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (result.canceled || !result.filePath) return { ok: false };
+    const relPath = path.relative(workspace, result.filePath);
+    if (relPath.startsWith("..") || path.isAbsolute(relPath)) {
+      return { ok: false, error: "pick a location inside the workspace folder" };
+    }
+    return { ok: true, path: relPath.split(path.sep).join("/") };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : String(err) };
+  }
+});
+
 ipcMain.handle("team:editAgent", async (_evt, agentId) => {
   try {
     if (typeof agentId !== "string" || !AGENT_ID_RE.test(agentId)) {

@@ -3,6 +3,21 @@ import { dirname, join } from "node:path";
 import type { ContentBlock, Msg } from "@magentra/providers";
 
 /**
+ * Strip `<system-reminder>…</system-reminder>` blocks — engine-injected model
+ * scaffolding — out of text bound for the USER's eyes. The reminders stay in the
+ * stored history (the model still needs them); they are only removed from what a
+ * transcript view or session preview shows, so a user never sees their own
+ * message with harness text stuck on. Returns "" when nothing but reminders is
+ * left.
+ */
+export function stripSystemReminders(text: string): string {
+  return text
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
  * tool_use ids in `msg` that `next` does not answer with a matching
  * tool_result. Providers reject a history where an assistant tool_use has no
  * result in the immediately following message, so an interrupt, a provider
@@ -131,8 +146,10 @@ export class Transcript {
       if (record.kind !== "message" || record.message.role !== "user") continue;
       for (const block of record.message.content) {
         if (block.type !== "text" || typeof block.text !== "string") continue;
-        const text = block.text.trim();
-        if (text === "" || text.startsWith("<system-reminder>")) continue;
+        // Strip (not just skip) reminders: a block can carry the user's real
+        // text with a reminder appended, and only the user's words should show.
+        const text = stripSystemReminders(block.text);
+        if (text === "") continue;
         const oneLine = text.replace(/\s+/g, " ");
         return oneLine.length > maxChars ? `${oneLine.slice(0, maxChars - 1)}…` : oneLine;
       }

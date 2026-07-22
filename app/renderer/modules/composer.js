@@ -516,6 +516,10 @@ window.addEventListener("keydown", (e) => {
     closeSessionModal();
     return;
   }
+  if (missionModalEl && !missionModalEl.classList.contains("hidden")) {
+    closeMissionBuilder();
+    return;
+  }
   if (slashVisible) {
     // Normally consumed by the composer's own keydown (which stops
     // propagation); this is a safety net if focus wandered.
@@ -581,7 +585,12 @@ navConsoleEl.addEventListener("click", () => {
 // busy turn only needs a heads-up, not a block.
 if (navHomeEl) {
   navHomeEl.addEventListener("click", () => {
-    if (busy && !window.confirm("Return to the welcome page? This conversation stays saved — resume it anytime from Sessions.")) return;
+    // Just reload to the start page. The engine keeps running and the
+    // conversation is saved (resume it from Sessions), so no confirmation is
+    // needed — and window.confirm is unreliable in the Electron renderer: while
+    // a turn was busy it returned falsy and silently swallowed the click, which
+    // is why this button "did nothing". A busy turn only needs a heads-up note.
+    if (busy) appendSysNote("Returning to the welcome page — this conversation stays saved; resume it anytime from Sessions.");
     window.location.reload();
   });
 }

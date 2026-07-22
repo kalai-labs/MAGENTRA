@@ -232,11 +232,22 @@ async function run() {
     await pause();
     assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.args === "start nightly-audit"));
     assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.args === "schedule nightly-audit"));
+    // Mission builder: name + charter are required; the id auto-derives from the
+    // name; Create sends a create_mission frame (the engine writes the file).
     await evaluate(`document.querySelector('#sidebarMissionNew').click()`);
     await pause();
-    await evaluate(`(() => { document.querySelector('#promptModalInput').value = 'ui-audit'; document.querySelector('#promptModalOk').click(); })()`);
+    await evaluate(`(() => {
+      const name = document.querySelector('#mfName');
+      name.value = 'UI audit'; name.dispatchEvent(new Event('input'));
+      document.querySelector('#mfInvestigate').value = 'Audit the UI for regressions';
+      document.querySelector('#missionModalCreate').click();
+    })()`);
     await pause();
-    assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.command === "mission" && frame.args === "new ui-audit"));
+    assert.ok(frames.some((frame) => frame.type === "create_mission" && frame.draft
+      && frame.draft.name === "UI audit" && frame.draft.id === "ui-audit"
+      && frame.draft.investigate === "Audit the UI for regressions"));
+    // A running one-off shows STOP, and every row exposes DELETE (two-click arm).
+    assert.ok(await evaluate(`[...document.querySelectorAll('.lab-btn')].some((b) => b.textContent === 'DELETE')`));
     await emit({ type: "team_updated", agents: [
       { id: "reviewer", name: "Reviewer", role: "Find regressions", model: MODEL, ready: true, emoji: "R" },
       { id: "tester", name: "Tester", role: "Exercise UI", model: MODEL, ready: false, emoji: "T" },

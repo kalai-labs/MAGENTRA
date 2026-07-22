@@ -6,6 +6,7 @@ import {
   STATE_DIR_NAME,
   type CoreEvent,
   type FrontendRequest,
+  type MissionDraft,
   type PermissionDecision,
   type RestoredMessage,
   type SessionSummary,
@@ -24,6 +25,7 @@ import { buildCrewPrompt, loadTeam, type CrewAgent } from "../crew/team.js";
 import { LAB_FILE_NAME, compileLab, findLabFile, parseLabFile, snapshotLab } from "../lab.js";
 import {
   MISSION_FILE_FORMAT,
+  buildMissionFile,
   buildMissionPrompt,
   loadContinuousState,
   loadMissions,
@@ -60,7 +62,7 @@ import {
 import { MODEL_PRICING, contextWindowFor, pricingFor } from "../config/pricing.js";
 import type { Skill } from "../agent/skills.js";
 import type { ToolRegistry } from "../agent/tool.js";
-import { Transcript } from "../state/transcript.js";
+import { Transcript, stripSystemReminders } from "../state/transcript.js";
 
 /** When a just-persisted setting takes effect, relative to the running session. */
 type SettingTiming = "session" | "nextTurn" | "backpackRebuild" | "restart" | "clear";
@@ -829,6 +831,9 @@ export class Engine {
         break;
       case "export_skill":
         this.exportSkill(request.id);
+        break;
+      case "create_mission":
+        this.handleCreateMission(request.draft);
         break;
       default:
         // The wire accepts any {type: string} object, so an unknown type can
@@ -2015,7 +2020,71 @@ export class Engine {
       return;
     }
 
-    say("Usage: /mission | /mission new <id> | /mission run <id> | /mission start|stop <id> | /mission schedule|unschedule <id>");
+    if (sub === "delete" || sub === "remove") {
+      if (!mission) {
+        say(id ? `No mission "${id}". Missions here: ${known}.` : "Usage: /mission delete <id>");
+        return;
+      }
+      // Halt any continuous loop and drop any scheduled/wakeup jobs first, so
+      // nothing fires for a mission that no longer exists.
+      const state = loadContinuousState(this.opts.cwd);
+      if (state.active[mission.id]) {
+        delete state.active[mission.id];
+        saveContinuousState(this.opts.cwd, state);
+      }
+      const prompt = Engine.missionRunPrompt(mission.id);
+      for (const job of this.scheduler.list()) {
+        if (job.prompt === prompt) this.scheduler.delete(job.id);
+      }
+      try {
+        rmSync(mission.sourcePath, { force: true });
+      } catch (err) {
+        say(`Could not remove "${mission.id}": ${(err as Error).message}`);
+        return;
+      }
+      say(`🗑 mission "${mission.id}" removed. Past reports under .magentra/missions/out/${mission.id}/ are kept.`);
+      this.emitMissionsUpdated();
+      return;
+    }
+
+    say("Usage: /mission | /mission new <id> | /mission run <id> | /mission start|stop <id> | /mission schedule|unschedule <id> | /mission delete <id>");
+  }
+
+  /** Create a mission file from the UI builder's structured inputs (create_mission
+   *  frame). Validates the essentials, writes the assembled .md, and reloads. */
+  private handleCreateMission(draft: MissionDraft | undefined): void {
+    const say = (text: string) => this.emit({ type: "command_output", text });
+    if (!draft || typeof draft !== "object") {
+      this.emit({ type: "error", message: "create_mission requires a draft object", fatal: false });
+      return;
+    }
+    const id = (draft.id ?? "").trim();
+    if (!/^[a-z0-9_-]+$/.test(id)) {
+      say(`Cannot create mission: id "${id}" must be lowercase letters, digits, hyphen or underscore.`);
+      return;
+    }
+    if (!draft.name?.trim()) {
+      say("Cannot create mission: a name is required.");
+      return;
+    }
+    if (!draft.investigate?.trim()) {
+      say("Cannot create mission: describe what the mission should investigate.");
+      return;
+    }
+    const path = join(this.opts.cwd, STATE_DIR_NAME, "missions", `${id}.md`);
+    if (existsSync(path)) {
+      say(`A mission "${id}" already exists — pick another id, or edit ${path}.`);
+      return;
+    }
+    try {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, buildMissionFile({ ...draft, id }));
+    } catch (err) {
+      say(`Could not write mission "${id}": ${(err as Error).message}`);
+      return;
+    }
+    say(`🧪 mission "${id}" created → ${path}. Launch it with the RUN button in the Lab, or /mission run ${id}.`);
+    this.emitMissionsUpdated();
   }
 
   private handleBang(cmd: string): void {
@@ -2431,8 +2500,12 @@ export function reconstructForDisplay(messages: Msg[]): RestoredMessage[] {
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i]!;
     if (msg.role === "user") {
-      const text = textOf(msg).trim();
-      if (!text || text.startsWith("<system-reminder>")) continue;
+      // Strip injected reminders so a restored session shows the user's own
+      // words, not the harness scaffolding appended to them. `textOf` joins all
+      // text blocks, so a real message + appended reminder block lands here as
+      // one string — stripping (not a startsWith skip) is what cleans it.
+      const text = stripSystemReminders(textOf(msg));
+      if (!text) continue;
       out.push({ role: "user", text });
       continue;
     }

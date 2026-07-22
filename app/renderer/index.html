@@ -389,14 +389,6 @@
         </div>
 
         <div class="set-card">
-          <div class="set-card-title">SKILLS</div>
-          <p class="set-note">Skills shape how the agent works — a <em>discipline</em> is a standing rule applied every turn, an <em>action</em> is an on-demand recipe. Describe one in plain language and Magentra drafts it.</p>
-          <div class="set-actions">
-            <button id="settingsBuildSkillBtn">＋ BUILD NEW SKILL ▸</button>
-          </div>
-        </div>
-
-        <div class="set-card">
           <div class="set-card-title">ABOUT</div>
           <p class="set-note"><span class="logo-mark">▮</span> MAGENTRA <span id="setVersion"></span> — autonomous agent harness.</p>
           <div class="set-actions">
@@ -576,6 +568,78 @@
           <button id="skillWizBack">◂ BACK</button>
           <button id="skillWizInstall" class="wiz-primary">INSTALL ▸</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── mission builder ──────────────────────────────────────────────────── -->
+  <div id="missionModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="missionModalTitle">
+    <div class="modal-box mission-box">
+      <div class="modal-title" id="missionModalTitle">🧪 NEW MISSION</div>
+      <p class="modal-sub">Describe the investigation in plain language — Magentra writes the mission file for you. Only a name and what to investigate are required.</p>
+      <div class="mission-form">
+        <label class="mf-field">
+          <span class="mf-label">Name <em class="mf-req">*</em></span>
+          <input id="mfName" type="text" spellcheck="false" placeholder="e.g. Literature scan" />
+        </label>
+        <label class="mf-field">
+          <span class="mf-label">File id</span>
+          <input id="mfId" type="text" spellcheck="false" placeholder="auto from name" />
+          <span class="mf-hint">Becomes <code>.magentra/missions/&lt;id&gt;.md</code> — lowercase letters, digits, - or _.</span>
+        </label>
+        <label class="mf-field">
+          <span class="mf-label">Description</span>
+          <input id="mfDescription" type="text" spellcheck="false" placeholder="One line — what this mission is for (shown in listings)" />
+        </label>
+        <label class="mf-field">
+          <span class="mf-label">What should the lab investigate? <em class="mf-req">*</em></span>
+          <textarea id="mfInvestigate" rows="4" spellcheck="false" placeholder="The question, the scope, and the sources that matter…"></textarea>
+        </label>
+        <label class="mf-field">
+          <span class="mf-label">What counts as done?</span>
+          <textarea id="mfDone" rows="2" spellcheck="false" placeholder="The shape of a good answer — what the report must contain to be complete."></textarea>
+        </label>
+        <label class="mf-field">
+          <span class="mf-label">Keywords to sweep</span>
+          <input id="mfKeywords" type="text" spellcheck="false" placeholder="comma, separated, terms — each is searched on the web every run" />
+        </label>
+        <div class="mf-field">
+          <span class="mf-label">Where to save the report</span>
+          <div class="mf-row">
+            <input id="mfDeliverable" type="text" spellcheck="false" placeholder=".magentra/missions/out/<id>/report.md (default)" />
+            <button type="button" id="mfBrowse" class="mf-browse">Browse…</button>
+          </div>
+        </div>
+        <label class="mf-field">
+          <span class="mf-label">Automation</span>
+          <select id="mfAutomation" class="mf-select">
+            <option value="manual" selected>Only when I run it</option>
+            <option value="continuous">Repeat continuously (loop)</option>
+            <option value="schedule">On a schedule</option>
+          </select>
+        </label>
+        <label class="mf-field hidden" id="mfCooldownField">
+          <span class="mf-label">Pause between runs</span>
+          <input id="mfCooldown" type="text" spellcheck="false" placeholder="e.g. 15m (60s–1h, default 5m)" />
+        </label>
+        <div class="mf-field hidden" id="mfScheduleField">
+          <span class="mf-label">Schedule</span>
+          <input id="mfSchedule" type="text" spellcheck="false" placeholder="5-field cron, e.g. 0 7 * * 1 (Mon 07:00)" />
+          <span class="mf-hint">Presets:
+            <button type="button" class="mf-chip" data-cron="0 * * * *">Hourly</button>
+            <button type="button" class="mf-chip" data-cron="0 9 * * *">Daily 9am</button>
+            <button type="button" class="mf-chip" data-cron="0 9 * * 1">Weekly Mon</button>
+          </span>
+        </div>
+        <label class="mf-field">
+          <span class="mf-label">Token budget per run</span>
+          <input id="mfBudget" type="number" min="0" step="1000" spellcheck="false" placeholder="optional, e.g. 60000" />
+        </label>
+      </div>
+      <div class="modal-actions">
+        <span id="missionModalStatus"></span>
+        <button id="missionModalCancel">CANCEL (Esc)</button>
+        <button id="missionModalCreate" class="wiz-primary">CREATE ▸</button>
       </div>
     </div>
   </div>
