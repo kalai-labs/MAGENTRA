@@ -153,6 +153,20 @@ async function run() {
       inspectorHidden: false, sessionNavHidden: false, contextWorkspace: "magentra-ui-workspace",
     });
     assert.ok(frames.some((frame) => frame.type === "list_sessions"));
+    // The "Welcome page" home button shares one row with New conversation (no
+    // separate stacked row), is now visible in a session, and carries the crisp
+    // SVG house icon rather than a faint glyph.
+    const homeRow = await evaluate(`(() => {
+      const home = document.querySelector('#navHome');
+      const conv = document.querySelector('#navConsole');
+      return {
+        sameRow: Boolean(home.closest('.sidebar-primary-row')) && home.parentElement === conv.parentElement,
+        visible: !home.classList.contains('hidden') && getComputedStyle(home).display !== 'none',
+        hasSvgIcon: Boolean(home.querySelector('svg.home-icon')),
+        sameTop: Math.abs(home.getBoundingClientRect().top - conv.getBoundingClientRect().top) < 1,
+      };
+    })()`);
+    assert.deepEqual(homeRow, { sameRow: true, visible: true, hasSvgIcon: true, sameTop: true });
   });
 
   await test("saved sessions render persistently and management controls send engine frames", async () => {
@@ -236,6 +250,29 @@ async function run() {
     // name; Create sends a create_mission frame (the engine writes the file).
     await evaluate(`document.querySelector('#sidebarMissionNew').click()`);
     await pause();
+    // The builder must open as a centered overlay like every other modal — a
+    // missing entry in the shared overlay rule once left it statically at the
+    // document's top-left. Prove it is fixed, full-bleed, and flex-centered.
+    const missionOverlay = await evaluate(`(() => {
+      const m = document.querySelector('#missionModal');
+      const cs = getComputedStyle(m);
+      const box = m.querySelector('.mission-box').getBoundingClientRect();
+      return {
+        position: cs.position, display: cs.display,
+        alignItems: cs.alignItems, justifyContent: cs.justifyContent,
+        top: m.getBoundingClientRect().top,
+        centeredX: Math.abs((box.left + box.right) / 2 - window.innerWidth / 2) < 2,
+        centeredY: Math.abs((box.top + box.bottom) / 2 - window.innerHeight / 2) < 2,
+      };
+    })()`);
+    assert.deepEqual(
+      { position: missionOverlay.position, display: missionOverlay.display,
+        alignItems: missionOverlay.alignItems, justifyContent: missionOverlay.justifyContent,
+        top: missionOverlay.top, centeredX: missionOverlay.centeredX, centeredY: missionOverlay.centeredY },
+      { position: "fixed", display: "flex", alignItems: "center", justifyContent: "center",
+        top: 0, centeredX: true, centeredY: true },
+      "mission builder must be a centered fixed overlay, not top-left static",
+    );
     await evaluate(`(() => {
       const name = document.querySelector('#mfName');
       name.value = 'UI audit'; name.dispatchEvent(new Event('input'));
@@ -367,6 +404,36 @@ async function run() {
     }))()`);
     assert.match(meter.text, /ctx ~5\.0k/);
     assert.equal(meter.warn, false);
+  });
+
+  await test("compaction shows an in-chat indicator, stays out of the jobs chip, and refreshes ctx", async () => {
+    // /compact runs outside a turn; the engine brackets it in a background
+    // notification. The indicator belongs IN the transcript (professional, no
+    // emoji), NOT in the detached-jobs chip under the composer.
+    await emit({ type: "background_notification", taskId: "compact", kind: "start", payload: { description: "Compacting conversation", stoppable: false } });
+    let state = await evaluate(`(() => ({
+      inStream: Boolean(document.querySelector('.stream .compacting')),
+      label: (document.querySelector('.compacting-label') || {}).textContent || null,
+      hasEmoji: /[\\u{1F000}-\\u{1FAFF}\\u{2300}-\\u{27BF}]/u.test((document.querySelector('.compacting') || {}).textContent || ''),
+      jobsChipHidden: document.querySelector('#jobsChip').classList.contains('hidden'),
+      working: !document.querySelector('#stopBtn').classList.contains('hidden'),
+    }))()`);
+    assert.deepEqual(state, {
+      inStream: true, label: "Compacting conversation", hasEmoji: false,
+      jobsChipHidden: true, working: true,
+    }, "compaction indicator lives in the chat, emoji-free, not in the jobs chip");
+    // The window shrinks; the engine pushes context_update outside any turn and
+    // the bottom-right ctx counter must adopt the fresh number.
+    await emit({ type: "context_update", contextTokens: 3300, contextWarn: false });
+    await pause();
+    assert.match(await evaluate(`document.querySelector('#hintUsage').textContent`), /ctx ~3\.3k/, "ctx counter updates after compaction");
+    // Job exit clears the indicator.
+    await emit({ type: "background_notification", taskId: "compact", kind: "exit", payload: { description: "Compacting conversation" } });
+    state = await evaluate(`(() => ({
+      gone: document.querySelector('.compacting') === null,
+      idle: document.querySelector('#stopBtn').classList.contains('hidden'),
+    }))()`);
+    assert.deepEqual(state, { gone: true, idle: true }, "indicator clears and the LED returns to idle when compaction finishes");
   });
 
   await test("slash palette, background jobs, application menu, and recovery banner are live controls", async () => {

@@ -19,12 +19,17 @@
       <nav id="menuBar" aria-label="Application menu"></nav>
     </div>
 
-    <button class="sidebar-primary active" id="navConsole" title="New conversation" aria-label="New conversation">
-      <span class="dock-glyph">＋</span><span class="dock-label">New conversation</span>
-    </button>
-    <button class="sidebar-home hidden" id="navHome" title="Back to the welcome page" aria-label="Back to the welcome page">
-      <span class="dock-glyph">⌂</span><span class="dock-label">Welcome page</span>
-    </button>
+    <div class="sidebar-primary-row">
+      <button class="sidebar-primary active" id="navConsole" title="New conversation" aria-label="New conversation">
+        <span class="dock-glyph">＋</span><span class="dock-label">New conversation</span>
+      </button>
+      <button class="sidebar-home hidden" id="navHome" title="Back to the welcome page" aria-label="Back to the welcome page">
+        <svg class="home-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 10.75 12 3l9 7.75" />
+          <path d="M5.25 9.5V20a1 1 0 0 0 1 1H10v-5.5h4V21h3.75a1 1 0 0 0 1-1V9.5" />
+        </svg>
+      </button>
+    </div>
 
     <section class="sidebar-section sidebar-section-workspaces" aria-labelledby="workspacesSidebarTitle">
       <div class="sidebar-section-head">

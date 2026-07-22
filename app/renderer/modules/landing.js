@@ -312,15 +312,23 @@ const backgroundJobMeta = new Map(); // taskId -> { description, stoppable }
 
 function onBackgroundNotification(event) {
   if (!event || typeof event.taskId !== "string") return;
-  if (event.kind === "start") {
-    backgroundJobs.add(event.taskId);
+  const starting = event.kind === "start";
+  // Track every background job for the busy LED / stop button, whatever it is.
+  if (starting) backgroundJobs.add(event.taskId);
+  else backgroundJobs.delete(event.taskId); // "exit" and anything else terminal
+
+  if (event.taskId === "compact") {
+    // Compaction shows its progress inline in the transcript, not in the
+    // detached-jobs chip — so it never reaches backgroundJobMeta.
+    if (starting) showCompactingCard();
+    else removeCompactingCard();
+  } else if (starting) {
     const p = event.payload || {};
     const description = typeof p.description === "string" ? p.description : event.taskId;
     // Default stoppable (the atlas build is); a job opts out with stoppable:false
-    // when aborting it mid-flight would corrupt state (e.g. compaction).
+    // when aborting it mid-flight would corrupt state.
     backgroundJobMeta.set(event.taskId, { description, stoppable: p.stoppable !== false });
   } else {
-    backgroundJobs.delete(event.taskId); // "exit" and anything else terminal
     backgroundJobMeta.delete(event.taskId);
   }
   renderBackgroundJobs();
@@ -338,7 +346,7 @@ function renderBackgroundJobs() {
     const row = document.createElement("span");
     row.className = "job-row";
     const label = document.createElement("span");
-    label.textContent = `⏳ ${meta.description}`;
+    label.textContent = meta.description;
     label.title = taskId;
     row.appendChild(label);
     // Indeterminate shimmer: signals "running" honestly without faking a percent.

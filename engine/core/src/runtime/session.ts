@@ -2109,7 +2109,7 @@ export class Session {
     if (!force) {
       this.emit({
         type: "command_output",
-        text: `🗜 Auto-compacted (~${formatTokens(before)} tokens summarized): the context reached your auto-compact limit of ${formatTokens(this.autoCompactLimit)} tokens. Raise or turn it off in Settings → Context.`,
+        text: `Auto-compacted (~${formatTokens(before)} tokens summarized): the context reached your auto-compact limit of ${formatTokens(this.autoCompactLimit)} tokens. Raise or turn it off in Settings → Context.`,
       });
     }
     return true;
