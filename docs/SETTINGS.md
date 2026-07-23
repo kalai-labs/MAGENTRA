@@ -41,7 +41,7 @@ file — never the shareable project file — and the file is written mode `0600
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `maxTokensPerResponse` | `8192` | `max_tokens` for a single model response. |
+| `maxTokensPerResponse` | `32768` | `max_tokens` for a single model response. A cutoff at this wall triggers the length-continuation path; a higher value makes cutoffs rarer. |
 | `maxTokensPerTurn` | `200000` | Output-token budget per turn. Applies only to unattended (mission) runs and children — interactive root turns run uncapped (the stall detector is the brake). Mission `budget:` overrides it per run. |
 | `clarify` | `true` | Clarify pre-layer: on a genuinely open-ended request ("build a game", "improve this app"), the main model asks up to three shape-defining multiple-choice questions before any work starts. Concrete or trivial requests never trigger it; fail-open on any error; root attended sessions only. |
 | `maxIterationsPerTurn` | `50` | Loop-safety cap on model↔tool round-trips. Same scope: unattended runs and explicitly capped children only. |

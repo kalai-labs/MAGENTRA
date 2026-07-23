@@ -104,7 +104,14 @@ const WRAPUP_NUDGE_TEXT =
   "<system-reminder>You finished working but did not summarize. Give the user a short wrap-up: what was built/changed, how to use it, what you verified and the outcome, and any open issues.</system-reminder>";
 
 const LENGTH_CONTINUATION_TEXT =
-  "<system-reminder>Your previous response was cut off by the output-token limit. Continue exactly where you left off.</system-reminder>";
+  "<system-reminder>Your previous response was cut off mid-output by the token limit. Resume from the exact character where it stopped. Do not repeat or rephrase anything already written. Do not restart, re-introduce, or summarize. No preamble — output only the continuation, as if the text had never been interrupted.</system-reminder>";
+
+// The tool-call analogue of LENGTH_CONTINUATION_TEXT: a cutoff that lands
+// mid-tool-call leaves the tool's JSON truncated. Sent as that call's result so
+// the model knows it was cut off (not that it sent bad input) and reissues the
+// call in full — never assuming the truncated call ran.
+const TOOL_CUTOFF_TEXT =
+  "This tool call was cut off by the output-token limit before it finished, so it was NOT executed. Reissue the complete call — do not assume it ran or had any effect.";
 
 // Stall handling: with the interactive numeric caps lifted, the brake is
 // noticing that rounds have stopped producing anything new. Three consecutive
@@ -1448,6 +1455,13 @@ export class Session {
           break;
         }
 
+        // A max_tokens stop with tool calls pending means the response was cut
+        // off mid-tool-call. Surface the same continuation marker the text path
+        // shows (Layer 3); the truncated call is rejected with TOOL_CUTOFF_TEXT
+        // inside executeToolCalls, and complete calls in the batch still run.
+        if (stopReason === "max_tokens") {
+          this.emit({ type: "command_output", text: "↻ continuing after output-length cutoff" });
+        }
         totalToolCallsThisTurn += toolCalls.length;
         if (toolCalls.some((c) => c.name === "Write" || c.name === "Edit")) wroteOrEditedThisTurn = true;
         const results = await this.executeToolCalls(toolCalls, signal);
@@ -1665,6 +1679,17 @@ export class Session {
       }
 
       const rawInput = safeParse(call.json);
+      // Truncated tool JSON = the response was cut off mid-call. Do not run it;
+      // tell the model it was cut off so it reissues (a generic schema error
+      // would read as "you sent bad input" and send it debugging a phantom).
+      if (isUnparseable(rawInput)) {
+        planned.push({
+          call,
+          parallel: true,
+          run: async () => ({ content: TOOL_CUTOFF_TEXT, isError: true }),
+        });
+        continue;
+      }
       const parsed = tool.inputSchema.safeParse(rawInput);
       if (!parsed.success) {
         const issues = parsed.error.issues
@@ -2312,13 +2337,21 @@ function providerHost(settings: Settings): string | undefined {
   }
 }
 
+const UNPARSEABLE_KEY = "__unparseable_input";
+
 function safeParse(json: string): unknown {
   if (!json.trim()) return {};
   try {
     return JSON.parse(json);
   } catch {
-    return { __unparseable_input: json };
+    return { [UNPARSEABLE_KEY]: json };
   }
+}
+
+/** True when safeParse could not parse the tool JSON — i.e. it was truncated,
+ * which for a streamed tool call means the response was cut off mid-call. */
+function isUnparseable(input: unknown): boolean {
+  return typeof input === "object" && input !== null && UNPARSEABLE_KEY in input;
 }
 
 function truncateResult(result: ToolResult, limit: number): ToolResult {
