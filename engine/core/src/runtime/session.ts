@@ -135,8 +135,26 @@ You own this query end to end: plan, act, verify, deliver — without stopping f
 const SELF_VERIFY_TEXT =
   "<system-reminder>Internal self-check — this is NOT a new user message and the user is NOT waiting for another reply. Your entire output for this step must be either the single word DONE or continued work. Nothing else. Do not greet, do not re-answer, do not summarize, do not introduce yourself.\n\nDecide silently: is every part of the user's original query already fully handled (a conversational message with nothing to do counts as handled), and did this turn leave nothing unnecessary behind (scratch files, duplicated helpers, abandoned attempts)?\n- If YES → output exactly: DONE\n- If NO → do the remaining work now (call tools / write the fix / clean up). Whatever you write in this case IS shown to the user; the DONE token never is.\n\nJudge only against the query itself — never invent verification rituals (builds, tests) it did not ask for.</system-reminder>";
 
-/** The machine-read sentinel a self-verify round answers with when nothing is left to do. */
-const SELF_VERIFY_DONE_RE = /^\s*DONE[.!…]?\s*$/i;
+/**
+ * Whether a self-verify round answered with the "nothing left to do" sentinel.
+ *
+ * The instruction asks for a bare DONE, but models — reasoning models especially
+ * — decorate or repeat it: `**DONE**`, `DONE.`, `DONE DONE DONE`, `DONE!\nDONE`.
+ * A strictly-anchored match let all of those fall through to the reveal path,
+ * spamming the chat with the raw verify buffer. Treat the round as complete when
+ * nothing but DONE survives stripping markdown emphasis and punctuation — but
+ * never when real prose rides along, since that prose is genuine continued work
+ * that must reach the user.
+ */
+export function isSelfVerifyDone(text: string): boolean {
+  const tokens = text
+    .replace(/[*_`~#>]/g, " ") // markdown emphasis / heading / quote marks
+    .replace(/[.!…,:;\-–—]/g, " ") // trailing punctuation and separators
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return tokens.length > 0 && tokens.every((t) => /^done$/i.test(t));
+}
 
 // ── Clarify pre-layer ───────────────────────────────────────────────────────
 // Before acting on an open-ended request ("build a game", "improve this
@@ -1286,7 +1304,7 @@ export class Session {
           verifyBuffered = false;
           this.suppressAssistantText = false;
           const verifyText = assistantText(assistant).trim();
-          if (toolCalls.length === 0 && SELF_VERIFY_DONE_RE.test(verifyText)) {
+          if (toolCalls.length === 0 && isSelfVerifyDone(verifyText)) {
             // Record the sentinel so history stays well-formed; it is never
             // rendered. The user's single original answer stands as the reply.
             if (assistant.content.length > 0) this.pushMessage(assistant);
