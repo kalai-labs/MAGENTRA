@@ -343,7 +343,7 @@ function createToolRow(tool, description, input) {
 
 // One shared 1s ticker updates every running row's duration chip; it stops
 // itself when nothing is running so an idle app burns no timers.
-const runningToolRows = new Set();
+let runningToolRows = new Set(); // let: reassigned by the per-tab state swap (tabs.js)
 let toolTickerId = null;
 
 function ensureToolTicker() {

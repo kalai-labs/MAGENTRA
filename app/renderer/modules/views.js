@@ -277,6 +277,7 @@ function formatTurnElapsed(ms) {
 }
 
 function renderNowText() {
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // the liveness strip shows the focused tab only
   if (nowOverrideText !== null) {
     nowTextEl.textContent = nowOverrideText;
     return;
@@ -317,6 +318,7 @@ function tickNowLine() {
 }
 
 function startNowLine() {
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // background tab: don't drive the shared liveness strip
   nowLineEl.classList.remove("hidden");
   nowTurnStart = Date.now();
   nowOverrideText = null;

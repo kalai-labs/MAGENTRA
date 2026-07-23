@@ -1254,6 +1254,86 @@ async function run() {
     await evaluate(`document.querySelector('#reviewDoneBtn').click()`);
   });
 
+  await test("concurrent tabs: background streams isolate, focus switches, close returns", async () => {
+    windowRef.setSize(1280, 800);
+    await pause(60);
+    const tabEvt = (ch, p) => windowRef.webContents.send(ch, p);
+    const started = (sessionId, cwd, tabId) => ({
+      type: "session_started", v: 1, sessionId, cwd, model: MODEL,
+      overdrive: false, commands: [], rateCard: {}, tabId,
+    });
+    // Open tab A (main-driven), stream some visible text into it.
+    tabEvt("test:tab-opened", { tabId: "tA", workspace: "/tmp/ws-a" });
+    await emit({ type: "workspace_changed", workspace: "/tmp/ws-a", tabId: "tA" });
+    await emit(started("sA", "/tmp/ws-a", "tA"));
+    await emit({ type: "turn_started", turnId: "tnA", tabId: "tA" });
+    await emit({ type: "text_delta", text: "ALPHA-visible", tabId: "tA" });
+    // Open tab B — it becomes focused; A goes background.
+    tabEvt("test:tab-opened", { tabId: "tB", workspace: "/tmp/ws-b" });
+    await emit({ type: "workspace_changed", workspace: "/tmp/ws-b", tabId: "tB" });
+    await emit(started("sB", "/tmp/ws-b", "tB"));
+    await emit({ type: "text_delta", text: "BETA-visible", tabId: "tB" });
+    // A background event for A while B is focused: it must render into A's OWN
+    // (detached) stream, never leaking into B's visible console.
+    await emit({ type: "text_delta", text: "ALPHA-bg", tabId: "tA" });
+    await pause(40);
+    const iso = await evaluate(`(() => ({
+      focused: focusedTabId, tabCount: tabs.size,
+      visibleHasBeta: streamEl.textContent.includes('BETA-visible'),
+      visibleHasAlphaBg: streamEl.textContent.includes('ALPHA-bg'),
+      aHasAlphaBg: tabs.get('tA').streamEl.textContent.includes('ALPHA-bg'),
+      aDetached: tabs.get('tA').streamEl.parentNode === null,
+      rows: document.querySelectorAll('.sidebar-tab-row').length,
+    }))()`);
+    assert.equal(iso.focused, "tB");
+    assert.equal(iso.tabCount, 2);
+    assert.ok(iso.visibleHasBeta, "focused console shows tab B");
+    assert.ok(!iso.visibleHasAlphaBg, "A's background text does NOT leak into B's visible console");
+    assert.ok(iso.aHasAlphaBg, "A's background text rendered into A's own detached stream");
+    assert.ok(iso.aDetached, "A's stream is detached while B is focused");
+    assert.equal(iso.rows, 2, "both tabs appear in the sidebar");
+    // Switch focus to A: its stream mounts and shows its content incl. background.
+    tabEvt("test:tab-focused", { tabId: "tA" });
+    await pause(40);
+    const foc = await evaluate(`(() => ({
+      focused: focusedTabId,
+      showsAlpha: streamEl.textContent.includes('ALPHA-visible') && streamEl.textContent.includes('ALPHA-bg'),
+      showsBeta: streamEl.textContent.includes('BETA-visible'),
+    }))()`);
+    assert.equal(foc.focused, "tA");
+    assert.ok(foc.showsAlpha, "focusing A shows A's content including its background updates");
+    assert.ok(!foc.showsBeta, "B's content is no longer in the visible console");
+    // Follow (split) mode: tile both consoles side by side.
+    await evaluate(`document.getElementById('followToggle').click()`);
+    await pause(40);
+    const split = await evaluate(`(() => ({
+      grid: document.querySelector('#transcript').classList.contains('console-grid'),
+      panes: document.querySelector('#transcript').getAttribute('data-panes'),
+      tiled: document.querySelectorAll('#transcript.console-grid > .stream').length,
+      followOn: document.getElementById('followToggle').classList.contains('on'),
+    }))()`);
+    assert.equal(split.grid, true, "Follow mode tiles the console into a grid");
+    assert.equal(split.panes, "2", "two panes for two tabs");
+    assert.equal(split.tiled, 2, "both tab consoles are tiled");
+    assert.ok(split.followOn, "the Follow toggle reflects on-state");
+    // Toggle Follow off — back to a single focused console.
+    await evaluate(`document.getElementById('followToggle').click()`);
+    await pause(40);
+    assert.equal(
+      await evaluate(`document.querySelector('#transcript').classList.contains('console-grid')`),
+      false,
+      "toggling Follow off returns to the single view",
+    );
+    // Close B (a background tab): one remains, no page reload.
+    tabEvt("test:tab-closed", { tabId: "tB", focus: "tA" });
+    tabEvt("test:tab-focused", { tabId: "tA" });
+    await pause(40);
+    const closed = await evaluate(`({ tabCount: tabs.size, focused: focusedTabId, rows: document.querySelectorAll('.sidebar-tab-row').length })`);
+    assert.equal(closed.tabCount, 1);
+    assert.equal(closed.focused, "tA");
+    assert.equal(closed.rows, 1);
+  });
+
   if (rendererErrors.length > 0) throw new Error(`renderer errors:\n${rendererErrors.join("\n")}`);
   process.stdout.write(`\n${passed} real Electron UI scenarios passed.\n`);
 }

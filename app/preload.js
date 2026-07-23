@@ -14,7 +14,9 @@ contextBridge.exposeInMainWorld("magentra", {
   pickMissionDeliverable: (defaultRel) => ipcRenderer.invoke("mission:pickDeliverable", defaultRel),
   undoChanges: (relPath, diffs) => ipcRenderer.invoke("changes:undo", { relPath, diffs }),
   setModel: (model) => ipcRenderer.invoke("config:setModel", model),
-  send: (frame) => ipcRenderer.send("engine:send", frame),
+  // A bare frame targets the active tab (unchanged); pass a tabId to route the
+  // frame to a specific tab's engine (per-tab requests in multi-tab mode).
+  send: (frame, tabId) => ipcRenderer.send("engine:send", tabId ? { frame, tabId } : frame),
   setModes: (activeIds) => ipcRenderer.send("engine:setModes", activeIds),
   interrupt: () => ipcRenderer.send("engine:interrupt"),
   restartEngine: () => ipcRenderer.send("engine:restart"),
@@ -85,6 +87,31 @@ contextBridge.exposeInMainWorld("magentra", {
     const listener = (_evt, data) => cb(data);
     ipcRenderer.on("setup:required", listener);
     return () => ipcRenderer.removeListener("setup:required", listener);
+  },
+  // Concurrent workspace tabs (docs/CONCURRENT-WORKSPACES.md): main owns the
+  // engine pool and drives these; the renderer creates/focuses/closes its
+  // per-tab console state in response.
+  focusTab: (tabId) => ipcRenderer.send("tab:focus", tabId),
+  closeTab: (tabId) => ipcRenderer.send("tab:close", tabId),
+  onTabOpened: (cb) => {
+    const listener = (_evt, data) => cb(data);
+    ipcRenderer.on("tab:opened", listener);
+    return () => ipcRenderer.removeListener("tab:opened", listener);
+  },
+  onTabFocused: (cb) => {
+    const listener = (_evt, data) => cb(data);
+    ipcRenderer.on("tab:focused", listener);
+    return () => ipcRenderer.removeListener("tab:focused", listener);
+  },
+  onTabClosed: (cb) => {
+    const listener = (_evt, data) => cb(data);
+    ipcRenderer.on("tab:closed", listener);
+    return () => ipcRenderer.removeListener("tab:closed", listener);
+  },
+  onTabCap: (cb) => {
+    const listener = (_evt, data) => cb(data);
+    ipcRenderer.on("tab:cap", listener);
+    return () => ipcRenderer.removeListener("tab:cap", listener);
   },
   onRecentWorkspaces: (cb) => {
     const listener = (_evt, list) => cb(list);

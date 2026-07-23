@@ -548,16 +548,33 @@ workspace switch. Full design + glossary + the architecture ADR: `docs/CONCURREN
   Remaining for W.2 to drive: the cap (4) and same-folder rule (open → focus existing) are
   enforced when the renderer starts requesting new tabs.
 
-- [ ] **W.2 Renderer: per-tab state + tab bar (single-view multi-tab)**
-  Files: `app/renderer/modules/*` (lift `streamEl`/`currentSessionId`/`busy`/`contextTokens`/
-  `backgroundJobs`/permission queue/changes/crew/mission state into a per-tab `TabState`;
-  route `handleEngineEvent` by `event.tabId`), new tab-bar UI + `index.html`/`styles.css`.
-  Done when: tabs with live/running/needs-attention badges; click-to-focus swaps the mounted
-  console; a background tab's turn keeps streaming and notifies on completion; `test:ui` green.
+- [x] **W.2 Renderer: per-tab state + tab bar (single-view multi-tab)** *(Done & verified.
+  `app/renderer/modules/tabs.js`: the per-tab `TabState` bundle — a 55-field accessor table
+  (single source of truth for "what is per-tab"), `captureInto`/`applyFrom` swap, a `tabs`
+  registry + `focusedTabId`/`dispatchTabId`, `chromeIsFocused()` (background-tab chrome guard),
+  `routeEngineEvent` (IPC entry), and the renderer tab manager (open/focus/close → capture,
+  swap, mount/unmount `streamEl`, repaint chrome). Four per-tab collections `const→let`.
+  Main (`openWorkspace` now mints/focuses a tab; `createTab`/`focusTab`/`closeTab`, cap 4 +
+  same-folder rule, `tab:opened`/`focused`/`closed`/`cap` events) + `preload.js` bridges
+  (`focusTab`/`closeTab`/`onTab*`). Sidebar WORKSPACES list is the live tab bar (running /
+  needs-attention badges, ✕ close, click focus; recents open a new tab). Chrome updaters
+  (`syncActivityUi`/`updateSessionMeter`/`setStatusLed`/`applyModel`/`onModelCatalog`/now-line)
+  no-op for a background tab. Engine core + wire protocol unchanged. Verified: `test:main`,
+  boot smoke exit 0, and a new e2e scenario proving a background tab's stream ISOLATES (no leak
+  into the focused console), focus-switch mounts the right stream, and close returns —
+  `test:ui` 25/25 green. Per-tab questions/models: responses route to the focused tab (correct
+  for single-view; W.3 adds explicit per-pane routing for split).)*
 
-- [ ] **W.3 Follow (split) mode: tile 2–4 tabs**
-  Files: renderer layout manager + a "Follow" toggle; hide per-pane inspector in multi-pane.
-  Done when: 2/3/4 live consoles render side-by-side (halves, then quadrants) and update live.
+- [x] **W.3 Follow (split) mode: tile 2–4 tabs** *(Done & verified. `tabs.js` `applyLayout()`
+  is the single mount authority: single focused stream, or (Follow on, ≥2 tabs) all tabs' streams
+  tiled into `#transcript.console-grid`. Geometry via `data-panes` + semantic-token CSS (all three
+  themes): 2 = equal columns; 3 = two on top + the FOCUSED pane full-width on the bottom (focus
+  another to promote it); 4 = 2×2 equal quadrants. `#followToggle` (▦) toggles it, shown only with
+  ≥2 tabs. Click a pane → focus it (its composer/questions become active — correct per-tab
+  routing). Inspector auto-hides on reaching 2 tabs (`enterActiveState` no longer force-opens it in
+  multi-tab), still reopenable. Verified: the e2e scenario now also asserts the grid tiles both
+  consoles and toggles back to single view — `test:ui` 25/25 green; a screenshot confirmed the
+  split renders cleanly with the focus ring and hidden inspector.)*
 
 ---
 

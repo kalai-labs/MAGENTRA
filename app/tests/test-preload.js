@@ -78,4 +78,11 @@ contextBridge.exposeInMainWorld("magentra", {
   onRestarted: (callback) => listen("test:restarted", callback),
   onSetupRequired: (callback) => listen("test:setup-required", callback),
   onRecentWorkspaces: (callback) => listen("test:recent", callback),
+  // Concurrent workspace tabs — the suite drives the tab lifecycle directly.
+  focusTab: (tabId) => ipcRenderer.send("test:tab-focus", tabId),
+  closeTab: (tabId) => ipcRenderer.send("test:tab-close", tabId),
+  onTabOpened: (callback) => listen("test:tab-opened", callback),
+  onTabFocused: (callback) => listen("test:tab-focused", callback),
+  onTabClosed: (callback) => listen("test:tab-closed", callback),
+  onTabCap: (callback) => listen("test:tab-cap", callback),
 });

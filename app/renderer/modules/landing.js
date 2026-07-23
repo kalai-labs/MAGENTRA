@@ -267,6 +267,9 @@ function onSessionStarted(event) {
  * in flight, turn or not.
  */
 function syncActivityUi() {
+  // A background tab's turn must not repaint the focused tab's composer/LED/
+  // buttons/sidebar. In single-tab this guard is always false (pass-through).
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
   const working = busy || backgroundJobs.size > 0;
 
   stopBtnEl.classList.toggle("hidden", !working);
@@ -279,6 +282,7 @@ function syncActivityUi() {
   if (customModelEl) customModelEl.disabled = busy;
   renderSessions();
   renderMissions();
+  renderSidebarWorkspaces(); // keep the focused tab's running badge live
 
   if (!workspaceOpen) return; // landing page: composer stays disabled regardless
   // Clearing mid-turn would swap the engine's session out from under it.
@@ -313,7 +317,7 @@ function onTurnStarted() {
  * the only way the UI learns the engine is busy without a turn — turn_started
  * never fires for it.
  */
-const backgroundJobMeta = new Map(); // taskId -> { description, stoppable }
+let backgroundJobMeta = new Map(); // taskId -> { description, stoppable }; let: reassigned by the per-tab state swap (tabs.js)
 
 function onBackgroundNotification(event) {
   if (!event || typeof event.taskId !== "string") return;

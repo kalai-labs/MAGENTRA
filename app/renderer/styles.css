@@ -492,6 +492,47 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
 .sidebar-empty { padding: 4px 8px; color: var(--text-faint); font-size: max(10px, 0.74rem); }
 .sidebar-spacer { flex: 1; min-height: 14px; }
 
+/* Concurrent workspace tabs — each open workspace is a live tab in the sidebar.
+   Uses only semantic theme tokens, so light / workbench / matrix are all covered. */
+.sidebar-tab-row { display: flex; align-items: center; width: 100%; min-height: 28px; border-radius: var(--radius-sm); }
+.sidebar-tab-row:hover { background: var(--hover); }
+.sidebar-tab-row.active { background: var(--raised); }
+.sidebar-tab-focus {
+  min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px;
+  padding: 4px 4px 4px 8px; border: 0; background: transparent; color: var(--text-dim); text-align: left;
+}
+.sidebar-tab-row.active .sidebar-tab-focus { color: var(--text-hi); }
+.sidebar-tab-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--text-faint); }
+.sidebar-tab-row.active .sidebar-tab-dot { background: var(--accent); box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.7); }
+.sidebar-tab-row.running .sidebar-tab-dot { background: var(--amber); box-shadow: 0 0 6px rgba(var(--amber-rgb), 0.7); animation: statusPulse 1s infinite; }
+.sidebar-tab-row.attn .sidebar-tab-dot { background: var(--accent-hi); box-shadow: 0 0 7px rgba(var(--accent-rgb), 0.9); }
+.sidebar-tab-close {
+  flex: none; padding: 2px 7px; border: 0; background: transparent; color: var(--text-faint);
+  font-size: max(10px, 0.7rem); line-height: 1; border-radius: var(--radius-sm); opacity: 0;
+}
+.sidebar-tab-row:hover .sidebar-tab-close, .sidebar-tab-row.active .sidebar-tab-close { opacity: 1; }
+.sidebar-tab-close:hover { color: var(--red); background: var(--hover); }
+@media (prefers-reduced-motion: reduce) { .sidebar-tab-row.running .sidebar-tab-dot { animation: none; } }
+
+/* Follow (split) mode — tile 2–4 open workspace consoles. Semantic tokens only,
+   so light / workbench / matrix are all covered. */
+#followToggle.on { color: var(--accent-hi); background: rgba(var(--accent-rgb), 0.14); }
+#transcript.console-grid { display: grid; gap: 8px; padding: 8px; overflow: hidden; align-content: stretch; }
+#transcript.console-grid > .stream {
+  min-height: 0; min-width: 0; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); padding: 8px 10px;
+}
+#transcript.console-grid > .stream.tab-focused {
+  border-color: rgba(var(--accent-rgb), 0.6); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.35);
+}
+/* 2 tabs: two equal columns, full height. */
+#transcript.console-grid[data-panes="2"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+/* 3 tabs: two equal on top, one full-width "big" on the bottom (pick via ⤢). */
+#transcript.console-grid[data-panes="3"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+#transcript.console-grid[data-panes="3"] > .stream.pane-big { grid-row: 2; grid-column: 1 / span 2; }
+/* 4 tabs: a 2x2 grid of equal quadrants. */
+#transcript.console-grid[data-panes="4"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+
 .sidebar-tools { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 8px 8px; border-top: 1px solid var(--border); }
 .dock-btn {
   position: relative;

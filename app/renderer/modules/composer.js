@@ -698,7 +698,10 @@ function dismissSetupWizard() {
 }
 if (wizCloseBtnEl) wizCloseBtnEl.addEventListener("click", dismissSetupWizard);
 
-window.magentra.onEvent(handleEngineEvent);
+// Route every engine event through the per-tab dispatcher (tabs.js). With a
+// single tab this is a straight passthrough to handleEngineEvent; with several,
+// it swaps the target tab's state in so the event renders into the right console.
+window.magentra.onEvent(routeEngineEvent);
 window.magentra.onRestarted(() => {
   // A running turn (if any) and any queued permission requests are no longer
   // valid once the engine process restarts.

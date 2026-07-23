@@ -12,7 +12,7 @@
 
 // relPath -> { diffs: string[], adds, dels, count } — every edit this session,
 // accumulated: a file edited five times shows all five, never just the latest.
-const sessionChanges = new Map();
+let sessionChanges = new Map(); // let: reassigned by the per-tab state swap (tabs.js)
 const sessionChangeOrder = [];
 
 /** Pull the workspace-relative path and +/- counts out of a unified diff. */

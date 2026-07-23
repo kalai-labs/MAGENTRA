@@ -81,8 +81,51 @@ function closeInspector() {
 function renderSidebarWorkspaces() {
   if (!sidebarWorkspacesListEl) return;
   sidebarWorkspacesListEl.textContent = "";
-  const shown = recentWorkspaces.slice(0, 5);
-  if (shown.length === 0) {
+
+  // Open tabs first — each is a live workspace (its own engine) that keeps
+  // running in the background. Empty in single-tab / the UI-test harness, where
+  // this whole block is skipped and the recents render exactly as before.
+  const openTabs = typeof tabs === "object" && tabs.size > 0 ? [...tabs.values()] : [];
+  const openPaths = new Set(openTabs.map((t) => t.workspace).filter(Boolean));
+  for (const ts of openTabs) {
+    if (!ts.workspace) continue;
+    const isFocused = ts.id === focusedTabId;
+    // The focused tab's live busy is the global `busy`; a background tab's is
+    // whatever its captured state last recorded.
+    const running = isFocused ? busy : ts.busy;
+    const attn = isFocused
+      ? Boolean(activePermission) || permissionQueue.length > 0
+      : Boolean(ts.activePermission) || (Array.isArray(ts.permissionQueue) && ts.permissionQueue.length > 0);
+    const row = document.createElement("div");
+    row.className = "sidebar-tab-row" + (isFocused ? " active" : "") + (running ? " running" : "") + (attn ? " attn" : "");
+    const focusBtn = document.createElement("button");
+    focusBtn.className = "sidebar-tab-focus";
+    focusBtn.title = ts.workspace;
+    const dot = document.createElement("span");
+    dot.className = "sidebar-tab-dot";
+    const label = document.createElement("span");
+    label.className = "sidebar-item-label";
+    label.textContent = pathLeaf(ts.workspace);
+    focusBtn.append(dot, label);
+    focusBtn.addEventListener("click", () => {
+      if (window.magentra.focusTab) window.magentra.focusTab(ts.id);
+    });
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "sidebar-tab-close";
+    closeBtn.title = "Close this workspace tab";
+    closeBtn.setAttribute("aria-label", `Close ${pathLeaf(ts.workspace)}`);
+    closeBtn.textContent = "✕";
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (window.magentra.closeTab) window.magentra.closeTab(ts.id);
+    });
+    row.append(focusBtn, closeBtn);
+    sidebarWorkspacesListEl.appendChild(row);
+  }
+
+  // Recent (not-currently-open) folders below — click opens each as a new tab.
+  const shown = recentWorkspaces.filter((w) => !openPaths.has(w)).slice(0, 5);
+  if (shown.length === 0 && openTabs.length === 0) {
     const empty = document.createElement("div");
     empty.className = "sidebar-empty";
     empty.textContent = "＋ opens a folder";

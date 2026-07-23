@@ -43,7 +43,9 @@ let busy = false;
 // Work that is NOT a turn: a background atlas build, a background job. Tracked
 // by taskId, because the engine can be busy with no turn in flight at all — and
 // the stop button has to know about that, or it would look like nothing to stop.
-const backgroundJobs = new Set();
+// `let` (not const): the per-tab state swap in tabs.js reassigns this to the
+// focused tab's set. Single-tab: never reassigned.
+let backgroundJobs = new Set();
 // False until a workspace is chosen; before that the composer stays disabled
 // regardless of what else is going on.
 let workspaceOpen = false;

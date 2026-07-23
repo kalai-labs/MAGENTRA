@@ -134,10 +134,62 @@ Tab; route `handleEngineEvent` by `event.tabId` to the owning `TabState`; add a 
 (workspace name + live / running / needs-attention badge, ✕ to close, `+` to open, click to
 focus). One pane visible at a time; switching focus swaps which `TabState`'s DOM is mounted.
 
-### Step 3 — Follow mode: tile 2–4 Tabs
+**Tab-bar placement (decided 2026-07-23): the left sidebar, not a top strip.** The existing
+"WORKSPACES" list becomes the live-tab bar. Rationale: Follow mode splits the console into up
+to four panes, so vertical screen space is scarce — a horizontal top strip would waste it.
 
-A "Follow" toggle and a layout manager that mounts 2–4 `TabState` consoles into a grid
-(halves, then quadrants), hiding the per-pane inspector in multi-pane layouts.
+**Renderer approach (decided 2026-07-23): one renderer, per-Tab `TabState` — NOT a
+view/iframe per Tab.** Rejected iframe/`WebContentsView`-per-Tab: it isolates cleanly but
+duplicates the whole renderer per Tab (heavy — on top of up to four engine processes) and
+still forces splitting the sidebar chrome out of `index.html`. Instead, one renderer owns a
+`Map<tabId, TabState>` where each `TabState` bundles that Tab's console state **and its own
+detached `streamEl`** (transcript DOM subtree). The fixed chrome (sidebar, composer, topbar,
+inspector) is shared and always reflects the **focused** Tab.
+
+*The load-bearing technique — a state bundle, swapped per event.* The console handlers today
+read/write a set of module-level singletons (`streamEl`, `busy`, `currentSessionId`,
+`contextTokens`, `toolRows`, `backgroundJobs`, the live-turn DOM pointers, the permission
+queue, …). Rather than rewrite every handler to take a Tab argument, bundle exactly those
+singletons into `TabState` and, around each dispatch, **swap the bundle in and out**:
+`applyTabState(tabs[event.tabId]); handleEngineEvent(event); captureTabState(...)`. Handlers
+stay unchanged. Two rules make it correct:
+1. **Enumerate the bundle completely** — any per-conversation singleton left out leaks across
+   Tabs. The bundle is the single source of truth for "what is per-Tab".
+2. **Suppress shared-chrome writes for a non-focused Tab.** Chrome updaters
+   (`syncActivityUi`, `updateSessionMeter`, `setStatusLed`) must no-op (or touch only the
+   Tab's sidebar badge) when the event's Tab is not focused, so a background Tab's turn cannot
+   repaint the focused Tab's composer/LED/meter. On focus change, the chrome is re-rendered
+   once from the newly-focused `TabState`.
+
+Because this is all-or-nothing for the multi-Tab case (two live Tabs require per-Tab state to
+exist), Step 2 lands as one coherent, `test:ui`-verified change; it is built additively
+(bundle + tab bar wired with a single Tab first, identical to today) and only then does
+"open workspace" mint a *new* Tab instead of reusing the active one.
+
+### Step 3 — Split layout: tile 2–4 Tabs
+
+A layout manager mounts the live `TabState` consoles into a CSS grid over the console area.
+**Geometry, by number of visible Tabs (decided 2026-07-23):**
+
+- **1 Tab** — one full pane (today).
+- **2 Tabs** — two equal columns, each full height (split down the middle):
+  `grid: 1fr / 1fr 1fr`.
+- **3 Tabs** — two equal panes on top, one **full-width "big" pane on the bottom** (double the
+  width of a top pane): `grid: 1fr 1fr / 1fr 1fr; areas "a b" / "c c"`. **The user can choose
+  which Tab is the big (bottom) one** — the featured Tab is a selectable property, not fixed to
+  open-order.
+- **4 Tabs** — a 2×2 grid of equal quadrants; the 4th opens into the bottom-right and all four
+  return to equal size: `grid: 1fr 1fr / 1fr 1fr; areas "a b" / "c d"`.
+
+**Inspector (right panel) auto-hides once more than one Tab is open** — the panes need the
+width. It stays **reopenable by the user** (the toggle is not disabled, just defaulted off in
+multi-Tab); reopening it in multi-Tab is the user's explicit choice.
+
+**Non-negotiables for this step:** think through side effects (focus, the now-line/liveness
+strip per pane vs. shared, the composer target in split, resize); leave **no UI bug**; and
+**style every state across all three themes** (light / workbench / matrix) — no theme left with
+an unstyled grid, seam, or pane border. The grid, pane chrome, the active-pane ring, and the
+"which Tab is big" control all get tokens in each theme block.
 
 ---
 
@@ -150,3 +202,24 @@ A "Follow" toggle and a layout manager that mounts 2–4 `TabState` consoles int
   from the UI.
 - **The cap of 4 is enforced in the main process**, so the renderer can never spawn a fifth
   engine.
+
+### Per-Tab correctness (decided 2026-07-23) — these are the side effects that must be right
+
+- **Workspaces are fully independent (for now).** No cross-Tab state, no shared session, no
+  relationship graph — a later addition, explicitly out of scope now. Each Tab's engine,
+  transcript, tasks, permissions, and model stand alone.
+- **Questions/approvals route to the Tab that asked.** `permission_request` and
+  `question_request` arrive stamped with their `tabId`; the card renders into **that Tab's**
+  console (its own `streamEl`), and the reply (`permission_response` / `question_response`)
+  is sent back to **that Tab's engine** via `writeToEngine(frame, tabId)` — never the focused
+  Tab's. In Split view two Tabs can have a pending question at once; each answers its own
+  engine. So `permissionQueue` / `activePermission` / the pending-question state are part of
+  the per-Tab bundle, and every reply carries its Tab's id.
+- **Each Tab may run a different model.** The model is per-Tab (`sessionModel` / `activeModel`
+  live in the bundle; `startEngine` already takes a per-Tab model). The shared composer model
+  picker shows and edits the **focused** Tab's model; `set_model` targets that Tab's engine.
+  `currentConfig.model` in main is only the *default* a newly-opened Tab starts on.
+- **Every user→engine frame carries its Tab's id.** `user_message`, `steer_message`,
+  `interrupt`, `slash_command`, `set_modes`, `set_deletion_guard`, `set_overdrive`,
+  `set_compact_limit`, `resume_session`, etc. route to the intended Tab's engine — the focused
+  Tab for composer actions, the owning Tab for a per-pane control in Split view.

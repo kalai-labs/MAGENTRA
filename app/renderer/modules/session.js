@@ -63,8 +63,12 @@ function enterActiveState(workspace) {
   renderSidebarSessions();
   renderSidebarMissions();
   syncWorkbenchContext();
-  openInspector("tasks");
+  // Multi-tab defaults the inspector closed (the panes need the width); a single
+  // workspace opens it on Tasks as before.
+  if (typeof tabs === "undefined" || tabs.size < 2) openInspector("tasks");
   requestSessionList();
+  // Place this tab's console (single view, or into its pane in Follow mode).
+  if (typeof applyLayout === "function") applyLayout();
   // The teaching tour replaced the old one-shot hint card: it fires once on
   // the first workspace open (deferring while the setup wizard is up).
   maybeStartTour();
@@ -78,6 +82,7 @@ let modelRateCard = {};
  * event). The hardcoded options in index.html are only the pre-catalog
  * default; an Ollama user then sees their local models here. */
 function onModelCatalog(event) {
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // background tab: don't rebuild the focused picker
   const models = Array.isArray(event.models) ? event.models : [];
   if (models.length === 0 || !modelSelectEl) return;
   const current = customModelEl && !customModelEl.classList.contains("hidden")
@@ -156,6 +161,7 @@ function formatTokensShort(n) {
 }
 
 function updateSessionMeter() {
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // background tab: leave the focused meter alone
   if (!hintUsageEl) return;
   const parts = [];
   if (contextTokens > 0) parts.push(`ctx ~${formatTokensShort(contextTokens)}`);
@@ -172,7 +178,9 @@ function resetSessionMeter() {
 }
 
 function applyModel(model) {
-  activeModel = model;
+  activeModel = model; // per-tab: keep even for a background tab
+  // The shared picker only reflects the focused tab.
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
   const options = Array.from(modelSelectEl.options).map((o) => o.value);
   if (options.includes(model)) {
     modelSelectEl.value = model;

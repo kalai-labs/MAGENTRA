@@ -95,16 +95,63 @@ function activeTab() {
   return activeTabId ? engineTabs.get(activeTabId) ?? null : null;
 }
 
-/** The active tab, created on first use. Step-1 back-compat: one default tab. */
+/** The active tab, created on first use. Back-compat: a lone default tab. */
 function ensureActiveTab() {
   let tab = activeTab();
-  if (!tab) {
-    const id = `tab${++tabSeq}`;
-    tab = { id, workspace: null, model: null, child: null, dying: null, stdoutBuffer: "", stderrBuffer: "" };
-    engineTabs.set(id, tab);
-    activeTabId = id;
-  }
+  if (!tab) tab = createTab(null);
   return tab;
+}
+
+// At most this many workspaces run at once (docs/CONCURRENT-WORKSPACES.md): a
+// hard cap with manual close, no eviction. Each tab is one engine process.
+const MAX_TABS = 4;
+
+function createTab(workspace) {
+  const id = `tab${++tabSeq}`;
+  const tab = { id, workspace: workspace ?? null, model: null, child: null, dying: null, stdoutBuffer: "", stderrBuffer: "" };
+  engineTabs.set(id, tab);
+  if (activeTabId === null) activeTabId = id;
+  return tab;
+}
+
+/** The tab currently showing `workspace`, or undefined — the same-folder rule
+ * (one live session per folder) is enforced by focusing this instead of opening
+ * a second tab on the same directory. */
+function tabForWorkspace(workspace) {
+  for (const tab of engineTabs.values()) {
+    if (tab.workspace === workspace) return tab;
+  }
+  return undefined;
+}
+
+/** Make a tab the focused one: mirror its workspace/model into currentConfig so
+ * the model/restart/web-search handlers (which read currentConfig) target it,
+ * and tell the renderer to swap its console in. */
+function focusTab(tabId) {
+  const tab = engineTabs.get(tabId);
+  if (!tab) return;
+  activeTabId = tabId;
+  if (tab.workspace) {
+    currentConfig = { ...currentConfig, workspace: tab.workspace, ...(tab.model ? { model: tab.model } : {}) };
+    setLogWorkspace(tab.workspace);
+  }
+  sendToRenderer("tab:focused", { tabId });
+}
+
+/** Close a tab: stop its engine, drop it from the pool, and focus another (or
+ * none). Never called for the last-remaining implicit tab via UI — the renderer
+ * gates that — but safe if it is. */
+function closeTab(tabId) {
+  const tab = engineTabs.get(tabId);
+  if (!tab) return;
+  stopEngine(tab);
+  engineTabs.delete(tabId);
+  if (activeTabId === tabId) {
+    const next = engineTabs.keys().next();
+    activeTabId = next.done ? null : next.value;
+  }
+  sendToRenderer("tab:closed", { tabId, focus: activeTabId });
+  if (activeTabId) focusTab(activeTabId);
 }
 
 // ---------------------------------------------------------------------------
@@ -1542,24 +1589,46 @@ ipcMain.handle("settings:setWebSearch", (_evt, enabled) => {
  *  trigger the setup wizard. Shared by the folder dialog and recent-folder
  *  clicks so there is exactly one open path. */
 function openWorkspace(workspace) {
+  // Same-folder rule: one live session per folder — focus the existing tab
+  // instead of opening a second engine on the same directory.
+  const existing = tabForWorkspace(workspace);
+  if (existing) {
+    focusTab(existing.id);
+    return currentConfig;
+  }
+  // Cap: at most MAX_TABS live tabs. The renderer shows "close a tab first".
+  if (engineTabs.size >= MAX_TABS) {
+    sendToRenderer("tab:cap", { max: MAX_TABS });
+    return currentConfig;
+  }
+  const tab = createTab(workspace);
+  activeTabId = tab.id;
   currentConfig = rememberWorkspace({ ...currentConfig, workspace }, workspace);
   writeConfig(currentConfig);
-  // Keep the sidebar's workspace list current — the opened folder moves to
-  // the top of the recents the renderer shows.
+  // Keep the sidebar's recent list current — the opened folder moves to the top.
   sendToRenderer("workspace:recent", currentConfig.recentWorkspaces || []);
   setLogWorkspace(workspace);
-  logEvent("sys", { ev: "workspace-changed", workspace });
-  // Reset workspace-scoped renderer state before the replacement engine can
-  // emit anything. Waiting for the invoke response races a fast engine boot.
-  sendToRenderer("engine:event", { type: "workspace_changed", workspace });
+  logEvent("sys", { ev: "workspace-changed", workspace, tabId: tab.id });
+  // Tell the renderer to create+focus this tab BEFORE the engine can speak, so
+  // the tagged workspace_changed/session events route into the right console.
+  sendToRenderer("tab:opened", { tabId: tab.id, workspace });
+  sendToRenderer("engine:event", { type: "workspace_changed", workspace, tabId: tab.id });
   if (hasCredentials(workspace)) {
-    startEngine(workspace, currentConfig.model);
+    startEngine(workspace, currentConfig.model, tab.id);
   } else {
-    sendToRenderer("setup:required", { workspace });
-    logEvent("sys", { ev: "setup-required" });
+    sendToRenderer("setup:required", { workspace, tabId: tab.id });
+    logEvent("sys", { ev: "setup-required", tabId: tab.id });
   }
   return currentConfig;
 }
+
+ipcMain.on("tab:focus", (_evt, tabId) => {
+  if (typeof tabId === "string") focusTab(tabId);
+});
+
+ipcMain.on("tab:close", (_evt, tabId) => {
+  if (typeof tabId === "string") closeTab(tabId);
+});
 
 ipcMain.handle("workspace:choose", async () => {
   if (!mainWindow) return currentConfig;
@@ -1585,12 +1654,19 @@ ipcMain.handle("workspace:open", (_evt, workspace) => {
   return openWorkspace(workspace);
 });
 
-ipcMain.on("engine:send", (_evt, frame) => {
+ipcMain.on("engine:send", (_evt, payload) => {
+  // Back-compat + per-tab routing: a bare frame (it has a string `type`) targets
+  // the active tab exactly as before; a { frame, tabId } envelope (no top-level
+  // `type`) targets a specific tab's engine — so a background tab's reply reaches
+  // the engine that asked, not whichever tab is focused.
+  const envelope = payload && typeof payload === "object" && typeof payload.type !== "string";
+  const frame = envelope ? payload.frame : payload;
+  const tabId = envelope ? payload.tabId : undefined;
   if (!frame || typeof frame !== "object" || Array.isArray(frame) || typeof frame.type !== "string") {
     logEvent("sys", { ev: "invalid-frame" });
     return;
   }
-  writeToEngine(frame);
+  writeToEngine(frame, tabId);
 });
 
 ipcMain.on("engine:setModes", (_evt, activeIds) => {

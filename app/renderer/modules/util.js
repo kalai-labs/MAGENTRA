@@ -72,6 +72,7 @@ function compactInput(input) {
 }
 
 function setStatusLed(state) {
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // background tab: LED reflects the focused tab only
   statusLedEl.className = state;
   statusLedEl.title = state;
   if (sidebarStatusTextEl) {
