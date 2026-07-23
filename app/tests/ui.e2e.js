@@ -1254,7 +1254,7 @@ async function run() {
     await evaluate(`document.querySelector('#reviewDoneBtn').click()`);
   });
 
-  await test("concurrent tabs: background streams isolate, focus switches, close returns", async () => {
+  await test("concurrent tabs: auto-tile, per-pane input, stream isolation, close returns", async () => {
     windowRef.setSize(1280, 800);
     await pause(60);
     const tabEvt = (ch, p) => windowRef.webContents.send(ch, p);
@@ -1268,67 +1268,56 @@ async function run() {
     await emit(started("sA", "/tmp/ws-a", "tA"));
     await emit({ type: "turn_started", turnId: "tnA", tabId: "tA" });
     await emit({ type: "text_delta", text: "ALPHA-visible", tabId: "tA" });
-    // Open tab B — it becomes focused; A goes background.
+    // Open tab B — reaching two tabs AUTO-TILES into a grid (no toggle).
     tabEvt("test:tab-opened", { tabId: "tB", workspace: "/tmp/ws-b" });
     await emit({ type: "workspace_changed", workspace: "/tmp/ws-b", tabId: "tB" });
     await emit(started("sB", "/tmp/ws-b", "tB"));
     await emit({ type: "text_delta", text: "BETA-visible", tabId: "tB" });
-    // A background event for A while B is focused: it must render into A's OWN
-    // (detached) stream, never leaking into B's visible console.
+    // A background event for A: it must render into A's OWN stream/pane, never
+    // leaking into B's.
     await emit({ type: "text_delta", text: "ALPHA-bg", tabId: "tA" });
     await pause(40);
-    const iso = await evaluate(`(() => ({
+    const t = await evaluate(`(() => ({
       focused: focusedTabId, tabCount: tabs.size,
-      visibleHasBeta: streamEl.textContent.includes('BETA-visible'),
-      visibleHasAlphaBg: streamEl.textContent.includes('ALPHA-bg'),
-      aHasAlphaBg: tabs.get('tA').streamEl.textContent.includes('ALPHA-bg'),
-      aDetached: tabs.get('tA').streamEl.parentNode === null,
-      rows: document.querySelectorAll('.sidebar-tab-row').length,
+      grid: document.querySelector('#transcript').classList.contains('console-grid'),
+      panes: document.querySelector('#transcript').getAttribute('data-panes'),
+      paneEls: document.querySelectorAll('.console-pane').length,
+      paneInputs: document.querySelectorAll('.console-pane .pane-input').length,
+      composerHidden: document.body.classList.contains('tiled'),
+      aHasAlpha: tabs.get('tA').streamEl.textContent.includes('ALPHA-visible') && tabs.get('tA').streamEl.textContent.includes('ALPHA-bg'),
+      aNoBeta: !tabs.get('tA').streamEl.textContent.includes('BETA'),
+      bHasBeta: tabs.get('tB').streamEl.textContent.includes('BETA-visible'),
+      bNoAlpha: !tabs.get('tB').streamEl.textContent.includes('ALPHA'),
     }))()`);
-    assert.equal(iso.focused, "tB");
-    assert.equal(iso.tabCount, 2);
-    assert.ok(iso.visibleHasBeta, "focused console shows tab B");
-    assert.ok(!iso.visibleHasAlphaBg, "A's background text does NOT leak into B's visible console");
-    assert.ok(iso.aHasAlphaBg, "A's background text rendered into A's own detached stream");
-    assert.ok(iso.aDetached, "A's stream is detached while B is focused");
-    assert.equal(iso.rows, 2, "both tabs appear in the sidebar");
-    // Switch focus to A: its stream mounts and shows its content incl. background.
+    assert.equal(t.focused, "tB");
+    assert.equal(t.tabCount, 2);
+    assert.equal(t.grid, true, "two tabs auto-tile into a grid — no toggle");
+    assert.equal(t.panes, "2", "two panes for two tabs");
+    assert.equal(t.paneEls, 2, "both consoles tiled as panes");
+    assert.equal(t.paneInputs, 2, "each pane has its own message input");
+    assert.ok(t.composerHidden, "the shared bottom composer gives way to per-pane inputs");
+    assert.ok(t.aHasAlpha, "tab A's stream holds its own foreground + background text");
+    assert.ok(t.aNoBeta, "tab B's text never leaks into tab A's pane");
+    assert.ok(t.bHasBeta, "tab B's stream holds its own text");
+    assert.ok(t.bNoAlpha, "tab A's text never leaks into tab B's pane");
+    // Focus tab A: its pane gains the focus ring; both panes stay visible.
     tabEvt("test:tab-focused", { tabId: "tA" });
     await pause(40);
     const foc = await evaluate(`(() => ({
       focused: focusedTabId,
-      showsAlpha: streamEl.textContent.includes('ALPHA-visible') && streamEl.textContent.includes('ALPHA-bg'),
-      showsBeta: streamEl.textContent.includes('BETA-visible'),
+      aFocused: tabs.get('tA').paneEl.classList.contains('focused'),
+      bNotFocused: !tabs.get('tB').paneEl.classList.contains('focused'),
     }))()`);
     assert.equal(foc.focused, "tA");
-    assert.ok(foc.showsAlpha, "focusing A shows A's content including its background updates");
-    assert.ok(!foc.showsBeta, "B's content is no longer in the visible console");
-    // Follow (split) mode: tile both consoles side by side.
-    await evaluate(`document.getElementById('followToggle').click()`);
-    await pause(40);
-    const split = await evaluate(`(() => ({
-      grid: document.querySelector('#transcript').classList.contains('console-grid'),
-      panes: document.querySelector('#transcript').getAttribute('data-panes'),
-      tiled: document.querySelectorAll('#transcript.console-grid > .stream').length,
-      followOn: document.getElementById('followToggle').classList.contains('on'),
-    }))()`);
-    assert.equal(split.grid, true, "Follow mode tiles the console into a grid");
-    assert.equal(split.panes, "2", "two panes for two tabs");
-    assert.equal(split.tiled, 2, "both tab consoles are tiled");
-    assert.ok(split.followOn, "the Follow toggle reflects on-state");
-    // Toggle Follow off — back to a single focused console.
-    await evaluate(`document.getElementById('followToggle').click()`);
-    await pause(40);
-    assert.equal(
-      await evaluate(`document.querySelector('#transcript').classList.contains('console-grid')`),
-      false,
-      "toggling Follow off returns to the single view",
-    );
-    // Close B (a background tab): one remains, no page reload.
+    assert.ok(foc.aFocused, "clicking/focusing a pane rings it");
+    assert.ok(foc.bNotFocused, "only the focused pane is ringed");
+    // Close B: back down to one tab → single view (no grid, shared composer back).
     tabEvt("test:tab-closed", { tabId: "tB", focus: "tA" });
     tabEvt("test:tab-focused", { tabId: "tA" });
     await pause(40);
-    const closed = await evaluate(`({ tabCount: tabs.size, focused: focusedTabId, rows: document.querySelectorAll('.sidebar-tab-row').length })`);
+    const closed = await evaluate(`({ tabCount: tabs.size, focused: focusedTabId, rows: document.querySelectorAll('.sidebar-tab-row').length, grid: document.querySelector('#transcript').classList.contains('console-grid'), tiled: document.body.classList.contains('tiled') })`);
+    assert.equal(closed.grid, false, "back to a single console when one tab remains");
+    assert.equal(closed.tiled, false, "the shared composer returns");
     assert.equal(closed.tabCount, 1);
     assert.equal(closed.focused, "tA");
     assert.equal(closed.rows, 1);

@@ -11,6 +11,28 @@ each with its own live session that keeps working in the background.**
 
 ---
 
+## Revision — 2026-07-23 (UX pass)
+
+Superseding parts of the original design below, after using it:
+
+- **No "Follow mode" toggle.** Multiple open tabs **auto-tile** — the split is simply how
+  multi-tab looks (single tab = one console). The term "Follow mode" is retired.
+- **Per-pane chat.** Each tiled pane has **its own message input** wired to that pane's engine
+  (steer while busy, else a new message); the shared bottom composer hides when tiled, so you
+  type into a workspace directly instead of selecting one first.
+- **Opening is explicit via right-click.** Right-click a workspace in the sidebar → a menu:
+  "open as new tab" (this window), "open in new window" (a separate OS window), focus, close —
+  instead of a single implicit behaviour.
+- **Multiple OS windows.** "Open in new window" spawns a second full window with its own
+  independent set of tabs. The main process now tracks a **per-window active tab**
+  (`win.mgActiveTabId`), stamps each tab with its window (`tab.win`), routes every engine event
+  to `tab.win`, and resolves untagged requests to the *sender* window's active tab — so several
+  windows each drive their own workspaces. The same-folder rule and the cap of 4 are global
+  across windows. Single-window behaviour is unchanged (everything defaults to the main window).
+- **Linux gets a native window frame** (macOS/Windows unchanged): a frameless window extended
+  under the desktop's top panel and clipped the app's top-row icons; a real frame lets the WM
+  place it correctly.
+
 ## Glossary
 
 The ubiquitous language for this feature. These terms are used verbatim in code and docs.

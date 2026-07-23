@@ -175,31 +175,115 @@ function mountFocusedStream() {
   if (streamEl && streamEl.parentNode !== transcriptEl) transcriptEl.appendChild(streamEl);
 }
 
-// --- Follow (split) layout (W.3) -------------------------------------------
-// Off: one focused console. On (with >=2 tabs): every tab's console is tiled
-// into a grid — 2 = equal columns, 3 = two on top + the FOCUSED one full-width on
-// the bottom (focus another pane to promote it), 4 = 2x2 equal quadrants. Click a
-// pane to focus it (its questions/composer become active).
-let followMode = false;
+// --- Split layout: automatic tiling of multiple open workspaces --------------
+// One tab: a single focused console with the shared bottom composer. Two or more:
+// every tab tiles into a grid, and each pane carries ITS OWN transcript AND its
+// own message input (the shared composer hides) so you type into a workspace
+// directly instead of selecting one first. Geometry by pane count: 2 = equal
+// columns, 3 = two on top + the focused pane full-width on the bottom, 4 = 2x2
+// quadrants. Click a pane (or its input) to focus it. Tiling follows the tab
+// count — there is no mode toggle.
 
 function tabStreamPanes() {
   return [...tabs.keys()].slice(0, 4).map((id) => ({ id, ts: tabs.get(id) })).filter((x) => x.ts.streamEl);
 }
 
-/** Place the tab consoles: a single focused stream, or (Follow mode, >=2 tabs) a
- * grid of all tabs' streams. The single source of truth for what is mounted. */
-function applyLayout() {
-  // Detach every stream first (moving DOM nodes preserves their content) and
-  // clear layout classes, so the placement below is authoritative.
-  for (const ts of tabs.values()) {
-    if (ts.streamEl && ts.streamEl.parentNode) ts.streamEl.parentNode.removeChild(ts.streamEl);
-    if (ts.streamEl) ts.streamEl.classList.remove("tab-focused", "pane-big");
+function autoGrowInput(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 120) + "px";
+}
+
+/** A compact message input for one pane — sends straight to THAT pane's engine
+ * (steer while it is busy, a fresh message otherwise), so each tiled workspace
+ * has its own chat. Built once per tab and reused, so text survives re-layouts. */
+function buildPaneComposer(tabId) {
+  const box = document.createElement("div");
+  box.className = "pane-composer";
+  const ta = document.createElement("textarea");
+  ta.className = "pane-input";
+  ta.rows = 1;
+  ta.spellcheck = false;
+  ta.placeholder = "Message this workspace…";
+  const submit = () => {
+    const text = ta.value.trim();
+    if (!text) return;
+    const ts = tabs.get(tabId);
+    const isBusy = tabId === focusedTabId ? busy : Boolean(ts && ts.busy);
+    // A pane input is plain chat routed to its own engine (steer a running turn,
+    // else a new message). Slash/bang commands + rich controls live in the
+    // single-tab composer.
+    window.magentra.send({ type: isBusy ? "steer_message" : "user_message", text }, tabId);
+    ta.value = "";
+    autoGrowInput(ta);
+  };
+  ta.addEventListener("input", () => autoGrowInput(ta));
+  ta.addEventListener("focus", () => {
+    if (tabId !== focusedTabId && window.magentra.focusTab) window.magentra.focusTab(tabId);
+  });
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
+  });
+  const btn = document.createElement("button");
+  btn.className = "pane-send";
+  btn.textContent = "↑";
+  btn.title = "Send to this workspace";
+  btn.addEventListener("click", submit);
+  box.append(ta, btn);
+  return box;
+}
+
+/** The reusable pane wrapper for a tab: header + its transcript + its own input.
+ * Created once per tab; re-seats a rebuilt stream (e.g. after /clear). */
+function paneFor(id, ts) {
+  if (!ts.paneEl) {
+    const pane = document.createElement("div");
+    pane.className = "console-pane";
+    pane.dataset.tab = id;
+    const head = document.createElement("div");
+    head.className = "console-pane-head";
+    head.textContent = pathLeaf(ts.workspace || "");
+    head.title = ts.workspace || "";
+    pane.appendChild(head);
+    pane.appendChild(ts.streamEl);
+    pane.appendChild(buildPaneComposer(id));
+    pane.addEventListener("mousedown", () => {
+      if (id !== focusedTabId && window.magentra.focusTab) window.magentra.focusTab(id);
+    });
+    ts.paneEl = pane;
+  } else if (ts.streamEl && ts.streamEl.parentNode !== ts.paneEl) {
+    ts.paneEl.insertBefore(ts.streamEl, ts.paneEl.querySelector(".pane-composer"));
   }
+  return ts.paneEl;
+}
+
+/** Place the tab consoles: a single focused stream (shared composer), or — with
+ * >=2 tabs — a grid of panes each with their own transcript + input. The single
+ * source of truth for what is mounted. */
+function applyLayout() {
+  // The focused tab's live console lives in the globals, not yet in its
+  // TabState — sync it so tabStreamPanes() sees its real (current) streamEl.
+  if (focusedTabId && tabs.has(focusedTabId)) captureInto(tabs.get(focusedTabId));
   const panes = tabStreamPanes();
-  if (!followMode || panes.length < 2) {
+  const tiled = panes.length >= 2;
+  document.body.classList.toggle("tiled", tiled);
+  // Detach every pane/stream first so the placement below is authoritative.
+  for (const ts of tabs.values()) {
+    if (ts.paneEl && ts.paneEl.parentNode) ts.paneEl.parentNode.removeChild(ts.paneEl);
+    if (ts.streamEl && ts.streamEl.parentNode === transcriptEl) transcriptEl.removeChild(ts.streamEl);
+    if (ts.paneEl) ts.paneEl.classList.remove("focused", "pane-big");
+  }
+  if (!tiled) {
     transcriptEl.classList.remove("console-grid");
     transcriptEl.removeAttribute("data-panes");
-    mountFocusedStream();
+    // Single view: the focused tab's stream returns to the transcript directly
+    // (pulling it out of its pane wrapper if it was tiled).
+    if (streamEl) {
+      if (streamEl.parentNode && streamEl.parentNode !== transcriptEl) streamEl.parentNode.removeChild(streamEl);
+      if (streamEl.parentNode !== transcriptEl) transcriptEl.appendChild(streamEl);
+    }
     return;
   }
   transcriptEl.classList.add("console-grid");
@@ -208,33 +292,11 @@ function applyLayout() {
   // focusing another pane promotes it. Default: the 3rd/newly-opened tab.
   const bigId = panes.length === 3 ? (panes.some((p) => p.id === focusedTabId) ? focusedTabId : panes[2].id) : null;
   for (const { id, ts } of panes) {
-    if (id === focusedTabId) ts.streamEl.classList.add("tab-focused");
-    if (id === bigId) ts.streamEl.classList.add("pane-big");
-    if (!ts.streamEl.dataset.paneWired) {
-      ts.streamEl.addEventListener("mousedown", () => {
-        if (id !== focusedTabId && window.magentra.focusTab) window.magentra.focusTab(id);
-      });
-      ts.streamEl.dataset.paneWired = "1";
-    }
-    transcriptEl.appendChild(ts.streamEl);
+    const pane = paneFor(id, ts);
+    if (id === focusedTabId) pane.classList.add("focused");
+    if (id === bigId) pane.classList.add("pane-big");
+    transcriptEl.appendChild(pane);
   }
-  if (typeof updateFollowToggle === "function") updateFollowToggle();
-}
-
-/** Toggle Follow (split) mode. */
-function setFollowMode(on) {
-  followMode = on === undefined ? !followMode : !!on;
-  applyLayout();
-  if (typeof updateFollowToggle === "function") updateFollowToggle();
-}
-
-function updateFollowToggle() {
-  const btn = document.getElementById("followToggle");
-  if (!btn) return;
-  // Only meaningful with >=2 tabs; hidden otherwise.
-  btn.classList.toggle("hidden", tabs.size < 2);
-  btn.classList.toggle("on", followMode);
-  btn.setAttribute("aria-pressed", followMode ? "true" : "false");
 }
 
 /** Repaint the shared chrome (composer, sidebar, meter, model, inspector) from
@@ -272,7 +334,6 @@ function onTabOpenedFromMain(tabId, workspace) {
   if (tabs.size === 2 && typeof closeInspector === "function") closeInspector();
   applyLayout();
   renderSidebarWorkspaces();
-  updateFollowToggle();
 }
 
 /** main → tab:focused: focus an already-open tab. */
@@ -289,6 +350,7 @@ function onTabFocusedFromMain(tabId) {
  * following tab:focused repaints), or none remain. */
 function onTabClosedFromMain(tabId, nextFocus) {
   const ts = tabs.get(tabId);
+  if (ts && ts.paneEl && ts.paneEl.parentNode) ts.paneEl.parentNode.removeChild(ts.paneEl);
   if (ts && ts.streamEl && ts.streamEl.parentNode) ts.streamEl.parentNode.removeChild(ts.streamEl);
   tabs.delete(tabId);
   if (focusedTabId === tabId) focusedTabId = null;
@@ -301,16 +363,7 @@ function onTabClosedFromMain(tabId, nextFocus) {
   }
   applyLayout();
   renderSidebarWorkspaces();
-  updateFollowToggle();
 }
-
-(() => {
-  const btn = document.getElementById("followToggle");
-  if (btn) {
-    btn.addEventListener("click", () => setFollowMode());
-    updateFollowToggle();
-  }
-})();
 
 if (window.magentra && window.magentra.onTabOpened) {
   window.magentra.onTabOpened((d) => onTabOpenedFromMain(d.tabId, d.workspace));

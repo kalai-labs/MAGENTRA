@@ -78,6 +78,53 @@ function closeInspector() {
 /** Sidebar workspace rail: the active folder plus recent ones, one click to
  * switch. The active row also carries the worktree indicator when the session
  * has moved its cwd. */
+// Right-click a sidebar workspace to choose exactly how it opens — a new tab in
+// this window, or a separate window — instead of a single implicit behaviour.
+// Reuses the shared ctx-menu machinery (closeCtxMenu / openCtxMenuEl in crew.js).
+function openWorkspaceCtxMenu(e, opts) {
+  e.preventDefault();
+  if (typeof closeCtxMenu === "function") closeCtxMenu();
+  const menuEl = document.createElement("div");
+  menuEl.className = "ctx-menu";
+  const item = (label, danger, onClick) => {
+    const b = document.createElement("button");
+    b.className = "ctx-item" + (danger ? " danger" : "");
+    b.textContent = label;
+    b.addEventListener("click", () => {
+      onClick();
+      closeCtxMenu();
+    });
+    menuEl.appendChild(b);
+  };
+  if (opts.tabId) {
+    // An open tab.
+    if (opts.tabId !== focusedTabId && window.magentra.focusTab) item("◉ FOCUS", false, () => window.magentra.focusTab(opts.tabId));
+    if (window.magentra.openInNewWindow) item("⊞ OPEN IN NEW WINDOW", false, () => window.magentra.openInNewWindow(opts.workspace));
+    if (window.magentra.closeTab) item("✕ CLOSE TAB", true, () => window.magentra.closeTab(opts.tabId));
+  } else {
+    // A recent (not-open) workspace.
+    item("＋ OPEN AS NEW TAB", false, () => window.magentra.openWorkspace(opts.workspace));
+    if (window.magentra.openInNewWindow) item("⊞ OPEN IN NEW WINDOW", false, () => window.magentra.openInNewWindow(opts.workspace));
+  }
+  document.body.appendChild(menuEl);
+  const rect = menuEl.getBoundingClientRect();
+  let left = e.clientX || 8;
+  let top = e.clientY || 8;
+  if (left + rect.width > window.innerWidth) left = window.innerWidth - rect.width - 4;
+  if (top + rect.height > window.innerHeight) top = window.innerHeight - rect.height - 4;
+  menuEl.style.left = `${Math.max(4, left)}px`;
+  menuEl.style.top = `${Math.max(4, top)}px`;
+  openCtxMenuEl = menuEl;
+  const onDocClick = (ev) => { if (!menuEl.contains(ev.target)) closeCtxMenu(); };
+  const onKeydown = (ev) => { if (ev.key === "Escape") closeCtxMenu(); };
+  document.addEventListener("click", onDocClick, true);
+  document.addEventListener("keydown", onKeydown);
+  closeOpenCtxMenuListeners = () => {
+    document.removeEventListener("click", onDocClick, true);
+    document.removeEventListener("keydown", onKeydown);
+  };
+}
+
 function renderSidebarWorkspaces() {
   if (!sidebarWorkspacesListEl) return;
   sidebarWorkspacesListEl.textContent = "";
@@ -120,6 +167,7 @@ function renderSidebarWorkspaces() {
       if (window.magentra.closeTab) window.magentra.closeTab(ts.id);
     });
     row.append(focusBtn, closeBtn);
+    row.addEventListener("contextmenu", (e) => openWorkspaceCtxMenu(e, { workspace: ts.workspace, tabId: ts.id }));
     sidebarWorkspacesListEl.appendChild(row);
   }
 
@@ -151,6 +199,7 @@ function renderSidebarWorkspaces() {
       row.appendChild(meta);
     }
     row.addEventListener("click", () => openWorkspaceByPath(workspace));
+    row.addEventListener("contextmenu", (e) => openWorkspaceCtxMenu(e, { workspace }));
     sidebarWorkspacesListEl.appendChild(row);
   }
 }

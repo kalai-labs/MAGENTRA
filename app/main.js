@@ -87,36 +87,52 @@ let mainWindow = null;
  */
 /** @type {Map<string, EngineTab>} */
 const engineTabs = new Map();
-let activeTabId = null;
 let tabSeq = 0;
 
-/** The focused tab — where a renderer request with no explicit tabId lands. */
-function activeTab() {
-  return activeTabId ? engineTabs.get(activeTabId) ?? null : null;
+// At most this many workspaces run at once (docs/CONCURRENT-WORKSPACES.md): a
+// hard cap with manual close, no eviction. Each tab is one engine process. The
+// cap is global — across every window.
+const MAX_TABS = 4;
+
+/** The BrowserWindow behind a renderer request (its own window, or the main one).
+ * Each window keeps its own focused tab in `win.mgActiveTabId`, so several
+ * windows can each drive their own workspaces. */
+function winOf(evt) {
+  try {
+    return (evt && evt.sender && BrowserWindow.fromWebContents(evt.sender)) || mainWindow;
+  } catch {
+    return mainWindow;
+  }
 }
 
-/** The active tab, created on first use. Back-compat: a lone default tab. */
-function ensureActiveTab() {
-  let tab = activeTab();
-  if (!tab) tab = createTab(null);
+/** The active tab of a window (default: the main window) — where an untagged
+ * request from that window lands. */
+function activeTab(win) {
+  const w = win || mainWindow;
+  const id = w && w.mgActiveTabId;
+  return id ? engineTabs.get(id) ?? null : null;
+}
+
+/** The window's active tab, created on first use. */
+function ensureActiveTab(win) {
+  const w = win || mainWindow;
+  let tab = activeTab(w);
+  if (!tab) tab = createTab(null, w);
   return tab;
 }
 
-// At most this many workspaces run at once (docs/CONCURRENT-WORKSPACES.md): a
-// hard cap with manual close, no eviction. Each tab is one engine process.
-const MAX_TABS = 4;
-
-function createTab(workspace) {
+function createTab(workspace, win) {
+  const w = win || mainWindow;
   const id = `tab${++tabSeq}`;
-  const tab = { id, workspace: workspace ?? null, model: null, child: null, dying: null, stdoutBuffer: "", stderrBuffer: "" };
+  const tab = { id, workspace: workspace ?? null, model: null, child: null, dying: null, stdoutBuffer: "", stderrBuffer: "", win: w };
   engineTabs.set(id, tab);
-  if (activeTabId === null) activeTabId = id;
+  if (w && !w.mgActiveTabId) w.mgActiveTabId = id;
   return tab;
 }
 
 /** The tab currently showing `workspace`, or undefined — the same-folder rule
- * (one live session per folder) is enforced by focusing this instead of opening
- * a second tab on the same directory. */
+ * (one live session per folder, across ALL windows) is enforced by focusing this
+ * instead of opening a second engine on the same directory. */
 function tabForWorkspace(workspace) {
   for (const tab of engineTabs.values()) {
     if (tab.workspace === workspace) return tab;
@@ -124,34 +140,39 @@ function tabForWorkspace(workspace) {
   return undefined;
 }
 
-/** Make a tab the focused one: mirror its workspace/model into currentConfig so
- * the model/restart/web-search handlers (which read currentConfig) target it,
- * and tell the renderer to swap its console in. */
+/** Make a tab its window's focused one: mirror its workspace/model into
+ * currentConfig (the model/restart/web-search handlers read that for the focused
+ * workspace) and tell its window to swap the console in. */
 function focusTab(tabId) {
   const tab = engineTabs.get(tabId);
   if (!tab) return;
-  activeTabId = tabId;
+  const win = tab.win || mainWindow;
+  if (win) win.mgActiveTabId = tabId;
+  if (win && !win.isFocused() && !win.isDestroyed()) win.focus();
   if (tab.workspace) {
     currentConfig = { ...currentConfig, workspace: tab.workspace, ...(tab.model ? { model: tab.model } : {}) };
     setLogWorkspace(tab.workspace);
   }
-  sendToRenderer("tab:focused", { tabId });
+  sendToRenderer("tab:focused", { tabId }, win);
 }
 
-/** Close a tab: stop its engine, drop it from the pool, and focus another (or
- * none). Never called for the last-remaining implicit tab via UI — the renderer
- * gates that — but safe if it is. */
+/** Close a tab: stop its engine, drop it from the pool, and focus another tab IN
+ * THE SAME WINDOW (or none). */
 function closeTab(tabId) {
   const tab = engineTabs.get(tabId);
   if (!tab) return;
+  const win = tab.win || mainWindow;
   stopEngine(tab);
   engineTabs.delete(tabId);
-  if (activeTabId === tabId) {
-    const next = engineTabs.keys().next();
-    activeTabId = next.done ? null : next.value;
+  let nextId = null;
+  if (win && win.mgActiveTabId === tabId) {
+    for (const t of engineTabs.values()) {
+      if ((t.win || mainWindow) === win) { nextId = t.id; break; }
+    }
+    win.mgActiveTabId = nextId;
   }
-  sendToRenderer("tab:closed", { tabId, focus: activeTabId });
-  if (activeTabId) focusTab(activeTabId);
+  sendToRenderer("tab:closed", { tabId, focus: nextId }, win);
+  if (nextId) focusTab(nextId);
 }
 
 // ---------------------------------------------------------------------------
@@ -179,9 +200,16 @@ function engineEntryPoint() {
   };
 }
 
-function sendToRenderer(channel, payload) {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send(channel, payload);
+function sendToRenderer(channel, payload, win) {
+  const w = win || mainWindow;
+  if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
+}
+
+/** Send to every open window — for app-global updates (recents, update notices)
+ * that are not tied to one window's tab. */
+function broadcastToRenderers(channel, payload) {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send(channel, payload);
   }
 }
 
@@ -275,7 +303,7 @@ function writeToEngine(frame, tabId) {
       message: "The engine is not running — restart it from the banner, or reopen the workspace.",
       fatal: false,
       ...(tab ? { tabId: tab.id } : {}),
-    });
+    }, tab && tab.win);
   }
 }
 
@@ -394,10 +422,15 @@ function classifyEngineStderr(line) {
 }
 
 function startEngine(workspace, model, tabId) {
-  // Untagged callers (all of Step 1) operate on the single active tab; a tabId
-  // targets a specific tab in the pool (Step 2+). Every event this engine emits
-  // is stamped with `tab.id` so the renderer can route it to the right console.
-  const tab = tabId && engineTabs.has(tabId) ? engineTabs.get(tabId) : ensureActiveTab();
+  // Resolve the tab: an explicit tabId wins; otherwise the tab already showing
+  // this workspace (so a setup-wizard connect / web-search restart lands on the
+  // right tab in whichever window owns it); otherwise the main window's active
+  // tab (the very first open). Every event this engine emits is stamped with
+  // `tab.id` and routed to `tab.win`, so the right window's console gets it.
+  const tab =
+    (tabId && engineTabs.has(tabId) && engineTabs.get(tabId)) ||
+    (workspace && tabForWorkspace(workspace)) ||
+    ensureActiveTab();
   const isRestart = !!tab.child;
   stopEngine(tab);
 
@@ -439,7 +472,7 @@ function startEngine(workspace, model, tabId) {
       message: `Failed to start engine: ${err && err.message ? err.message : String(err)}`,
       fatal: true,
       tabId: tab.id,
-    });
+    }, tab.win);
     return;
   }
 
@@ -470,7 +503,7 @@ function startEngine(workspace, model, tabId) {
         continue;
       }
       logEvent("engine", event);
-      sendToRenderer("engine:event", { ...event, tabId: tab.id });
+      sendToRenderer("engine:event", { ...event, tabId: tab.id }, tab.win);
     }
   });
 
@@ -486,7 +519,7 @@ function startEngine(workspace, model, tabId) {
       // user can act on — see classifyEngineStderr.
       logEvent("stderr", line);
       const notice = classifyEngineStderr(line);
-      if (notice) sendToRenderer("engine:event", { type: "engine_notice", text: notice.text, level: notice.level, tabId: tab.id });
+      if (notice) sendToRenderer("engine:event", { type: "engine_notice", text: notice.text, level: notice.level, tabId: tab.id }, tab.win);
     }
   });
 
@@ -496,7 +529,7 @@ function startEngine(workspace, model, tabId) {
     flushLog();
     // Signal deaths (SIGSEGV, OOM-kill) have code === null — the renderer must
     // treat any unexpected exit as fatal, whatever the exit code says.
-    sendToRenderer("engine:event", { type: "engine_exit", code, signal, expected, tabId: tab.id });
+    sendToRenderer("engine:event", { type: "engine_exit", code, signal, expected, tabId: tab.id }, tab.win);
     if (tab.child === child) tab.child = null;
   });
 
@@ -506,7 +539,7 @@ function startEngine(workspace, model, tabId) {
       message: `Engine process error: ${err && err.message ? err.message : String(err)}`,
       fatal: true,
       tabId: tab.id,
-    });
+    }, tab.win);
   });
   // No app-side credential check here: the engine is the authority. If a key is
   // genuinely missing (and the endpoint is not a keyless local one), the engine
@@ -602,7 +635,7 @@ function addDocToAgent(workspace, agentId, filePath) {
   }
   fs.writeFileSync(teamFilePath, appendDocToFrontmatter(content, relPath), "utf8");
 
-  writeToEngine({ type: "reload_team" });
+  writeToEngine({ type: "reload_team" }, tabForWorkspace(currentConfig.workspace)?.id);
   logEvent("sys", { ev: "team-doc-added", agentId, doc: relPath });
   return relPath;
 }
@@ -872,7 +905,7 @@ ipcMain.handle("team:createTemplate", async () => {
     ].join("\n");
     fs.writeFileSync(path.join(dir, `${id}.md`), content, "utf8");
 
-    writeToEngine({ type: "reload_team" });
+    writeToEngine({ type: "reload_team" }, tabForWorkspace(currentConfig.workspace)?.id);
     logEvent("sys", { ev: "team-template-created", id });
     return { ok: true, id };
   } catch (err) {
@@ -883,7 +916,7 @@ ipcMain.handle("team:createTemplate", async () => {
 });
 
 ipcMain.on("team:reload", () => {
-  writeToEngine({ type: "reload_team" });
+  writeToEngine({ type: "reload_team" }, tabForWorkspace(currentConfig.workspace)?.id);
 });
 
 ipcMain.handle("team:removeAgent", async (_evt, agentId) => {
@@ -921,7 +954,7 @@ ipcMain.handle("team:removeAgent", async (_evt, agentId) => {
       logEvent("sys", { ev: "team-remove-agent-backpack-failed", agentId, error: err.message });
     }
 
-    writeToEngine({ type: "reload_team" });
+    writeToEngine({ type: "reload_team" }, tabForWorkspace(currentConfig.workspace)?.id);
     logEvent("sys", { ev: "team-agent-removed", agentId });
     return { removed: true };
   } catch (err) {
@@ -998,20 +1031,28 @@ function createWindow() {
     width: 1240,
     height: 820,
     ...savedWindowBounds(),
-    // Hide the OS title bar — the app's own top strip becomes the drag region,
-    // so no foreign gray band sits above the themed UI. Windows/Linux get the
-    // native window controls overlaid top-right; macOS keeps its inset
-    // traffic lights (the dock reserves room for them).
+    // Title bar per platform:
+    //  - macOS: hidden with inset traffic lights (the dock reserves their room).
+    //  - Windows: hidden with the native controls overlaid top-right — the
+    //    overlay is solid there, so the app's own top strip stays the drag region.
+    //  - Linux: a NORMAL native frame. A frameless window here extends under the
+    //    desktop's top panel (the clock/status bar) on many WMs, clipping the
+    //    app's own top-row icons left and right, and the controls overlay is
+    //    flaky on GTK. A real frame lets the WM place the window below the panel
+    //    with working controls — the top row is fully visible. (macOS/Windows
+    //    are unchanged.)
     ...(process.platform === "darwin"
       ? { titleBarStyle: "hiddenInset" }
-      : {
-          titleBarStyle: "hidden",
-          titleBarOverlay: {
-            color: chrome.color,
-            symbolColor: chrome.symbolColor,
-            height: TITLEBAR_HEIGHT,
-          },
-        }),
+      : process.platform === "win32"
+        ? {
+            titleBarStyle: "hidden",
+            titleBarOverlay: {
+              color: chrome.color,
+              symbolColor: chrome.symbolColor,
+              height: TITLEBAR_HEIGHT,
+            },
+          }
+        : { frame: true }),
     // The responsive floor the stylesheet is built for — below this, panels
     // would clip horizontally rather than wrap.
     minWidth: 700,
@@ -1077,6 +1118,60 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
+}
+
+/** The per-platform title-bar options — mirrors createWindow (macOS inset,
+ * Windows controls overlay, Linux native frame). */
+function platformTitleBarOptions() {
+  const chrome = themeChrome(currentConfig.theme);
+  if (process.platform === "darwin") return { titleBarStyle: "hiddenInset" };
+  if (process.platform === "win32") {
+    return {
+      titleBarStyle: "hidden",
+      titleBarOverlay: { color: chrome.color, symbolColor: chrome.symbolColor, height: TITLEBAR_HEIGHT },
+    };
+  }
+  return { frame: true };
+}
+
+/** Close every tab whose engine belongs to a window that just closed. */
+function closeTabsForWindow(win) {
+  for (const tab of [...engineTabs.values()]) {
+    if ((tab.win || mainWindow) === win) {
+      stopEngine(tab);
+      engineTabs.delete(tab.id);
+    }
+  }
+}
+
+/** A SECONDARY window (the "open in new window" path) — the full renderer, its
+ * own independent set of tabs. Not the primary window, so no smoke/bounds/quit
+ * bookkeeping; the app-level web-contents-created handler still governs its
+ * navigation/window-open policy. */
+function createExtraWindow() {
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 760,
+    minWidth: 700,
+    minHeight: 480,
+    backgroundColor: themeChrome(currentConfig.theme).background,
+    title: "MAGENTRA",
+    autoHideMenuBar: true,
+    ...platformTitleBarOptions(),
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: !process.env.PORTABLE_EXECUTABLE_FILE,
+      devTools: !app.isPackaged,
+    },
+  });
+  win.on("closed", () => closeTabsForWindow(win));
+  win.webContents.once("did-finish-load", () => {
+    sendToRenderer("workspace:recent", currentConfig.recentWorkspaces || [], win);
+  });
+  win.loadFile(path.join(__dirname, "renderer", "index.html"));
+  return win;
 }
 
 // ---------------------------------------------------------------------------
@@ -1262,9 +1357,10 @@ ipcMain.handle("connections:detectLocal", () => detectLocalServers());
 // Skill generation, routed through main so it can resolve a chosen connection
 // profile into a full connection (the renderer never holds a profile's key).
 // Without a profileId it is a plain passthrough to the engine's generate_skill.
-ipcMain.handle("skills:generate", (_evt, payload) => {
+ipcMain.handle("skills:generate", (evt, payload) => {
   if (!payload || typeof payload !== "object") return { ok: false, error: "invalid payload" };
-  if (!activeTab()?.child) return { ok: false, error: "Open a workspace and connect an engine first." };
+  const genTab = activeTab(winOf(evt));
+  if (!genTab || !genTab.child) return { ok: false, error: "Open a workspace and connect an engine first." };
   const description = typeof payload.description === "string" ? payload.description.trim() : "";
   if (!description) return { ok: false, error: "Describe the skill first." };
   const frame = { type: "generate_skill", description, kind: payload.kind === "action" ? "action" : "discipline" };
@@ -1281,7 +1377,7 @@ ipcMain.handle("skills:generate", (_evt, payload) => {
   } else if (typeof payload.model === "string" && payload.model) {
     frame.model = payload.model;
   }
-  writeToEngine(frame);
+  writeToEngine(frame, genTab.id);
   return { ok: true };
 });
 
@@ -1451,7 +1547,8 @@ ipcMain.on("app:titleBarTheme", (_evt, theme) => {
     currentConfig = { ...currentConfig, theme: name };
     writeConfig(currentConfig);
   }
-  if (typeof mainWindow.setTitleBarOverlay !== "function") return; // macOS: no overlay
+  // Only Windows uses the controls overlay now (macOS lacks it; Linux is framed).
+  if (process.platform !== "win32" || typeof mainWindow.setTitleBarOverlay !== "function") return;
   const hex = (v) => (typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : null);
   const color = hex(theme && theme.color);
   const symbolColor = hex(theme && theme.symbolColor);
@@ -1511,25 +1608,29 @@ ipcMain.on("app:openExternal", (_evt, url) => {
 
 ipcMain.handle("config:get", () => currentConfig);
 
-ipcMain.handle("config:setModel", (_evt, model) => {
+ipcMain.handle("config:setModel", (evt, model) => {
   if (typeof model !== "string") return currentConfig;
   const trimmed = model.trim();
   if (trimmed.length === 0 || trimmed.length > 200) return currentConfig;
 
+  // The model change targets the sender window's active tab (its own workspace).
+  const win = winOf(evt);
+  const tab = activeTab(win);
   currentConfig = { ...currentConfig, model: trimmed };
   writeConfig(currentConfig);
-  logEvent("sys", { ev: "model-changed", model: currentConfig.model });
+  if (tab) tab.model = trimmed;
+  logEvent("sys", { ev: "model-changed", model: trimmed });
   // Change the model on the LIVE session (takes effect next turn) rather than
-  // respawning the engine — a restart would start a fresh session and drop the
-  // current conversation. The persisted config above still makes the new model
-  // the default a future (re)start uses via MAGENTRA_MODEL.
-  if (currentConfig.workspace && activeTab()?.child) {
-    writeToEngine({ type: "set_model", model: trimmed });
-  } else if (currentConfig.workspace) {
+  // respawning the engine — a restart would drop the current conversation. The
+  // persisted config still makes it the default a future (re)start uses.
+  const workspace = (tab && tab.workspace) || currentConfig.workspace;
+  if (workspace && tab && tab.child) {
+    writeToEngine({ type: "set_model", model: trimmed }, tab.id);
+  } else if (workspace) {
     // No live engine to update (not yet linked / crashed) — bring one up on the
     // chosen model so the picker still connects.
-    startEngine(currentConfig.workspace, currentConfig.model);
-    sendToRenderer("engine:restarted", { model: currentConfig.model });
+    startEngine(workspace, trimmed, tab && tab.id);
+    sendToRenderer("engine:restarted", { model: trimmed }, win);
   }
   return currentConfig;
 });
@@ -1581,42 +1682,43 @@ ipcMain.handle("settings:setWebSearch", (_evt, enabled) => {
 
   logEvent("sys", { ev: "websearch-changed", enabled });
   startEngine(workspace, currentConfig.model);
-  sendToRenderer("engine:restarted", { model: currentConfig.model });
+  sendToRenderer("engine:restarted", { model: currentConfig.model }, tabForWorkspace(workspace)?.win);
   return { ok: true };
 });
 
 /** Open a workspace: persist it, remember it, then either start the engine or
  *  trigger the setup wizard. Shared by the folder dialog and recent-folder
  *  clicks so there is exactly one open path. */
-function openWorkspace(workspace) {
-  // Same-folder rule: one live session per folder — focus the existing tab
-  // instead of opening a second engine on the same directory.
+function openWorkspace(workspace, win) {
+  const w = win || mainWindow;
+  // Same-folder rule: one live session per folder (across ALL windows) — focus
+  // the existing tab instead of opening a second engine on the same directory.
   const existing = tabForWorkspace(workspace);
   if (existing) {
     focusTab(existing.id);
     return currentConfig;
   }
-  // Cap: at most MAX_TABS live tabs. The renderer shows "close a tab first".
+  // Cap: at most MAX_TABS live tabs across the app. The renderer shows the notice.
   if (engineTabs.size >= MAX_TABS) {
-    sendToRenderer("tab:cap", { max: MAX_TABS });
+    sendToRenderer("tab:cap", { max: MAX_TABS }, w);
     return currentConfig;
   }
-  const tab = createTab(workspace);
-  activeTabId = tab.id;
+  const tab = createTab(workspace, w);
+  if (w) w.mgActiveTabId = tab.id;
   currentConfig = rememberWorkspace({ ...currentConfig, workspace }, workspace);
   writeConfig(currentConfig);
-  // Keep the sidebar's recent list current — the opened folder moves to the top.
-  sendToRenderer("workspace:recent", currentConfig.recentWorkspaces || []);
+  // Recents are app-global — every window's sidebar reflects them.
+  broadcastToRenderers("workspace:recent", currentConfig.recentWorkspaces || []);
   setLogWorkspace(workspace);
   logEvent("sys", { ev: "workspace-changed", workspace, tabId: tab.id });
-  // Tell the renderer to create+focus this tab BEFORE the engine can speak, so
-  // the tagged workspace_changed/session events route into the right console.
-  sendToRenderer("tab:opened", { tabId: tab.id, workspace });
-  sendToRenderer("engine:event", { type: "workspace_changed", workspace, tabId: tab.id });
+  // Tell this window's renderer to create+focus the tab BEFORE the engine can
+  // speak, so the tagged workspace_changed/session events route into it.
+  sendToRenderer("tab:opened", { tabId: tab.id, workspace }, w);
+  sendToRenderer("engine:event", { type: "workspace_changed", workspace, tabId: tab.id }, w);
   if (hasCredentials(workspace)) {
     startEngine(workspace, currentConfig.model, tab.id);
   } else {
-    sendToRenderer("setup:required", { workspace, tabId: tab.id });
+    sendToRenderer("setup:required", { workspace, tabId: tab.id }, w);
     logEvent("sys", { ev: "setup-required", tabId: tab.id });
   }
   return currentConfig;
@@ -1630,38 +1732,57 @@ ipcMain.on("tab:close", (_evt, tabId) => {
   if (typeof tabId === "string") closeTab(tabId);
 });
 
-ipcMain.handle("workspace:choose", async () => {
-  if (!mainWindow) return currentConfig;
-  const result = await dialog.showOpenDialog(mainWindow, {
+// Open a workspace in a SEPARATE window ("open in new window"). The same-folder
+// rule still applies — an already-open folder just focuses its tab.
+ipcMain.on("window:open", (_evt, workspace) => {
+  if (typeof workspace !== "string" || !workspace) return;
+  if (!fs.existsSync(workspace) || !fs.statSync(workspace).isDirectory()) return;
+  const existing = tabForWorkspace(workspace);
+  if (existing) {
+    focusTab(existing.id);
+    return;
+  }
+  if (engineTabs.size >= MAX_TABS) {
+    sendToRenderer("tab:cap", { max: MAX_TABS });
+    return;
+  }
+  const win = createExtraWindow();
+  win.webContents.once("did-finish-load", () => openWorkspace(workspace, win));
+});
+
+ipcMain.handle("workspace:choose", async (evt) => {
+  const win = winOf(evt);
+  if (!win) return currentConfig;
+  const result = await dialog.showOpenDialog(win, {
     properties: ["openDirectory"],
   });
   if (result.canceled || result.filePaths.length === 0) return currentConfig;
-  return openWorkspace(result.filePaths[0]);
+  return openWorkspace(result.filePaths[0], win);
 });
 
-ipcMain.handle("workspace:open", (_evt, workspace) => {
+ipcMain.handle("workspace:open", (evt, workspace) => {
   if (typeof workspace !== "string" || !workspace) return currentConfig;
   if (!fs.existsSync(workspace) || !fs.statSync(workspace).isDirectory()) {
-    // A recent folder that no longer exists: drop it and tell the renderer.
+    // A recent folder that no longer exists: drop it and tell every window.
     currentConfig = {
       ...currentConfig,
       recentWorkspaces: (currentConfig.recentWorkspaces || []).filter((p) => p !== workspace),
     };
     writeConfig(currentConfig);
-    sendToRenderer("workspace:recent", currentConfig.recentWorkspaces);
+    broadcastToRenderers("workspace:recent", currentConfig.recentWorkspaces);
     return currentConfig;
   }
-  return openWorkspace(workspace);
+  return openWorkspace(workspace, winOf(evt));
 });
 
-ipcMain.on("engine:send", (_evt, payload) => {
+ipcMain.on("engine:send", (evt, payload) => {
   // Back-compat + per-tab routing: a bare frame (it has a string `type`) targets
-  // the active tab exactly as before; a { frame, tabId } envelope (no top-level
+  // the SENDER WINDOW's active tab; a { frame, tabId } envelope (no top-level
   // `type`) targets a specific tab's engine — so a background tab's reply reaches
   // the engine that asked, not whichever tab is focused.
   const envelope = payload && typeof payload === "object" && typeof payload.type !== "string";
   const frame = envelope ? payload.frame : payload;
-  const tabId = envelope ? payload.tabId : undefined;
+  const tabId = envelope ? payload.tabId : activeTab(winOf(evt))?.id;
   if (!frame || typeof frame !== "object" || Array.isArray(frame) || typeof frame.type !== "string") {
     logEvent("sys", { ev: "invalid-frame" });
     return;
@@ -1669,23 +1790,27 @@ ipcMain.on("engine:send", (_evt, payload) => {
   writeToEngine(frame, tabId);
 });
 
-ipcMain.on("engine:setModes", (_evt, activeIds) => {
-  writeToEngine({ type: "set_modes", active: activeIds });
+ipcMain.on("engine:setModes", (evt, activeIds) => {
+  writeToEngine({ type: "set_modes", active: activeIds }, activeTab(winOf(evt))?.id);
 });
 
-ipcMain.on("engine:interrupt", () => {
-  writeToEngine({ type: "interrupt" });
+ipcMain.on("engine:interrupt", (evt) => {
+  writeToEngine({ type: "interrupt" }, activeTab(winOf(evt))?.id);
 });
 
 // Restart after a crash — the failure banner's way back without re-running setup.
-ipcMain.on("engine:restart", () => {
-  if (!currentConfig.workspace) return;
-  startEngine(currentConfig.workspace, currentConfig.model);
-  sendToRenderer("engine:restarted", { model: currentConfig.model });
+// Targets the sender window's active tab (its own workspace/engine).
+ipcMain.on("engine:restart", (evt) => {
+  const tab = activeTab(winOf(evt));
+  const workspace = (tab && tab.workspace) || currentConfig.workspace;
+  if (!workspace) return;
+  const model = (tab && tab.model) || currentConfig.model;
+  startEngine(workspace, model, tab && tab.id);
+  sendToRenderer("engine:restarted", { model }, winOf(evt));
 });
 
-ipcMain.on("engine:permission", (_evt, { id, decision, message }) => {
-  writeToEngine({ type: "permission_response", id, decision, ...(message ? { message } : {}) });
+ipcMain.on("engine:permission", (evt, { id, decision, message }) => {
+  writeToEngine({ type: "permission_response", id, decision, ...(message ? { message } : {}) }, activeTab(winOf(evt))?.id);
 });
 
 // ---------------------------------------------------------------------------

@@ -93,6 +93,7 @@ contextBridge.exposeInMainWorld("magentra", {
   // per-tab console state in response.
   focusTab: (tabId) => ipcRenderer.send("tab:focus", tabId),
   closeTab: (tabId) => ipcRenderer.send("tab:close", tabId),
+  openInNewWindow: (workspace) => ipcRenderer.send("window:open", workspace),
   onTabOpened: (cb) => {
     const listener = (_evt, data) => cb(data);
     ipcRenderer.on("tab:opened", listener);
