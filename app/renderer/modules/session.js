@@ -22,7 +22,8 @@ function resetWorkspaceState() {
   currentSessionId = null;
   sessionModel = "";
   renderSessions();
-  engineErrorBannerShown = false;
+  hideEngineErrorBanner();
+  fatalErrorReported = false;
   promptInputEl.value = "";
   promptInputEl.style.height = "auto";
   closeReviewDrawer();

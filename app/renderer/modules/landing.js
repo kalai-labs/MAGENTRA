@@ -243,7 +243,12 @@ function onSessionStarted(event) {
   // user's saved safety choices.
   applySafetySettings(true);
   resetChanges();
-  engineErrorBannerShown = false;
+  // A running session proves the connection works: clear any stale connection
+  // errors/warnings from a failed earlier attempt and take down the banner, so
+  // nothing red lingers after the user fixed it (e.g. applied a profile).
+  hideEngineErrorBanner();
+  clearTransientNotices();
+  fatalErrorReported = false;
   // A running session is the proof the credentials work — unlock the composer.
   engineLinked = true;
   syncActivityUi();
@@ -984,21 +989,39 @@ function handleEngineEvent(event) {
       onTurnFinished(event);
       break;
     case "error":
-      appendSysError(event.message);
-      announce(`Error: ${event.message}`);
-      if (event.fatal) {
-        setStatusLed("error");
-        showEngineErrorBanner(event.message, looksCredentialError(event.message) ? "credential" : "crash");
+      if (event.fatal && looksCredentialError(event.message)) {
+        // Missing/invalid credentials: the friendly "pick a profile / set up"
+        // path, not a raw red error line. The engine will exit right after this
+        // (see the fatalErrorReported guard in engine_exit).
+        fatalErrorReported = true;
+        announce(`Not connected: ${event.message}`);
+        void handleCredentialFailure();
+      } else {
+        appendSysError(event.message);
+        announce(`Error: ${event.message}`);
+        if (event.fatal) {
+          fatalErrorReported = true;
+          setStatusLed("error");
+          showEngineErrorBanner(event.message, "crash");
+        }
       }
       break;
-    case "engine_stderr":
-      appendSysError(event.text);
+    case "engine_notice":
+      // A soft, deduped heads-up (e.g. TLS verification disabled) — never red.
+      appendSysNotice(event.text);
       break;
     case "engine_exit": {
       // Deliberate stops (restart, model change, quit) are flagged expected by
       // the main process; everything else — including signal deaths, where
       // code is null — is a crash and must both say so and unlock the UI.
       if (event.expected) break;
+      // A fatal error frame already explained why (bad credentials, boot
+      // failure) and put up the banner — the exit that follows is that same
+      // failure, not a new one. Just unlock the UI without a second message.
+      if (fatalErrorReported) {
+        onEngineGone();
+        break;
+      }
       const cause = event.signal ? `signal ${event.signal}` : `code ${event.code}`;
       appendSysError(`engine stopped unexpectedly (${cause})`);
       setStatusLed("error");

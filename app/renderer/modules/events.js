@@ -162,6 +162,12 @@ if (changesCloseBtnEl) changesCloseBtnEl.addEventListener("click", () => showVie
 // ---------------------------------------------------------------------------
 
 let engineErrorBannerShown = false;
+let engineBannerEl = null;
+// True once a fatal error frame has been reported for the current engine start.
+// The engine exits (code 1) right after such an error; that exit is a
+// consequence, not a second, separate failure — this flag suppresses the
+// redundant "engine stopped unexpectedly" message. Reset when a session starts.
+let fatalErrorReported = false;
 
 /** Does a failure message point at credentials rather than a crash? Steers
  * which banner action leads — both are always offered, so a wrong guess costs
@@ -170,12 +176,23 @@ function looksCredentialError(message) {
   return /api.?key|credential|unauthorized|\b401\b|\b403\b/i.test(message || "");
 }
 
+/** Remove the failure banner and re-arm it — a working session (session_started)
+ * means the way-back-in is no longer needed. */
+function hideEngineErrorBanner() {
+  engineErrorBannerShown = false;
+  if (engineBannerEl) {
+    engineBannerEl.remove();
+    engineBannerEl = null;
+  }
+}
+
 function showEngineErrorBanner(message, kind) {
   if (engineErrorBannerShown || !streamEl) return;
   engineErrorBannerShown = true;
   finalizeAssistantEl();
   const el = document.createElement("div");
   el.className = "engine-banner";
+  engineBannerEl = el;
   const text = document.createElement("span");
   text.textContent = message;
   el.appendChild(text);
@@ -185,8 +202,7 @@ function showEngineErrorBanner(message, kind) {
   restartBtn.textContent = "RESTART ENGINE ▸";
   restartBtn.addEventListener("click", () => {
     // Let a repeat failure raise a fresh banner instead of dying silently.
-    engineErrorBannerShown = false;
-    el.remove();
+    hideEngineErrorBanner();
     window.magentra.restartEngine();
   });
 
@@ -198,4 +214,29 @@ function showEngineErrorBanner(message, kind) {
   if (kind === "credential") el.append(setupBtn, restartBtn);
   else el.append(restartBtn, setupBtn);
   withAutoScroll(() => streamEl.appendChild(el));
+}
+
+/**
+ * A credential/connection failure at engine boot — the friendly path in place of
+ * a wall of red. Shows one soft banner, and if the user already has saved
+ * connection profiles, opens the wizard straight onto the profile chooser so
+ * they just pick one instead of reading an error. No profiles → the banner's
+ * "SET UP CONNECTIONS" is the single clear next step.
+ */
+async function handleCredentialFailure() {
+  setStatusLed("error");
+  showEngineErrorBanner(
+    "This workspace isn't connected yet — pick a saved connection profile, or set one up.",
+    "credential",
+  );
+  if (!window.magentra.listProfiles) return;
+  let profiles = [];
+  try {
+    profiles = (await window.magentra.listProfiles()) || [];
+  } catch {
+    profiles = [];
+  }
+  // Only auto-open while nothing is linked (i.e. at open/boot, not mid-session),
+  // and only when there's actually a profile to choose.
+  if (profiles.length > 0 && !engineLinked) openSetupWizard();
 }

@@ -95,6 +95,34 @@ function appendSysError(text) {
   return el;
 }
 
+/** A soft, non-alarming heads-up (amber, not red) — engine warnings a user may
+ * want to know but need not act on, e.g. "TLS verification is disabled". Deduped
+ * by text so a warning that repeats across restarts shows only once. */
+function appendSysNotice(text) {
+  const target = streamEl || transcriptEl;
+  if (!target) return null;
+  // One is enough: skip an identical notice already on screen.
+  for (const existing of target.querySelectorAll(".sys-notice")) {
+    if (existing.textContent === text) return existing;
+  }
+  finalizeAssistantEl();
+  const el = document.createElement("div");
+  el.className = "sys-notice";
+  el.textContent = text;
+  withAutoScroll(() => target.appendChild(el));
+  return el;
+}
+
+/** Clear the transient connection notices (soft warnings + red errors) — called
+ * when a fresh working session proves the connection is good, so stale "no API
+ * key" / TLS lines from a failed attempt don't linger after it's fixed. */
+function clearTransientNotices() {
+  for (const target of [streamEl, transcriptEl]) {
+    if (!target) continue;
+    for (const el of target.querySelectorAll(".sys-notice, .sys-error")) el.remove();
+  }
+}
+
 /** Short clock time for message headers ("9:41 AM" style, locale-aware). */
 function messageClock() {
   return new Intl.DateTimeFormat(undefined, { timeStyle: "short" }).format(new Date());
@@ -137,6 +165,15 @@ function appendUserMessage(text) {
 // loose rows. Closes when the model starts answering.
 // ---------------------------------------------------------------------------
 
+// The Magentra brand mark, drawn as a stroke SVG so it inherits the glyph color
+// (accent while working, green when done) and scales crisply: a rounded square
+// enclosing an angular "M". Kept in step with the .logo-mark elsewhere.
+const WORK_GLYPH_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<rect x="2.75" y="2.75" width="18.5" height="18.5" rx="5.5" stroke-width="1.6"/>' +
+  '<path d="M6.6 16.6 L6.6 7.8 L12 12.9 L17.4 7.8 L17.4 16.6" stroke-width="2"/>' +
+  "</svg>";
+
 function workStream() {
   if (!streamEl) return streamEl;
   if (!currentWorkGroup || !currentWorkGroup.el.isConnected) {
@@ -147,7 +184,10 @@ function workStream() {
     summary.className = "work-group-head";
     const glyph = document.createElement("span");
     glyph.className = "work-group-glyph";
-    glyph.textContent = "✦";
+    // Magentra's own mark — a rounded-square "M" monogram — instead of a generic
+    // four-point sparkle. currentColor lets it inherit the accent while working
+    // and the green "done" tint afterward; CSS gives it a gentle pulse.
+    glyph.innerHTML = WORK_GLYPH_SVG;
     const label = document.createElement("span");
     label.className = "work-group-label";
     label.textContent = "Agent working";

@@ -67,10 +67,45 @@ let currentConfig = readConfig();
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
-/** @type {import("node:child_process").ChildProcessWithoutNullStreams | null} */
-let engineChild = null;
-let engineStdoutBuffer = "";
-let engineStderrBuffer = "";
+// --- Engine pool ---------------------------------------------------------
+// Each open workspace runs in its OWN engine process — a "tab". The pool holds
+// per-tab process state (the child, its not-yet-exited predecessor, and stdio
+// line buffers) so several workspaces can run concurrently; the engine binary
+// and the wire protocol are unchanged (see docs/CONCURRENT-WORKSPACES.md). Today
+// the renderer drives one tab at a time, so exactly one entry exists and the
+// behaviour matches a single engine; `activeTab()` is the tab an untagged
+// renderer request targets.
+/**
+ * @typedef {Object} EngineTab
+ * @property {string} id
+ * @property {string|null} workspace
+ * @property {string|null} model
+ * @property {import("node:child_process").ChildProcessWithoutNullStreams | null} child
+ * @property {import("node:child_process").ChildProcessWithoutNullStreams | null} dying
+ * @property {string} stdoutBuffer
+ * @property {string} stderrBuffer
+ */
+/** @type {Map<string, EngineTab>} */
+const engineTabs = new Map();
+let activeTabId = null;
+let tabSeq = 0;
+
+/** The focused tab — where a renderer request with no explicit tabId lands. */
+function activeTab() {
+  return activeTabId ? engineTabs.get(activeTabId) ?? null : null;
+}
+
+/** The active tab, created on first use. Step-1 back-compat: one default tab. */
+function ensureActiveTab() {
+  let tab = activeTab();
+  if (!tab) {
+    const id = `tab${++tabSeq}`;
+    tab = { id, workspace: null, model: null, child: null, dying: null, stdoutBuffer: "", stderrBuffer: "" };
+    engineTabs.set(id, tab);
+    activeTabId = id;
+  }
+  return tab;
+}
 
 // ---------------------------------------------------------------------------
 // Engine process management
@@ -103,14 +138,13 @@ function sendToRenderer(channel, payload) {
   }
 }
 
-// The child from a previous stopEngine that has not exited yet. A replacement
-// must never spawn while it lives — two engines in one process tree race over
-// the same workspace state.
-let dyingEngine = null;
-
-function stopEngine() {
-  if (engineChild) {
-    const child = engineChild;
+// A tab's `dying` field holds the child from a previous stopEngine that has not
+// exited yet. A replacement for the SAME tab must never spawn while it lives —
+// two engines on one workspace race over its state.
+function stopEngine(tab) {
+  if (!tab) return;
+  if (tab.child) {
+    const child = tab.child;
     logEvent("sys", { ev: "kill", pid: child.pid });
     // Mark this exit as ours (restart, quit, model change) so the exit handler
     // can tell a deliberate stop from a crash — only crashes get a banner.
@@ -134,15 +168,20 @@ function stopEngine() {
       }
     }, 3000);
     if (killTimer.unref) killTimer.unref();
-    dyingEngine = child;
+    tab.dying = child;
     child.once("exit", () => {
       clearTimeout(killTimer);
-      if (dyingEngine === child) dyingEngine = null;
+      if (tab.dying === child) tab.dying = null;
     });
-    engineChild = null;
+    tab.child = null;
   }
-  engineStdoutBuffer = "";
-  engineStderrBuffer = "";
+  tab.stdoutBuffer = "";
+  tab.stderrBuffer = "";
+}
+
+/** Stop every tab's engine — app quit / all windows closed. */
+function stopAllEngines() {
+  for (const tab of engineTabs.values()) stopEngine(tab);
 }
 
 // Frames that represent an explicit user action: dropping one silently reads
@@ -175,9 +214,10 @@ function redactFrameForLog(frame) {
   return frame;
 }
 
-function writeToEngine(frame) {
-  if (engineChild && engineChild.stdin.writable) {
-    engineChild.stdin.write(JSON.stringify(frame) + "\n");
+function writeToEngine(frame, tabId) {
+  const tab = tabId ? engineTabs.get(tabId) ?? null : activeTab();
+  if (tab && tab.child && tab.child.stdin.writable) {
+    tab.child.stdin.write(JSON.stringify(frame) + "\n");
     logEvent("ui", redactFrameForLog(frame));
     return;
   }
@@ -187,6 +227,7 @@ function writeToEngine(frame) {
       type: "error",
       message: "The engine is not running — restart it from the banner, or reopen the workspace.",
       fatal: false,
+      ...(tab ? { tabId: tab.id } : {}),
     });
   }
 }
@@ -266,18 +307,64 @@ function hasCredentials(workspace) {
   return false;
 }
 
-function startEngine(workspace, model) {
-  const isRestart = !!engineChild;
-  stopEngine();
+/**
+ * Turn a raw engine stderr line into a user-facing notice, or null to hide it.
+ *
+ * The engine's stderr carries three kinds of text, and only one belongs in the
+ * chat as a friendly heads-up:
+ *   1. Node's own runtime warnings — the NODE_TLS_REJECT_UNAUTHORIZED security
+ *      notice (fired because a user opted into allowInsecureTls) and its
+ *      "--trace-warnings" footer, deprecation/experimental warnings. These are
+ *      never actionable by an end user; drop them (still logged to file).
+ *   2. Backups of a fatal error that ALSO arrived as a structured `error` frame
+ *      on stdout ("Error: ..." / "fatal: ..."). The frame already drives the
+ *      banner, so the stderr copy would just be a duplicate red line — drop it.
+ *   3. Genuine engine warnings ("warning [source] message"), e.g. the
+ *      allowInsecureTls heads-up. Keep exactly one, softened and de-tagged.
+ */
+function classifyEngineStderr(line) {
+  const trimmed = line.trim();
+  // 1. Node runtime noise.
+  if (
+    /NODE_TLS_REJECT_UNAUTHORIZED/.test(trimmed) ||
+    /--trace-warnings/.test(trimmed) ||
+    /\bExperimentalWarning\b/.test(trimmed) ||
+    /\bDeprecationWarning\b/.test(trimmed) ||
+    /^\(node:\d+\)/.test(trimmed)
+  ) {
+    return null;
+  }
+  // 2. Duplicate of a structured `error` frame already shown as the banner.
+  if (/^(Error|fatal):\s/i.test(trimmed)) return null;
+  // 3. A real warning — strip the "warning" keyword and the "[source]" tag so
+  //    the user reads a plain sentence, not engine-internal formatting.
+  const text = trimmed
+    .replace(/^warning\s+/i, "")
+    .replace(/^\[[^\]]+\]\s*/, "")
+    .trim();
+  if (!text) return null;
+  return { text, level: "warning" };
+}
+
+function startEngine(workspace, model, tabId) {
+  // Untagged callers (all of Step 1) operate on the single active tab; a tabId
+  // targets a specific tab in the pool (Step 2+). Every event this engine emits
+  // is stamped with `tab.id` so the renderer can route it to the right console.
+  const tab = tabId && engineTabs.has(tabId) ? engineTabs.get(tabId) : ensureActiveTab();
+  const isRestart = !!tab.child;
+  stopEngine(tab);
 
   if (!workspace) return;
 
-  // Never spawn a replacement while the old child lives: wait for its exit
-  // (stopEngine escalates to SIGKILL after 3s, so this always resolves).
-  if (dyingEngine) {
-    dyingEngine.once("exit", () => startEngine(workspace, model));
+  // Never spawn a replacement for THIS tab while its old child lives: wait for
+  // its exit (stopEngine escalates to SIGKILL after 3s, so this always resolves).
+  if (tab.dying) {
+    tab.dying.once("exit", () => startEngine(workspace, model, tab.id));
     return;
   }
+
+  tab.workspace = workspace;
+  tab.model = model || DEFAULT_MODEL;
 
   const entry = engineEntryPoint();
   const args = [...entry.args, "--serve", "--cwd", workspace];
@@ -304,11 +391,12 @@ function startEngine(workspace, model) {
       type: "error",
       message: `Failed to start engine: ${err && err.message ? err.message : String(err)}`,
       fatal: true,
+      tabId: tab.id,
     });
     return;
   }
 
-  engineChild = child;
+  tab.child = child;
   logEvent("sys", {
     ev: isRestart ? "restart" : "spawn",
     pid: child.pid,
@@ -320,11 +408,11 @@ function startEngine(workspace, model) {
 
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk) => {
-    engineStdoutBuffer += chunk;
+    tab.stdoutBuffer += chunk;
     let idx;
-    while ((idx = engineStdoutBuffer.indexOf("\n")) !== -1) {
-      const line = engineStdoutBuffer.slice(0, idx).replace(/\r$/, "");
-      engineStdoutBuffer = engineStdoutBuffer.slice(idx + 1);
+    while ((idx = tab.stdoutBuffer.indexOf("\n")) !== -1) {
+      const line = tab.stdoutBuffer.slice(0, idx).replace(/\r$/, "");
+      tab.stdoutBuffer = tab.stdoutBuffer.slice(idx + 1);
       if (line.trim() === "") continue;
       let event;
       try {
@@ -335,20 +423,23 @@ function startEngine(workspace, model) {
         continue;
       }
       logEvent("engine", event);
-      sendToRenderer("engine:event", event);
+      sendToRenderer("engine:event", { ...event, tabId: tab.id });
     }
   });
 
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk) => {
-    engineStderrBuffer += chunk;
+    tab.stderrBuffer += chunk;
     let idx;
-    while ((idx = engineStderrBuffer.indexOf("\n")) !== -1) {
-      const line = engineStderrBuffer.slice(0, idx).replace(/\r$/, "");
-      engineStderrBuffer = engineStderrBuffer.slice(idx + 1);
+    while ((idx = tab.stderrBuffer.indexOf("\n")) !== -1) {
+      const line = tab.stderrBuffer.slice(0, idx).replace(/\r$/, "");
+      tab.stderrBuffer = tab.stderrBuffer.slice(idx + 1);
       if (line.trim() === "") continue;
+      // Everything hits the log file for debugging; the UI gets only what a
+      // user can act on — see classifyEngineStderr.
       logEvent("stderr", line);
-      sendToRenderer("engine:event", { type: "engine_stderr", text: line });
+      const notice = classifyEngineStderr(line);
+      if (notice) sendToRenderer("engine:event", { type: "engine_notice", text: notice.text, level: notice.level, tabId: tab.id });
     }
   });
 
@@ -358,8 +449,8 @@ function startEngine(workspace, model) {
     flushLog();
     // Signal deaths (SIGSEGV, OOM-kill) have code === null — the renderer must
     // treat any unexpected exit as fatal, whatever the exit code says.
-    sendToRenderer("engine:event", { type: "engine_exit", code, signal, expected });
-    if (engineChild === child) engineChild = null;
+    sendToRenderer("engine:event", { type: "engine_exit", code, signal, expected, tabId: tab.id });
+    if (tab.child === child) tab.child = null;
   });
 
   child.on("error", (err) => {
@@ -367,18 +458,14 @@ function startEngine(workspace, model) {
       type: "error",
       message: `Engine process error: ${err && err.message ? err.message : String(err)}`,
       fatal: true,
+      tabId: tab.id,
     });
   });
-
-  // Credential sanity check — engine still starts regardless. A keyless local
-  // endpoint (Ollama, LM Studio) counts as configured, so it won't warn.
-  if (!hasCredentials(workspace)) {
-    sendToRenderer("engine:event", {
-      type: "error",
-      message: "No credentials for this workspace — open Setup to add a provider.",
-      fatal: false,
-    });
-  }
+  // No app-side credential check here: the engine is the authority. If a key is
+  // genuinely missing (and the endpoint is not a keyless local one), the engine
+  // emits a single fatal credential `error` frame, which the renderer turns into
+  // the friendly "pick a profile / set up a connection" flow. A second heuristic
+  // check here only produced a duplicate — and could contradict the engine.
 }
 
 // ---------------------------------------------------------------------------
@@ -1130,7 +1217,7 @@ ipcMain.handle("connections:detectLocal", () => detectLocalServers());
 // Without a profileId it is a plain passthrough to the engine's generate_skill.
 ipcMain.handle("skills:generate", (_evt, payload) => {
   if (!payload || typeof payload !== "object") return { ok: false, error: "invalid payload" };
-  if (!engineChild) return { ok: false, error: "Open a workspace and connect an engine first." };
+  if (!activeTab()?.child) return { ok: false, error: "Open a workspace and connect an engine first." };
   const description = typeof payload.description === "string" ? payload.description.trim() : "";
   if (!description) return { ok: false, error: "Describe the skill first." };
   const frame = { type: "generate_skill", description, kind: payload.kind === "action" ? "action" : "discipline" };
@@ -1389,7 +1476,7 @@ ipcMain.handle("config:setModel", (_evt, model) => {
   // respawning the engine — a restart would start a fresh session and drop the
   // current conversation. The persisted config above still makes the new model
   // the default a future (re)start uses via MAGENTRA_MODEL.
-  if (currentConfig.workspace && engineChild) {
+  if (currentConfig.workspace && activeTab()?.child) {
     writeToEngine({ type: "set_model", model: trimmed });
   } else if (currentConfig.workspace) {
     // No live engine to update (not yet linked / crashed) — bring one up on the
@@ -1639,12 +1726,12 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  stopEngine();
+  stopAllEngines();
   if (process.platform !== "darwin") app.quit();
 });
 
 app.on("before-quit", () => {
-  stopEngine();
+  stopAllEngines();
 });
 
 app.on("will-quit", () => {

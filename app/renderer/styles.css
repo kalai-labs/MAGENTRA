@@ -642,6 +642,10 @@ h1.md-h { font-size: 1.3rem; } h2.md-h { font-size: 1.16rem; } h3.md-h { font-si
 .thinking-body { margin-top: 6px; color: var(--text-dim); font-size: max(10px, 0.78rem); white-space: pre-wrap; }
 .sys-note { margin: 7px 3px; color: var(--text-faint); font-size: max(10px, 0.75rem); font-style: italic; }
 .sys-error { margin: 8px 0; padding: 9px 11px; border: 1px solid rgba(var(--red-rgb), 0.38); border-radius: var(--radius-sm); color: var(--error-text); background: var(--red-soft); white-space: pre-wrap; }
+/* A soft heads-up (amber), for warnings a user need not act on — deliberately
+   calmer than .sys-error so it doesn't read as something broken. */
+.sys-notice { margin: 8px 0; padding: 8px 11px; border: 1px solid rgba(var(--amber-rgb), 0.34); border-radius: var(--radius-sm); color: var(--text-dim); background: var(--amber-soft); white-space: pre-wrap; font-size: max(11px, 0.8rem); }
+.sys-notice::before { content: "⚠ "; color: var(--amber); }
 .phase-banner { margin: 15px 0 7px; padding: 5px 2px; border-bottom: 1px solid var(--border); color: var(--accent-hi); font-size: max(10px, 0.75rem); font-weight: 700; }
 .turn-sep { display: flex; align-items: center; gap: 9px; margin: 18px 0 5px; color: var(--text-faint); font-size: max(10px, 0.65rem); font-variant-numeric: tabular-nums; }
 .turn-sep::before, .turn-sep::after { content: ""; flex: 1; height: 1px; background: var(--border); }
@@ -665,7 +669,10 @@ h1.md-h { font-size: 1.3rem; } h2.md-h { font-size: 1.16rem; } h3.md-h { font-si
 .work-group-head::before { content: "⌄"; color: var(--text-faint); font-size: max(10px, 0.75rem); }
 .work-group:not([open]) .work-group-head::before { content: "›"; }
 .work-group-head:hover { background: var(--hover); }
-.work-group-glyph { color: var(--accent); }
+.work-group-glyph { display: inline-flex; align-items: center; color: var(--accent); }
+.work-group-glyph svg { width: 15px; height: 15px; display: block; }
+/* Alive while the agent works; still (and green) once the group is done. */
+.work-group:not(.done) .work-group-glyph svg { animation: statusPulse 1.5s ease-in-out infinite; }
 .work-group.done .work-group-glyph { color: var(--green); }
 .work-group.done .work-group-label { color: var(--text-dim); font-weight: 500; }
 .work-group-body { margin-left: 10px; padding-left: 12px; border-left: 1px solid var(--border); }
@@ -837,6 +844,7 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 @media (prefers-reduced-motion: reduce) {
   .compacting-spinner { animation: none; }
   .compacting-track::after { animation: none; left: 0; width: 100%; opacity: 0.5; }
+  .work-group:not(.done) .work-group-glyph svg { animation: none; }
 }
 #attachChips { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 7px; }
 .attach-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--raised); color: var(--text-dim); font-size: max(10px, 0.69rem); max-width: 100%; }

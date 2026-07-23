@@ -8,7 +8,8 @@
 
 const DRAFT_TEAM_PROMPT =
   "Analyze this repository (use GraphQuery structure and the atlas) and propose a crew for it: " +
-  "2-4 specialists with names, roles, what each would own, and suggested backpack documents. " +
+  "2-4 specialists with roles, what each would own, and suggested backpack documents. " +
+  "Give each specialist a robotic call-sign for its name (e.g. Sentinel-7, Argus, GRID) — never a real human name. " +
   "Present the roster for my approval first; after I agree, write the .magentra/team/*.md files.";
 
 let teamAgents = [];

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { loadBackpackIndex } from "../knowledge/backpack/index.js";
 import {
@@ -35,7 +35,7 @@ import {
   writeAtlas,
 } from "../knowledge/atlas.js";
 import { areaFacts, graphSummary, planAtlasAreas, projectName } from "../knowledge/atlasPlan.js";
-import { loadOrBuildGraph, type GraphData } from "../knowledge/graph.js";
+import { graphStats, loadOrBuildGraph, pagerank, type GraphData } from "../knowledge/graph.js";
 import { loadStandards } from "../knowledge/standards.js";
 import { formatTokens } from "../config/pricing.js";
 import { BackgroundManager } from "../scheduling/background.js";
@@ -171,18 +171,62 @@ export function isSelfVerifyDone(text: string): boolean {
 // error, malformed verdict, or interrupt proceeds without clarifying.
 const CLARIFY_SYSTEM = `You are the clarify pre-layer of an autonomous coding agent. You see ONE incoming user request (plus a snippet of the previous exchange for context) and decide: should the agent ask clarifying questions BEFORE starting, or just start?
 
+You may also be given a "Codebase overview" — a quick, cursory read of the workspace (its design atlas, an import-graph skeleton, or a short peek at README/manifests). It is CONTEXT, not something to confirm with the user. Use it to SHARPEN questions, NOT to silence them:
+- Ground your questions in the project's actual stack, structure, and conventions, so you ask about real, specific choices instead of generic ones — name the concrete options THIS codebase invites.
+- Skip only what the overview answers as FACT — what the app is, its stack, which existing pattern to follow. Never ask the user to restate what the code plainly shows.
+- But the code shows what EXISTS, not what the user now WANTS. For an open-ended change to an existing project ("improve the game", "make it better", "extend this"), the DIRECTION and SCOPE are still the user's to choose — the overview does NOT settle them. Ask that (made specific by the overview), rather than silently picking a direction. Knowing the codebase is a reason to ask a sharper question, not a reason to skip asking.
+
 Reply with STRICT JSON only — no markdown fences, no prose:
   {"clarify": false}
 or
   {"clarify": true, "questions": [{"question": "...?", "header": "max 12 chars", "options": [{"label": "...", "description": "..."}, ...], "multiSelect": false}]}
 
 Set clarify=true ONLY when BOTH hold:
-1. The request is genuinely open-ended: the deliverable's core shape is unstated (kind/genre/technology/scope/audience) — e.g. "build a game", "draw me something", "improve this app".
+1. The request is genuinely open-ended — EITHER the deliverable's core shape is unstated (kind/genre/technology/scope/audience), e.g. "build a game", "draw me something"; OR it asks for an open-ended change whose DIRECTION is the user's to choose, e.g. "improve this app", "make the game better". A codebase overview may tell you what already EXISTS, but that does not settle which direction the user wants — so it does not, on its own, make an open-ended request concrete.
 2. Guessing wrong would waste real work — the user would likely ask for a redo.
 
 Set clarify=false for everything else: concrete tasks naming a target, questions or explanations, conversational messages, follow-ups whose context already fixes the shape, and anything where a sensible default exists and adjusting later is cheap. When unsure, prefer false — asking needlessly is friction.
 
 Questions: at most 3, each one decision-changing (never a detail that could be adjusted later), 2-4 mutually distinct options with a one-line description each; put your recommended option first with " (Recommended)" appended to its label. multiSelect true only when choices genuinely combine.`;
+
+// Caps that keep the clarify skim a cursory glance, not a context dump: the
+// whole overview injected into the clarify prompt, and the per-fallback read of
+// the working directory's overview files.
+const CLARIFY_SKIM_MAX_CHARS = 6000;
+const CLARIFY_PEEK_MAX_CHARS = 4000;
+// The obvious "what is this project" files, richest first — read only until the
+// peek budget runs out.
+const CLARIFY_PEEK_FILES = [
+  "README.md",
+  "README",
+  "readme.md",
+  "README.txt",
+  "package.json",
+  "pyproject.toml",
+  "Cargo.toml",
+  "go.mod",
+];
+
+/**
+ * A compact one-glance skeleton of the import graph for the clarify skim: the
+ * project's scale plus its most central files (by import centrality), which is
+ * enough to convey what the codebase IS. Returns undefined when the graph parsed
+ * no files (e.g. a language it does not index) so the caller can fall back.
+ */
+function graphSkeleton(g: GraphData, project: string): string | undefined {
+  const stats = graphStats(g);
+  if (stats.fileCount === 0) return undefined;
+  const top = [...pagerank(g).entries()]
+    .filter(([id]) => !id.startsWith("pkg:") && g.files[id])
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([id]) => id);
+  return [
+    `${project}: ${stats.fileCount} source files, ${stats.edgeCount} internal imports.`,
+    "Most central files (by import centrality):",
+    ...top.map((id) => `  ${id}`),
+  ].join("\n");
+}
 
 const PLAN_FIRST_REMINDER =
   "Nothing is on the task board yet. When a request will take several moves to finish, lay it out first with TaskCreate — one entry per move, closing with a check task that names the end state you'll confirm — before you touch any files. A quick one-off needs no board; just handle it.";
@@ -1101,11 +1145,16 @@ export class Session {
       .slice(-2)
       .map((m) => `${m.role}: ${m.text.length > 400 ? `${m.text.slice(0, 400)}…` : m.text}`)
       .join("\n");
+    // Ground the verdict in a cursory look at the code, so the questions are
+    // about real, specific choices — and so nothing the code already answers
+    // gets asked. Deterministic (file/graph reads, no model call): it rides
+    // inside this one inference, adding no round-trip. Fail-open by design.
+    const skim = this.buildClarifySkim();
     let raw: string;
     try {
       raw = await this.runInference({
         system: CLARIFY_SYSTEM,
-        user: `${recent ? `Previous exchange:\n${recent}\n\n` : ""}Incoming request:\n${userText}`,
+        user: `${recent ? `Previous exchange:\n${recent}\n\n` : ""}${skim ? `Codebase overview:\n${skim}\n\n` : ""}Incoming request:\n${userText}`,
         maxTokens: 600,
         model: this.settings.model,
       });
@@ -1126,6 +1175,75 @@ export class Session {
       return `${q.question}\n-> ${selected.length > 0 ? selected.join(", ") : "(no answer)"}`;
     });
     return `<system-reminder>Clarify pre-layer: before starting, the user answered these questions — honor the answers as requirements. Unanswered questions are yours to decide sensibly:\n\n${lines.join("\n\n")}</system-reminder>`;
+  }
+
+  /**
+   * A quick, cursory read of the workspace for the clarify pre-layer, so its
+   * questions are grounded in what the code actually is. Layered by cost, richest
+   * first, and fail-open — any error yields no skim and the clarify proceeds as
+   * before. All sources are deterministic reads (no model call):
+   *   1. the prebuilt design atlas, if present (the richest map, a free read);
+   *   2. else an import-graph skeleton (top files + scale) — cheap on a warm
+   *      cache, a one-time build if cold;
+   *   3. else a bounded peek at the working dir (README/manifests + layout), so
+   *      even an unmapped project still gets an overview before we ask.
+   * The result is capped so it stays a cursory glance, never a context dump.
+   */
+  private buildClarifySkim(): string | undefined {
+    let digest: string | undefined;
+    try {
+      const atlas = loadAtlas(this.cwd);
+      if (atlas) {
+        digest = `Design atlas (.magentra/ATLAS.md):\n${atlas}`;
+      } else {
+        // workspaceLooksNonTrivial is a depth-1 check — cheap enough to gate the
+        // graph load, which the user opted to allow to build once when cold.
+        const skeleton = workspaceLooksNonTrivial(this.cwd)
+          ? graphSkeleton(loadOrBuildGraph(this.cwd), projectName(this.cwd))
+          : undefined;
+        digest = skeleton ?? this.peekWorkspaceOverview();
+      }
+    } catch {
+      return undefined; // fail-open — the question must never wait on the skim
+    }
+    if (!digest) return undefined;
+    return digest.length > CLARIFY_SKIM_MAX_CHARS
+      ? `${digest.slice(0, CLARIFY_SKIM_MAX_CHARS)}\n[overview truncated]`
+      : digest;
+  }
+
+  /**
+   * The unmapped-project fallback: the top-level layout plus a bounded read of
+   * the obvious overview files (README, package manifests). Byte-capped so a
+   * giant README can never turn a cursory glance into a slow one.
+   */
+  private peekWorkspaceOverview(): string | undefined {
+    const parts: string[] = [];
+    try {
+      const entries = readdirSync(this.cwd, { withFileTypes: true }).filter((e) => !e.name.startsWith("."));
+      const names = [
+        ...entries.filter((e) => e.isDirectory()).map((e) => `${e.name}/`),
+        ...entries.filter((e) => e.isFile()).map((e) => e.name),
+      ].slice(0, 30);
+      if (names.length > 0) parts.push(`Top level: ${names.join(", ")}`);
+    } catch {
+      // no listing — the overview files below may still exist
+    }
+    let budget = CLARIFY_PEEK_MAX_CHARS;
+    for (const name of CLARIFY_PEEK_FILES) {
+      if (budget <= 0) break;
+      let content: string;
+      try {
+        content = readFileSync(join(this.cwd, name), "utf8");
+      } catch {
+        continue; // absent/unreadable — try the next candidate
+      }
+      if (!content.trim()) continue;
+      const snippet = content.length > budget ? `${content.slice(0, budget)}\n[…]` : content;
+      budget -= snippet.length;
+      parts.push(`--- ${name} ---\n${snippet.trim()}`);
+    }
+    return parts.length > 0 ? parts.join("\n\n") : undefined;
   }
 
   /** Runs one full user turn: model call -> tool calls -> ... -> final text. */
@@ -1595,6 +1713,29 @@ export class Session {
     const model = this.settings.model;
     const apiStartedAt = Date.now();
 
+    // Live context meter: the frontend otherwise only learns the context size
+    // once per turn (at turn_finished), so a long reply looks frozen. Seed with
+    // the prompt about to be processed and grow it as the reply streams, pushing
+    // a throttled context_update so the "ctx ~N" figure climbs in real time
+    // (an estimate — turn_finished replaces it with the measured value). Only
+    // the top-level session drives the meter; a subagent must not clobber it.
+    const liveBaseTokens = this.opts.child ? 0 : this.estimateContextNow();
+    let liveLastEmitted = 0;
+    const emitLiveContext = (): void => {
+      if (this.opts.child) return;
+      const live = liveBaseTokens + this.estimateTokens(text.length + thinking.length);
+      // Step-gate so a fast stream emits a handful of updates, not hundreds.
+      if (live - liveLastEmitted < 200) return;
+      liveLastEmitted = live;
+      this.emit({
+        type: "context_update",
+        contextTokens: live,
+        ...(this.autoCompactLimit > 0 && live >= Math.floor(this.autoCompactLimit * 0.9)
+          ? { contextWarn: true }
+          : {}),
+      });
+    };
+
     const stream = this.provider.stream({
       model,
       system: this.buildSystemPrompt(),
@@ -1612,10 +1753,12 @@ export class Session {
         case "text_delta":
           text += event.text;
           if (!this.suppressAssistantText) this.emit({ type: "text_delta", text: event.text });
+          emitLiveContext();
           break;
         case "thinking_delta":
           thinking += event.text;
           if (!this.suppressAssistantText) this.emit({ type: "thinking_delta", text: event.text });
+          emitLiveContext();
           break;
         case "tool_use_start":
           toolCalls.push({ id: event.id, name: event.name, json: "" });

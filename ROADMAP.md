@@ -520,6 +520,47 @@ Running with all permissions bypassed is **intentional** during product developm
 
 ---
 
+## Phase W — Concurrent workspace tabs (designed 2026-07-23)
+
+Goal: run several workspaces at once, each a live "tab" whose session keeps working in
+the background when you switch away — instead of today's single engine that dies on every
+workspace switch. Full design + glossary + the architecture ADR: `docs/CONCURRENT-WORKSPACES.md`.
+
+> **Decision (2026-07-23):** **one engine process per tab; the engine core and the wire
+> protocol do NOT change** — concurrency lives in the main process (an engine pool keyed by
+> `tabId`) and the renderer (per-tab state). The alternative (multiplexing N sessions inside
+> one engine) was rejected: it would rewrite the engine's load-bearing invariants
+> (single `this.session`, single-consumer event queue, `busy` gate) and add a `sessionId` to
+> every frame — high risk, and multi-workspace would still need a pool anyway. **Same-folder
+> rule:** at most one live session per folder (opening an already-open folder focuses its
+> tab), which removes the shared-git race by construction. **Cap:** max 4 live tabs, manual
+> close, no eviction. **Follow mode:** tile 2–4 tabs (inspector hidden in multi-pane).
+
+- [x] **W.1 Main process: engine pool + `tabId` routing** *(engine-lifecycle singletons
+  `engineChild`/`dyingEngine`/stdio buffers → an `EngineTab` pool `Map<tabId, EngineTab>`
+  with per-tab `child`/`dying`/buffers; `startEngine(workspace, model, tabId?)`,
+  `stopEngine(tab)`, `stopAllEngines()`, `writeToEngine(frame, tabId?)` all default to
+  `activeTab()`; every engine stdout/stderr/exit/error event is stamped with its `tab.id`.
+  The engine binary and the wire protocol are untouched. Untagged renderer requests (all of
+  Step 1) hit the single active tab, so single-tab behaviour is identical. `preload.js`
+  deferred to W.2 (the renderer isn't tab-aware yet). Verified: `node --check`, `test:main`
+  green, and a headless boot smoke exits 0 (window + renderer + preload boot clean).)*
+  Remaining for W.2 to drive: the cap (4) and same-folder rule (open → focus existing) are
+  enforced when the renderer starts requesting new tabs.
+
+- [ ] **W.2 Renderer: per-tab state + tab bar (single-view multi-tab)**
+  Files: `app/renderer/modules/*` (lift `streamEl`/`currentSessionId`/`busy`/`contextTokens`/
+  `backgroundJobs`/permission queue/changes/crew/mission state into a per-tab `TabState`;
+  route `handleEngineEvent` by `event.tabId`), new tab-bar UI + `index.html`/`styles.css`.
+  Done when: tabs with live/running/needs-attention badges; click-to-focus swaps the mounted
+  console; a background tab's turn keeps streaming and notifies on completion; `test:ui` green.
+
+- [ ] **W.3 Follow (split) mode: tile 2–4 tabs**
+  Files: renderer layout manager + a "Follow" toggle; hide per-pane inspector in multi-pane.
+  Done when: 2/3/4 live consoles render side-by-side (halves, then quadrants) and update live.
+
+---
+
 ## Phase 10 — Tests (final stage, per agreement)
 
 Only after the features above exist and behave. Work through `FEATURES.md` top to bottom, one feature per PR, ticking its box only when the test would fail if the feature broke. Suggested order (from FEATURES.md itself): `pure` → `fs` → `proc` → `llm` (few, env-gated) → `ui` (grow `--smoke`).
