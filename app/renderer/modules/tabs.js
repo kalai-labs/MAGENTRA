@@ -127,35 +127,50 @@ function chromeIsFocused() {
 }
 
 /**
+ * Run `fn` with `tabId`'s console state live in the globals, then restore the
+ * focused tab's. When `tabId` is the focused, untargeted, or unknown tab, its
+ * state is already live and `fn` runs directly (the dormant single-tab path).
+ * `dispatchTabId` is set for the duration so chrome-updaters know which tab the
+ * work belongs to. Returns true if a swap happened. Shared by engine-event
+ * routing and by echoing a pane's own outgoing message into its tab.
+ */
+function runInTab(tabId, fn) {
+  const prevDispatch = dispatchTabId;
+  if (tabId === null || tabId === focusedTabId || !tabs.has(tabId)) {
+    dispatchTabId = focusedTabId;
+    try {
+      fn();
+    } finally {
+      dispatchTabId = prevDispatch;
+    }
+    return false;
+  }
+  // Multi-tab: temporarily make the target tab's state live, run, then restore.
+  const focused = focusedTabId && tabs.has(focusedTabId) ? tabs.get(focusedTabId) : null;
+  if (focused) captureInto(focused);
+  applyFrom(tabs.get(tabId));
+  dispatchTabId = tabId;
+  try {
+    fn();
+  } finally {
+    captureInto(tabs.get(tabId));
+    dispatchTabId = prevDispatch;
+    if (focused) applyFrom(focused);
+  }
+  return true;
+}
+
+/**
  * The single entry point the IPC bridge calls for every engine event. Routes the
- * event to its tab: if it targets a tab other than the focused one, the focused
- * tab's globals are captured and the target's applied first, so the handler
- * writes into the right tab's DOM/state. With one tab, `id === focusedTabId`
- * always, so this is a straight passthrough to handleEngineEvent.
+ * event to its tab so the handler writes into the right tab's DOM/state. With one
+ * tab this is a straight passthrough to handleEngineEvent.
  */
 function routeEngineEvent(event) {
   const id = event && event.tabId ? event.tabId : focusedTabId;
-  // Single-tab / untargeted event, or the event's tab is already applied: no
-  // swap. This is the dormant path for single-tab usage.
-  if (id === null || id === focusedTabId || !tabs.has(id)) {
-    dispatchTabId = focusedTabId;
-    handleEngineEvent(event);
-    dispatchTabId = null;
-    return;
-  }
-  // Multi-tab: temporarily make the target tab's state live for this event, so
-  // the handler renders into that tab's console, then restore the focused tab.
-  const focused = tabs.get(focusedTabId);
-  if (focused) captureInto(focused);
-  applyFrom(tabs.get(id));
-  dispatchTabId = id;
-  handleEngineEvent(event);
-  captureInto(tabs.get(id));
-  dispatchTabId = null;
-  if (focused) applyFrom(focused);
+  const swapped = runInTab(id, () => handleEngineEvent(event));
   // A background tab's event may have changed its running / needs-attention
   // state — refresh the tab bar so its badge updates without stealing focus.
-  renderSidebarWorkspaces();
+  if (swapped) renderSidebarWorkspaces();
 }
 
 // --- Renderer-side tab management ------------------------------------------
@@ -212,6 +227,17 @@ function buildPaneComposer(tabId) {
     if (!text) return;
     const ts = tabs.get(tabId);
     const isBusy = tabId === focusedTabId ? busy : Boolean(ts && ts.busy);
+    // Echo what was sent into THIS tab's transcript before it goes out — the
+    // same bubble/steer note the single-tab composer renders — so the user can
+    // see their own message (runInTab makes the target tab's stream live for the
+    // append even when it is a background pane). Then route it to that engine.
+    runInTab(tabId, () => {
+      if (isBusy) {
+        if (typeof appendSysNote === "function") appendSysNote(`↳ steering — "${text.replace(/\s+/g, " ").slice(0, 80)}"`);
+      } else if (typeof appendUserMessage === "function") {
+        appendUserMessage(text);
+      }
+    });
     // A pane input is plain chat routed to its own engine (steer a running turn,
     // else a new message). Slash/bang commands + rich controls live in the
     // single-tab composer.
@@ -453,6 +479,17 @@ function onTabOpenedFromMain(tabId, workspace) {
   renderSidebarWorkspaces();
 }
 
+/** Put keyboard focus in a tab's own message input, so selecting a workspace is
+ * enough to start typing (no second click). Skipped while a modal is open so it
+ * never steals focus from, e.g., the connection wizard the pane menu just
+ * opened. */
+function focusPaneInput(tabId) {
+  if (typeof modalTrapEl !== "undefined" && modalTrapEl) return;
+  const ts = tabs.get(tabId);
+  const input = ts && ts.paneEl && ts.paneEl.querySelector(".pane-input");
+  if (input) input.focus({ preventScroll: true });
+}
+
 /** main → tab:focused: focus an already-open tab. */
 function onTabFocusedFromMain(tabId) {
   if (tabId === focusedTabId || !tabs.has(tabId)) return;
@@ -461,6 +498,7 @@ function onTabFocusedFromMain(tabId) {
   focusedTabId = tabId;
   applyLayout();
   repaintChromeFromFocusedTab();
+  focusPaneInput(tabId);
 }
 
 /** main → tab:closed: drop the tab's console. main focuses the next tab (a

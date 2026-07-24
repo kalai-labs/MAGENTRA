@@ -552,9 +552,13 @@ async function loadConnectionCard() {
   }
   if (!info) return;
   savedKeyExists = info.hasKey === true;
-  if (info.baseUrl && !setBaseUrlEl.value) setBaseUrlEl.value = info.baseUrl;
-  if (info.model && setModelDefaultEl && !setModelDefaultEl.value) setModelDefaultEl.value = info.model;
-  if (info.contextWindow && setContextEl && !setContextEl.value) setContextEl.value = info.contextWindow;
+  // Reflect THIS (focused) workspace's saved connection every open — with
+  // several tabs, each is its own workspace, so a "keep what's typed" guard here
+  // would leave the previous tab's endpoint/model showing (the "first-entered"
+  // stale-card bug). An empty value clears the field to its default.
+  setBaseUrlEl.value = info.baseUrl || "";
+  if (setModelDefaultEl) setModelDefaultEl.value = info.model || "";
+  if (setContextEl) setContextEl.value = info.contextWindow || "";
   if (setInsecureEl) setInsecureEl.checked = info.allowInsecureTls === true;
   setApiKeyEl.placeholder = savedKeyExists ? "●●●●●●●● saved — ◉ reveals" : "no key saved yet";
 }
