@@ -120,6 +120,9 @@ function resetWizForm() {
   if (wizNameEl) wizNameEl.value = "";
   if (wizBuildHeadEl) wizBuildHeadEl.textContent = "＋ NEW PROFILE";
   if (wizApiKeyEl) wizApiKeyEl.placeholder = "paste your key — kept in the profile and this workspace";
+  // "Save as new" only makes sense while an existing profile is loaded (fork it);
+  // on a blank build the plain SAVE already creates a new profile.
+  if (wizSaveAsNewBtnEl) wizSaveAsNewBtnEl.hidden = true;
 }
 
 /** Load a saved profile into the build form for editing / re-saving. */
@@ -138,6 +141,9 @@ function loadProfileIntoForm(p) {
     wizApiKeyEl.placeholder = p.hasKey ? "leave empty to keep the saved key" : "no key — add one if the endpoint needs it";
   }
   if (wizBuildHeadEl) wizBuildHeadEl.textContent = `EDIT — ${p.name}`;
+  // Editing a saved profile: offer forking it into a separate profile so tweaks
+  // (e.g. just the model) can be kept without overwriting the original.
+  if (wizSaveAsNewBtnEl) wizSaveAsNewBtnEl.hidden = false;
   wizConnectionChanged();
   if (wizNameEl) wizNameEl.focus();
 }
@@ -294,9 +300,12 @@ async function useProfile(id) {
   }
 }
 
-/** Save the build form as a global profile. Returns the profile id, or null on
- * validation/save failure (status already shown). */
-async function saveWizProfile() {
+/** Save the build form as a global profile. With `opts.asNew`, always create a
+ * separate profile even when one is loaded for editing (fork it) — the key field
+ * left blank still inherits the source profile's stored key. Returns the profile
+ * id, or null on validation/save failure (status already shown). */
+async function saveWizProfile(opts) {
+  const asNew = !!(opts && opts.asNew);
   if (!wizNameEl || !window.magentra.saveProfile) return null;
   const name = wizNameEl.value.trim();
   if (!name) {
@@ -305,7 +314,13 @@ async function saveWizProfile() {
     wizNameEl.focus();
     return null;
   }
-  const payload = { ...wizPayload(), name, ...(wizEditingId ? { id: wizEditingId } : {}) };
+  const payload = {
+    ...wizPayload(),
+    name,
+    // Fork: no id (so a new profile is created), but name the source so main can
+    // carry its stored key over when the key field was left blank.
+    ...(asNew ? (wizEditingId ? { copyKeyFrom: wizEditingId } : {}) : (wizEditingId ? { id: wizEditingId } : {})),
+  };
   let res = null;
   try {
     res = await window.magentra.saveProfile(payload);
@@ -345,12 +360,14 @@ async function deleteProfileRow(id) {
 }
 
 if (wizSaveProfileBtnEl) wizSaveProfileBtnEl.addEventListener("click", () => void saveWizProfile());
+if (wizSaveAsNewBtnEl) wizSaveAsNewBtnEl.addEventListener("click", () => void saveWizProfile({ asNew: true }));
 
 // A fresh preset click means "build something new" — drop any profile being
 // edited so the next save creates a profile instead of overwriting one.
 wizPresetEls.forEach((btn) => btn.addEventListener("click", () => {
   wizEditingId = null;
   if (wizBuildHeadEl) wizBuildHeadEl.textContent = "＋ NEW PROFILE";
+  if (wizSaveAsNewBtnEl) wizSaveAsNewBtnEl.hidden = true;
 }));
 
 if (window.magentra.onSetupRequired && setupWizardEl) {

@@ -605,6 +605,31 @@ body.review-open #topbar { right: var(--review-w); }
 #workTitleText { overflow: hidden; color: var(--text-hi); font-size: 0.86rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 #workTitleMeta { color: var(--text-faint); font-size: max(10px, 0.69rem); }
 #topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+/* A brief, low-key notice that drops from the top navbar (e.g. the workspace
+   cap). A soft amber pill, not an alarm — it fades itself away. */
+#topToast {
+  position: fixed;
+  top: calc(var(--topbar-h) + 6px);
+  left: 50%;
+  z-index: 40;
+  max-width: min(72vw, 440px);
+  padding: 7px 15px;
+  border: 1px solid rgba(var(--amber-rgb), 0.55);
+  border-radius: 999px;
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: max(10px, 0.74rem);
+  text-align: center;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+#topToast:not(.hidden) { animation: topToastIn 150ms ease-out; }
+@keyframes topToastIn {
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+#topToast { transform: translateX(-50%); }
 .topbar-tool { width: 30px; height: 30px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-dim); }
 .topbar-tool:hover, .topbar-tool.active { color: var(--text-hi); background: var(--hover); }
 

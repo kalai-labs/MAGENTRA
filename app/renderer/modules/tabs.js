@@ -289,6 +289,22 @@ function openPaneCtxMenu(e, tabId) {
     }
   }
 
+  // Set connection for THIS workspace only — focus the tab first (so the shared
+  // connection wizard, which acts on the focused workspace, targets it), then
+  // open it in apply mode. Reuses the whole wizard/profile machinery; the
+  // resulting engine restart lands on this tab's workspace, not the others'.
+  if (typeof openConnectionsWizard === "function") {
+    const conn = document.createElement("button");
+    conn.className = "ctx-item";
+    conn.textContent = "SET CONNECTION";
+    conn.addEventListener("click", () => {
+      if (tabId !== focusedTabId && window.magentra.focusTab) window.magentra.focusTab(tabId);
+      closeCtxMenu();
+      void openConnectionsWizard("apply");
+    });
+    menuEl.appendChild(conn);
+  }
+
   // Close this tab — also available on the sidebar row's ✕; here too for reach.
   if (window.magentra.closeTab) {
     const close = document.createElement("button");
@@ -471,6 +487,7 @@ if (window.magentra && window.magentra.onTabOpened) {
   window.magentra.onTabFocused((d) => onTabFocusedFromMain(d.tabId));
   window.magentra.onTabClosed((d) => onTabClosedFromMain(d.tabId, d.focus));
   window.magentra.onTabCap((d) => {
-    if (typeof appendSysNote === "function") appendSysNote(`Close a tab first — up to ${d.max} workspaces can run at once.`);
+    // A soft top-navbar notice, not a system note dropped into the chat.
+    if (typeof showTopToast === "function") showTopToast(`Close a tab first — up to ${d.max} workspaces can run at once.`);
   });
 }

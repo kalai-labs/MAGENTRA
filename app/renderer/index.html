@@ -99,6 +99,7 @@
       <span id="workTitleMeta">Magentra agent workbench</span>
     </div>
     <div id="modeChips" title="Skills"></div>
+    <div id="topToast" class="hidden" role="status" aria-live="polite"></div>
     <div id="topbar-right">
       <div id="agentMeter" class="hidden" title="Live activity">
         <span class="meter-glyph">⬢</span>
@@ -745,6 +746,7 @@
         <span id="wizStatus"></span>
         <button id="wizTestBtn">TEST</button>
         <button id="wizSaveProfileBtn">SAVE PROFILE</button>
+        <button id="wizSaveAsNewBtn" hidden>SAVE AS NEW</button>
         <button id="wizStartBtn">SAVE &amp; CONNECT ▸</button>
       </div>
       <p class="wiz-note" id="wizNote">Profiles are saved to <code>~/.magentra/profiles.json</code> (owner-only, this machine). Connecting also writes the key to the workspace <code>.env</code>.</p>

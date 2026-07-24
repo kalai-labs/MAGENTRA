@@ -6,26 +6,53 @@
 // Utility
 // ---------------------------------------------------------------------------
 
-function isNearBottom() {
-  return transcriptEl.scrollHeight - transcriptEl.scrollTop - transcriptEl.clientHeight < 40;
+// The element that actually scrolls for the tab whose stream is currently live
+// (streamEl): in the tiled multi-pane layout each pane's own .stream scrolls
+// itself, so THAT is the scroller; in the single console view the shared
+// #transcript scrolls its child stream. A detached stream (a background tab in
+// single view) has no visible scroller — return null so we never scroll the
+// focused tab's view on another tab's event.
+function scrollContainer() {
+  if (!streamEl) return null;
+  const parent = streamEl.parentNode;
+  if (parent && parent.classList && parent.classList.contains("console-pane")) return streamEl;
+  if (parent === transcriptEl) return transcriptEl;
+  return null;
 }
 
-function scrollToBottom() {
-  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+function isNearBottom(el) {
+  const c = el || scrollContainer();
+  if (!c) return true; // detached: treat as pinned so it stays at the live edge once mounted
+  return c.scrollHeight - c.scrollTop - c.clientHeight < 40;
 }
 
+function scrollToBottom(el) {
+  const c = el || scrollContainer();
+  if (!c) return;
+  c.scrollTop = c.scrollHeight;
+}
+
+// Auto-follow the live edge, but only when the user was already there — scrolling
+// up mid-answer to read back is preserved (we don't yank them down).
 function withAutoScroll(mutate) {
-  const wasNear = isNearBottom();
+  const c = scrollContainer();
+  const wasNear = isNearBottom(c);
   mutate();
-  if (wasNear) scrollToBottom();
+  if (wasNear) scrollToBottom(c);
   syncScrollPill();
 }
 
 // "↓ latest" escape pill: content is streaming below the fold whenever the
-// user has scrolled up — one click returns to the live edge.
+// user has scrolled up — one click returns to the live edge. It belongs to the
+// single console view; the tiled layout gives each pane its own scroller, so the
+// one shared pill is hidden there.
 function syncScrollPill() {
   if (!scrollPillEl) return;
-  scrollPillEl.classList.toggle("hidden", isNearBottom());
+  if (document.body.classList.contains("tiled")) {
+    scrollPillEl.classList.add("hidden");
+    return;
+  }
+  scrollPillEl.classList.toggle("hidden", isNearBottom(transcriptEl));
 }
 
 if (typeof scrollPillEl !== "undefined" && scrollPillEl) {
@@ -34,6 +61,21 @@ if (typeof scrollPillEl !== "undefined" && scrollPillEl) {
     syncScrollPill();
   });
   transcriptEl.addEventListener("scroll", syncScrollPill);
+}
+
+// A brief notice dropped from the top navbar — for soft, transient warnings
+// (e.g. the workspace cap) that should NOT land in a conversation as a system
+// note. Re-showing restarts the timer; it fades itself after `ms`.
+let topToastTimer = null;
+function showTopToast(message, ms = 3200) {
+  if (!topToastEl) return;
+  topToastEl.textContent = message;
+  topToastEl.classList.remove("hidden");
+  if (topToastTimer) clearTimeout(topToastTimer);
+  topToastTimer = setTimeout(() => {
+    topToastEl.classList.add("hidden");
+    topToastTimer = null;
+  }, ms);
 }
 
 function timeString() {

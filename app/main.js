@@ -1416,10 +1416,15 @@ ipcMain.handle("profiles:save", (_evt, payload) => {
   if (!name) return { ok: false, error: "profile name required" };
 
   // Editing a profile without re-typing its key keeps the stored one — mirrors
-  // the workspace card's "empty field means keep the saved key".
+  // the workspace card's "empty field means keep the saved key". Forking a
+  // profile ("save as new") names the source via copyKeyFrom so the new profile
+  // inherits that key the same way, since the renderer never holds it.
   let connection = payload;
-  if (payload.id && (!payload.apiKey || !String(payload.apiKey).trim())) {
-    const existing = findProfile(payload.id);
+  const keySourceId = typeof payload.id === "string" && payload.id
+    ? payload.id
+    : (typeof payload.copyKeyFrom === "string" ? payload.copyKeyFrom : "");
+  if (keySourceId && (!payload.apiKey || !String(payload.apiKey).trim())) {
+    const existing = findProfile(keySourceId);
     if (existing && typeof existing.apiKey === "string") connection = { ...payload, apiKey: existing.apiKey };
   }
   const validated = validateCredentialPayload(connection);
