@@ -59,15 +59,7 @@ const SKILL_ID_RE = /^[a-z][a-z0-9_-]*$/;
  * "Recommended" and offer a one-click enable of the whole set. Advisory only —
  * the engine treats them exactly like any other optional skill.
  */
-export const RECOMMENDED_SKILL_IDS: readonly string[] = [
-  "headlights",
-  "prover",
-  "deepmodule",
-  "surgeon",
-  "sentinel",
-  "obvious",
-  "lexicon",
-];
+export const RECOMMENDED_SKILL_IDS: readonly string[] = [];
 
 // Startup invariant: every recommended id must name a real builtin — a typo
 // here would silently un-badge a discipline. Builtins are code, so fail loudly.

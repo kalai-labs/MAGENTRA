@@ -410,6 +410,17 @@ function applyLayout() {
   if (focusedTabId && tabs.has(focusedTabId)) captureInto(tabs.get(focusedTabId));
   const panes = tabStreamPanes();
   const tiled = panes.length >= 2;
+  // Detaching a pane from the DOM discards its subtree's layout, resetting the
+  // inner stream's scrollTop to 0 on re-attach. Snapshot each pane stream's
+  // position (and whether it was pinned to the live edge) BEFORE the detach so
+  // the re-attach below doesn't jerk every pane — the out-of-focus ones too —
+  // back to the top on each focus change.
+  const scrollSnap = new Map();
+  for (const { id, ts } of panes) {
+    if (ts.streamEl && ts.streamEl.isConnected) {
+      scrollSnap.set(id, { top: ts.streamEl.scrollTop, atBottom: isNearBottom(ts.streamEl) });
+    }
+  }
   document.body.classList.toggle("tiled", tiled);
   // Detach every pane/stream first so the placement below is authoritative.
   for (const ts of tabs.values()) {
@@ -426,6 +437,9 @@ function applyLayout() {
       if (streamEl.parentNode && streamEl.parentNode !== transcriptEl) streamEl.parentNode.removeChild(streamEl);
       if (streamEl.parentNode !== transcriptEl) transcriptEl.appendChild(streamEl);
     }
+    // The scroller here is #transcript; keep it at the edge if the stream was.
+    const snap = focusedTabId && scrollSnap.get(focusedTabId);
+    if (snap && snap.atBottom) transcriptEl.scrollTop = transcriptEl.scrollHeight;
     return;
   }
   transcriptEl.classList.add("console-grid");
@@ -439,6 +453,15 @@ function applyLayout() {
     if (id === focusedTabId) pane.classList.add("focused");
     if (id === bigId) pane.classList.add("pane-big");
     transcriptEl.appendChild(pane);
+  }
+  // Restore each pane's scroll now that they are re-attached (reading
+  // scrollHeight forces the reflow that makes the assignment stick). A pane that
+  // was following the live edge stays pinned; the rest keep their exact spot.
+  for (const { id, ts } of panes) {
+    const snap = scrollSnap.get(id);
+    if (snap && ts.streamEl) {
+      ts.streamEl.scrollTop = snap.atBottom ? ts.streamEl.scrollHeight : snap.top;
+    }
   }
 }
 

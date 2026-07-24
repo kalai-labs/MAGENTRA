@@ -878,8 +878,6 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .overdrive-points { margin: 0 0 10px; padding-left: 18px; color: var(--text); font-size: max(10px, 0.77rem); line-height: 1.55; }
 .overdrive-points li { margin-bottom: 3px; }
 .overdrive-danger { margin: 0 0 12px; padding: 8px 10px; border-left: 2px solid var(--od-accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--od-accent-soft); color: var(--text-hi); font-size: max(10px, 0.75rem); line-height: 1.45; }
-.overdrive-skills { margin-bottom: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
-.overdrive-skills-title { margin-bottom: 8px; color: var(--text-dim); font-size: max(10px, 0.68rem); font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
 
 /* OVERDRIVE engage cinematic — full-window veil sweep + accent pulse + word,
    dissolving after ~1.8s. data-motion="calm" and prefers-reduced-motion collapse

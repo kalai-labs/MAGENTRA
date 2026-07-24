@@ -883,11 +883,10 @@ async function run() {
       { id: "reshape", name: "Reshape", description: "Deliberate restructuring", why: "Enable for large refactors", active: false, recommended: false, conflicts: [] },
       { id: "prover", name: "Prover", description: "Prove every change", why: "Enable when correctness matters", active: false, recommended: true, conflicts: [] },
     ] });
-    // Hero chip toggles a skill through the shared set_modes path (reshape is a hero).
-    await evaluate(`document.querySelector('.mode-chip.hero').click()`);
-    await pause();
-    assert.ok(modes.some((active) => active.includes("reshape")));
-    // The summary chip opens the Skills view; both cards render with badges + why.
+    // No hero quick-toggle chips ship by default now (the built-in skills were
+    // retired for the Addon redesign) — only the summary chip renders.
+    assert.equal(await evaluate(`document.querySelectorAll('.mode-chip.hero').length`), 0);
+    // The summary chip opens the Skills view; both fixture cards render with badges + why.
     await evaluate(`document.querySelector('#skillsSummary').click()`);
     await pause();
     let state = await evaluate(`(() => ({

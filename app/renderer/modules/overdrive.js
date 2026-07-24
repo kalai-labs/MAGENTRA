@@ -3,10 +3,6 @@
 // Loaded as a classic script in index.html — all renderer modules share one
 // global scope, in the order the page lists them.
 
-// The two disciplines the dialog recommends for unattended runs. Kept here so
-// the checkbox markup and the engage handler agree on one source of truth.
-const OVERDRIVE_SKILL_IDS = ["prover", "sentinel"];
-
 // ---------------------------------------------------------------------------
 // Shell identity — button + document attribute reflect the live state.
 // ---------------------------------------------------------------------------
@@ -99,20 +95,8 @@ function closeOverdriveDialog() {
   closeModalA11y();
 }
 
-/** ENGAGE from the dialog: activate whichever recommended skills are still
- * checked (same set_modes frame the Skills panel uses), remember the intro was
- * seen, then engage. */
+/** ENGAGE from the dialog: remember the intro was seen, then engage. */
 function confirmOverdriveDialog() {
-  const checkedIds = OVERDRIVE_SKILL_IDS.filter((id) => {
-    const box = overdriveDialogEl.querySelector(`input[data-skill="${id}"]`);
-    return box && box.checked;
-  });
-  if (checkedIds.length > 0) {
-    pendingModesNote = true;
-    window.magentra.setModes([...new Set([...activeSkillIds(), ...checkedIds])]);
-    for (const m of modes) if (checkedIds.includes(m.id)) m.active = true;
-    renderSkillsSurfaces();
-  }
   uiSettings.overdriveIntroSeen = true;
   saveUiSettings();
   closeOverdriveDialog();

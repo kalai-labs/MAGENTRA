@@ -435,10 +435,11 @@ let modes = []; // discipline skills, from modes_updated
 let modesReceived = false; // has the first modes_updated arrived (vs. still session-start)
 let pendingModesNote = false; // set on a set_modes click; consumed by the next modes_updated
 
-// grill was removed as a skill (it becomes the /grill-me chat feature), so it is
-// no longer a hero quick-toggle chip.
-const HERO_MODE_IDS = ["reshape"];
-const HERO_MODE_LABELS = { reshape: "⟲ reshape" };
+// Hero quick-toggle chips promote a discipline to a one-click chip in the top
+// bar. Empty now — the built-in skills were retired for the Addon redesign; give
+// an Addon a hero chip by adding its id here with a label in HERO_MODE_LABELS.
+const HERO_MODE_IDS = [];
+const HERO_MODE_LABELS = {};
 
 // slash-command palette state. The engine ships its real command registry in
 // session_started (onSessionStarted adopts it), so the palette can never
