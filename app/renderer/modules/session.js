@@ -251,3 +251,17 @@ if (openLogsBtnEl && window.magentra.openLogs) {
     window.magentra.openLogs().catch(() => {});
   });
 }
+
+// Source-code link/button → open the repo in the user's real browser. In-app
+// navigation is blocked (will-navigate), so intercept the click and hand the URL
+// to the shell. The URL lives once, on the link's href.
+if (window.magentra.openExternal && (sourceCodeLinkEl || sourceCodeBtnEl)) {
+  const repoUrl =
+    (sourceCodeLinkEl && sourceCodeLinkEl.getAttribute("href")) || "https://github.com/kalai-labs/MAGENTRA";
+  const openRepo = (e) => {
+    if (e) e.preventDefault();
+    window.magentra.openExternal(repoUrl);
+  };
+  if (sourceCodeLinkEl) sourceCodeLinkEl.addEventListener("click", openRepo);
+  if (sourceCodeBtnEl) sourceCodeBtnEl.addEventListener("click", openRepo);
+}

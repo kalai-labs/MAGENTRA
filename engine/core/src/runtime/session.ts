@@ -140,7 +140,7 @@ You own this query end to end: plan, act, verify, deliver — without stopping f
 - Do not stop early: the turn ends only when every part of the query is handled and your self-check passes.`;
 
 const SELF_VERIFY_TEXT =
-  "<system-reminder>Internal self-check — this is NOT a new user message and the user is NOT waiting for another reply. Your entire output for this step must be either the single word DONE or continued work. Nothing else. Do not greet, do not re-answer, do not summarize, do not introduce yourself.\n\nDecide silently: is every part of the user's original query already fully handled (a conversational message with nothing to do counts as handled), and did this turn leave nothing unnecessary behind (scratch files, duplicated helpers, abandoned attempts)?\n- If YES → output exactly: DONE\n- If NO → do the remaining work now (call tools / write the fix / clean up). Whatever you write in this case IS shown to the user; the DONE token never is.\n\nJudge only against the query itself — never invent verification rituals (builds, tests) it did not ask for.</system-reminder>";
+  "<system-reminder>Internal self-check — this is NOT a new user message and the user is NOT waiting for another reply. Your entire output for this step must be either the single word DONE or continued work. Nothing else. Do not greet, do not re-answer, do not summarize, do not introduce yourself.\n\nDecide silently: is every part of the user's original query already fully handled (a conversational message with nothing to do counts as handled), and did this turn leave nothing unnecessary behind (scratch files, duplicated helpers, abandoned attempts)?\n- If YES → output exactly this literal ASCII word and nothing else, never translated or localized even when the conversation is in another language: DONE\n- If NO → do the remaining work now (call tools / write the fix / clean up). Whatever you write in this case IS shown to the user; the DONE token never is.\n\nJudge only against the query itself — never invent verification rituals (builds, tests) it did not ask for.</system-reminder>";
 
 /**
  * Whether a self-verify round answered with the "nothing left to do" sentinel.
@@ -152,6 +152,12 @@ const SELF_VERIFY_TEXT =
  * nothing but DONE survives stripping markdown emphasis and punctuation — but
  * never when real prose rides along, since that prose is genuine continued work
  * that must reach the user.
+ *
+ * Safety net for weaker models that localize the sentinel despite the instruction
+ * (`Tamamlandı.`, `Terminé.`, `完了`, …): a reply that reduces to one short word is
+ * a translated "done", never genuine continued work. The caller only reaches here
+ * with zero tool calls, and real continued work is always tool calls or a real
+ * sentence — so a lone word can be safely swallowed in any language.
  */
 export function isSelfVerifyDone(text: string): boolean {
   const tokens = text
@@ -160,7 +166,10 @@ export function isSelfVerifyDone(text: string): boolean {
     .trim()
     .split(/\s+/)
     .filter(Boolean);
-  return tokens.length > 0 && tokens.every((t) => /^done$/i.test(t));
+  if (tokens.length === 0) return false;
+  if (tokens.every((t) => /^done$/i.test(t))) return true; // literal DONE, decorated or repeated
+  const [only] = tokens;
+  return tokens.length === 1 && only !== undefined && /^[\p{L}\p{M}]{1,24}$/u.test(only); // a lone word = localized "done"
 }
 
 // ── Clarify pre-layer ───────────────────────────────────────────────────────
@@ -1535,8 +1544,11 @@ export class Session {
           // (completeness + economy) before the break is allowed. Runs after
           // the signal rungs above — a real failure or open task list always
           // outranks a politeness check — and before the wrap-up rung, which
-          // it subsumes.
-          if (stopReason === "end_turn" && !selfVerifyFired) {
+          // it subsumes. A purely conversational turn (no tools all turn, so
+          // nothing was built and nothing can be left behind) has nothing to
+          // verify: skip the rung so a greeting ends instantly, with no extra
+          // round-trip and no risk of a leaked sentinel.
+          if (stopReason === "end_turn" && !selfVerifyFired && totalToolCallsThisTurn > 0) {
             selfVerifyFired = true;
             verifyBuffered = true;
             this.suppressAssistantText = true; // the verify answer streams silently

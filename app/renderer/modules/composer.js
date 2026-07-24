@@ -546,6 +546,15 @@ window.addEventListener("keydown", (e) => {
     resolvePermission("deny");
     return;
   }
+  // Tiled: Esc denies the focused screen's own in-pane approval.
+  if (
+    document.body.classList.contains("tiled") &&
+    typeof activePermission !== "undefined" && activePermission &&
+    typeof resolvePanePermission === "function"
+  ) {
+    resolvePanePermission(focusedTabId, "deny");
+    return;
+  }
   // A non-console stage view (Settings, Skills, Changes, Crew, Sessions,
   // Missions) is a full-surface "popup tab" — Esc returns to the console, the
   // same as its ✕. Sits below the modals above and above the stop-work
@@ -651,6 +660,27 @@ window.addEventListener("keydown", (e) => {
       return;
     }
     return;
+  }
+  // Tiled layout: the focused screen answers its own in-pane approval with the
+  // same single keys (the shared modal is not used there). activePermission is
+  // the focused tab's, so this only ever acts on the screen the user is on.
+  if (
+    document.body.classList.contains("tiled") &&
+    deleteModalEl.classList.contains("hidden") &&
+    typeof activePermission !== "undefined" && activePermission &&
+    typeof resolvePanePermission === "function" && !isMod(e)
+  ) {
+    const t = e.target;
+    if (t && t.classList && t.classList.contains("pane-approval-note")) {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); resolvePanePermission(focusedTabId, "allow_once"); }
+      return;
+    }
+    if (!isTypingTarget(t)) {
+      const k = e.key.toLowerCase();
+      if (k === "y") { e.preventDefault(); resolvePanePermission(focusedTabId, "allow_once"); return; }
+      if (k === "a") { e.preventDefault(); resolvePanePermission(focusedTabId, "allow_always"); return; }
+      if (k === "n" || k === "d") { e.preventDefault(); resolvePanePermission(focusedTabId, "deny"); return; }
+    }
   }
   if (isMod(e) && !e.shiftKey && !e.altKey) {
     const k = e.key.toLowerCase();

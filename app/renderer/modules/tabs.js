@@ -63,6 +63,7 @@ const TAB_ACCESSORS = [
   // mission rail
   ["taskStatusById", () => taskStatusById, (v) => { taskStatusById = v; }, () => new Map()],
   ["taskTimes", () => taskTimes, (v) => { taskTimes = v; }, () => new Map()],
+  ["currentTasks", () => currentTasks, (v) => { currentTasks = v; }, () => []],
   ["taskTickerId", () => taskTickerId, (v) => { taskTickerId = v; }, () => null],
   ["labMissions", () => labMissions, (v) => { labMissions = v; }, () => []],
   ["labWarnings", () => labWarnings, (v) => { labWarnings = v; }, () => []],
@@ -273,8 +274,20 @@ function paneFor(id, ts) {
     pane.dataset.tab = id;
     const head = document.createElement("div");
     head.className = "console-pane-head";
-    head.textContent = pathLeaf(ts.workspace || "");
     head.title = ts.workspace || "";
+    const nameEl = document.createElement("span");
+    nameEl.className = "console-pane-name";
+    nameEl.textContent = pathLeaf(ts.workspace || "");
+    head.appendChild(nameEl);
+    // Per-screen OVERDRIVE toggle: engages the fully-autonomous stance for THIS
+    // workspace only (its own engine), scoped to this pane — never full-screen.
+    const odBtn = document.createElement("button");
+    odBtn.className = "pane-od-btn";
+    odBtn.textContent = "⚡";
+    odBtn.setAttribute("aria-pressed", "false");
+    odBtn.title = "OVERDRIVE — fully autonomous for this workspace";
+    odBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleTabOverdrive(id); });
+    head.appendChild(odBtn);
     head.addEventListener("contextmenu", (e) => openPaneCtxMenu(e, id));
     pane.appendChild(head);
     pane.appendChild(ts.streamEl);
@@ -283,10 +296,187 @@ function paneFor(id, ts) {
       if (id !== focusedTabId && window.magentra.focusTab) window.magentra.focusTab(id);
     });
     ts.paneEl = pane;
+    paintTabBubbles(ts); // restore this tab's task bubbles into the fresh header
+    syncTabOverdrive(ts); // restore this tab's overdrive state into the fresh header
   } else if (ts.streamEl && ts.streamEl.parentNode !== ts.paneEl) {
     ts.paneEl.insertBefore(ts.streamEl, ts.paneEl.querySelector(".pane-composer"));
   }
   return ts.paneEl;
+}
+
+// --- Per-tab task bubbles in the pane header -------------------------------
+// Each tab's own task progress, mirrored as a row of dots in its pane header so
+// every workspace shows its status at a glance (the shared inspector can only
+// reflect the focused tab). One dot per task: hollow = pending, accent-tinted =
+// in progress, filled = completed. No tasks → no dots. Statuses are cached on the
+// TabState so a pane rebuilt by applyLayout keeps them.
+
+/** Record a tab's task statuses (from a task_list_updated it owns) and repaint
+ * its header dots. Safe for any tab, focused or background, and a no-op for an
+ * unknown tab or one with no pane yet. */
+function setTabTaskBubbles(tabId, tasks) {
+  const ts = tabs.get(tabId);
+  if (!ts) return;
+  ts.taskBubbles = (tasks || []).map((t) => t.status);
+  paintTabBubbles(ts);
+}
+
+/** Draw the cached bubbles for a tab into its pane header (if mounted). */
+function paintTabBubbles(ts) {
+  if (!ts || !ts.paneEl) return;
+  const head = ts.paneEl.querySelector(".console-pane-head");
+  if (!head) return;
+  const statuses = ts.taskBubbles || [];
+  let box = head.querySelector(".pane-task-bubbles");
+  if (statuses.length === 0) {
+    if (box) box.remove();
+    return;
+  }
+  if (!box) {
+    box = document.createElement("span");
+    box.className = "pane-task-bubbles";
+    // Sit between the name and the overdrive button (name … bubbles ⚡).
+    head.insertBefore(box, head.querySelector(".pane-od-btn"));
+  }
+  box.textContent = "";
+  const done = statuses.filter((s) => s === "completed").length;
+  box.title = `${done}/${statuses.length} tasks done`;
+  for (const s of statuses) {
+    const dot = document.createElement("span");
+    dot.className = "pane-bubble " + (s === "completed" || s === "in_progress" ? s : "pending");
+    box.appendChild(dot);
+  }
+}
+
+// --- Per-tab approval (permission) prompts ---------------------------------
+// In the tiled layout each screen answers its OWN approval, so a background
+// tab's request is actionable without a full-app modal that only routes to the
+// focused engine. The decision is sent to that tab's engine (permission.tabId)
+// and its queue advances via runInTab so it stays this tab's business.
+
+function resolvePanePermission(tabId, decision) {
+  const ts = tabs.get(tabId);
+  const noteEl = ts && ts.paneEl && ts.paneEl.querySelector(".pane-approval-note");
+  const note = noteEl ? noteEl.value.trim() : "";
+  runInTab(tabId, () => {
+    if (!activePermission) return;
+    // "Always" only when the engine offered a durable grant, else it's a plain allow.
+    let d = decision;
+    if (d === "allow_always" && !(typeof activePermission.subject === "string" && activePermission.subject !== "")) d = "allow_once";
+    if (typeof sendPermissionDecision === "function") sendPermissionDecision(activePermission, d, note);
+    activePermission = null;
+    if (typeof showNextPermission === "function") showNextPermission(); // advances THIS tab's queue + repaints its pane
+  });
+}
+
+/** Build a tab's in-pane approval prompt once; reused for every request. */
+function buildPaneApproval(tabId) {
+  const box = document.createElement("div");
+  box.className = "pane-approval hidden";
+  const title = document.createElement("div");
+  title.className = "pane-approval-title";
+  title.textContent = "⚠ APPROVAL REQUIRED";
+  const subject = document.createElement("pre");
+  subject.className = "pane-approval-subject";
+  const note = document.createElement("textarea");
+  note.className = "pane-approval-note";
+  note.rows = 1;
+  note.spellcheck = false;
+  note.placeholder = "Optional note…";
+  const actions = document.createElement("div");
+  actions.className = "pane-approval-actions";
+  const deny = document.createElement("button");
+  deny.className = "pa-deny";
+  deny.textContent = "DENY (N)";
+  deny.addEventListener("click", () => resolvePanePermission(tabId, "deny"));
+  const always = document.createElement("button");
+  always.className = "pa-always";
+  always.textContent = "ALWAYS (A)";
+  always.addEventListener("click", () => resolvePanePermission(tabId, "allow_always"));
+  const allow = document.createElement("button");
+  allow.className = "pa-allow";
+  allow.textContent = "ALLOW (Y)";
+  allow.addEventListener("click", () => resolvePanePermission(tabId, "allow_once"));
+  actions.append(deny, always, allow);
+  box.append(title, subject, note, actions);
+  return box;
+}
+
+/** Show a tab's approval inside its pane. Focuses ALLOW for the focused pane so
+ * Y/A/N work at once; a background pane's approval waits for a click/focus. */
+function showPaneApproval(tabId, permission) {
+  const ts = tabs.get(tabId);
+  if (!ts || !ts.paneEl) return;
+  let box = ts.paneEl.querySelector(".pane-approval");
+  if (!box) {
+    box = buildPaneApproval(tabId);
+    ts.paneEl.appendChild(box);
+  }
+  const input = permission.input;
+  const subject =
+    (input && typeof input === "object" && input.command) ||
+    permission.description ||
+    (typeof safeStringify === "function" ? safeStringify(input) : String(input));
+  box.querySelector(".pane-approval-subject").textContent = subject;
+  const grantable = typeof permission.subject === "string" && permission.subject !== "";
+  const alwaysBtn = box.querySelector(".pa-always");
+  if (alwaysBtn) alwaysBtn.classList.toggle("hidden", !grantable);
+  const noteEl = box.querySelector(".pane-approval-note");
+  if (noteEl) noteEl.value = "";
+  box.classList.remove("hidden");
+  ts.paneEl.classList.add("needs-approval");
+  if (tabId === focusedTabId) {
+    const allowBtn = box.querySelector(".pa-allow");
+    if (allowBtn) allowBtn.focus({ preventScroll: true });
+  }
+}
+
+function hidePaneApproval(tabId) {
+  const ts = tabs.get(tabId);
+  if (!ts || !ts.paneEl) return;
+  const box = ts.paneEl.querySelector(".pane-approval");
+  if (box) box.classList.add("hidden");
+  ts.paneEl.classList.remove("needs-approval");
+}
+
+// --- Per-tab OVERDRIVE -----------------------------------------------------
+// OVERDRIVE (the fully-autonomous permission stance) is per-engine, so with
+// tiled screens each workspace owns its own. The pane button toggles ITS tab's
+// engine and the effect is scoped to that pane (.overdrive) — the full-screen
+// cinematic + document shell stay with the single-console shared button.
+
+/** Reflect a tab's overdrive on its pane (glow + button state). */
+function syncTabOverdrive(ts) {
+  if (!ts || !ts.paneEl) return;
+  const on = ts.overdrive === true;
+  ts.paneEl.classList.toggle("overdrive", on);
+  const btn = ts.paneEl.querySelector(".pane-od-btn");
+  if (btn) {
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.title = on
+      ? "OVERDRIVE on for this workspace — click to disengage"
+      : "OVERDRIVE — fully autonomous for this workspace";
+  }
+}
+
+/** Set a tab's overdrive (optionally telling its engine) and repaint its pane. */
+function setTabOverdrive(tabId, enabled, sendToEngine) {
+  const ts = tabs.get(tabId);
+  if (!ts) return;
+  ts.overdrive = enabled === true;
+  if (sendToEngine && window.magentra && window.magentra.send) {
+    window.magentra.send({ type: "set_overdrive", enabled: ts.overdrive }, tabId);
+  }
+  syncTabOverdrive(ts);
+}
+
+/** Pane button click: flip this workspace's overdrive and tell its engine. No
+ * cinematic — the per-pane effect is the glow, not a full-screen sweep. */
+function toggleTabOverdrive(tabId) {
+  const ts = tabs.get(tabId);
+  if (!ts) return;
+  setTabOverdrive(tabId, !(ts.overdrive === true), true);
 }
 
 /** Right-click a pane's header: move it to the big (bottom) slot in the 3-pane
@@ -479,6 +669,21 @@ function repaintChromeFromFocusedTab() {
   renderSidebarSessions();
   renderSidebarMissions();
   renderMissions();
+  // The shared task rail follows focus: repaint it from THIS tab's own task list
+  // (a background tab's update no longer clobbers it — see onTaskListUpdated).
+  if (typeof renderTaskRail === "function") renderTaskRail(currentTasks);
+  // Present this tab's pending approval in the right place for the current layout
+  // (shared modal when single, in-pane when tiled) — matters when a close drops
+  // the tiled layout back to one console with an approval still open.
+  if (typeof renderPermissionUi === "function") renderPermissionUi();
+  // Keep the shared overdrive chrome (button + document shell) matching the
+  // focused tab's own stance, so an untile back to one console isn't stale.
+  const focTab = tabs.get(focusedTabId);
+  if (focTab && typeof uiSettings !== "undefined") {
+    uiSettings.overdrive = focTab.overdrive === true;
+    if (typeof lastSentSafety !== "undefined") lastSentSafety.overdrive = uiSettings.overdrive;
+    if (typeof applyOverdriveShell === "function") applyOverdriveShell();
+  }
   renderSessions();
   syncWorkbenchContext();
 }
@@ -509,7 +714,12 @@ function onTabOpenedFromMain(tabId, workspace) {
 function focusPaneInput(tabId) {
   if (typeof modalTrapEl !== "undefined" && modalTrapEl) return;
   const ts = tabs.get(tabId);
-  const input = ts && ts.paneEl && ts.paneEl.querySelector(".pane-input");
+  if (!ts || !ts.paneEl) return;
+  // A pending approval takes precedence: focus its ALLOW so single-key Y/A/N
+  // answer it (see composer keydown). Otherwise land in the message input.
+  const approve = ts.paneEl.querySelector(".pane-approval:not(.hidden) .pa-allow");
+  if (approve) { approve.focus({ preventScroll: true }); return; }
+  const input = ts.paneEl.querySelector(".pane-input");
   if (input) input.focus({ preventScroll: true });
 }
 

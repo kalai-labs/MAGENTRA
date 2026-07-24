@@ -167,6 +167,8 @@ const setTestBtnEl = document.getElementById("setTestBtn");
 const setSaveBtnEl = document.getElementById("setSaveBtn");
 const setVersionEl = document.getElementById("setVersion");
 const openLogsBtnEl = document.getElementById("openLogsBtn");
+const sourceCodeLinkEl = document.getElementById("sourceCodeLink");
+const sourceCodeBtnEl = document.getElementById("sourceCodeBtn");
 
 // first-run setup wizard
 const setupWizardEl = document.getElementById("setupWizard");

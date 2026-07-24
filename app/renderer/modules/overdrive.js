@@ -125,6 +125,15 @@ function onOverdriveToggleClick() {
  * session resume). Adopt it without echoing back and without the cinematic. */
 function onOverdriveChanged(event) {
   const enabled = Boolean(event && event.enabled);
+  // Reflect on the pane that owns this event — overdrive is per-engine, so each
+  // tiled screen keeps its own state and glow.
+  const tabId =
+    (typeof dispatchTabId !== "undefined" && dispatchTabId) ||
+    (typeof focusedTabId !== "undefined" ? focusedTabId : null);
+  if (typeof setTabOverdrive === "function" && tabId) setTabOverdrive(tabId, enabled, false);
+  // The shared button, document shell, and persisted default track the FOCUSED
+  // tab only — a background tab flipping its own stance must not flip the app.
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
   uiSettings.overdrive = enabled;
   lastSentSafety.overdrive = enabled; // engine is already there; don't re-send
   saveUiSettings();

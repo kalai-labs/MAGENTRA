@@ -1479,6 +1479,44 @@ function savedWorkspaceKey() {
   return name ? keys[name] : "";
 }
 
+/** The model a workspace has saved in its own .magentra/settings.json, or "" if
+ * none. Each tab is a distinct workspace/connection, so opening one must honour
+ * ITS model — not whatever the currently-focused tab happens to be running. */
+function savedWorkspaceModel(workspace) {
+  if (!workspace) return "";
+  try {
+    const settings = JSON.parse(fs.readFileSync(path.join(workspace, ".magentra", "settings.json"), "utf8"));
+    if (settings && typeof settings.model === "string" && settings.model.trim()) return settings.model.trim();
+  } catch {
+    // no/unparseable settings.json — treat as no saved model
+  }
+  return "";
+}
+
+/** Persist a workspace's chosen model into its .magentra/settings.json so the
+ * choice survives closing and reopening the tab. The app-global currentConfig
+ * .model stays only as the fallback for a workspace that never picked one.
+ * Best-effort — a failed write must never break the model switch itself. */
+function persistWorkspaceModel(workspace, model) {
+  if (!workspace || typeof model !== "string" || !model.trim()) return;
+  try {
+    const dir = path.join(workspace, ".magentra");
+    fs.mkdirSync(dir, { recursive: true });
+    const settingsPath = path.join(dir, "settings.json");
+    let settings = {};
+    try {
+      const parsed = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) settings = parsed;
+    } catch {
+      settings = {};
+    }
+    settings.model = model.trim();
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
+  } catch {
+    // best-effort — never fail a model switch over a settings write
+  }
+}
+
 // What the Settings → Connection card shows on open: the saved endpoint and
 // whether a key exists (never the key itself — that goes through revealKey).
 ipcMain.handle("connection:info", () => {
@@ -1599,6 +1637,7 @@ ipcMain.handle("changes:undo", async (_evt, payload) => {
 const EXTERNAL_URL_ALLOWLIST = new Set([
   "https://deepinfra.com/dash/api_keys",
   "https://console.anthropic.com/settings/keys",
+  "https://github.com/kalai-labs/MAGENTRA",
 ]);
 
 ipcMain.on("app:openExternal", (_evt, url) => {
@@ -1629,6 +1668,9 @@ ipcMain.handle("config:setModel", (evt, model) => {
   // respawning the engine — a restart would drop the current conversation. The
   // persisted config still makes it the default a future (re)start uses.
   const workspace = (tab && tab.workspace) || currentConfig.workspace;
+  // Remember the choice on the workspace itself, so reopening its tab restores
+  // this model instead of falling back to the global/last-focused one.
+  if (workspace) persistWorkspaceModel(workspace, trimmed);
   if (workspace && tab && tab.child) {
     writeToEngine({ type: "set_model", model: trimmed }, tab.id);
   } else if (workspace) {
@@ -1721,7 +1763,9 @@ function openWorkspace(workspace, win) {
   sendToRenderer("tab:opened", { tabId: tab.id, workspace }, w);
   sendToRenderer("engine:event", { type: "workspace_changed", workspace, tabId: tab.id }, w);
   if (hasCredentials(workspace)) {
-    startEngine(workspace, currentConfig.model, tab.id);
+    // Honour the workspace's OWN saved model — not the focused tab's — so opening
+    // a2/a3/a4 while a1 is focused doesn't run them on a1's model.
+    startEngine(workspace, savedWorkspaceModel(workspace) || currentConfig.model, tab.id);
   } else {
     sendToRenderer("setup:required", { workspace, tabId: tab.id }, w);
     logEvent("sys", { ev: "setup-required", tabId: tab.id });
@@ -1814,8 +1858,12 @@ ipcMain.on("engine:restart", (evt) => {
   sendToRenderer("engine:restarted", { model }, winOf(evt));
 });
 
-ipcMain.on("engine:permission", (evt, { id, decision, message }) => {
-  writeToEngine({ type: "permission_response", id, decision, ...(message ? { message } : {}) }, activeTab(winOf(evt))?.id);
+ipcMain.on("engine:permission", (evt, { id, decision, message, tabId }) => {
+  // Route the decision to the engine that ASKED — with concurrent tabs the
+  // request may belong to a background tab, not the focused one. Fall back to the
+  // active tab (single-tab / untagged requests).
+  const target = tabId && engineTabs.has(tabId) ? tabId : activeTab(winOf(evt))?.id;
+  writeToEngine({ type: "permission_response", id, decision, ...(message ? { message } : {}) }, target);
 });
 
 // ---------------------------------------------------------------------------

@@ -85,6 +85,9 @@ let taskStatusById = new Map(); // id -> last known status, to detect flips to i
 // id -> { start, done } wall-clock ms, observed from status flips — feeds the
 // per-task duration chips (the workbench's flight-recorder instrumentation).
 let taskTimes = new Map();
+// The last task_list_updated tasks for THIS tab — per-tab (swapped by tabs.js) so
+// focusing a tab can re-render the shared inspector rail from its own tasks.
+let currentTasks = [];
 
 // ---------------------------------------------------------------------------
 // UI settings (persisted appearance / activity-detail preferences)

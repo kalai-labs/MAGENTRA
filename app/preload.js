@@ -20,8 +20,13 @@ contextBridge.exposeInMainWorld("magentra", {
   setModes: (activeIds) => ipcRenderer.send("engine:setModes", activeIds),
   interrupt: () => ipcRenderer.send("engine:interrupt"),
   restartEngine: () => ipcRenderer.send("engine:restart"),
-  respondPermission: (id, decision, message) =>
-    ipcRenderer.send("engine:permission", message ? { id, decision, message } : { id, decision }),
+  respondPermission: (id, decision, message, tabId) =>
+    ipcRenderer.send("engine:permission", {
+      id,
+      decision,
+      ...(message ? { message } : {}),
+      ...(tabId ? { tabId } : {}),
+    }),
   addDoc: (agentId, filePath) => ipcRenderer.invoke("team:addDoc", { agentId, filePath }),
   createTeamTemplate: () => ipcRenderer.invoke("team:createTemplate"),
   reloadTeam: () => ipcRenderer.send("team:reload"),
