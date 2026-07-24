@@ -1311,6 +1311,54 @@ async function run() {
     assert.equal(foc.focused, "tA");
     assert.ok(foc.aFocused, "clicking/focusing a pane rings it");
     assert.ok(foc.bNotFocused, "only the focused pane is ringed");
+    // Open a 3rd tab → 3-pane layout; the big (bottom) pane defaults to the last.
+    tabEvt("test:tab-opened", { tabId: "tC", workspace: "/tmp/ws-c" });
+    await emit({ type: "workspace_changed", workspace: "/tmp/ws-c", tabId: "tC" });
+    await emit(started("sC", "/tmp/ws-c", "tC"));
+    // Give the focused tab (tC) some skills so the pane menu can list them.
+    await emit({ type: "modes_updated", modes: [{ id: "grill", name: "The Grill", description: "d", active: false, builtin: true }], tabId: "tC" });
+    await pause(40);
+    const three = await evaluate(`(() => ({
+      panes: document.querySelector('#transcript').getAttribute('data-panes'),
+      cBig: tabs.get('tC').paneEl.classList.contains('pane-big'),
+      aBig: tabs.get('tA').paneEl.classList.contains('pane-big'),
+    }))()`);
+    assert.equal(three.panes, "3", "three tabs → 3-pane layout");
+    assert.ok(three.cBig, "the big bottom pane defaults to the 3rd/last-opened tab");
+    assert.ok(!three.aBig, "a top pane is not big by default");
+    // Right-click tab C's header (it is the focused tab, so it has the skills).
+    await evaluate(`(() => {
+      const head = tabs.get('tC').paneEl.querySelector('.console-pane-head');
+      head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 200, clientY: 200 }));
+    })()`);
+    await pause(30);
+    const menu = await evaluate(`(() => ({
+      open: !!document.querySelector('.ctx-menu'),
+      hasClose: [...document.querySelectorAll('.ctx-item')].some(b => b.textContent.includes('CLOSE TAB')),
+      hasSkillCheckbox: !!document.querySelector('.ctx-menu .ctx-check input[data-skill="grill"]'),
+      hasMoveToBottom: [...document.querySelectorAll('.ctx-item')].some(b => b.textContent.includes('MOVE TO BOTTOM')),
+    }))()`);
+    assert.ok(menu.open, "right-click a pane header opens its menu");
+    assert.ok(menu.hasClose, "the pane menu offers Close Tab");
+    assert.ok(menu.hasSkillCheckbox, "the pane menu lists this workspace's skills as checkboxes");
+    // tC is already the big pane, so it offers no "move to bottom"; right-click a TOP pane.
+    assert.ok(!menu.hasMoveToBottom, "the big pane has no move-to-bottom");
+    await evaluate(`document.querySelector('.ctx-menu') && document.body.click()`); // close menu
+    await pause(20);
+    await evaluate(`(() => {
+      const head = tabs.get('tA').paneEl.querySelector('.console-pane-head');
+      head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }));
+    })()`);
+    await pause(30);
+    await evaluate(`[...document.querySelectorAll('.ctx-item')].find(b => b.textContent.includes('MOVE TO BOTTOM')).click()`);
+    await pause(40);
+    const moved = await evaluate(`(() => ({ aBig: tabs.get('tA').paneEl.classList.contains('pane-big'), cBig: tabs.get('tC').paneEl.classList.contains('pane-big') }))()`);
+    assert.ok(moved.aBig, "move-to-bottom promotes the chosen pane to the big slot");
+    assert.ok(!moved.cBig, "the previous big pane is demoted");
+    // Close C → back to two panes, then continue to the single-tab close below.
+    tabEvt("test:tab-closed", { tabId: "tC", focus: "tA" });
+    tabEvt("test:tab-focused", { tabId: "tA" });
+    await pause(40);
     // Close B: back down to one tab → single view (no grid, shared composer back).
     tabEvt("test:tab-closed", { tabId: "tB", focus: "tA" });
     tabEvt("test:tab-focused", { tabId: "tA" });

@@ -180,9 +180,12 @@ function mountFocusedStream() {
 // every tab tiles into a grid, and each pane carries ITS OWN transcript AND its
 // own message input (the shared composer hides) so you type into a workspace
 // directly instead of selecting one first. Geometry by pane count: 2 = equal
-// columns, 3 = two on top + the focused pane full-width on the bottom, 4 = 2x2
-// quadrants. Click a pane (or its input) to focus it. Tiling follows the tab
-// count — there is no mode toggle.
+// columns, 3 = two on top + one full-width on the bottom, 4 = 2x2 quadrants.
+// Click a pane (or its input) to focus it. Tiling follows the tab count — there
+// is no mode toggle. In the 3-pane layout the bottom (big) pane defaults to the
+// 3rd/last-opened tab; right-click a top pane's header → "move to bottom" swaps
+// which one is big. Focus is independent and does NOT change the big pane.
+let bigTabId = null;
 
 function tabStreamPanes() {
   return [...tabs.keys()].slice(0, 4).map((id) => ({ id, ts: tabs.get(id) })).filter((x) => x.ts.streamEl);
@@ -246,6 +249,7 @@ function paneFor(id, ts) {
     head.className = "console-pane-head";
     head.textContent = pathLeaf(ts.workspace || "");
     head.title = ts.workspace || "";
+    head.addEventListener("contextmenu", (e) => openPaneCtxMenu(e, id));
     pane.appendChild(head);
     pane.appendChild(ts.streamEl);
     pane.appendChild(buildPaneComposer(id));
@@ -257,6 +261,102 @@ function paneFor(id, ts) {
     ts.paneEl.insertBefore(ts.streamEl, ts.paneEl.querySelector(".pane-composer"));
   }
   return ts.paneEl;
+}
+
+/** Right-click a pane's header: move it to the big (bottom) slot in the 3-pane
+ * layout, and pick this workspace's OWN skills (checkboxes) without leaving the
+ * pane you're in. Reuses the shared ctx-menu machinery (crew.js). */
+function openPaneCtxMenu(e, tabId) {
+  e.preventDefault();
+  if (typeof closeCtxMenu === "function") closeCtxMenu();
+  const menuEl = document.createElement("div");
+  menuEl.className = "ctx-menu";
+
+  // Move-to-bottom — only in the 3-pane layout, and only for a top pane.
+  const panes = tabStreamPanes();
+  if (panes.length === 3) {
+    const currentBig = bigTabId && panes.some((p) => p.id === bigTabId) ? bigTabId : panes[2].id;
+    if (tabId !== currentBig) {
+      const mv = document.createElement("button");
+      mv.className = "ctx-item";
+      mv.textContent = "⤓ MOVE TO BOTTOM";
+      mv.addEventListener("click", () => {
+        bigTabId = tabId;
+        applyLayout();
+        closeCtxMenu();
+      });
+      menuEl.appendChild(mv);
+    }
+  }
+
+  // Close this tab — also available on the sidebar row's ✕; here too for reach.
+  if (window.magentra.closeTab) {
+    const close = document.createElement("button");
+    close.className = "ctx-item danger";
+    close.textContent = "✕ CLOSE TAB";
+    close.addEventListener("click", () => {
+      window.magentra.closeTab(tabId);
+      closeCtxMenu();
+    });
+    menuEl.appendChild(close);
+  }
+
+  // This workspace's skills as checkboxes — routed to THIS tab's engine, so each
+  // session can run its own set. (The sidebar Skills view stays the overall one.)
+  const tabModes = tabId === focusedTabId ? modes : (tabs.get(tabId) && tabs.get(tabId).modes) || [];
+  if (Array.isArray(tabModes) && tabModes.length > 0) {
+    if (menuEl.children.length > 0) {
+      const sep = document.createElement("div");
+      sep.className = "ctx-sep";
+      menuEl.appendChild(sep);
+    }
+    const hint = document.createElement("div");
+    hint.className = "ctx-hint";
+    hint.textContent = "Skills — this workspace only";
+    menuEl.appendChild(hint);
+    const send = () => {
+      const active = [];
+      menuEl.querySelectorAll("input[data-skill]").forEach((c) => {
+        if (c.checked) active.push(c.dataset.skill);
+      });
+      window.magentra.send({ type: "set_modes", active }, tabId);
+    };
+    for (const m of tabModes) {
+      const row = document.createElement("label");
+      row.className = "ctx-check";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !!m.active;
+      cb.dataset.skill = m.id;
+      cb.addEventListener("change", send);
+      const label = document.createElement("span");
+      label.textContent = m.name || m.id;
+      row.append(cb, label);
+      menuEl.appendChild(row);
+    }
+  }
+
+  if (menuEl.children.length === 0) return; // nothing to offer here
+
+  document.body.appendChild(menuEl);
+  const rect = menuEl.getBoundingClientRect();
+  let left = e.clientX || 8;
+  let top = e.clientY || 8;
+  if (left + rect.width > window.innerWidth) left = window.innerWidth - rect.width - 4;
+  if (top + rect.height > window.innerHeight) top = window.innerHeight - rect.height - 4;
+  menuEl.style.left = `${Math.max(4, left)}px`;
+  menuEl.style.top = `${Math.max(4, top)}px`;
+  openCtxMenuEl = menuEl;
+  // Clicks INSIDE the menu (toggling checkboxes) keep it open; only an outside
+  // click or Escape closes it.
+  const onDocClick = (ev) => { if (!menuEl.contains(ev.target)) closeCtxMenu(); };
+  const onKeydown = (ev) => { if (ev.key === "Escape") closeCtxMenu(); };
+  document.addEventListener("click", onDocClick, true);
+  document.addEventListener("keydown", onKeydown);
+  closeOpenCtxMenuListeners = () => {
+    document.removeEventListener("click", onDocClick, true);
+    document.removeEventListener("keydown", onKeydown);
+  };
 }
 
 /** Place the tab consoles: a single focused stream (shared composer), or — with
@@ -288,9 +388,10 @@ function applyLayout() {
   }
   transcriptEl.classList.add("console-grid");
   transcriptEl.setAttribute("data-panes", String(panes.length));
-  // In the 3-pane layout the focused pane is the big (bottom, full-width) one;
-  // focusing another pane promotes it. Default: the 3rd/newly-opened tab.
-  const bigId = panes.length === 3 ? (panes.some((p) => p.id === focusedTabId) ? focusedTabId : panes[2].id) : null;
+  // In the 3-pane layout the bottom (big, full-width) pane defaults to the
+  // 3rd/last-opened tab; the header's "move to bottom" sets `bigTabId`. Focus
+  // does NOT affect it.
+  const bigId = panes.length === 3 ? (bigTabId && panes.some((p) => p.id === bigTabId) ? bigTabId : panes[2].id) : null;
   for (const { id, ts } of panes) {
     const pane = paneFor(id, ts);
     if (id === focusedTabId) pane.classList.add("focused");

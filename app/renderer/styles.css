@@ -1158,6 +1158,11 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .ctx-item:hover { background: var(--hover); }
 .ctx-item.danger { color: var(--red); }
 .ctx-sep { height: 1px; margin: 5px; background: var(--border); }
+.ctx-hint { padding: 3px 9px 2px; color: var(--text-faint); font-size: max(9px, 0.64rem); font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; }
+.ctx-check { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 9px; border-radius: 6px; color: var(--text); font-size: max(10px, 0.75rem); cursor: pointer; }
+.ctx-check:hover { background: var(--hover); }
+.ctx-check input { flex: none; accent-color: var(--accent); }
+.ctx-check span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 #settingsView { overflow-y: auto; }
 .set-grid { width: 100%; max-width: 1120px; display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 10px; margin: 0 auto; padding: 14px 26px 36px; align-items: start; }

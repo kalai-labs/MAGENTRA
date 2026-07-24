@@ -294,9 +294,14 @@ export class Engine {
   }
 
   /**
-   * Fetches the endpoint's real model catalog in the background and validates
-   * the configured model against it: a typo'd model warns at startup, not on
-   * the first turn. Best-effort — a catalog-less endpoint changes nothing.
+   * Fetches the endpoint's real model catalog in the background to populate the
+   * UI's model picker. Best-effort — a catalog-less endpoint changes nothing.
+   *
+   * It deliberately does NOT warn when the configured model is absent from the
+   * catalog: many valid models are simply not listed in /models (custom ids,
+   * gated models, aliases), so that warning fired constantly on models that
+   * answered fine. A genuinely bad model surfaces a real error on the first turn
+   * — that is the honest signal, not a preemptive guess.
    */
   private publishModelCatalog(): void {
     const provider = this.opts.provider;
@@ -306,13 +311,6 @@ export class Engine {
       .then((models) => {
         if (models.length === 0) return;
         this.emit({ type: "model_catalog", models });
-        if (!models.includes(this.opts.settings.model)) {
-          this.emit({
-            type: "error",
-            message: `Model "${this.opts.settings.model}" is not in the endpoint's catalog (${models.length} models listed). Check the model id — the first turn will likely fail with a 404.`,
-            fatal: false,
-          });
-        }
       })
       .catch(() => {
         // No catalog endpoint (or auth scope) — the picker keeps its defaults.
