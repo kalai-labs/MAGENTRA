@@ -309,6 +309,9 @@ function onTurnStarted() {
 
   busy = true;
   syncActivityUi();
+  if (typeof syncPaneActivity === "function") {
+    syncPaneActivity((typeof dispatchTabId !== "undefined" && dispatchTabId !== null) ? dispatchTabId : focusedTabId, true);
+  }
   startNowLine();
 }
 
@@ -344,18 +347,21 @@ function onBackgroundNotification(event) {
   syncActivityUi();
 }
 
-/** Running background jobs, each with an indeterminate progress bar (the work
- * has no known duration) and, when the job allows it, its own stop — under the
- * composer so detached work is always visible and individually killable. */
-function renderBackgroundJobs() {
-  if (!jobsChipEl) return;
-  jobsChipEl.textContent = "";
-  jobsChipEl.classList.toggle("hidden", backgroundJobMeta.size === 0);
-  for (const [taskId, meta] of backgroundJobMeta) {
+/** Build one job row per entry in `meta` into `container`, each with an
+ * indeterminate progress bar (the work has no known duration) and, when the job
+ * allows it, its own STOP. STOP kills the task on the engine identified by
+ * `tabId` — the tab that owns the job — falling back to the active engine when
+ * `tabId` is null (the classic single-engine path). Shared by the single-console
+ * chip and each tiled pane's own chip. */
+function renderJobRows(container, meta, tabId) {
+  if (!container) return;
+  container.textContent = "";
+  container.classList.toggle("hidden", meta.size === 0);
+  for (const [taskId, m] of meta) {
     const row = document.createElement("span");
     row.className = "job-row";
     const label = document.createElement("span");
-    label.textContent = meta.description;
+    label.textContent = m.description;
     label.title = taskId;
     row.appendChild(label);
     // Indeterminate shimmer: signals "running" honestly without faking a percent.
@@ -363,24 +369,51 @@ function renderBackgroundJobs() {
     bar.className = "job-bar";
     bar.setAttribute("aria-hidden", "true");
     row.appendChild(bar);
-    if (meta.stoppable) {
+    if (m.stoppable) {
       const stopBtn = document.createElement("button");
       stopBtn.className = "job-stop";
       stopBtn.textContent = "STOP";
       stopBtn.title = `Stop background task ${taskId}`;
       stopBtn.addEventListener("click", () => {
-        window.magentra.send({ type: "stop_background", taskId });
+        window.magentra.send({ type: "stop_background", taskId }, tabId || undefined);
       });
       row.appendChild(stopBtn);
     }
-    jobsChipEl.appendChild(row);
+    container.appendChild(row);
   }
+}
+
+/** Paint running background jobs where they are visible for the current layout:
+ * tiled → into the owning tab's own pane chip (each pane shows and kills its own
+ * detached work); single console → the shared composer chip, and only when the
+ * event belongs to the focused tab, so a background tab's notification can never
+ * clobber the focused chip. `dispatchTabId`/`focusedTabId` (tabs.js) identify the
+ * owning engine so STOP routes to it. */
+function renderBackgroundJobs() {
+  const owner = (typeof dispatchTabId !== "undefined" && dispatchTabId !== null)
+    ? dispatchTabId
+    : (typeof focusedTabId !== "undefined" ? focusedTabId : null);
+  if (document.body.classList.contains("tiled")) {
+    const paneChip = typeof paneJobsContainer === "function" ? paneJobsContainer(owner) : null;
+    renderJobRows(paneChip, backgroundJobMeta, owner);
+    return;
+  }
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
+  renderJobRows(jobsChipEl, backgroundJobMeta, owner);
 }
 
 function onTurnFinished(event) {
   busy = false;
   syncActivityUi();
-  promptInputEl.focus();
+  if (typeof syncPaneActivity === "function") {
+    syncPaneActivity((typeof dispatchTabId !== "undefined" && dispatchTabId !== null) ? dispatchTabId : focusedTabId, false);
+  }
+  // Restore focus to the shared composer only in the single-console layout for the
+  // focused tab; in tiled mode each pane owns its input, so grabbing the (hidden)
+  // shared input would steal focus from whichever pane the user is typing in.
+  if ((typeof chromeIsFocused !== "function" || chromeIsFocused()) && !document.body.classList.contains("tiled")) {
+    promptInputEl.focus();
+  }
   announce("The agent finished its turn.");
 
   if (event) {
@@ -397,14 +430,24 @@ function onTurnFinished(event) {
   closeWorkGroup();
 
   finalizeAllAgentCards();
-  agentMeterEl.classList.add("hidden");
+  // Route through updateAgentMeter (focus-guarded) so a background tab's turn end
+  // can't blank the focused tab's topbar meter; after finalize the count is 0, so
+  // for the focused tab it hides as before.
+  updateAgentMeter();
 
   stopNowLine();
 
   appendTurnSeparator(event && event.stopReason);
 
   // A follow-up typed during the turn now goes out (starting its own turn).
+  // Single console: the shared queue. Tiled: this tab's OWN pane command queue
+  // (the finishing tab is the one being dispatched). Each is a no-op in the other
+  // layout, so both run unconditionally.
   flushMessageQueue();
+  if (typeof flushTabCommandQueue === "function") {
+    const finished = (typeof dispatchTabId !== "undefined" && dispatchTabId !== null) ? dispatchTabId : focusedTabId;
+    flushTabCommandQueue(finished);
+  }
 }
 
 function onTextDelta(text) {

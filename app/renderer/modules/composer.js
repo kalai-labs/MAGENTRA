@@ -37,70 +37,98 @@ function autoGrow(el) {
 // Slash-command palette
 // ---------------------------------------------------------------------------
 
-function hideSlashPop() {
-  slashVisible = false;
-  slashMatches = [];
-  slashSelIdx = 0;
-  slashPopEl.classList.add("hidden");
-  slashPopEl.textContent = "";
-}
+// A slash-command palette bound to ONE input + its own popup. Each composer —
+// the shared bottom one and every tiled pane — owns an instance, so palettes
+// never share selection state. SLASH_COMMANDS (the registry) stays shared; it is
+// the same command set for every session.
+function makeSlashPalette(inputEl, popEl, grow = autoGrow) {
+  let visible = false;
+  let matches = [];
+  let selIdx = 0;
 
-function renderSlashPop() {
-  slashPopEl.textContent = "";
-  slashMatches.forEach((entry, idx) => {
-    const rowEl = document.createElement("button");
-    rowEl.type = "button";
-    rowEl.className = "slash-item" + (idx === slashSelIdx ? " sel" : "");
+  function hide() {
+    visible = false;
+    matches = [];
+    selIdx = 0;
+    popEl.classList.add("hidden");
+    popEl.textContent = "";
+  }
 
-    const cmdEl = document.createElement("span");
-    cmdEl.className = "slash-cmd";
-    cmdEl.textContent = entry.cmd;
-    rowEl.appendChild(cmdEl);
-
-    if (entry.args) {
-      const argsEl = document.createElement("span");
-      argsEl.className = "slash-args";
-      argsEl.textContent = entry.args;
-      rowEl.appendChild(argsEl);
-    }
-
-    const descEl = document.createElement("span");
-    descEl.className = "slash-desc";
-    descEl.textContent = entry.desc;
-    rowEl.appendChild(descEl);
-
-    rowEl.addEventListener("click", () => {
-      completeSlashCommand(entry.cmd);
-      promptInputEl.focus();
+  function render() {
+    popEl.textContent = "";
+    matches.forEach((entry, idx) => {
+      const rowEl = document.createElement("button");
+      rowEl.type = "button";
+      rowEl.className = "slash-item" + (idx === selIdx ? " sel" : "");
+      const cmdEl = document.createElement("span");
+      cmdEl.className = "slash-cmd";
+      cmdEl.textContent = entry.cmd;
+      rowEl.appendChild(cmdEl);
+      if (entry.args) {
+        const argsEl = document.createElement("span");
+        argsEl.className = "slash-args";
+        argsEl.textContent = entry.args;
+        rowEl.appendChild(argsEl);
+      }
+      const descEl = document.createElement("span");
+      descEl.className = "slash-desc";
+      descEl.textContent = entry.desc;
+      rowEl.appendChild(descEl);
+      rowEl.addEventListener("click", () => {
+        complete(entry.cmd);
+        inputEl.focus();
+      });
+      popEl.appendChild(rowEl);
     });
-
-    slashPopEl.appendChild(rowEl);
-  });
-}
-
-function updateSlashPop() {
-  const value = promptInputEl.value;
-  if (!value.startsWith("/") || value.includes("\n")) {
-    hideSlashPop();
-    return;
   }
-  const firstToken = value.split(/\s+/)[0].toLowerCase();
-  slashMatches = SLASH_COMMANDS.filter((c) => c.cmd.toLowerCase().startsWith(firstToken));
-  if (slashMatches.length === 0) {
-    hideSlashPop();
-    return;
+
+  function update() {
+    const value = inputEl.value;
+    if (!value.startsWith("/") || value.includes("\n")) {
+      hide();
+      return;
+    }
+    const firstToken = value.split(/\s+/)[0].toLowerCase();
+    matches = SLASH_COMMANDS.filter((c) => c.cmd.toLowerCase().startsWith(firstToken));
+    if (matches.length === 0) {
+      hide();
+      return;
+    }
+    visible = true;
+    selIdx = 0;
+    popEl.classList.remove("hidden");
+    render();
   }
-  slashVisible = true;
-  slashSelIdx = 0;
-  slashPopEl.classList.remove("hidden");
-  renderSlashPop();
+
+  function complete(cmd) {
+    inputEl.value = cmd + " ";
+    grow(inputEl);
+    update();
+  }
+
+  // Consume palette navigation keys. Returns true when the key was handled and
+  // the caller should stop; false lets the caller proceed (e.g. Enter on an
+  // exact command falls through to submit).
+  function handleKeydown(e) {
+    if (!visible) return false;
+    if (e.key === "ArrowDown") { e.preventDefault(); selIdx = (selIdx + 1) % matches.length; render(); return true; }
+    if (e.key === "ArrowUp") { e.preventDefault(); selIdx = (selIdx - 1 + matches.length) % matches.length; render(); return true; }
+    if (e.key === "Tab") { e.preventDefault(); complete(matches[selIdx].cmd); return true; }
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); hide(); return true; }
+    if (e.key === "Enter" && !e.shiftKey) {
+      const firstToken = inputEl.value.trim().split(/\s+/)[0].toLowerCase();
+      const exact = SLASH_COMMANDS.some((c) => c.cmd.toLowerCase() === firstToken);
+      if (!exact) { e.preventDefault(); complete(matches[selIdx].cmd); return true; }
+      hide();
+    }
+    return false;
+  }
+
+  return { update, hide, complete, handleKeydown, isVisible: () => visible };
 }
 
-function completeSlashCommand(cmd) {
-  promptInputEl.value = cmd + " ";
-  autoGrow(promptInputEl);
-  updateSlashPop();
-}
+// The shared bottom composer's palette (single-tab / focused non-tiled path).
+const sharedSlash = makeSlashPalette(promptInputEl, slashPopEl);
 
 // ---------------------------------------------------------------------------
 // Composer submit (normal prompt + slash-command interception)
@@ -124,26 +152,49 @@ function resetLocalViewForClear(preserveTasks = false) {
   if (!preserveTasks) onTaskListUpdated({ tasks: [] });
 }
 
-function sendSlashCommand(trimmed) {
+// Route a "/command" to an engine. `opts.tabId` names the owning tab (null → the
+// active engine, the shared-composer default). Local side effects (the /clear
+// wipe) and the transcript echo run in that tab's console via runInTab, so a
+// background pane's command lands in ITS chat, not the focused one. `inputEl`/
+// `slash` are cleared/hidden only when given (a queue flush passes neither, so it
+// never clobbers the shared input).
+function sendSlashCommand(trimmed, opts = {}) {
+  const { tabId = null, inputEl = promptInputEl, slash = sharedSlash, grow = autoGrow } = opts;
   const spaceIdx = trimmed.indexOf(" ");
   const rawCmd = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
   const args = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
   const command = rawCmd.slice(1); // strip the leading "/"
 
-  window.magentra.send({
-    type: "slash_command",
-    command,
-    ...(args ? { args } : {}),
-  });
+  window.magentra.send({ type: "slash_command", command, ...(args ? { args } : {}) }, tabId || undefined);
 
-  if (command.toLowerCase() === "clear") {
-    resetLocalViewForClear();
-  }
+  const applyLocal = () => {
+    if (command.toLowerCase() === "clear") resetLocalViewForClear();
+    appendSysNote(trimmed);
+  };
+  if (tabId && tabId !== focusedTabId && typeof runInTab === "function") runInTab(tabId, applyLocal);
+  else applyLocal();
 
-  appendSysNote(trimmed);
-  promptInputEl.value = "";
-  autoGrow(promptInputEl);
-  hideSlashPop();
+  if (inputEl) { inputEl.value = ""; grow(inputEl); }
+  if (slash) slash.hide();
+}
+
+// Route a "! shell" command to an engine; its output lands in that tab's chat.
+function sendBangCommand(cmd, opts = {}) {
+  const { tabId = null } = opts;
+  const trimmed = cmd.trim();
+  if (!trimmed) return;
+  const echo = () => appendSysNote(`! ${trimmed}`);
+  if (tabId && tabId !== focusedTabId && typeof runInTab === "function") runInTab(tabId, echo);
+  else echo();
+  window.magentra.send({ type: "bang_command", cmd: trimmed }, tabId || undefined);
+}
+
+// Run a typed/queued command (/ or !) against a specific tab's engine. Shared by
+// a pane's own submit and the per-tab queue flush (which passes no input to clear).
+function runTabCommand(tabId, rawText, opts = {}) {
+  const trimmed = rawText.trim();
+  if (trimmed.startsWith("/")) sendSlashCommand(trimmed, { tabId, ...opts });
+  else if (trimmed.startsWith("!")) sendBangCommand(trimmed.slice(1), { tabId });
 }
 
 // Slash/bang commands typed while a turn is running wait here and flush one per
@@ -180,16 +231,20 @@ function messageOverCap(text) {
   return true;
 }
 
-function renderAttachChips() {
-  if (!attachChipsEl) return;
-  if (pendingAttachments.length === 0) {
-    attachChipsEl.classList.add("hidden");
-    attachChipsEl.textContent = "";
+// The attach helpers operate on a `list` (the pending-file array) rendered into
+// a `container`, defaulting to the shared composer's globals. A tiled pane passes
+// its own per-tab list + its own chip container, so each workspace holds its own
+// attachments — one implementation, no duplication.
+function renderAttachChips(list = pendingAttachments, container = attachChipsEl) {
+  if (!container) return;
+  if (list.length === 0) {
+    container.classList.add("hidden");
+    container.textContent = "";
     return;
   }
-  attachChipsEl.classList.remove("hidden");
-  attachChipsEl.textContent = "";
-  pendingAttachments.forEach((att, idx) => {
+  container.classList.remove("hidden");
+  container.textContent = "";
+  list.forEach((att, idx) => {
     const chip = document.createElement("span");
     chip.className = "attach-chip";
     const label = document.createElement("span");
@@ -200,33 +255,33 @@ function renderAttachChips() {
     x.title = "Remove attachment";
     x.textContent = "✕";
     x.addEventListener("click", () => {
-      pendingAttachments.splice(idx, 1);
-      renderAttachChips();
+      list.splice(idx, 1);
+      renderAttachChips(list, container);
     });
     chip.append(label, x);
-    attachChipsEl.appendChild(chip);
+    container.appendChild(chip);
   });
 }
 
-function clearAttachments() {
-  pendingAttachments.length = 0;
-  renderAttachChips();
+function clearAttachments(list = pendingAttachments, container = attachChipsEl) {
+  list.length = 0;
+  renderAttachChips(list, container);
 }
 
-/** Prefix `raw` with each pending attachment, wrapped in a clear delimiter and
- *  a preamble that tells the model the contents are inline and NOT on disk — so
- *  it uses the provided text instead of trying to Read/Glob a bare filename (an
- *  attached file is a snapshot, not a workspace path). Returns `raw` unchanged
- *  when nothing is attached. */
-function composeWithAttachments(raw) {
-  if (pendingAttachments.length === 0) return raw;
-  const n = pendingAttachments.length;
+/** Prefix `raw` with each pending attachment in `list`, wrapped in a clear
+ *  delimiter and a preamble that tells the model the contents are inline and NOT
+ *  on disk — so it uses the provided text instead of trying to Read/Glob a bare
+ *  filename (an attached file is a snapshot, not a workspace path). Returns `raw`
+ *  unchanged when nothing is attached. */
+function composeWithAttachments(raw, list = pendingAttachments) {
+  if (list.length === 0) return raw;
+  const n = list.length;
   const preamble =
     `[The user attached ${n} file${n === 1 ? "" : "s"} to this message; the full ` +
     "contents are inlined below. These are snapshots pasted into the message — they " +
     "are NOT saved in the workspace or anywhere on disk, so do not use Read, Glob, " +
     "Bash, or any tool to open or locate them; work from the text provided here.]";
-  const blocks = pendingAttachments
+  const blocks = list
     .map(
       (a) =>
         `===== BEGIN ATTACHED FILE: ${a.name} (${formatBytes(a.bytes)}) =====\n` +
@@ -238,15 +293,15 @@ function composeWithAttachments(raw) {
   return prompt ? `${preamble}\n\n${blocks}\n\n${prompt}` : `${preamble}\n\n${blocks}`;
 }
 
-/** Open the OS file picker and stash the readable results as pending
- *  attachments. Unreadable / oversized picks are reported but skipped. */
-async function openAttachPicker() {
+/** Open the OS file picker and stash the readable results into `list` (rendered
+ *  in `container`). Unreadable / oversized picks are reported but skipped. */
+async function openAttachPicker(list = pendingAttachments, container = attachChipsEl) {
   // Pass the current pending totals so the 15-file / 2 MB caps span every "+"
   // click, not just this one dialog batch (main enforces against these).
-  const pendingBytes = pendingAttachments.reduce((sum, a) => sum + (a.bytes || 0), 0);
+  const pendingBytes = list.reduce((sum, a) => sum + (a.bytes || 0), 0);
   let res;
   try {
-    res = await window.magentra.pickContextFiles({ pendingCount: pendingAttachments.length, pendingBytes });
+    res = await window.magentra.pickContextFiles({ pendingCount: list.length, pendingBytes });
   } catch (err) {
     appendSysError(`attach failed: ${err && err.message ? err.message : err}`);
     return;
@@ -259,7 +314,7 @@ async function openAttachPicker() {
   let skipped = 0;
   for (const f of res.files) {
     if (f && f.ok) {
-      pendingAttachments.push({ name: f.name, bytes: f.bytes, text: f.text });
+      list.push({ name: f.name, bytes: f.bytes, text: f.text });
       added += 1;
     } else if (f) {
       // Per-file reason (main spells out which cap was hit: 15-file, 2 MB total,
@@ -268,43 +323,50 @@ async function openAttachPicker() {
       skipped += 1;
     }
   }
-  if (added > 0) renderAttachChips();
+  if (added > 0) renderAttachChips(list, container);
   // A summary whenever anything was turned away, so a partial/blocked pick never
   // looks like a no-op. The per-file lines above carry the exact limit; this just
   // states the outcome and what the composer is now holding.
   if (skipped > 0) {
-    const totalBytes = pendingAttachments.reduce((sum, a) => sum + (a.bytes || 0), 0);
+    const totalBytes = list.reduce((sum, a) => sum + (a.bytes || 0), 0);
     appendSysNote(
-      `📎 ${added} attached, ${skipped} skipped — now holding ${pendingAttachments.length} ` +
-        `file${pendingAttachments.length === 1 ? "" : "s"} · ${formatBytes(totalBytes)}.`,
+      `📎 ${added} attached, ${skipped} skipped — now holding ${list.length} ` +
+        `file${list.length === 1 ? "" : "s"} · ${formatBytes(totalBytes)}.`,
     );
   }
 }
 
-function renderQueueChip() {
-  if (!queueChipEl) return;
-  if (messageQueue.length === 0) {
-    queueChipEl.classList.add("hidden");
-    queueChipEl.textContent = "";
+// Render one removable chip per queued command into `container`. Shared by the
+// single-tab queue chip and each tiled pane's own queue chip; `onRemove(idx)`
+// drops that entry from the backing queue and repaints.
+function renderQueueRows(container, queue, onRemove) {
+  if (!container) return;
+  if (queue.length === 0) {
+    container.classList.add("hidden");
+    container.textContent = "";
     return;
   }
-  queueChipEl.classList.remove("hidden");
-  queueChipEl.textContent = "";
+  container.classList.remove("hidden");
+  container.textContent = "";
   const label = document.createElement("span");
   label.className = "queue-label";
-  label.textContent = `${messageQueue.length} queued`;
-  queueChipEl.appendChild(label);
-  messageQueue.forEach((text, idx) => {
+  label.textContent = `${queue.length} queued`;
+  container.appendChild(label);
+  queue.forEach((text, idx) => {
     const item = document.createElement("button");
     item.className = "queue-item";
     item.title = "Remove from queue";
     const preview = text.replace(/\s+/g, " ").trim().slice(0, 48);
     item.textContent = `${preview}${preview.length < text.trim().length ? "…" : ""} ✕`;
-    item.addEventListener("click", () => {
-      messageQueue.splice(idx, 1);
-      renderQueueChip();
-    });
-    queueChipEl.appendChild(item);
+    item.addEventListener("click", () => onRemove(idx));
+    container.appendChild(item);
+  });
+}
+
+function renderQueueChip() {
+  renderQueueRows(queueChipEl, messageQueue, (idx) => {
+    messageQueue.splice(idx, 1);
+    renderQueueChip();
   });
 }
 
@@ -338,11 +400,7 @@ function dispatch(text) {
   // "! <command>" runs a shell command directly; its output lands in the
   // conversation as context (the engine defers it while a turn is running).
   if (isCommand && trimmed.startsWith("!")) {
-    const cmd = trimmed.slice(1).trim();
-    if (cmd) {
-      appendSysNote(`! ${cmd}`);
-      window.magentra.send({ type: "bang_command", cmd });
-    }
+    sendBangCommand(trimmed.slice(1));
     return true;
   }
 
@@ -413,48 +471,13 @@ function sendMessage() {
 
 promptInputEl.addEventListener("input", () => {
   autoGrow(promptInputEl);
-  updateSlashPop();
+  sharedSlash.update();
 });
 promptInputEl.addEventListener("keydown", (e) => {
-  if (slashVisible) {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      slashSelIdx = (slashSelIdx + 1) % slashMatches.length;
-      renderSlashPop();
-      return;
-    }
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      slashSelIdx = (slashSelIdx - 1 + slashMatches.length) % slashMatches.length;
-      renderSlashPop();
-      return;
-    }
-    if (e.key === "Tab") {
-      e.preventDefault();
-      completeSlashCommand(slashMatches[slashSelIdx].cmd);
-      return;
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      hideSlashPop();
-      return;
-    }
-    if (e.key === "Enter" && !e.shiftKey) {
-      const firstToken = promptInputEl.value.trim().split(/\s+/)[0].toLowerCase();
-      const exact = SLASH_COMMANDS.some((c) => c.cmd.toLowerCase() === firstToken);
-      if (!exact) {
-        e.preventDefault();
-        completeSlashCommand(slashMatches[slashSelIdx].cmd);
-        return;
-      }
-      hideSlashPop();
-      // exact match: fall through to the normal Enter handling below, which submits
-    }
-  }
+  if (sharedSlash.handleKeydown(e)) return; // palette consumed the key
   // Prompt history: only from an empty composer (or while already browsing),
   // so arrows inside a multi-line draft keep moving the caret.
-  if (!slashVisible && e.key === "ArrowUp" && promptHistory.length > 0 &&
+  if (!sharedSlash.isVisible() && e.key === "ArrowUp" && promptHistory.length > 0 &&
       (promptHistIdx !== -1 || promptInputEl.value === "")) {
     e.preventDefault();
     promptHistIdx = promptHistIdx === -1 ? promptHistory.length - 1 : Math.max(0, promptHistIdx - 1);
@@ -462,7 +485,7 @@ promptInputEl.addEventListener("keydown", (e) => {
     autoGrow(promptInputEl);
     return;
   }
-  if (!slashVisible && e.key === "ArrowDown" && promptHistIdx !== -1) {
+  if (!sharedSlash.isVisible() && e.key === "ArrowDown" && promptHistIdx !== -1) {
     e.preventDefault();
     promptHistIdx++;
     if (promptHistIdx >= promptHistory.length) {
@@ -520,10 +543,10 @@ window.addEventListener("keydown", (e) => {
     closeMissionBuilder();
     return;
   }
-  if (slashVisible) {
+  if (sharedSlash.isVisible()) {
     // Normally consumed by the composer's own keydown (which stops
     // propagation); this is a safety net if focus wandered.
-    hideSlashPop();
+    sharedSlash.hide();
     return;
   }
   if (overdriveDialogEl && !overdriveDialogEl.classList.contains("hidden")) {

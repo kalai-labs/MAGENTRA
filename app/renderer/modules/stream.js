@@ -446,6 +446,7 @@ function ensureAgentsRow() {
 }
 
 function updateAgentMeter() {
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // background tab: the shared topbar meter reflects the focused tab only
   const runningCount = Array.from(agentCards.values()).filter((c) => c.running).length;
   agentCountEl.textContent = String(runningCount);
   toolCountEl.textContent = String(toolCountThisTurn);

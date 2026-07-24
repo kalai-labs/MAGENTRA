@@ -1354,6 +1354,28 @@ async function run() {
     const moved = await evaluate(`(() => ({ aBig: tabs.get('tA').paneEl.classList.contains('pane-big'), cBig: tabs.get('tC').paneEl.classList.contains('pane-big') }))()`);
     assert.ok(moved.aBig, "move-to-bottom promotes the chosen pane to the big slot");
     assert.ok(!moved.cBig, "the previous big pane is demoted");
+    // Background jobs must render into the OWNING pane, each with its own STOP —
+    // a job on a BACKGROUND tab (focused is tC) must land in that tab's pane, not
+    // the focused one (the bug: only the first pane showed).
+    await emit({ type: "background_notification", taskId: "job-a", kind: "start", payload: { description: "server :3000", stoppable: true }, tabId: "tA" });
+    await emit({ type: "background_notification", taskId: "job-b", kind: "start", payload: { description: "server :4000", stoppable: true }, tabId: "tB" });
+    await pause(40);
+    const jobs = await evaluate(`(() => {
+      const g = (id) => tabs.get(id).paneEl.querySelector('.pane-jobs');
+      const a = g('tA'), b = g('tB'), c = g('tC');
+      return {
+        aText: a.textContent, aStop: !!a.querySelector('.job-stop'), aShown: !a.classList.contains('hidden'),
+        bText: b.textContent, bStop: !!b.querySelector('.job-stop'), bShown: !b.classList.contains('hidden'),
+        cShown: !c.classList.contains('hidden'),
+      };
+    })()`);
+    assert.ok(jobs.aText.includes('server :3000') && jobs.aStop && jobs.aShown, "tab A's pane shows its own background job + STOP");
+    assert.ok(jobs.bText.includes('server :4000') && jobs.bStop && jobs.bShown, "tab B's pane shows its OWN job (not just the first pane)");
+    assert.ok(!jobs.aText.includes('4000') && !jobs.bText.includes('3000'), "a pane's jobs never leak into another pane");
+    assert.ok(!jobs.cShown, "a pane with no background job shows no jobs chip");
+    await emit({ type: "background_notification", taskId: "job-a", kind: "exit", tabId: "tA" });
+    await emit({ type: "background_notification", taskId: "job-b", kind: "exit", tabId: "tB" });
+    await pause(20);
     // Close C → back to two panes, then continue to the single-tab close below.
     tabEvt("test:tab-closed", { tabId: "tC", focus: "tA" });
     tabEvt("test:tab-focused", { tabId: "tA" });
@@ -1368,6 +1390,45 @@ async function run() {
     assert.equal(closed.tabCount, 1);
     assert.equal(closed.focused, "tA");
     assert.equal(closed.rows, 1);
+    // Re-tile after a close must not leave a stray console from the closed tab:
+    // add content to the kept tab, then re-open a tab (the exact repro that left
+    // an orphan dead stream as an extra grid child and "bugged out").
+    await emit({ type: "text_delta", text: "ALPHA-after-close", tabId: "tA" });
+    await pause(20);
+    tabEvt("test:tab-opened", { tabId: "tB2", workspace: "/tmp/ws-b" });
+    await emit({ type: "workspace_changed", workspace: "/tmp/ws-b", tabId: "tB2" });
+    await emit(started("sB2", "/tmp/ws-b", "tB2"));
+    await pause(40);
+    const retile = await evaluate(`({
+      tabCount: tabs.size,
+      panes: document.querySelector('#transcript').getAttribute('data-panes'),
+      paneEls: document.querySelectorAll('#transcript > .console-pane').length,
+      strayStreams: document.querySelectorAll('#transcript > .stream').length,
+      aKept: tabs.get('tA').streamEl.textContent.includes('ALPHA-after-close'),
+    })`);
+    assert.equal(retile.tabCount, 2, "re-opening a tab after a close tiles two again");
+    assert.equal(retile.panes, "2");
+    assert.equal(retile.paneEls, 2, "exactly two panes — no orphan pane from the closed tab");
+    assert.equal(retile.strayStreams, 0, "no stray dead stream left directly under #transcript");
+    assert.ok(retile.aKept, "the kept tab's content survives the re-tile");
+    // Now close the FOCUSED tab (tB2) — the stale-globals path — and confirm the
+    // kept tab returns cleanly with no strays.
+    tabEvt("test:tab-closed", { tabId: "tB2", focus: "tA" });
+    tabEvt("test:tab-focused", { tabId: "tA" });
+    await pause(40);
+    const afterFocusedClose = await evaluate(`({
+      tabCount: tabs.size, tiled: document.body.classList.contains('tiled'),
+      directStreams: document.querySelectorAll('#transcript > .stream').length,
+      panes: document.querySelectorAll('#transcript > .console-pane').length,
+      shownIsA: document.querySelector('#transcript > .stream') === tabs.get('tA').streamEl,
+      transcriptHasA: document.querySelector('#transcript').textContent.includes('ALPHA-after-close'),
+    })`);
+    assert.equal(afterFocusedClose.tabCount, 1);
+    assert.equal(afterFocusedClose.tiled, false, "closing the focused tab returns to a single console");
+    assert.equal(afterFocusedClose.panes, 0, "no leftover pane after untiling");
+    assert.equal(afterFocusedClose.directStreams, 1, "exactly one stream in the single console — no orphan from the closed tab");
+    assert.ok(afterFocusedClose.shownIsA, "the single console shows the SURVIVING tab's own stream, not the closed tab's");
+    assert.ok(afterFocusedClose.transcriptHasA, "the surviving tab's content is shown in the single console");
   });
 
   if (rendererErrors.length > 0) throw new Error(`renderer errors:\n${rendererErrors.join("\n")}`);

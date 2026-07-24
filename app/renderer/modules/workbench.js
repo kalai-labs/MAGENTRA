@@ -143,8 +143,12 @@ function renderSidebarWorkspaces() {
     const attn = isFocused
       ? Boolean(activePermission) || permissionQueue.length > 0
       : Boolean(ts.activePermission) || (Array.isArray(ts.permissionQueue) && ts.permissionQueue.length > 0);
+    // A background tab's engine crash raises its banner in its own pane; surface
+    // it on the sidebar row too so the failure is visible without focusing it.
+    const errored = isFocused ? Boolean(engineErrorBannerShown) : Boolean(ts.engineErrorBannerShown);
     const row = document.createElement("div");
-    row.className = "sidebar-tab-row" + (isFocused ? " active" : "") + (running ? " running" : "") + (attn ? " attn" : "");
+    row.className =
+      "sidebar-tab-row" + (isFocused ? " active" : "") + (running ? " running" : "") + (attn ? " attn" : "") + (errored ? " errored" : "");
     const focusBtn = document.createElement("button");
     focusBtn.className = "sidebar-tab-focus";
     focusBtn.title = ts.workspace;

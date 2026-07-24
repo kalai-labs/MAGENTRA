@@ -379,6 +379,16 @@ export class Engine {
   }
 
   /**
+   * Stop every background job (detached bash processes, monitors, background
+   * agents). Interrupt alone does NOT reap these — they are spawned detached (own
+   * process group) precisely so they outlive a turn — so shutdown must call this,
+   * or closing a workspace leaves orphaned processes (e.g. a dev server) running.
+   */
+  stopBackgroundJobs(): void {
+    this.session.background.stopAll();
+  }
+
+  /**
    * `/atlas` runs in the BACKGROUND, deliberately unlike /compact or /build-crew.
    * Mapping a codebase is a long fan-out of read-only agents, and it touches
    * nothing the session owns — it never appends to the conversation, it only

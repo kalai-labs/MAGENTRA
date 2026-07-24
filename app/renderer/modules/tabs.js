@@ -218,51 +218,345 @@ function autoGrowInput(el) {
 function buildPaneComposer(tabId) {
   const box = document.createElement("div");
   box.className = "pane-composer";
+  // This pane's own slash palette popup (positioned above the input by CSS).
+  const pop = document.createElement("div");
+  pop.className = "pane-slashpop hidden";
   const ta = document.createElement("textarea");
   ta.className = "pane-input";
   ta.rows = 1;
   ta.spellcheck = false;
   ta.placeholder = "Message this workspace…";
+  // Full slash palette per pane, bound to THIS input and running against THIS
+  // engine (the shared composer's palette logic, retargeted — not duplicated).
+  const slash = typeof makeSlashPalette === "function" ? makeSlashPalette(ta, pop, autoGrowInput) : null;
+
+  const tsOf = () => tabs.get(tabId);
+  const attachEl = () => { const ts = tsOf(); return ts && ts.paneEl ? ts.paneEl.querySelector(".pane-attach") : null; };
+  const paneBusy = () => (tabId === focusedTabId ? busy : Boolean((tsOf() || {}).busy));
+
   const submit = () => {
-    const text = ta.value.trim();
-    if (!text) return;
-    const ts = tabs.get(tabId);
-    const isBusy = tabId === focusedTabId ? busy : Boolean(ts && ts.busy);
-    // Echo what was sent into THIS tab's transcript before it goes out — the
-    // same bubble/steer note the single-tab composer renders — so the user can
-    // see their own message (runInTab makes the target tab's stream live for the
-    // append even when it is a background pane). Then route it to that engine.
+    const raw = ta.value;
+    const text = raw.trim();
+    const ts = tsOf();
+    if (!ts) return;
+    ts.attachments = ts.attachments || [];
+    if (!text && ts.attachments.length === 0) return; // nothing to send
+    const isBusy = paneBusy();
+    const isCommand = (text.startsWith("/") || text.startsWith("!")) && !raw.includes("\n");
+    // History records the raw typed text (commands included); attachment bodies
+    // never enter history.
+    if (text) {
+      ts.paneHistory = ts.paneHistory || [];
+      ts.paneHistory.push(raw);
+      if (ts.paneHistory.length > 100) ts.paneHistory.shift();
+    }
+    ts.paneHistIdx = -1;
+    if (isCommand) {
+      // A command can't steer a running turn — queue it for this tab's turn end
+      // (flushed by flushTabCommandQueue); otherwise run it on this engine now.
+      if (isBusy) enqueuePaneCommand(tabId, raw);
+      else if (typeof runTabCommand === "function") runTabCommand(tabId, text, { inputEl: null, slash: null });
+      ta.value = "";
+      autoGrowInput(ta);
+      if (slash) slash.hide();
+      return;
+    }
+    // Plain text (optionally with attachments): steer a running turn, else a
+    // fresh message. Attachment bodies fold into the outgoing text; the transcript
+    // shows only the typed text + a note of what was attached. Echoed into THIS
+    // tab's transcript (runInTab makes the target tab's stream live even for a
+    // background pane), then routed to that engine.
+    const names = ts.attachments.map((a) => a.name).join(", ");
+    const outgoing = typeof composeWithAttachments === "function" ? composeWithAttachments(text, ts.attachments) : text;
     runInTab(tabId, () => {
       if (isBusy) {
-        if (typeof appendSysNote === "function") appendSysNote(`↳ steering — "${text.replace(/\s+/g, " ").slice(0, 80)}"`);
+        if (typeof appendSysNote === "function") appendSysNote(`↳ steering — "${(text || `📎 ${names}`).replace(/\s+/g, " ").slice(0, 80)}"`);
       } else if (typeof appendUserMessage === "function") {
-        appendUserMessage(text);
+        appendUserMessage(text || `📎 ${names}`);
+        if (ts.attachments.length && typeof appendSysNote === "function") appendSysNote(`📎 attached ${names}`);
       }
     });
-    // A pane input is plain chat routed to its own engine (steer a running turn,
-    // else a new message). Slash/bang commands + rich controls live in the
-    // single-tab composer.
-    window.magentra.send({ type: isBusy ? "steer_message" : "user_message", text }, tabId);
+    window.magentra.send({ type: isBusy ? "steer_message" : "user_message", text: outgoing }, tabId);
+    if (typeof clearAttachments === "function") clearAttachments(ts.attachments, attachEl());
     ta.value = "";
     autoGrowInput(ta);
   };
-  ta.addEventListener("input", () => autoGrowInput(ta));
+
+  ta.addEventListener("input", () => {
+    autoGrowInput(ta);
+    if (slash) slash.update();
+  });
   ta.addEventListener("focus", () => {
     if (tabId !== focusedTabId && window.magentra.focusTab) window.magentra.focusTab(tabId);
   });
   ta.addEventListener("keydown", (e) => {
+    if (slash && slash.handleKeydown(e)) return; // palette consumed the key
+    // Per-pane prompt history: ArrowUp from an empty input (or while browsing).
+    const ts = tsOf();
+    const hist = (ts && ts.paneHistory) || [];
+    const browsing = ts && ts.paneHistIdx !== undefined && ts.paneHistIdx !== -1;
+    if (e.key === "ArrowUp" && hist.length > 0 && (browsing || ta.value === "")) {
+      e.preventDefault();
+      ts.paneHistIdx = browsing ? Math.max(0, ts.paneHistIdx - 1) : hist.length - 1;
+      ta.value = hist[ts.paneHistIdx];
+      autoGrowInput(ta);
+      return;
+    }
+    if (e.key === "ArrowDown" && browsing) {
+      e.preventDefault();
+      ts.paneHistIdx++;
+      if (ts.paneHistIdx >= hist.length) { ts.paneHistIdx = -1; ta.value = ""; }
+      else ta.value = hist[ts.paneHistIdx];
+      autoGrowInput(ta);
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
     }
   });
-  const btn = document.createElement("button");
-  btn.className = "pane-send";
-  btn.textContent = "↑";
-  btn.title = "Send to this workspace";
-  btn.addEventListener("click", submit);
-  box.append(ta, btn);
+
+  // The secondary actions, as named handlers so the inline buttons AND the
+  // narrow-pane overflow menu invoke the same code.
+  const doAttach = () => {
+    const ts = tsOf();
+    if (!ts) return;
+    ts.attachments = ts.attachments || [];
+    if (typeof openAttachPicker === "function") void openAttachPicker(ts.attachments, attachEl());
+  };
+  const doNew = () => {
+    if (paneBusy()) return; // don't clear mid-turn (mirrors the shared composer)
+    if (typeof sendSlashCommand === "function") sendSlashCommand("/clear", { tabId, inputEl: null, slash: null });
+  };
+
+  const attachBtn = document.createElement("button");
+  attachBtn.className = "pane-tool";
+  attachBtn.textContent = "＋";
+  attachBtn.title = "Attach context files";
+  attachBtn.addEventListener("click", doAttach);
+
+  const newBtn = document.createElement("button");
+  newBtn.className = "pane-tool";
+  newBtn.textContent = "↺";
+  newBtn.title = "New conversation (clear this workspace)";
+  newBtn.addEventListener("click", doNew);
+
+  // Shown only when the pane is too narrow for the inline tools (CSS container
+  // query): collapses attach + new-conversation into a menu. Send + stop stay
+  // inline always.
+  const overflowBtn = document.createElement("button");
+  overflowBtn.className = "pane-overflow";
+  overflowBtn.textContent = "···";
+  overflowBtn.title = "More actions";
+  overflowBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openPaneOverflowMenu(overflowBtn, [
+      { label: "＋ Attach files", fn: doAttach },
+      { label: "↺ New conversation", fn: doNew },
+    ]);
+  });
+
+  // Per-pane jump-to-latest, shown while this pane's transcript is scrolled up.
+  const pill = document.createElement("button");
+  pill.className = "pane-scrollpill hidden";
+  pill.textContent = "↓ latest";
+  pill.title = "Jump to the latest output";
+  pill.addEventListener("click", () => {
+    const s = tsOf() && tsOf().streamEl;
+    if (s) s.scrollTop = s.scrollHeight;
+  });
+
+  const sendBtn = document.createElement("button");
+  sendBtn.className = "pane-send";
+  sendBtn.textContent = "↑";
+  sendBtn.title = "Send to this workspace";
+  sendBtn.addEventListener("click", submit);
+
+  const stopBtn = document.createElement("button");
+  stopBtn.className = "pane-stop hidden";
+  stopBtn.textContent = "■";
+  stopBtn.title = "Stop this workspace's turn";
+  stopBtn.addEventListener("click", () => {
+    window.magentra.send({ type: "interrupt" }, tabId);
+  });
+
+  box.append(pop, pill, attachBtn, ta, overflowBtn, newBtn, sendBtn, stopBtn);
   return box;
+}
+
+/** A small popup anchored above `anchorEl` with the pane's overflow actions.
+ * Reuses the shared ctx-menu machinery (crew.js). */
+function openPaneOverflowMenu(anchorEl, items) {
+  if (typeof closeCtxMenu === "function") closeCtxMenu();
+  const menuEl = document.createElement("div");
+  menuEl.className = "ctx-menu";
+  for (const it of items) {
+    const b = document.createElement("button");
+    b.className = "ctx-item";
+    b.textContent = it.label;
+    b.addEventListener("click", () => { it.fn(); closeCtxMenu(); });
+    menuEl.appendChild(b);
+  }
+  document.body.appendChild(menuEl);
+  const rect = anchorEl.getBoundingClientRect();
+  const mrect = menuEl.getBoundingClientRect();
+  let top = rect.top - mrect.height - 4;
+  if (top < 4) top = rect.bottom + 4;
+  menuEl.style.left = `${Math.max(4, rect.right - mrect.width)}px`;
+  menuEl.style.top = `${Math.max(4, top)}px`;
+  openCtxMenuEl = menuEl;
+  const onDocClick = (ev) => { if (!menuEl.contains(ev.target)) closeCtxMenu(); };
+  const onKeydown = (ev) => { if (ev.key === "Escape") closeCtxMenu(); };
+  document.addEventListener("click", onDocClick, true);
+  document.addEventListener("keydown", onKeydown);
+  closeOpenCtxMenuListeners = () => {
+    document.removeEventListener("click", onDocClick, true);
+    document.removeEventListener("keydown", onKeydown);
+  };
+}
+
+/** Wire a tab's scroll pill: toggle it from the stream's scroll position, and
+ * (re)attach the scroll listener when the stream element is new (e.g. after
+ * /clear rebuilds it). */
+function wirePaneScrollPill(ts) {
+  if (!ts || !ts.paneEl || !ts.streamEl) return;
+  const pill = ts.paneEl.querySelector(".pane-scrollpill");
+  if (!pill || typeof isNearBottom !== "function") return;
+  const stream = ts.streamEl;
+  const update = () => pill.classList.toggle("hidden", isNearBottom(stream));
+  if (stream.dataset.pillWired !== "1") {
+    stream.dataset.pillWired = "1";
+    stream.addEventListener("scroll", update);
+  }
+  update();
+}
+
+/** Toggle a tab's pane composer between idle (send visible) and running (stop
+ * visible), and mark the pane running. Driven from the per-tab turn lifecycle. */
+function syncPaneActivity(tabId, isBusy) {
+  const ts = tabId && tabs.get(tabId);
+  if (!ts || !ts.paneEl) return;
+  const send = ts.paneEl.querySelector(".pane-send");
+  const stop = ts.paneEl.querySelector(".pane-stop");
+  if (send) send.classList.toggle("hidden", !!isBusy);
+  if (stop) stop.classList.toggle("hidden", !isBusy);
+  ts.paneEl.classList.toggle("running", !!isBusy);
+  renderPaneNowLine(ts);
+  ensurePaneNowTicker();
+}
+
+// --- Per-pane now-line (liveness strip) ------------------------------------
+// The shared #nowLine is hidden in tiled mode, so each pane draws its own from
+// its tab's now-line state. The FOCUSED tab's state lives in the module globals
+// (nowVerb/nowTurnStart/…, updated live by views.js); a BACKGROUND tab's is the
+// values captured on its TabState. One global ticker paints every pane while any
+// tab is running — deriving the spinner frame from the clock avoids per-tab
+// animation intervals that would fight the state-swap.
+
+// The tab whose state is LIVE in the module globals right now: the tab being
+// dispatched during an engine event, else the focused tab. Its now-line/busy live
+// in the globals; every other tab's is on its captured TabState.
+function liveTabId() {
+  return dispatchTabId != null ? dispatchTabId : focusedTabId;
+}
+
+function tabIsBusy(ts) {
+  return ts.id === liveTabId() ? busy : Boolean(ts.busy);
+}
+
+/** The now-line values to render for a tab: live globals when its state is the
+ * one currently applied, its captured TabState otherwise. */
+function paneNowState(ts) {
+  if (ts.id === liveTabId()) {
+    return { busy, turnStart: nowTurnStart, activityStart: nowActivityStart, verb: nowVerb, detail: nowDetail, override: nowOverrideText };
+  }
+  return { busy: ts.busy, turnStart: ts.nowTurnStart, activityStart: ts.nowActivityStart, verb: ts.nowVerb, detail: ts.nowDetail, override: ts.nowOverrideText };
+}
+
+/** Paint (or hide) one pane's now-line from its tab's state. */
+function renderPaneNowLine(ts) {
+  if (!ts || !ts.paneEl) return;
+  const el = ts.paneEl.querySelector(".pane-nowline");
+  if (!el) return;
+  const st = paneNowState(ts);
+  el.classList.toggle("hidden", !st.busy);
+  if (!st.busy) return;
+  const spin = el.querySelector(".pane-now-spin");
+  const textEl = el.querySelector(".pane-now-text");
+  const timerEl = el.querySelector(".pane-now-timer");
+  if (spin) spin.textContent = NOW_SPINNER_FRAMES[Math.floor(Date.now() / 90) % NOW_SPINNER_FRAMES.length];
+  if (timerEl) timerEl.textContent = st.turnStart ? formatTurnElapsed(Date.now() - st.turnStart) : "0:00";
+  if (textEl) {
+    if (st.override != null) {
+      textEl.textContent = st.override;
+    } else {
+      const elapsedSec = st.activityStart ? Math.floor((Date.now() - st.activityStart) / 1000) : 0;
+      textEl.textContent = "";
+      const verbEl = document.createElement("span");
+      verbEl.className = "now-verb";
+      verbEl.textContent = st.verb || "thinking";
+      textEl.appendChild(verbEl);
+      textEl.appendChild(document.createTextNode(st.detail ? ` · ${st.detail} · ${elapsedSec}s` : ` · ${elapsedSec}s`));
+    }
+  }
+}
+
+let paneNowTickId = null;
+/** One ticker repaints every pane's now-line ~8×/s; it self-terminates the tick
+ * after the last running tab goes idle (one final pass hides the idle strips). */
+function paneNowTick() {
+  let anyBusy = false;
+  for (const ts of tabs.values()) {
+    renderPaneNowLine(ts);
+    if (tabIsBusy(ts)) anyBusy = true;
+  }
+  if (!anyBusy && paneNowTickId) {
+    clearInterval(paneNowTickId);
+    paneNowTickId = null;
+  }
+}
+
+/** Start the pane now-line ticker if tiled and something is running (idempotent).
+ * Stopping is handled by paneNowTick itself once every tab is idle. */
+function ensurePaneNowTicker() {
+  if (paneNowTickId || !document.body.classList.contains("tiled")) return;
+  for (const ts of tabs.values()) {
+    if (tabIsBusy(ts)) { paneNowTickId = setInterval(paneNowTick, 120); return; }
+  }
+}
+
+/** Push a command onto a tab's own queue and repaint its pane queue chip. */
+function enqueuePaneCommand(tabId, rawText) {
+  const ts = tabs.get(tabId);
+  if (!ts) return;
+  ts.commandQueue = ts.commandQueue || [];
+  ts.commandQueue.push(rawText);
+  renderPaneQueue(ts);
+}
+
+/** Repaint a tab's pane queue chip from its own command queue (reuses the shared
+ * queue-row renderer). */
+function renderPaneQueue(ts) {
+  if (!ts || !ts.paneEl) return;
+  const el = ts.paneEl.querySelector(".pane-queue");
+  if (el && typeof renderQueueRows === "function") {
+    renderQueueRows(el, ts.commandQueue || [], (idx) => {
+      (ts.commandQueue || []).splice(idx, 1);
+      renderPaneQueue(ts);
+    });
+  }
+}
+
+/** Flush one queued command for a tab once its turn ends (each command starts a
+ * new turn, whose end flushes the next). No-op while the tab is still busy. */
+function flushTabCommandQueue(tabId) {
+  const ts = tabId && tabs.get(tabId);
+  if (!ts || !ts.commandQueue || ts.commandQueue.length === 0) return;
+  const stillBusy = tabId === focusedTabId ? busy : Boolean(ts.busy);
+  if (stillBusy) return;
+  const next = ts.commandQueue.shift();
+  renderPaneQueue(ts);
+  if (typeof runTabCommand === "function") runTabCommand(tabId, next, { inputEl: null, slash: null });
 }
 
 /** The reusable pane wrapper for a tab: header + its transcript + its own input.
@@ -291,6 +585,30 @@ function paneFor(id, ts) {
     head.addEventListener("contextmenu", (e) => openPaneCtxMenu(e, id));
     pane.appendChild(head);
     pane.appendChild(ts.streamEl);
+    // This tab's queued commands, background jobs, then pending attachments —
+    // above its composer (the shared chips are hidden in tiled mode). Populated
+    // below / on enqueue / on attach.
+    const queueEl = document.createElement("div");
+    queueEl.className = "pane-queue hidden";
+    pane.appendChild(queueEl);
+    const jobsEl = document.createElement("div");
+    jobsEl.className = "pane-jobs hidden";
+    pane.appendChild(jobsEl);
+    const attachEl = document.createElement("div");
+    attachEl.className = "pane-attach hidden";
+    pane.appendChild(attachEl);
+    // This tab's own liveness strip (the shared #nowLine is hidden in tiled mode),
+    // painted by renderPaneNowLine while the tab's turn runs.
+    const nowEl = document.createElement("div");
+    nowEl.className = "pane-nowline hidden";
+    const nowSpin = document.createElement("span");
+    nowSpin.className = "pane-now-spin";
+    const nowText = document.createElement("span");
+    nowText.className = "pane-now-text";
+    const nowTimer = document.createElement("span");
+    nowTimer.className = "pane-now-timer";
+    nowEl.append(nowSpin, nowText, nowTimer);
+    pane.appendChild(nowEl);
     pane.appendChild(buildPaneComposer(id));
     pane.addEventListener("mousedown", () => {
       if (id !== focusedTabId && window.magentra.focusTab) window.magentra.focusTab(id);
@@ -299,9 +617,29 @@ function paneFor(id, ts) {
     paintTabBubbles(ts); // restore this tab's task bubbles into the fresh header
     syncTabOverdrive(ts); // restore this tab's overdrive state into the fresh header
   } else if (ts.streamEl && ts.streamEl.parentNode !== ts.paneEl) {
-    ts.paneEl.insertBefore(ts.streamEl, ts.paneEl.querySelector(".pane-composer"));
+    // Re-seat a rebuilt stream directly after the header, ahead of the chip rows
+    // and composer, so the pane order stays head → stream → chips → composer.
+    const head = ts.paneEl.querySelector(".console-pane-head");
+    ts.paneEl.insertBefore(ts.streamEl, head ? head.nextSibling : ts.paneEl.firstChild);
   }
+  // Refresh this tab's own chips from its captured state on every (re)layout, so
+  // tiling in — or refocusing — never drops a running job, queued command,
+  // pending attachment, or the running/idle button state.
+  const paneJobs = ts.paneEl.querySelector(".pane-jobs");
+  if (paneJobs && typeof renderJobRows === "function") renderJobRows(paneJobs, ts.backgroundJobMeta, id);
+  const paneAttach = ts.paneEl.querySelector(".pane-attach");
+  if (paneAttach && typeof renderAttachChips === "function") renderAttachChips(ts.attachments || [], paneAttach);
+  renderPaneQueue(ts);
+  syncPaneActivity(id, id === focusedTabId ? busy : Boolean(ts.busy));
+  wirePaneScrollPill(ts);
   return ts.paneEl;
+}
+
+/** The background-jobs chip element inside a tab's pane (tiled mode), or null
+ * when that tab has no pane yet (e.g. beyond the visible pane cap). */
+function paneJobsContainer(tabId) {
+  const ts = tabs.get(tabId);
+  return ts && ts.paneEl ? ts.paneEl.querySelector(".pane-jobs") : null;
 }
 
 // --- Per-tab task bubbles in the pane header -------------------------------
@@ -618,6 +956,15 @@ function applyLayout() {
     if (ts.streamEl && ts.streamEl.parentNode === transcriptEl) transcriptEl.removeChild(ts.streamEl);
     if (ts.paneEl) ts.paneEl.classList.remove("focused", "pane-big");
   }
+  // Sweep out any orphaned stream/pane left by a since-closed tab: after the
+  // detach above, every live tab's console is off the DOM, so anything of these
+  // classes still under #transcript belongs to no tab and would otherwise linger
+  // as a stray grid child (the bug behind re-tiling after a close).
+  for (const child of Array.from(transcriptEl.children)) {
+    if (child.classList && (child.classList.contains("stream") || child.classList.contains("console-pane"))) {
+      transcriptEl.removeChild(child);
+    }
+  }
   if (!tiled) {
     transcriptEl.classList.remove("console-grid");
     transcriptEl.removeAttribute("data-panes");
@@ -630,6 +977,11 @@ function applyLayout() {
     // The scroller here is #transcript; keep it at the edge if the stream was.
     const snap = focusedTabId && scrollSnap.get(focusedTabId);
     if (snap && snap.atBottom) transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    // Back to a single console: repaint the shared jobs chip from the focused
+    // tab's state, since while tiled its jobs rendered into its pane, not
+    // #jobsChip. Covers closing down to one tab with focus unchanged, where no
+    // tab:focused repaint fires.
+    if (typeof renderBackgroundJobs === "function") renderBackgroundJobs();
     return;
   }
   transcriptEl.classList.add("console-grid");
@@ -672,6 +1024,11 @@ function repaintChromeFromFocusedTab() {
   // The shared task rail follows focus: repaint it from THIS tab's own task list
   // (a background tab's update no longer clobbers it — see onTaskListUpdated).
   if (typeof renderTaskRail === "function") renderTaskRail(currentTasks);
+  // The shared jobs chip (single console) follows focus too; in tiled mode this
+  // repaints the focused pane's own chip. Both routed through renderBackgroundJobs.
+  if (typeof renderBackgroundJobs === "function") renderBackgroundJobs();
+  // Topbar agent/ops meter follows focus: repaint from the now-focused tab's cards.
+  if (typeof updateAgentMeter === "function") updateAgentMeter();
   // Present this tab's pending approval in the right place for the current layout
   // (shared modal when single, in-pane when tiled) — matters when a close drops
   // the tiled layout back to one console with an approval still open.
@@ -740,16 +1097,22 @@ function onTabClosedFromMain(tabId, nextFocus) {
   const ts = tabs.get(tabId);
   if (ts && ts.paneEl && ts.paneEl.parentNode) ts.paneEl.parentNode.removeChild(ts.paneEl);
   if (ts && ts.streamEl && ts.streamEl.parentNode) ts.streamEl.parentNode.removeChild(ts.streamEl);
+  const wasFocused = focusedTabId === tabId;
   tabs.delete(tabId);
-  if (focusedTabId === tabId) focusedTabId = null;
+  if (wasFocused) focusedTabId = null;
   // Closing the last workspace returns to a clean landing page (the same
-  // self-reload the home button uses). Otherwise main focuses `nextFocus` with a
-  // tab:focused that repaints — nothing more to do here.
+  // self-reload the home button uses).
   if (tabs.size === 0 && !nextFocus) {
     window.location.reload();
     return;
   }
-  applyLayout();
+  // If the FOCUSED tab was closed, main follows with tab:focused(nextFocus),
+  // which applyFrom()s the next tab and re-lays out with correct state. Doing it
+  // here — while the closed tab's state is still live in the globals — would
+  // re-append its now-dead stream to #transcript (the stray that broke re-tiling).
+  // Only re-lay out here when a BACKGROUND tab was closed (focus unchanged, so no
+  // tab:focused follows).
+  if (!wasFocused) applyLayout();
   renderSidebarWorkspaces();
 }
 

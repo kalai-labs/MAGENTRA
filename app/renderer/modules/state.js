@@ -452,6 +452,3 @@ let SLASH_COMMANDS = [
   { cmd: "/settings", args: "[<key> <value>]", desc: "show settings, or set one (persisted)" },
   { cmd: "/sessions", args: "", desc: "list saved sessions" },
 ];
-let slashMatches = []; // currently filtered registry rows shown in the palette
-let slashSelIdx = 0; // index into slashMatches of the "sel" row
-let slashVisible = false;

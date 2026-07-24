@@ -318,8 +318,9 @@ function tickNowLine() {
 }
 
 function startNowLine() {
-  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // background tab: don't drive the shared liveness strip
-  nowLineEl.classList.remove("hidden");
+  // State first, for EVERY tab — a background pane reads its own captured now-line
+  // state to drive its own liveness strip (renderPaneNowLine). Only the focused,
+  // single-console path then drives the shared strip + its animation intervals.
   nowTurnStart = Date.now();
   nowOverrideText = null;
   if (nowOverrideTimeoutId) {
@@ -327,6 +328,8 @@ function startNowLine() {
     nowOverrideTimeoutId = null;
   }
   setNowActivity("thinking", "");
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // background tab: don't drive the shared liveness strip
+  nowLineEl.classList.remove("hidden");
   nowTimerEl.textContent = "0:00";
 
   nowSpinnerIdx = 0;
@@ -341,7 +344,11 @@ function startNowLine() {
 }
 
 function stopNowLine() {
-  nowLineEl.classList.add("hidden");
+  // Clear per-tab state + this tab's own intervals always; touch the SHARED strip
+  // only for the focused tab, so a background pane's turn end can't hide the
+  // focused tab's liveness strip.
+  nowTurnStart = null;
+  nowActivityStart = null;
   if (nowSpinnerIntervalId) {
     clearInterval(nowSpinnerIntervalId);
     nowSpinnerIntervalId = null;
@@ -355,6 +362,6 @@ function stopNowLine() {
     nowOverrideTimeoutId = null;
   }
   nowOverrideText = null;
-  nowTurnStart = null;
-  nowActivityStart = null;
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // background tab: leave the shared strip alone
+  nowLineEl.classList.add("hidden");
 }

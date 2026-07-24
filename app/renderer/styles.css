@@ -506,6 +506,7 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
 .sidebar-tab-row.active .sidebar-tab-dot { background: var(--accent); box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.7); }
 .sidebar-tab-row.running .sidebar-tab-dot { background: var(--amber); box-shadow: 0 0 6px rgba(var(--amber-rgb), 0.7); animation: statusPulse 1s infinite; }
 .sidebar-tab-row.attn .sidebar-tab-dot { background: var(--accent-hi); box-shadow: 0 0 7px rgba(var(--accent-rgb), 0.9); }
+.sidebar-tab-row.errored .sidebar-tab-dot { background: var(--red); box-shadow: 0 0 6px var(--red); }
 .sidebar-tab-close {
   flex: none; padding: 2px 7px; border: 0; background: transparent; color: var(--text-faint);
   font-size: max(10px, 0.7rem); line-height: 1; border-radius: var(--radius-sm); opacity: 0;
@@ -519,6 +520,7 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
 #transcript.console-grid { display: grid; gap: 8px; padding: 8px; overflow: hidden; align-content: stretch; }
 .console-pane {
   position: relative;
+  container-type: inline-size;
   min-width: 0; min-height: 0; display: flex; flex-direction: column;
   border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); overflow: hidden;
 }
@@ -575,7 +577,7 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
 @keyframes paneBubblePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 .console-pane > .stream { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 10px; }
 /* Per-pane message input. */
-.pane-composer { flex: none; display: flex; align-items: flex-end; gap: 6px; padding: 7px 8px; border-top: 1px solid var(--border); background: var(--bg); }
+.pane-composer { position: relative; flex: none; display: flex; align-items: flex-end; gap: 6px; padding: 7px 8px; border-top: 1px solid var(--border); background: var(--bg); }
 .pane-input {
   flex: 1; min-width: 0; resize: none; max-height: 120px; padding: 6px 8px;
   border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel);
@@ -587,6 +589,19 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
   background: var(--accent); color: var(--bg); font-size: 1rem; cursor: pointer;
 }
 .pane-send:hover { background: var(--accent-hi); }
+.pane-tool { flex: none; width: 30px; height: 30px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); color: var(--text-dim); font-size: 0.95rem; cursor: pointer; }
+.pane-tool:hover { background: var(--hover); color: var(--text); }
+.pane-stop { flex: none; width: 30px; height: 30px; border: 0; border-radius: var(--radius-sm); background: var(--red); color: var(--bg); font-size: 0.78rem; cursor: pointer; }
+.pane-stop:hover { filter: brightness(1.1); }
+.pane-overflow { display: none; flex: none; align-items: center; justify-content: center; width: 30px; height: 30px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); color: var(--text-dim); font-size: 0.95rem; line-height: 1; cursor: pointer; }
+.pane-overflow:hover { background: var(--hover); color: var(--text); }
+.pane-scrollpill { position: absolute; right: 8px; bottom: calc(100% + 6px); z-index: 20; padding: 3px 9px; border: 1px solid var(--border-hi); border-radius: 999px; background: var(--panel); color: var(--text-dim); font-size: max(10px, 0.7rem); cursor: pointer; box-shadow: var(--shadow); }
+.pane-scrollpill:hover { color: var(--text); }
+/* Narrow panes (3-/4-up): collapse the secondary tools into the ··· menu; send + stop stay inline. */
+@container (max-width: 360px) {
+  .pane-composer .pane-tool { display: none; }
+  .pane-composer .pane-overflow { display: inline-flex; }
+}
 /* 2 tabs: two equal columns, full height. */
 #transcript.console-grid[data-panes="2"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
 /* 3 tabs: two equal on top, the focused pane full-width on the bottom. */
@@ -881,8 +896,11 @@ h1.md-h { font-size: 1.3rem; } h2.md-h { font-size: 1.16rem; } h3.md-h { font-si
 
 #nowLine { padding: 0 28px 7px; }
 .now-inner { max-width: var(--col); display: flex; align-items: center; gap: 8px; margin: 0 auto; padding: 6px 10px; color: var(--text-dim); font-size: max(10px, 0.72rem); font-variant-numeric: tabular-nums; }
-#nowSpinner, .now-verb { color: var(--accent); }
+#nowSpinner, .now-verb, .pane-now-spin { color: var(--accent); }
 #nowTimer { margin-left: auto; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.pane-nowline { display: flex; align-items: center; gap: 8px; padding: 4px 10px 0; color: var(--text-dim); font-size: max(10px, 0.7rem); font-variant-numeric: tabular-nums; }
+.pane-now-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pane-now-timer { margin-left: auto; color: var(--text-faint); flex: none; }
 
 #composer { padding: 0 28px 16px; }
 .composer-inner { position: relative; max-width: var(--col); margin: 0 auto; padding: 10px 11px 8px; border: 1px solid var(--border-hi); border-radius: 13px; background: var(--panel); box-shadow: var(--shadow-composer); }
@@ -949,7 +967,8 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
   100% { opacity: 0; transform: scale(1.06); }
 }
 
-#queueChip, #jobsChip { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 7px; }
+#queueChip, #jobsChip, .pane-jobs, .pane-queue, .pane-attach { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 7px; }
+.pane-jobs, .pane-queue, .pane-attach { margin: 0; padding: 6px 8px 0; }
 .queue-label { color: var(--text-faint); font-size: max(10px, 0.68rem); }
 .queue-item, .job-row { padding: 3px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--raised); color: var(--text-dim); font-size: max(10px, 0.69rem); }
 .job-stop { margin-left: 4px; border: 0; background: none; color: var(--red); font-size: max(10px, 0.66rem); }
@@ -980,7 +999,8 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .attach-x { border: 0; background: none; color: var(--text-faint); cursor: pointer; font-size: max(10px, 0.66rem); padding: 0; line-height: 1; }
 .attach-x:hover { color: var(--text-hi); }
 
-#slashPop { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); z-index: 30; max-height: 340px; overflow-y: auto; padding: 5px; border: 1px solid var(--border-hi); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); }
+#slashPop, .pane-slashpop { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); z-index: 30; max-height: 340px; overflow-y: auto; padding: 5px; border: 1px solid var(--border-hi); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); }
+.pane-slashpop { left: 8px; right: 8px; bottom: calc(100% + 2px); }
 .slash-item { width: 100%; display: flex; align-items: baseline; gap: 10px; padding: 7px 9px; border: 0; border-radius: var(--radius-sm); background: transparent; text-align: left; }
 .slash-item:hover, .slash-item.sel { background: var(--hover); }
 .slash-cmd { color: var(--accent-hi); font-family: var(--mono); }
