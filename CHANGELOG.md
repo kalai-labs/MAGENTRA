@@ -7,6 +7,30 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.9.0.0 — 2026-07-25
+
+### Features
+
+- new feature, concurrent tabs ([342ba4f](https://github.com/kalai-labs/MAGENTRA/commit/342ba4fcec1bc904940e35894242ea47f625a86b))
+- new multi-tab concurrent feature ([6eb8825](https://github.com/kalai-labs/MAGENTRA/commit/6eb88256cbe3559bc508501635ead9684a0f0930))
+
+### Bug fixes
+
+- bugfixes at </think> ([ba46bae](https://github.com/kalai-labs/MAGENTRA/commit/ba46baee9fc1ab2598946a45dfb7ed72e6832860))
+- the max output token fix ([b3ca511](https://github.com/kalai-labs/MAGENTRA/commit/b3ca5119083aba8101d2eb1f3cb7aba11eda7701))
+- fix at concurrency ([2a64922](https://github.com/kalai-labs/MAGENTRA/commit/2a6492272c435fef6315ce702830a30c52ed99ff))
+- fix at multi screen feature ([ac40b29](https://github.com/kalai-labs/MAGENTRA/commit/ac40b29061ce452a3e44a3be4f40f7ef28df3346))
+- fixes at concurrent tabs ([da477b2](https://github.com/kalai-labs/MAGENTRA/commit/da477b2296b7f9a2ae9a4f04a3c1e104e232e6e8))
+- fixes at concurrent tabs ([033a82f](https://github.com/kalai-labs/MAGENTRA/commit/033a82f4d9b01f3dfc3ce39a9d9a02e9901838b4))
+- fixing issues at multi-tab concurrent workflows ([a0587ad](https://github.com/kalai-labs/MAGENTRA/commit/a0587ad12bba62fe057bedc8fd903d16379e6bf4))
+- fixed bugs at ui ([f3ca96c](https://github.com/kalai-labs/MAGENTRA/commit/f3ca96c7e597273c78b29aea0023e9f62223d2d0))
+
+### Documentation
+
+- cleaned up skills to build them again afterwards ([73adbe0](https://github.com/kalai-labs/MAGENTRA/commit/73adbe03b8f45fa4990d322fc27b2bf72a967129))
+
+[Compare with v0.8.0.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.8.0.0...v0.9.0.0)
+
 ## 0.8.0.0 — 2026-07-22
 
 ### Features
