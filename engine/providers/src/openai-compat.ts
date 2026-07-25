@@ -95,6 +95,8 @@ export class OpenAICompatProvider implements Provider {
 
     // tool calls are keyed by index in the OpenAI wire format
     const open = new Map<number, { id: string; started: boolean }>();
+    // Pulls inline <think> reasoning out of the content stream (see class doc).
+    const think = new ThinkTagSplitter();
     let finishReason: string | undefined;
     let usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
     let buffer = "";
@@ -149,7 +151,12 @@ export class OpenAICompatProvider implements Provider {
         events.push({ type: "thinking_delta", text: delta.reasoning_content });
       }
       if (delta.content) {
-        events.push({ type: "text_delta", text: delta.content });
+        // Reasoning models that don't use `reasoning_content` inline their chain
+        // of thought here wrapped in <think>…</think>; route that to the thinking
+        // channel instead of letting the tags and prose leak into the answer.
+        const { text, thinking } = think.push(delta.content);
+        if (thinking) events.push({ type: "thinking_delta", text: thinking });
+        if (text) events.push({ type: "text_delta", text });
       }
       for (const call of delta.tool_calls ?? []) {
         let entry = open.get(call.index);
@@ -186,10 +193,106 @@ export class OpenAICompatProvider implements Provider {
       }
     }
 
+    // A partial tag held back for the next chunk that never came was never a
+    // real tag — release it now, before the turn is sealed.
+    const tail = think.flush();
+    if (tail.thinking) yield { type: "thinking_delta", text: tail.thinking };
+    if (tail.text) yield { type: "text_delta", text: tail.text };
+
     for (const entry of open.values()) {
       if (entry.started) yield { type: "tool_use_end", id: entry.id };
     }
     yield { type: "message_end", stopReason: mapFinish(finishReason), usage };
+  }
+}
+
+const THINK_TAGS: { text: string; kind: "open" | "close" }[] = [
+  { text: "<think>", kind: "open" },
+  { text: "</think>", kind: "close" },
+  { text: "<thinking>", kind: "open" },
+  { text: "</thinking>", kind: "close" },
+];
+
+function matchThinkTag(s: string, i: number): { length: number; kind: "open" | "close" } | null {
+  for (const tag of THINK_TAGS) {
+    if (s.startsWith(tag.text, i)) return { length: tag.text.length, kind: tag.kind };
+  }
+  return null;
+}
+
+/** True when `sub` is a non-empty, still-incomplete prefix of some think tag —
+ *  i.e. it could still grow into one once the next chunk arrives. */
+function isThinkTagPrefix(sub: string): boolean {
+  return THINK_TAGS.some((tag) => tag.text.length > sub.length && tag.text.startsWith(sub));
+}
+
+/**
+ * Separates inline <think>…</think> reasoning from the answer in a streamed
+ * content channel. Some reasoning models served over an OpenAI-compatible
+ * endpoint (DeepSeek-R1, QwQ, …) do not populate the `reasoning_content` field:
+ * they inline their chain of thought straight into `content`, wrapped in
+ * <think>…</think> — and some emit only a stray closing </think> when the chat
+ * template opened the block implicitly. Left untouched those tags and the
+ * reasoning prose leak into the visible answer (and get replayed as assistant
+ * text next turn). This splitter reroutes inline reasoning through the same
+ * thinking channel as a native reasoning field.
+ *
+ * Stream-safe: a tag can straddle two SSE chunks, so a trailing partial that
+ * could still become a tag is held back until the next chunk (or `flush`)
+ * resolves it. A stray </think> with no matching open is simply dropped, and a
+ * literal `<` that is not a tag is passed through untouched.
+ *
+ * (Cost: the astronomically rare answer that legitimately contains a literal
+ * <think>/<thinking> tag would have it stripped — the accepted trade every such
+ * client makes to keep reasoning models' scratchpads out of the transcript.)
+ */
+export class ThinkTagSplitter {
+  private inThink = false;
+  private held = "";
+
+  /** Route one content chunk into answer text and/or reasoning text. */
+  push(chunk: string): { text: string; thinking: string } {
+    const s = this.held + chunk;
+    this.held = "";
+    let text = "";
+    let thinking = "";
+    let segStart = 0;
+    const emit = (end: number) => {
+      const piece = s.slice(segStart, end);
+      if (!piece) return;
+      if (this.inThink) thinking += piece;
+      else text += piece;
+    };
+    let i = 0;
+    while (i < s.length) {
+      if (s[i] === "<") {
+        const tag = matchThinkTag(s, i);
+        if (tag) {
+          emit(i);
+          this.inThink = tag.kind === "open";
+          i += tag.length;
+          segStart = i;
+          continue;
+        }
+        // A tag fragment at the very tail: keep it for the next chunk.
+        if (isThinkTagPrefix(s.slice(i))) {
+          emit(i);
+          this.held = s.slice(i);
+          return { text, thinking };
+        }
+      }
+      i++;
+    }
+    emit(s.length);
+    return { text, thinking };
+  }
+
+  /** Stream ended: release any held fragment as ordinary text/reasoning. */
+  flush(): { text: string; thinking: string } {
+    const piece = this.held;
+    this.held = "";
+    if (!piece) return { text: "", thinking: "" };
+    return this.inThink ? { text: "", thinking: piece } : { text: piece, thinking: "" };
   }
 }
 

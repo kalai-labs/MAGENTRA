@@ -26,6 +26,9 @@ export async function runServe(engine: Engine): Promise<void> {
   const shutdown = async (): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
+    // Detached background jobs (dev servers, monitors) outlive the engine unless
+    // explicitly reaped — do it first so a closed workspace leaves nothing running.
+    engine.stopBackgroundJobs();
     engine.send({ type: "interrupt" });
     await engine.idle();
     engine.events.close();

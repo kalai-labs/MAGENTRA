@@ -43,7 +43,9 @@ let busy = false;
 // Work that is NOT a turn: a background atlas build, a background job. Tracked
 // by taskId, because the engine can be busy with no turn in flight at all — and
 // the stop button has to know about that, or it would look like nothing to stop.
-const backgroundJobs = new Set();
+// `let` (not const): the per-tab state swap in tabs.js reassigns this to the
+// focused tab's set. Single-tab: never reassigned.
+let backgroundJobs = new Set();
 // False until a workspace is chosen; before that the composer stays disabled
 // regardless of what else is going on.
 let workspaceOpen = false;
@@ -83,6 +85,9 @@ let taskStatusById = new Map(); // id -> last known status, to detect flips to i
 // id -> { start, done } wall-clock ms, observed from status flips — feeds the
 // per-task duration chips (the workbench's flight-recorder instrumentation).
 let taskTimes = new Map();
+// The last task_list_updated tasks for THIS tab — per-tab (swapped by tabs.js) so
+// focusing a tab can re-render the shared inspector rail from its own tasks.
+let currentTasks = [];
 
 // ---------------------------------------------------------------------------
 // UI settings (persisted appearance / activity-detail preferences)
@@ -433,10 +438,11 @@ let modes = []; // discipline skills, from modes_updated
 let modesReceived = false; // has the first modes_updated arrived (vs. still session-start)
 let pendingModesNote = false; // set on a set_modes click; consumed by the next modes_updated
 
-// grill was removed as a skill (it becomes the /grill-me chat feature), so it is
-// no longer a hero quick-toggle chip.
-const HERO_MODE_IDS = ["reshape"];
-const HERO_MODE_LABELS = { reshape: "⟲ reshape" };
+// Hero quick-toggle chips promote a discipline to a one-click chip in the top
+// bar. Empty now — the built-in skills were retired for the Addon redesign; give
+// an Addon a hero chip by adding its id here with a label in HERO_MODE_LABELS.
+const HERO_MODE_IDS = [];
+const HERO_MODE_LABELS = {};
 
 // slash-command palette state. The engine ships its real command registry in
 // session_started (onSessionStarted adopts it), so the palette can never
@@ -446,6 +452,3 @@ let SLASH_COMMANDS = [
   { cmd: "/settings", args: "[<key> <value>]", desc: "show settings, or set one (persisted)" },
   { cmd: "/sessions", args: "", desc: "list saved sessions" },
 ];
-let slashMatches = []; // currently filtered registry rows shown in the palette
-let slashSelIdx = 0; // index into slashMatches of the "sel" row
-let slashVisible = false;

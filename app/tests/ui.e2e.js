@@ -883,11 +883,10 @@ async function run() {
       { id: "reshape", name: "Reshape", description: "Deliberate restructuring", why: "Enable for large refactors", active: false, recommended: false, conflicts: [] },
       { id: "prover", name: "Prover", description: "Prove every change", why: "Enable when correctness matters", active: false, recommended: true, conflicts: [] },
     ] });
-    // Hero chip toggles a skill through the shared set_modes path (reshape is a hero).
-    await evaluate(`document.querySelector('.mode-chip.hero').click()`);
-    await pause();
-    assert.ok(modes.some((active) => active.includes("reshape")));
-    // The summary chip opens the Skills view; both cards render with badges + why.
+    // No hero quick-toggle chips ship by default now (the built-in skills were
+    // retired for the Addon redesign) — only the summary chip renders.
+    assert.equal(await evaluate(`document.querySelectorAll('.mode-chip.hero').length`), 0);
+    // The summary chip opens the Skills view; both fixture cards render with badges + why.
     await evaluate(`document.querySelector('#skillsSummary').click()`);
     await pause();
     let state = await evaluate(`(() => ({
@@ -1252,6 +1251,184 @@ async function run() {
     assert.equal(await evaluate(`getComputedStyle(document.querySelector('#stage')).right`), "0px");
     assert.equal(await evaluate(`document.querySelector('#reviewDrawer').getBoundingClientRect().width <= window.innerWidth - 72`), true);
     await evaluate(`document.querySelector('#reviewDoneBtn').click()`);
+  });
+
+  await test("concurrent tabs: auto-tile, per-pane input, stream isolation, close returns", async () => {
+    windowRef.setSize(1280, 800);
+    await pause(60);
+    const tabEvt = (ch, p) => windowRef.webContents.send(ch, p);
+    const started = (sessionId, cwd, tabId) => ({
+      type: "session_started", v: 1, sessionId, cwd, model: MODEL,
+      overdrive: false, commands: [], rateCard: {}, tabId,
+    });
+    // Open tab A (main-driven), stream some visible text into it.
+    tabEvt("test:tab-opened", { tabId: "tA", workspace: "/tmp/ws-a" });
+    await emit({ type: "workspace_changed", workspace: "/tmp/ws-a", tabId: "tA" });
+    await emit(started("sA", "/tmp/ws-a", "tA"));
+    await emit({ type: "turn_started", turnId: "tnA", tabId: "tA" });
+    await emit({ type: "text_delta", text: "ALPHA-visible", tabId: "tA" });
+    // Open tab B — reaching two tabs AUTO-TILES into a grid (no toggle).
+    tabEvt("test:tab-opened", { tabId: "tB", workspace: "/tmp/ws-b" });
+    await emit({ type: "workspace_changed", workspace: "/tmp/ws-b", tabId: "tB" });
+    await emit(started("sB", "/tmp/ws-b", "tB"));
+    await emit({ type: "text_delta", text: "BETA-visible", tabId: "tB" });
+    // A background event for A: it must render into A's OWN stream/pane, never
+    // leaking into B's.
+    await emit({ type: "text_delta", text: "ALPHA-bg", tabId: "tA" });
+    await pause(40);
+    const t = await evaluate(`(() => ({
+      focused: focusedTabId, tabCount: tabs.size,
+      grid: document.querySelector('#transcript').classList.contains('console-grid'),
+      panes: document.querySelector('#transcript').getAttribute('data-panes'),
+      paneEls: document.querySelectorAll('.console-pane').length,
+      paneInputs: document.querySelectorAll('.console-pane .pane-input').length,
+      composerHidden: document.body.classList.contains('tiled'),
+      aHasAlpha: tabs.get('tA').streamEl.textContent.includes('ALPHA-visible') && tabs.get('tA').streamEl.textContent.includes('ALPHA-bg'),
+      aNoBeta: !tabs.get('tA').streamEl.textContent.includes('BETA'),
+      bHasBeta: tabs.get('tB').streamEl.textContent.includes('BETA-visible'),
+      bNoAlpha: !tabs.get('tB').streamEl.textContent.includes('ALPHA'),
+    }))()`);
+    assert.equal(t.focused, "tB");
+    assert.equal(t.tabCount, 2);
+    assert.equal(t.grid, true, "two tabs auto-tile into a grid — no toggle");
+    assert.equal(t.panes, "2", "two panes for two tabs");
+    assert.equal(t.paneEls, 2, "both consoles tiled as panes");
+    assert.equal(t.paneInputs, 2, "each pane has its own message input");
+    assert.ok(t.composerHidden, "the shared bottom composer gives way to per-pane inputs");
+    assert.ok(t.aHasAlpha, "tab A's stream holds its own foreground + background text");
+    assert.ok(t.aNoBeta, "tab B's text never leaks into tab A's pane");
+    assert.ok(t.bHasBeta, "tab B's stream holds its own text");
+    assert.ok(t.bNoAlpha, "tab A's text never leaks into tab B's pane");
+    // Focus tab A: its pane gains the focus ring; both panes stay visible.
+    tabEvt("test:tab-focused", { tabId: "tA" });
+    await pause(40);
+    const foc = await evaluate(`(() => ({
+      focused: focusedTabId,
+      aFocused: tabs.get('tA').paneEl.classList.contains('focused'),
+      bNotFocused: !tabs.get('tB').paneEl.classList.contains('focused'),
+    }))()`);
+    assert.equal(foc.focused, "tA");
+    assert.ok(foc.aFocused, "clicking/focusing a pane rings it");
+    assert.ok(foc.bNotFocused, "only the focused pane is ringed");
+    // Open a 3rd tab → 3-pane layout; the big (bottom) pane defaults to the last.
+    tabEvt("test:tab-opened", { tabId: "tC", workspace: "/tmp/ws-c" });
+    await emit({ type: "workspace_changed", workspace: "/tmp/ws-c", tabId: "tC" });
+    await emit(started("sC", "/tmp/ws-c", "tC"));
+    // Give the focused tab (tC) some skills so the pane menu can list them.
+    await emit({ type: "modes_updated", modes: [{ id: "grill", name: "The Grill", description: "d", active: false, builtin: true }], tabId: "tC" });
+    await pause(40);
+    const three = await evaluate(`(() => ({
+      panes: document.querySelector('#transcript').getAttribute('data-panes'),
+      cBig: tabs.get('tC').paneEl.classList.contains('pane-big'),
+      aBig: tabs.get('tA').paneEl.classList.contains('pane-big'),
+    }))()`);
+    assert.equal(three.panes, "3", "three tabs → 3-pane layout");
+    assert.ok(three.cBig, "the big bottom pane defaults to the 3rd/last-opened tab");
+    assert.ok(!three.aBig, "a top pane is not big by default");
+    // Right-click tab C's header (it is the focused tab, so it has the skills).
+    await evaluate(`(() => {
+      const head = tabs.get('tC').paneEl.querySelector('.console-pane-head');
+      head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 200, clientY: 200 }));
+    })()`);
+    await pause(30);
+    const menu = await evaluate(`(() => ({
+      open: !!document.querySelector('.ctx-menu'),
+      hasClose: [...document.querySelectorAll('.ctx-item')].some(b => b.textContent.includes('CLOSE TAB')),
+      hasSkillCheckbox: !!document.querySelector('.ctx-menu .ctx-check input[data-skill="grill"]'),
+      hasMoveToBottom: [...document.querySelectorAll('.ctx-item')].some(b => b.textContent.includes('MOVE TO BOTTOM')),
+    }))()`);
+    assert.ok(menu.open, "right-click a pane header opens its menu");
+    assert.ok(menu.hasClose, "the pane menu offers Close Tab");
+    assert.ok(menu.hasSkillCheckbox, "the pane menu lists this workspace's skills as checkboxes");
+    // tC is already the big pane, so it offers no "move to bottom"; right-click a TOP pane.
+    assert.ok(!menu.hasMoveToBottom, "the big pane has no move-to-bottom");
+    await evaluate(`document.querySelector('.ctx-menu') && document.body.click()`); // close menu
+    await pause(20);
+    await evaluate(`(() => {
+      const head = tabs.get('tA').paneEl.querySelector('.console-pane-head');
+      head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }));
+    })()`);
+    await pause(30);
+    await evaluate(`[...document.querySelectorAll('.ctx-item')].find(b => b.textContent.includes('MOVE TO BOTTOM')).click()`);
+    await pause(40);
+    const moved = await evaluate(`(() => ({ aBig: tabs.get('tA').paneEl.classList.contains('pane-big'), cBig: tabs.get('tC').paneEl.classList.contains('pane-big') }))()`);
+    assert.ok(moved.aBig, "move-to-bottom promotes the chosen pane to the big slot");
+    assert.ok(!moved.cBig, "the previous big pane is demoted");
+    // Background jobs must render into the OWNING pane, each with its own STOP —
+    // a job on a BACKGROUND tab (focused is tC) must land in that tab's pane, not
+    // the focused one (the bug: only the first pane showed).
+    await emit({ type: "background_notification", taskId: "job-a", kind: "start", payload: { description: "server :3000", stoppable: true }, tabId: "tA" });
+    await emit({ type: "background_notification", taskId: "job-b", kind: "start", payload: { description: "server :4000", stoppable: true }, tabId: "tB" });
+    await pause(40);
+    const jobs = await evaluate(`(() => {
+      const g = (id) => tabs.get(id).paneEl.querySelector('.pane-jobs');
+      const a = g('tA'), b = g('tB'), c = g('tC');
+      return {
+        aText: a.textContent, aStop: !!a.querySelector('.job-stop'), aShown: !a.classList.contains('hidden'),
+        bText: b.textContent, bStop: !!b.querySelector('.job-stop'), bShown: !b.classList.contains('hidden'),
+        cShown: !c.classList.contains('hidden'),
+      };
+    })()`);
+    assert.ok(jobs.aText.includes('server :3000') && jobs.aStop && jobs.aShown, "tab A's pane shows its own background job + STOP");
+    assert.ok(jobs.bText.includes('server :4000') && jobs.bStop && jobs.bShown, "tab B's pane shows its OWN job (not just the first pane)");
+    assert.ok(!jobs.aText.includes('4000') && !jobs.bText.includes('3000'), "a pane's jobs never leak into another pane");
+    assert.ok(!jobs.cShown, "a pane with no background job shows no jobs chip");
+    await emit({ type: "background_notification", taskId: "job-a", kind: "exit", tabId: "tA" });
+    await emit({ type: "background_notification", taskId: "job-b", kind: "exit", tabId: "tB" });
+    await pause(20);
+    // Close C → back to two panes, then continue to the single-tab close below.
+    tabEvt("test:tab-closed", { tabId: "tC", focus: "tA" });
+    tabEvt("test:tab-focused", { tabId: "tA" });
+    await pause(40);
+    // Close B: back down to one tab → single view (no grid, shared composer back).
+    tabEvt("test:tab-closed", { tabId: "tB", focus: "tA" });
+    tabEvt("test:tab-focused", { tabId: "tA" });
+    await pause(40);
+    const closed = await evaluate(`({ tabCount: tabs.size, focused: focusedTabId, rows: document.querySelectorAll('.sidebar-tab-row').length, grid: document.querySelector('#transcript').classList.contains('console-grid'), tiled: document.body.classList.contains('tiled') })`);
+    assert.equal(closed.grid, false, "back to a single console when one tab remains");
+    assert.equal(closed.tiled, false, "the shared composer returns");
+    assert.equal(closed.tabCount, 1);
+    assert.equal(closed.focused, "tA");
+    assert.equal(closed.rows, 1);
+    // Re-tile after a close must not leave a stray console from the closed tab:
+    // add content to the kept tab, then re-open a tab (the exact repro that left
+    // an orphan dead stream as an extra grid child and "bugged out").
+    await emit({ type: "text_delta", text: "ALPHA-after-close", tabId: "tA" });
+    await pause(20);
+    tabEvt("test:tab-opened", { tabId: "tB2", workspace: "/tmp/ws-b" });
+    await emit({ type: "workspace_changed", workspace: "/tmp/ws-b", tabId: "tB2" });
+    await emit(started("sB2", "/tmp/ws-b", "tB2"));
+    await pause(40);
+    const retile = await evaluate(`({
+      tabCount: tabs.size,
+      panes: document.querySelector('#transcript').getAttribute('data-panes'),
+      paneEls: document.querySelectorAll('#transcript > .console-pane').length,
+      strayStreams: document.querySelectorAll('#transcript > .stream').length,
+      aKept: tabs.get('tA').streamEl.textContent.includes('ALPHA-after-close'),
+    })`);
+    assert.equal(retile.tabCount, 2, "re-opening a tab after a close tiles two again");
+    assert.equal(retile.panes, "2");
+    assert.equal(retile.paneEls, 2, "exactly two panes — no orphan pane from the closed tab");
+    assert.equal(retile.strayStreams, 0, "no stray dead stream left directly under #transcript");
+    assert.ok(retile.aKept, "the kept tab's content survives the re-tile");
+    // Now close the FOCUSED tab (tB2) — the stale-globals path — and confirm the
+    // kept tab returns cleanly with no strays.
+    tabEvt("test:tab-closed", { tabId: "tB2", focus: "tA" });
+    tabEvt("test:tab-focused", { tabId: "tA" });
+    await pause(40);
+    const afterFocusedClose = await evaluate(`({
+      tabCount: tabs.size, tiled: document.body.classList.contains('tiled'),
+      directStreams: document.querySelectorAll('#transcript > .stream').length,
+      panes: document.querySelectorAll('#transcript > .console-pane').length,
+      shownIsA: document.querySelector('#transcript > .stream') === tabs.get('tA').streamEl,
+      transcriptHasA: document.querySelector('#transcript').textContent.includes('ALPHA-after-close'),
+    })`);
+    assert.equal(afterFocusedClose.tabCount, 1);
+    assert.equal(afterFocusedClose.tiled, false, "closing the focused tab returns to a single console");
+    assert.equal(afterFocusedClose.panes, 0, "no leftover pane after untiling");
+    assert.equal(afterFocusedClose.directStreams, 1, "exactly one stream in the single console — no orphan from the closed tab");
+    assert.ok(afterFocusedClose.shownIsA, "the single console shows the SURVIVING tab's own stream, not the closed tab's");
+    assert.ok(afterFocusedClose.transcriptHasA, "the surviving tab's content is shown in the single console");
   });
 
   if (rendererErrors.length > 0) throw new Error(`renderer errors:\n${rendererErrors.join("\n")}`);

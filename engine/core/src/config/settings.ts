@@ -33,7 +33,10 @@ export const settingsSchema = z
      * describeSettings redaction). An env var always wins over it (see resolveApiKey).
      */
     apiKey: z.string().optional(),
-    maxTokensPerResponse: z.number().int().positive().default(8192),
+    /** Per-response output-token ceiling sent to the provider. Cutoffs at this
+     * wall trigger the length-continuation path; a higher ceiling makes them
+     * rarer. 32768 fits current models' output limits with headroom. */
+    maxTokensPerResponse: z.number().int().positive().default(32768),
     /** Output-token budget per turn (input/context tokens are not counted — they are dominated by per-iteration context re-sends). */
     maxTokensPerTurn: z.number().int().positive().default(200_000),
     maxIterationsPerTurn: z.number().int().positive().default(50),

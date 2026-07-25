@@ -31,21 +31,9 @@ function ensureTaskTicker(anyInProgress) {
 
 function onTaskListUpdated(event) {
   const tasks = event.tasks || [];
-  const total = tasks.length;
-  const done = tasks.filter((t) => t.status === "completed").length;
-  const progressText = total > 0 ? `${done}/${total}` : "";
+  currentTasks = tasks; // per-tab (swapped) — lets a focus change re-render the rail
 
-  taskProgressEl.textContent = progressText;
-  taskTabCountEl.textContent = total > 0 ? progressText : "—";
-  taskBarFillEl.style.width = `${total > 0 ? Math.round((done / total) * 100) : 0}%`;
-  if (taskRailBarEl) taskRailBarEl.classList.toggle("hidden", total === 0);
-  if (taskEmptyEl) taskEmptyEl.classList.toggle("hidden", total > 0);
-
-  const notCompleted = total - done;
-  dockMissionCountEl.textContent = String(notCompleted);
-  dockMissionCountEl.classList.toggle("hidden", notCompleted === 0);
-  navMissionEl.classList.remove("hidden");
-
+  // --- Per-tab state (ALWAYS, whichever tab owns this event) --------------
   // Observe status flips: they feed the now-line and the per-task stopwatch
   // (start on in_progress, freeze on completed).
   const now = Date.now();
@@ -60,7 +48,38 @@ function onTaskListUpdated(event) {
     }
   }
   taskStatusById = new Map(tasks.map((t) => [t.id, t.status]));
-  if (total === 0) taskTimes = new Map();
+  if (tasks.length === 0) taskTimes = new Map();
+
+  // --- Per-tab navbar bubbles (ALWAYS) — each pane header shows its own -----
+  const ownerTab = typeof dispatchTabId !== "undefined" && dispatchTabId !== null ? dispatchTabId : focusedTabId;
+  if (typeof setTabTaskBubbles === "function") setTabTaskBubbles(ownerTab, tasks);
+
+  // --- Shared inspector rail (FOCUSED tab only) ----------------------------
+  // A background tab's update must not overwrite the focused tab's rail (the bug
+  // where the inspector was stuck on one tab). Focusing a tab re-renders it via
+  // repaintChromeFromFocusedTab → renderTaskRail(currentTasks).
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
+  renderTaskRail(tasks);
+}
+
+/** Render the shared right-side task rail (progress, bar, list, dock badge) from
+ * a task list. Only ever called for the focused tab's tasks. */
+function renderTaskRail(tasks) {
+  tasks = tasks || [];
+  const total = tasks.length;
+  const done = tasks.filter((t) => t.status === "completed").length;
+  const progressText = total > 0 ? `${done}/${total}` : "";
+
+  taskProgressEl.textContent = progressText;
+  taskTabCountEl.textContent = total > 0 ? progressText : "—";
+  taskBarFillEl.style.width = `${total > 0 ? Math.round((done / total) * 100) : 0}%`;
+  if (taskRailBarEl) taskRailBarEl.classList.toggle("hidden", total === 0);
+  if (taskEmptyEl) taskEmptyEl.classList.toggle("hidden", total > 0);
+
+  const notCompleted = total - done;
+  dockMissionCountEl.textContent = String(notCompleted);
+  dockMissionCountEl.classList.toggle("hidden", notCompleted === 0);
+  navMissionEl.classList.remove("hidden");
 
   // rebuild the list, preserving engine order
   taskListEl.textContent = "";

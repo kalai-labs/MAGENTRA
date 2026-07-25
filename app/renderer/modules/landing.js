@@ -243,7 +243,12 @@ function onSessionStarted(event) {
   // user's saved safety choices.
   applySafetySettings(true);
   resetChanges();
-  engineErrorBannerShown = false;
+  // A running session proves the connection works: clear any stale connection
+  // errors/warnings from a failed earlier attempt and take down the banner, so
+  // nothing red lingers after the user fixed it (e.g. applied a profile).
+  hideEngineErrorBanner();
+  clearTransientNotices();
+  fatalErrorReported = false;
   // A running session is the proof the credentials work — unlock the composer.
   engineLinked = true;
   syncActivityUi();
@@ -262,6 +267,9 @@ function onSessionStarted(event) {
  * in flight, turn or not.
  */
 function syncActivityUi() {
+  // A background tab's turn must not repaint the focused tab's composer/LED/
+  // buttons/sidebar. In single-tab this guard is always false (pass-through).
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
   const working = busy || backgroundJobs.size > 0;
 
   stopBtnEl.classList.toggle("hidden", !working);
@@ -274,6 +282,7 @@ function syncActivityUi() {
   if (customModelEl) customModelEl.disabled = busy;
   renderSessions();
   renderMissions();
+  renderSidebarWorkspaces(); // keep the focused tab's running badge live
 
   if (!workspaceOpen) return; // landing page: composer stays disabled regardless
   // Clearing mid-turn would swap the engine's session out from under it.
@@ -300,6 +309,9 @@ function onTurnStarted() {
 
   busy = true;
   syncActivityUi();
+  if (typeof syncPaneActivity === "function") {
+    syncPaneActivity((typeof dispatchTabId !== "undefined" && dispatchTabId !== null) ? dispatchTabId : focusedTabId, true);
+  }
   startNowLine();
 }
 
@@ -308,7 +320,7 @@ function onTurnStarted() {
  * the only way the UI learns the engine is busy without a turn — turn_started
  * never fires for it.
  */
-const backgroundJobMeta = new Map(); // taskId -> { description, stoppable }
+let backgroundJobMeta = new Map(); // taskId -> { description, stoppable }; let: reassigned by the per-tab state swap (tabs.js)
 
 function onBackgroundNotification(event) {
   if (!event || typeof event.taskId !== "string") return;
@@ -335,18 +347,21 @@ function onBackgroundNotification(event) {
   syncActivityUi();
 }
 
-/** Running background jobs, each with an indeterminate progress bar (the work
- * has no known duration) and, when the job allows it, its own stop — under the
- * composer so detached work is always visible and individually killable. */
-function renderBackgroundJobs() {
-  if (!jobsChipEl) return;
-  jobsChipEl.textContent = "";
-  jobsChipEl.classList.toggle("hidden", backgroundJobMeta.size === 0);
-  for (const [taskId, meta] of backgroundJobMeta) {
+/** Build one job row per entry in `meta` into `container`, each with an
+ * indeterminate progress bar (the work has no known duration) and, when the job
+ * allows it, its own STOP. STOP kills the task on the engine identified by
+ * `tabId` — the tab that owns the job — falling back to the active engine when
+ * `tabId` is null (the classic single-engine path). Shared by the single-console
+ * chip and each tiled pane's own chip. */
+function renderJobRows(container, meta, tabId) {
+  if (!container) return;
+  container.textContent = "";
+  container.classList.toggle("hidden", meta.size === 0);
+  for (const [taskId, m] of meta) {
     const row = document.createElement("span");
     row.className = "job-row";
     const label = document.createElement("span");
-    label.textContent = meta.description;
+    label.textContent = m.description;
     label.title = taskId;
     row.appendChild(label);
     // Indeterminate shimmer: signals "running" honestly without faking a percent.
@@ -354,24 +369,51 @@ function renderBackgroundJobs() {
     bar.className = "job-bar";
     bar.setAttribute("aria-hidden", "true");
     row.appendChild(bar);
-    if (meta.stoppable) {
+    if (m.stoppable) {
       const stopBtn = document.createElement("button");
       stopBtn.className = "job-stop";
       stopBtn.textContent = "STOP";
       stopBtn.title = `Stop background task ${taskId}`;
       stopBtn.addEventListener("click", () => {
-        window.magentra.send({ type: "stop_background", taskId });
+        window.magentra.send({ type: "stop_background", taskId }, tabId || undefined);
       });
       row.appendChild(stopBtn);
     }
-    jobsChipEl.appendChild(row);
+    container.appendChild(row);
   }
+}
+
+/** Paint running background jobs where they are visible for the current layout:
+ * tiled → into the owning tab's own pane chip (each pane shows and kills its own
+ * detached work); single console → the shared composer chip, and only when the
+ * event belongs to the focused tab, so a background tab's notification can never
+ * clobber the focused chip. `dispatchTabId`/`focusedTabId` (tabs.js) identify the
+ * owning engine so STOP routes to it. */
+function renderBackgroundJobs() {
+  const owner = (typeof dispatchTabId !== "undefined" && dispatchTabId !== null)
+    ? dispatchTabId
+    : (typeof focusedTabId !== "undefined" ? focusedTabId : null);
+  if (document.body.classList.contains("tiled")) {
+    const paneChip = typeof paneJobsContainer === "function" ? paneJobsContainer(owner) : null;
+    renderJobRows(paneChip, backgroundJobMeta, owner);
+    return;
+  }
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
+  renderJobRows(jobsChipEl, backgroundJobMeta, owner);
 }
 
 function onTurnFinished(event) {
   busy = false;
   syncActivityUi();
-  promptInputEl.focus();
+  if (typeof syncPaneActivity === "function") {
+    syncPaneActivity((typeof dispatchTabId !== "undefined" && dispatchTabId !== null) ? dispatchTabId : focusedTabId, false);
+  }
+  // Restore focus to the shared composer only in the single-console layout for the
+  // focused tab; in tiled mode each pane owns its input, so grabbing the (hidden)
+  // shared input would steal focus from whichever pane the user is typing in.
+  if ((typeof chromeIsFocused !== "function" || chromeIsFocused()) && !document.body.classList.contains("tiled")) {
+    promptInputEl.focus();
+  }
   announce("The agent finished its turn.");
 
   if (event) {
@@ -388,14 +430,24 @@ function onTurnFinished(event) {
   closeWorkGroup();
 
   finalizeAllAgentCards();
-  agentMeterEl.classList.add("hidden");
+  // Route through updateAgentMeter (focus-guarded) so a background tab's turn end
+  // can't blank the focused tab's topbar meter; after finalize the count is 0, so
+  // for the focused tab it hides as before.
+  updateAgentMeter();
 
   stopNowLine();
 
   appendTurnSeparator(event && event.stopReason);
 
   // A follow-up typed during the turn now goes out (starting its own turn).
+  // Single console: the shared queue. Tiled: this tab's OWN pane command queue
+  // (the finishing tab is the one being dispatched). Each is a no-op in the other
+  // layout, so both run unconditionally.
   flushMessageQueue();
+  if (typeof flushTabCommandQueue === "function") {
+    const finished = (typeof dispatchTabId !== "undefined" && dispatchTabId !== null) ? dispatchTabId : focusedTabId;
+    flushTabCommandQueue(finished);
+  }
 }
 
 function onTextDelta(text) {
@@ -609,30 +661,68 @@ function onPermissionRequest(event) {
   if (!activePermission) showNextPermission();
 }
 
+/** Send a decision to the engine that ASKED — routed by the request's own tabId
+ * so a background tab's approval reaches its engine, not the focused one. The
+ * single place a permission answer leaves the renderer. */
+function sendPermissionDecision(permission, decision, note) {
+  if (!permission) return;
+  window.magentra.respondPermission(permission.id, decision, note || "", permission.tabId);
+}
+
+/** The tab the current permission belongs to (its stamped tabId, else whichever
+ * tab's state is applied right now). */
+function permissionTabId() {
+  return (
+    (activePermission && activePermission.tabId) ||
+    (typeof dispatchTabId !== "undefined" && dispatchTabId) ||
+    (typeof focusedTabId !== "undefined" ? focusedTabId : null)
+  );
+}
+
 function showNextPermission() {
-  if (permissionQueue.length === 0) {
-    activePermission = null;
+  activePermission = permissionQueue.length > 0 ? permissionQueue.shift() : null;
+  renderPermissionUi();
+}
+
+/** Present this tab's active permission where it belongs: an in-pane approval
+ * when the consoles are tiled (every screen answers its own), or the shared
+ * full modal in the single-console view. */
+function renderPermissionUi() {
+  const tiled = document.body.classList.contains("tiled");
+  if (tiled && typeof showPaneApproval === "function") {
+    const tabId = permissionTabId();
+    if (activePermission) showPaneApproval(tabId, activePermission);
+    else if (typeof hidePaneApproval === "function") hidePaneApproval(tabId);
     return;
   }
-  activePermission = permissionQueue.shift();
-  const input = activePermission.input;
+  if (activePermission) {
+    fillPermissionModal(activePermission);
+  } else {
+    deleteModalEl.classList.add("hidden");
+    closeModalA11y();
+  }
+}
+
+/** Fill and open the shared approval modal for a permission (single-console). */
+function fillPermissionModal(permission) {
+  const input = permission.input;
   const subject =
     (input && typeof input === "object" && input.command) ||
-    activePermission.description ||
+    permission.description ||
     safeStringify(input);
   deleteSubjectEl.textContent = subject;
   // "Always allow" is offered only when the engine sent a subject to scope the
   // grant to. Without one there is nothing durable to remember, and the button
   // would silently behave like ALLOW ONCE.
-  const grantable = typeof activePermission.subject === "string" && activePermission.subject !== "";
+  const grantable = typeof permission.subject === "string" && permission.subject !== "";
   if (allowAlwaysBtnEl) allowAlwaysBtnEl.classList.toggle("hidden", !grantable);
   if (allowAlwaysHintEl) {
     allowAlwaysHintEl.classList.toggle("hidden", !grantable);
     // The engine says what "always allow" would remember: a command shape
     // ("mkdir", "git push") when it can derive one, else this exact command.
     allowAlwaysHintEl.textContent =
-      typeof activePermission.grant === "string" && activePermission.grant !== ""
-        ? `“Always allow” covers every “${activePermission.grant} …” command in this workspace — other commands still ask.`
+      typeof permission.grant === "string" && permission.grant !== ""
+        ? `“Always allow” covers every “${permission.grant} …” command in this workspace — other commands still ask.`
         : "“Always allow” remembers this exact command for this workspace — anything else still asks.";
   }
   // Each card starts with a blank note — never carry one card's note onto the next.
@@ -650,7 +740,7 @@ function resolvePermission(decision) {
   // An optional note rides out with ANY decision — the engine folds it into the
   // refusal on deny, and delivers it as a system reminder on any allow.
   const note = permissionNoteEl ? permissionNoteEl.value.trim() : "";
-  window.magentra.respondPermission(activePermission.id, decision, note);
+  sendPermissionDecision(activePermission, decision, note);
   if (permissionNoteEl) permissionNoteEl.value = "";
   deleteModalEl.classList.add("hidden");
   closeModalA11y();
@@ -667,6 +757,7 @@ function clearPermissionState() {
   if (permissionNoteEl) permissionNoteEl.value = "";
   deleteModalEl.classList.add("hidden");
   closeModalA11y();
+  if (typeof hidePaneApproval === "function") hidePaneApproval(permissionTabId());
 }
 
 /** The engine process is gone: nothing it owed the UI (turn end, background
@@ -984,21 +1075,39 @@ function handleEngineEvent(event) {
       onTurnFinished(event);
       break;
     case "error":
-      appendSysError(event.message);
-      announce(`Error: ${event.message}`);
-      if (event.fatal) {
-        setStatusLed("error");
-        showEngineErrorBanner(event.message, looksCredentialError(event.message) ? "credential" : "crash");
+      if (event.fatal && looksCredentialError(event.message)) {
+        // Missing/invalid credentials: the friendly "pick a profile / set up"
+        // path, not a raw red error line. The engine will exit right after this
+        // (see the fatalErrorReported guard in engine_exit).
+        fatalErrorReported = true;
+        announce(`Not connected: ${event.message}`);
+        void handleCredentialFailure();
+      } else {
+        appendSysError(event.message);
+        announce(`Error: ${event.message}`);
+        if (event.fatal) {
+          fatalErrorReported = true;
+          setStatusLed("error");
+          showEngineErrorBanner(event.message, "crash");
+        }
       }
       break;
-    case "engine_stderr":
-      appendSysError(event.text);
+    case "engine_notice":
+      // A soft, deduped heads-up (e.g. TLS verification disabled) — never red.
+      appendSysNotice(event.text);
       break;
     case "engine_exit": {
       // Deliberate stops (restart, model change, quit) are flagged expected by
       // the main process; everything else — including signal deaths, where
       // code is null — is a crash and must both say so and unlock the UI.
       if (event.expected) break;
+      // A fatal error frame already explained why (bad credentials, boot
+      // failure) and put up the banner — the exit that follows is that same
+      // failure, not a new one. Just unlock the UI without a second message.
+      if (fatalErrorReported) {
+        onEngineGone();
+        break;
+      }
       const cause = event.signal ? `signal ${event.signal}` : `code ${event.code}`;
       appendSysError(`engine stopped unexpectedly (${cause})`);
       setStatusLed("error");

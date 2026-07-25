@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { loadBackpackIndex } from "../knowledge/backpack/index.js";
 import {
@@ -35,7 +35,7 @@ import {
   writeAtlas,
 } from "../knowledge/atlas.js";
 import { areaFacts, graphSummary, planAtlasAreas, projectName } from "../knowledge/atlasPlan.js";
-import { loadOrBuildGraph, type GraphData } from "../knowledge/graph.js";
+import { graphStats, loadOrBuildGraph, pagerank, type GraphData } from "../knowledge/graph.js";
 import { loadStandards } from "../knowledge/standards.js";
 import { formatTokens } from "../config/pricing.js";
 import { BackgroundManager } from "../scheduling/background.js";
@@ -104,7 +104,14 @@ const WRAPUP_NUDGE_TEXT =
   "<system-reminder>You finished working but did not summarize. Give the user a short wrap-up: what was built/changed, how to use it, what you verified and the outcome, and any open issues.</system-reminder>";
 
 const LENGTH_CONTINUATION_TEXT =
-  "<system-reminder>Your previous response was cut off by the output-token limit. Continue exactly where you left off.</system-reminder>";
+  "<system-reminder>Your previous response was cut off mid-output by the token limit. Resume from the exact character where it stopped. Do not repeat or rephrase anything already written. Do not restart, re-introduce, or summarize. No preamble — output only the continuation, as if the text had never been interrupted.</system-reminder>";
+
+// The tool-call analogue of LENGTH_CONTINUATION_TEXT: a cutoff that lands
+// mid-tool-call leaves the tool's JSON truncated. Sent as that call's result so
+// the model knows it was cut off (not that it sent bad input) and reissues the
+// call in full — never assuming the truncated call ran.
+const TOOL_CUTOFF_TEXT =
+  "This tool call was cut off by the output-token limit before it finished, so it was NOT executed. Reissue the complete call — do not assume it ran or had any effect.";
 
 // Stall handling: with the interactive numeric caps lifted, the brake is
 // noticing that rounds have stopped producing anything new. Three consecutive
@@ -133,10 +140,37 @@ You own this query end to end: plan, act, verify, deliver — without stopping f
 - Do not stop early: the turn ends only when every part of the query is handled and your self-check passes.`;
 
 const SELF_VERIFY_TEXT =
-  "<system-reminder>Internal self-check — this is NOT a new user message and the user is NOT waiting for another reply. Your entire output for this step must be either the single word DONE or continued work. Nothing else. Do not greet, do not re-answer, do not summarize, do not introduce yourself.\n\nDecide silently: is every part of the user's original query already fully handled (a conversational message with nothing to do counts as handled), and did this turn leave nothing unnecessary behind (scratch files, duplicated helpers, abandoned attempts)?\n- If YES → output exactly: DONE\n- If NO → do the remaining work now (call tools / write the fix / clean up). Whatever you write in this case IS shown to the user; the DONE token never is.\n\nJudge only against the query itself — never invent verification rituals (builds, tests) it did not ask for.</system-reminder>";
+  "<system-reminder>Internal self-check — this is NOT a new user message and the user is NOT waiting for another reply. Your entire output for this step must be either the single word DONE or continued work. Nothing else. Do not greet, do not re-answer, do not summarize, do not introduce yourself.\n\nDecide silently: is every part of the user's original query already fully handled (a conversational message with nothing to do counts as handled), and did this turn leave nothing unnecessary behind (scratch files, duplicated helpers, abandoned attempts)?\n- If YES → output exactly this literal ASCII word and nothing else, never translated or localized even when the conversation is in another language: DONE\n- If NO → do the remaining work now (call tools / write the fix / clean up). Whatever you write in this case IS shown to the user; the DONE token never is.\n\nJudge only against the query itself — never invent verification rituals (builds, tests) it did not ask for.</system-reminder>";
 
-/** The machine-read sentinel a self-verify round answers with when nothing is left to do. */
-const SELF_VERIFY_DONE_RE = /^\s*DONE[.!…]?\s*$/i;
+/**
+ * Whether a self-verify round answered with the "nothing left to do" sentinel.
+ *
+ * The instruction asks for a bare DONE, but models — reasoning models especially
+ * — decorate or repeat it: `**DONE**`, `DONE.`, `DONE DONE DONE`, `DONE!\nDONE`.
+ * A strictly-anchored match let all of those fall through to the reveal path,
+ * spamming the chat with the raw verify buffer. Treat the round as complete when
+ * nothing but DONE survives stripping markdown emphasis and punctuation — but
+ * never when real prose rides along, since that prose is genuine continued work
+ * that must reach the user.
+ *
+ * Safety net for weaker models that localize the sentinel despite the instruction
+ * (`Tamamlandı.`, `Terminé.`, `完了`, …): a reply that reduces to one short word is
+ * a translated "done", never genuine continued work. The caller only reaches here
+ * with zero tool calls, and real continued work is always tool calls or a real
+ * sentence — so a lone word can be safely swallowed in any language.
+ */
+export function isSelfVerifyDone(text: string): boolean {
+  const tokens = text
+    .replace(/[*_`~#>]/g, " ") // markdown emphasis / heading / quote marks
+    .replace(/[.!…,:;\-–—]/g, " ") // trailing punctuation and separators
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length === 0) return false;
+  if (tokens.every((t) => /^done$/i.test(t))) return true; // literal DONE, decorated or repeated
+  const [only] = tokens;
+  return tokens.length === 1 && only !== undefined && /^[\p{L}\p{M}]{1,24}$/u.test(only); // a lone word = localized "done"
+}
 
 // ── Clarify pre-layer ───────────────────────────────────────────────────────
 // Before acting on an open-ended request ("build a game", "improve this
@@ -146,18 +180,62 @@ const SELF_VERIFY_DONE_RE = /^\s*DONE[.!…]?\s*$/i;
 // error, malformed verdict, or interrupt proceeds without clarifying.
 const CLARIFY_SYSTEM = `You are the clarify pre-layer of an autonomous coding agent. You see ONE incoming user request (plus a snippet of the previous exchange for context) and decide: should the agent ask clarifying questions BEFORE starting, or just start?
 
+You may also be given a "Codebase overview" — a quick, cursory read of the workspace (its design atlas, an import-graph skeleton, or a short peek at README/manifests). It is CONTEXT, not something to confirm with the user. Use it to SHARPEN questions, NOT to silence them:
+- Ground your questions in the project's actual stack, structure, and conventions, so you ask about real, specific choices instead of generic ones — name the concrete options THIS codebase invites.
+- Skip only what the overview answers as FACT — what the app is, its stack, which existing pattern to follow. Never ask the user to restate what the code plainly shows.
+- But the code shows what EXISTS, not what the user now WANTS. For an open-ended change to an existing project ("improve the game", "make it better", "extend this"), the DIRECTION and SCOPE are still the user's to choose — the overview does NOT settle them. Ask that (made specific by the overview), rather than silently picking a direction. Knowing the codebase is a reason to ask a sharper question, not a reason to skip asking.
+
 Reply with STRICT JSON only — no markdown fences, no prose:
   {"clarify": false}
 or
   {"clarify": true, "questions": [{"question": "...?", "header": "max 12 chars", "options": [{"label": "...", "description": "..."}, ...], "multiSelect": false}]}
 
 Set clarify=true ONLY when BOTH hold:
-1. The request is genuinely open-ended: the deliverable's core shape is unstated (kind/genre/technology/scope/audience) — e.g. "build a game", "draw me something", "improve this app".
+1. The request is genuinely open-ended — EITHER the deliverable's core shape is unstated (kind/genre/technology/scope/audience), e.g. "build a game", "draw me something"; OR it asks for an open-ended change whose DIRECTION is the user's to choose, e.g. "improve this app", "make the game better". A codebase overview may tell you what already EXISTS, but that does not settle which direction the user wants — so it does not, on its own, make an open-ended request concrete.
 2. Guessing wrong would waste real work — the user would likely ask for a redo.
 
 Set clarify=false for everything else: concrete tasks naming a target, questions or explanations, conversational messages, follow-ups whose context already fixes the shape, and anything where a sensible default exists and adjusting later is cheap. When unsure, prefer false — asking needlessly is friction.
 
 Questions: at most 3, each one decision-changing (never a detail that could be adjusted later), 2-4 mutually distinct options with a one-line description each; put your recommended option first with " (Recommended)" appended to its label. multiSelect true only when choices genuinely combine.`;
+
+// Caps that keep the clarify skim a cursory glance, not a context dump: the
+// whole overview injected into the clarify prompt, and the per-fallback read of
+// the working directory's overview files.
+const CLARIFY_SKIM_MAX_CHARS = 6000;
+const CLARIFY_PEEK_MAX_CHARS = 4000;
+// The obvious "what is this project" files, richest first — read only until the
+// peek budget runs out.
+const CLARIFY_PEEK_FILES = [
+  "README.md",
+  "README",
+  "readme.md",
+  "README.txt",
+  "package.json",
+  "pyproject.toml",
+  "Cargo.toml",
+  "go.mod",
+];
+
+/**
+ * A compact one-glance skeleton of the import graph for the clarify skim: the
+ * project's scale plus its most central files (by import centrality), which is
+ * enough to convey what the codebase IS. Returns undefined when the graph parsed
+ * no files (e.g. a language it does not index) so the caller can fall back.
+ */
+function graphSkeleton(g: GraphData, project: string): string | undefined {
+  const stats = graphStats(g);
+  if (stats.fileCount === 0) return undefined;
+  const top = [...pagerank(g).entries()]
+    .filter(([id]) => !id.startsWith("pkg:") && g.files[id])
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([id]) => id);
+  return [
+    `${project}: ${stats.fileCount} source files, ${stats.edgeCount} internal imports.`,
+    "Most central files (by import centrality):",
+    ...top.map((id) => `  ${id}`),
+  ].join("\n");
+}
 
 const PLAN_FIRST_REMINDER =
   "Nothing is on the task board yet. When a request will take several moves to finish, lay it out first with TaskCreate — one entry per move, closing with a check task that names the end state you'll confirm — before you touch any files. A quick one-off needs no board; just handle it.";
@@ -1076,11 +1154,16 @@ export class Session {
       .slice(-2)
       .map((m) => `${m.role}: ${m.text.length > 400 ? `${m.text.slice(0, 400)}…` : m.text}`)
       .join("\n");
+    // Ground the verdict in a cursory look at the code, so the questions are
+    // about real, specific choices — and so nothing the code already answers
+    // gets asked. Deterministic (file/graph reads, no model call): it rides
+    // inside this one inference, adding no round-trip. Fail-open by design.
+    const skim = this.buildClarifySkim();
     let raw: string;
     try {
       raw = await this.runInference({
         system: CLARIFY_SYSTEM,
-        user: `${recent ? `Previous exchange:\n${recent}\n\n` : ""}Incoming request:\n${userText}`,
+        user: `${recent ? `Previous exchange:\n${recent}\n\n` : ""}${skim ? `Codebase overview:\n${skim}\n\n` : ""}Incoming request:\n${userText}`,
         maxTokens: 600,
         model: this.settings.model,
       });
@@ -1101,6 +1184,75 @@ export class Session {
       return `${q.question}\n-> ${selected.length > 0 ? selected.join(", ") : "(no answer)"}`;
     });
     return `<system-reminder>Clarify pre-layer: before starting, the user answered these questions — honor the answers as requirements. Unanswered questions are yours to decide sensibly:\n\n${lines.join("\n\n")}</system-reminder>`;
+  }
+
+  /**
+   * A quick, cursory read of the workspace for the clarify pre-layer, so its
+   * questions are grounded in what the code actually is. Layered by cost, richest
+   * first, and fail-open — any error yields no skim and the clarify proceeds as
+   * before. All sources are deterministic reads (no model call):
+   *   1. the prebuilt design atlas, if present (the richest map, a free read);
+   *   2. else an import-graph skeleton (top files + scale) — cheap on a warm
+   *      cache, a one-time build if cold;
+   *   3. else a bounded peek at the working dir (README/manifests + layout), so
+   *      even an unmapped project still gets an overview before we ask.
+   * The result is capped so it stays a cursory glance, never a context dump.
+   */
+  private buildClarifySkim(): string | undefined {
+    let digest: string | undefined;
+    try {
+      const atlas = loadAtlas(this.cwd);
+      if (atlas) {
+        digest = `Design atlas (.magentra/ATLAS.md):\n${atlas}`;
+      } else {
+        // workspaceLooksNonTrivial is a depth-1 check — cheap enough to gate the
+        // graph load, which the user opted to allow to build once when cold.
+        const skeleton = workspaceLooksNonTrivial(this.cwd)
+          ? graphSkeleton(loadOrBuildGraph(this.cwd), projectName(this.cwd))
+          : undefined;
+        digest = skeleton ?? this.peekWorkspaceOverview();
+      }
+    } catch {
+      return undefined; // fail-open — the question must never wait on the skim
+    }
+    if (!digest) return undefined;
+    return digest.length > CLARIFY_SKIM_MAX_CHARS
+      ? `${digest.slice(0, CLARIFY_SKIM_MAX_CHARS)}\n[overview truncated]`
+      : digest;
+  }
+
+  /**
+   * The unmapped-project fallback: the top-level layout plus a bounded read of
+   * the obvious overview files (README, package manifests). Byte-capped so a
+   * giant README can never turn a cursory glance into a slow one.
+   */
+  private peekWorkspaceOverview(): string | undefined {
+    const parts: string[] = [];
+    try {
+      const entries = readdirSync(this.cwd, { withFileTypes: true }).filter((e) => !e.name.startsWith("."));
+      const names = [
+        ...entries.filter((e) => e.isDirectory()).map((e) => `${e.name}/`),
+        ...entries.filter((e) => e.isFile()).map((e) => e.name),
+      ].slice(0, 30);
+      if (names.length > 0) parts.push(`Top level: ${names.join(", ")}`);
+    } catch {
+      // no listing — the overview files below may still exist
+    }
+    let budget = CLARIFY_PEEK_MAX_CHARS;
+    for (const name of CLARIFY_PEEK_FILES) {
+      if (budget <= 0) break;
+      let content: string;
+      try {
+        content = readFileSync(join(this.cwd, name), "utf8");
+      } catch {
+        continue; // absent/unreadable — try the next candidate
+      }
+      if (!content.trim()) continue;
+      const snippet = content.length > budget ? `${content.slice(0, budget)}\n[…]` : content;
+      budget -= snippet.length;
+      parts.push(`--- ${name} ---\n${snippet.trim()}`);
+    }
+    return parts.length > 0 ? parts.join("\n\n") : undefined;
   }
 
   /** Runs one full user turn: model call -> tool calls -> ... -> final text. */
@@ -1286,7 +1438,7 @@ export class Session {
           verifyBuffered = false;
           this.suppressAssistantText = false;
           const verifyText = assistantText(assistant).trim();
-          if (toolCalls.length === 0 && SELF_VERIFY_DONE_RE.test(verifyText)) {
+          if (toolCalls.length === 0 && isSelfVerifyDone(verifyText)) {
             // Record the sentinel so history stays well-formed; it is never
             // rendered. The user's single original answer stands as the reply.
             if (assistant.content.length > 0) this.pushMessage(assistant);
@@ -1392,8 +1544,11 @@ export class Session {
           // (completeness + economy) before the break is allowed. Runs after
           // the signal rungs above — a real failure or open task list always
           // outranks a politeness check — and before the wrap-up rung, which
-          // it subsumes.
-          if (stopReason === "end_turn" && !selfVerifyFired) {
+          // it subsumes. A purely conversational turn (no tools all turn, so
+          // nothing was built and nothing can be left behind) has nothing to
+          // verify: skip the rung so a greeting ends instantly, with no extra
+          // round-trip and no risk of a leaked sentinel.
+          if (stopReason === "end_turn" && !selfVerifyFired && totalToolCallsThisTurn > 0) {
             selfVerifyFired = true;
             verifyBuffered = true;
             this.suppressAssistantText = true; // the verify answer streams silently
@@ -1430,6 +1585,13 @@ export class Session {
           break;
         }
 
+        // A max_tokens stop with tool calls pending means the response was cut
+        // off mid-tool-call. Surface the same continuation marker the text path
+        // shows (Layer 3); the truncated call is rejected with TOOL_CUTOFF_TEXT
+        // inside executeToolCalls, and complete calls in the batch still run.
+        if (stopReason === "max_tokens") {
+          this.emit({ type: "command_output", text: "↻ continuing after output-length cutoff" });
+        }
         totalToolCallsThisTurn += toolCalls.length;
         if (toolCalls.some((c) => c.name === "Write" || c.name === "Edit")) wroteOrEditedThisTurn = true;
         const results = await this.executeToolCalls(toolCalls, signal);
@@ -1563,6 +1725,29 @@ export class Session {
     const model = this.settings.model;
     const apiStartedAt = Date.now();
 
+    // Live context meter: the frontend otherwise only learns the context size
+    // once per turn (at turn_finished), so a long reply looks frozen. Seed with
+    // the prompt about to be processed and grow it as the reply streams, pushing
+    // a throttled context_update so the "ctx ~N" figure climbs in real time
+    // (an estimate — turn_finished replaces it with the measured value). Only
+    // the top-level session drives the meter; a subagent must not clobber it.
+    const liveBaseTokens = this.opts.child ? 0 : this.estimateContextNow();
+    let liveLastEmitted = 0;
+    const emitLiveContext = (): void => {
+      if (this.opts.child) return;
+      const live = liveBaseTokens + this.estimateTokens(text.length + thinking.length);
+      // Step-gate so a fast stream emits a handful of updates, not hundreds.
+      if (live - liveLastEmitted < 200) return;
+      liveLastEmitted = live;
+      this.emit({
+        type: "context_update",
+        contextTokens: live,
+        ...(this.autoCompactLimit > 0 && live >= Math.floor(this.autoCompactLimit * 0.9)
+          ? { contextWarn: true }
+          : {}),
+      });
+    };
+
     const stream = this.provider.stream({
       model,
       system: this.buildSystemPrompt(),
@@ -1580,10 +1765,12 @@ export class Session {
         case "text_delta":
           text += event.text;
           if (!this.suppressAssistantText) this.emit({ type: "text_delta", text: event.text });
+          emitLiveContext();
           break;
         case "thinking_delta":
           thinking += event.text;
           if (!this.suppressAssistantText) this.emit({ type: "thinking_delta", text: event.text });
+          emitLiveContext();
           break;
         case "tool_use_start":
           toolCalls.push({ id: event.id, name: event.name, json: "" });
@@ -1647,6 +1834,17 @@ export class Session {
       }
 
       const rawInput = safeParse(call.json);
+      // Truncated tool JSON = the response was cut off mid-call. Do not run it;
+      // tell the model it was cut off so it reissues (a generic schema error
+      // would read as "you sent bad input" and send it debugging a phantom).
+      if (isUnparseable(rawInput)) {
+        planned.push({
+          call,
+          parallel: true,
+          run: async () => ({ content: TOOL_CUTOFF_TEXT, isError: true }),
+        });
+        continue;
+      }
       const parsed = tool.inputSchema.safeParse(rawInput);
       if (!parsed.success) {
         const issues = parsed.error.issues
@@ -2294,13 +2492,21 @@ function providerHost(settings: Settings): string | undefined {
   }
 }
 
+const UNPARSEABLE_KEY = "__unparseable_input";
+
 function safeParse(json: string): unknown {
   if (!json.trim()) return {};
   try {
     return JSON.parse(json);
   } catch {
-    return { __unparseable_input: json };
+    return { [UNPARSEABLE_KEY]: json };
   }
+}
+
+/** True when safeParse could not parse the tool JSON — i.e. it was truncated,
+ * which for a streamed tool call means the response was cut off mid-call. */
+function isUnparseable(input: unknown): boolean {
+  return typeof input === "object" && input !== null && UNPARSEABLE_KEY in input;
 }
 
 function truncateResult(result: ToolResult, limit: number): ToolResult {

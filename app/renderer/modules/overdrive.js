@@ -3,10 +3,6 @@
 // Loaded as a classic script in index.html — all renderer modules share one
 // global scope, in the order the page lists them.
 
-// The two disciplines the dialog recommends for unattended runs. Kept here so
-// the checkbox markup and the engage handler agree on one source of truth.
-const OVERDRIVE_SKILL_IDS = ["prover", "sentinel"];
-
 // ---------------------------------------------------------------------------
 // Shell identity — button + document attribute reflect the live state.
 // ---------------------------------------------------------------------------
@@ -99,20 +95,8 @@ function closeOverdriveDialog() {
   closeModalA11y();
 }
 
-/** ENGAGE from the dialog: activate whichever recommended skills are still
- * checked (same set_modes frame the Skills panel uses), remember the intro was
- * seen, then engage. */
+/** ENGAGE from the dialog: remember the intro was seen, then engage. */
 function confirmOverdriveDialog() {
-  const checkedIds = OVERDRIVE_SKILL_IDS.filter((id) => {
-    const box = overdriveDialogEl.querySelector(`input[data-skill="${id}"]`);
-    return box && box.checked;
-  });
-  if (checkedIds.length > 0) {
-    pendingModesNote = true;
-    window.magentra.setModes([...new Set([...activeSkillIds(), ...checkedIds])]);
-    for (const m of modes) if (checkedIds.includes(m.id)) m.active = true;
-    renderSkillsSurfaces();
-  }
   uiSettings.overdriveIntroSeen = true;
   saveUiSettings();
   closeOverdriveDialog();
@@ -141,6 +125,15 @@ function onOverdriveToggleClick() {
  * session resume). Adopt it without echoing back and without the cinematic. */
 function onOverdriveChanged(event) {
   const enabled = Boolean(event && event.enabled);
+  // Reflect on the pane that owns this event — overdrive is per-engine, so each
+  // tiled screen keeps its own state and glow.
+  const tabId =
+    (typeof dispatchTabId !== "undefined" && dispatchTabId) ||
+    (typeof focusedTabId !== "undefined" ? focusedTabId : null);
+  if (typeof setTabOverdrive === "function" && tabId) setTabOverdrive(tabId, enabled, false);
+  // The shared button, document shell, and persisted default track the FOCUSED
+  // tab only — a background tab flipping its own stance must not flip the app.
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
   uiSettings.overdrive = enabled;
   lastSentSafety.overdrive = enabled; // engine is already there; don't re-send
   saveUiSettings();

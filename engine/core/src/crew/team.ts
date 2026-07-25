@@ -209,7 +209,7 @@ export const TEAM_FILE_FORMAT = `Each specialist is ONE markdown file at .magent
 The file is EXACTLY: a "---" fence alone on the first line, then "key: value" frontmatter lines, then a closing "---" fence alone on its own line, then the role prompt as the plain markdown body. Do NOT wrap the file in code fences or backticks.
 
 Frontmatter keys:
-- name  (REQUIRED) — the specialist's display name, e.g. Argus.
+- name  (REQUIRED) — a ROBOTIC call-sign for the specialist, never a real human name. Use a machine-style designation: a codename, or a name with a number (e.g. Sentinel-7, Argus, GRID, Unit-4, Vega-9). NEVER a real first or last name (no Sarah, John, Alex Chen, Maria, etc.).
 - role  (REQUIRED) — a short role title, e.g. Code Reviewer.
 - model (optional) — a model id to run this specialist on; omit it to use the session's default model.
 - provider (optional) — "openai-compatible" (the default) or "anthropic": which API kind this specialist's own endpoint speaks. Only needed together with a dedicated endpoint.
@@ -224,13 +224,13 @@ Body: everything after the closing "---" is the role prompt (REQUIRED — it mus
 
 Complete worked example — the file .magentra/team/reviewer.md, written exactly like this:
 ---
-name: Argus
+name: Sentinel-7
 role: Code Reviewer
 emoji: 🔍
 tools: Read, Grep, Glob, Bash
 docs: docs/ARCHITECTURE.md
 ---
-You are Argus, the crew's code reviewer. Given a diff or a set of changed files,
+You are Sentinel-7, the crew's code reviewer. Given a diff or a set of changed files,
 check correctness, error handling, and adherence to the project's conventions.
 Report concrete findings as "path:line — problem — suggested fix", most severe
 first. Do not rewrite the code yourself; your job is the review.`;
@@ -263,6 +263,7 @@ Valid tool names for the "tools:" key in THIS workspace: ${opts.toolNames.join("
 
 Rules:
 - Create between 2 and 4 files, each a distinct specialist.
+- Give each specialist a ROBOTIC call-sign for its "name" (e.g. Sentinel-7, Argus, GRID, Unit-4) — never a real human first or last name.
 - Use a lowercase id as the file name (e.g. reviewer.md, test-runner.md). Never name one "orchestrator".
 - Keep each role prompt to a few concrete sentences: what the specialist owns and how it reports.
 - Actually Write each file with the Write tool. Do NOT just print the file contents as your answer.

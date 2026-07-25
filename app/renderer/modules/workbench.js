@@ -78,11 +78,106 @@ function closeInspector() {
 /** Sidebar workspace rail: the active folder plus recent ones, one click to
  * switch. The active row also carries the worktree indicator when the session
  * has moved its cwd. */
+// Right-click a sidebar workspace to choose exactly how it opens — a new tab in
+// this window, or a separate window — instead of a single implicit behaviour.
+// Reuses the shared ctx-menu machinery (closeCtxMenu / openCtxMenuEl in crew.js).
+function openWorkspaceCtxMenu(e, opts) {
+  e.preventDefault();
+  if (typeof closeCtxMenu === "function") closeCtxMenu();
+  const menuEl = document.createElement("div");
+  menuEl.className = "ctx-menu";
+  const item = (label, danger, onClick) => {
+    const b = document.createElement("button");
+    b.className = "ctx-item" + (danger ? " danger" : "");
+    b.textContent = label;
+    b.addEventListener("click", () => {
+      onClick();
+      closeCtxMenu();
+    });
+    menuEl.appendChild(b);
+  };
+  if (opts.tabId) {
+    // An open tab.
+    if (opts.tabId !== focusedTabId && window.magentra.focusTab) item("◉ FOCUS", false, () => window.magentra.focusTab(opts.tabId));
+    if (window.magentra.openInNewWindow) item("⊞ OPEN IN NEW WINDOW", false, () => window.magentra.openInNewWindow(opts.workspace));
+    if (window.magentra.closeTab) item("✕ CLOSE TAB", true, () => window.magentra.closeTab(opts.tabId));
+  } else {
+    // A recent (not-open) workspace.
+    item("＋ OPEN AS NEW TAB", false, () => window.magentra.openWorkspace(opts.workspace));
+    if (window.magentra.openInNewWindow) item("⊞ OPEN IN NEW WINDOW", false, () => window.magentra.openInNewWindow(opts.workspace));
+  }
+  document.body.appendChild(menuEl);
+  const rect = menuEl.getBoundingClientRect();
+  let left = e.clientX || 8;
+  let top = e.clientY || 8;
+  if (left + rect.width > window.innerWidth) left = window.innerWidth - rect.width - 4;
+  if (top + rect.height > window.innerHeight) top = window.innerHeight - rect.height - 4;
+  menuEl.style.left = `${Math.max(4, left)}px`;
+  menuEl.style.top = `${Math.max(4, top)}px`;
+  openCtxMenuEl = menuEl;
+  const onDocClick = (ev) => { if (!menuEl.contains(ev.target)) closeCtxMenu(); };
+  const onKeydown = (ev) => { if (ev.key === "Escape") closeCtxMenu(); };
+  document.addEventListener("click", onDocClick, true);
+  document.addEventListener("keydown", onKeydown);
+  closeOpenCtxMenuListeners = () => {
+    document.removeEventListener("click", onDocClick, true);
+    document.removeEventListener("keydown", onKeydown);
+  };
+}
+
 function renderSidebarWorkspaces() {
   if (!sidebarWorkspacesListEl) return;
   sidebarWorkspacesListEl.textContent = "";
-  const shown = recentWorkspaces.slice(0, 5);
-  if (shown.length === 0) {
+
+  // Open tabs first — each is a live workspace (its own engine) that keeps
+  // running in the background. Empty in single-tab / the UI-test harness, where
+  // this whole block is skipped and the recents render exactly as before.
+  const openTabs = typeof tabs === "object" && tabs.size > 0 ? [...tabs.values()] : [];
+  const openPaths = new Set(openTabs.map((t) => t.workspace).filter(Boolean));
+  for (const ts of openTabs) {
+    if (!ts.workspace) continue;
+    const isFocused = ts.id === focusedTabId;
+    // The focused tab's live busy is the global `busy`; a background tab's is
+    // whatever its captured state last recorded.
+    const running = isFocused ? busy : ts.busy;
+    const attn = isFocused
+      ? Boolean(activePermission) || permissionQueue.length > 0
+      : Boolean(ts.activePermission) || (Array.isArray(ts.permissionQueue) && ts.permissionQueue.length > 0);
+    // A background tab's engine crash raises its banner in its own pane; surface
+    // it on the sidebar row too so the failure is visible without focusing it.
+    const errored = isFocused ? Boolean(engineErrorBannerShown) : Boolean(ts.engineErrorBannerShown);
+    const row = document.createElement("div");
+    row.className =
+      "sidebar-tab-row" + (isFocused ? " active" : "") + (running ? " running" : "") + (attn ? " attn" : "") + (errored ? " errored" : "");
+    const focusBtn = document.createElement("button");
+    focusBtn.className = "sidebar-tab-focus";
+    focusBtn.title = ts.workspace;
+    const dot = document.createElement("span");
+    dot.className = "sidebar-tab-dot";
+    const label = document.createElement("span");
+    label.className = "sidebar-item-label";
+    label.textContent = pathLeaf(ts.workspace);
+    focusBtn.append(dot, label);
+    focusBtn.addEventListener("click", () => {
+      if (window.magentra.focusTab) window.magentra.focusTab(ts.id);
+    });
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "sidebar-tab-close";
+    closeBtn.title = "Close this workspace tab";
+    closeBtn.setAttribute("aria-label", `Close ${pathLeaf(ts.workspace)}`);
+    closeBtn.textContent = "✕";
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (window.magentra.closeTab) window.magentra.closeTab(ts.id);
+    });
+    row.append(focusBtn, closeBtn);
+    row.addEventListener("contextmenu", (e) => openWorkspaceCtxMenu(e, { workspace: ts.workspace, tabId: ts.id }));
+    sidebarWorkspacesListEl.appendChild(row);
+  }
+
+  // Recent (not-currently-open) folders below — click opens each as a new tab.
+  const shown = recentWorkspaces.filter((w) => !openPaths.has(w)).slice(0, 5);
+  if (shown.length === 0 && openTabs.length === 0) {
     const empty = document.createElement("div");
     empty.className = "sidebar-empty";
     empty.textContent = "＋ opens a folder";
@@ -108,6 +203,7 @@ function renderSidebarWorkspaces() {
       row.appendChild(meta);
     }
     row.addEventListener("click", () => openWorkspaceByPath(workspace));
+    row.addEventListener("contextmenu", (e) => openWorkspaceCtxMenu(e, { workspace }));
     sidebarWorkspacesListEl.appendChild(row);
   }
 }

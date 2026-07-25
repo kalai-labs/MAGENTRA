@@ -20,7 +20,6 @@ import { BUILTIN_SKILL_FILES, loadModes, ModeEngine, parseSkillMd } from "../ma/
 import { parseFrontmatter } from "../config/frontmatter.js";
 import { loadSkills } from "../agent/skills.js";
 import { loadAtlas } from "../knowledge/atlas.js";
-import { buildDebugHeader } from "../ma/debug.js";
 import { buildCrewPrompt, loadTeam, type CrewAgent } from "../crew/team.js";
 import { LAB_FILE_NAME, compileLab, findLabFile, parseLabFile, snapshotLab } from "../lab.js";
 import {
@@ -294,9 +293,14 @@ export class Engine {
   }
 
   /**
-   * Fetches the endpoint's real model catalog in the background and validates
-   * the configured model against it: a typo'd model warns at startup, not on
-   * the first turn. Best-effort — a catalog-less endpoint changes nothing.
+   * Fetches the endpoint's real model catalog in the background to populate the
+   * UI's model picker. Best-effort — a catalog-less endpoint changes nothing.
+   *
+   * It deliberately does NOT warn when the configured model is absent from the
+   * catalog: many valid models are simply not listed in /models (custom ids,
+   * gated models, aliases), so that warning fired constantly on models that
+   * answered fine. A genuinely bad model surfaces a real error on the first turn
+   * — that is the honest signal, not a preemptive guess.
    */
   private publishModelCatalog(): void {
     const provider = this.opts.provider;
@@ -306,13 +310,6 @@ export class Engine {
       .then((models) => {
         if (models.length === 0) return;
         this.emit({ type: "model_catalog", models });
-        if (!models.includes(this.opts.settings.model)) {
-          this.emit({
-            type: "error",
-            message: `Model "${this.opts.settings.model}" is not in the endpoint's catalog (${models.length} models listed). Check the model id — the first turn will likely fail with a 404.`,
-            fatal: false,
-          });
-        }
       })
       .catch(() => {
         // No catalog endpoint (or auth scope) — the picker keeps its defaults.
@@ -379,6 +376,16 @@ export class Engine {
   /** Resolves when ALL outstanding exclusive work (turn, /compact, /build-crew) completes. */
   idle(): Promise<void> {
     return this.turnPromise;
+  }
+
+  /**
+   * Stop every background job (detached bash processes, monitors, background
+   * agents). Interrupt alone does NOT reap these — they are spawned detached (own
+   * process group) precisely so they outlive a turn — so shutdown must call this,
+   * or closing a workspace leaves orphaned processes (e.g. a dev server) running.
+   */
+  stopBackgroundJobs(): void {
+    this.session.background.stopAll();
   }
 
   /**
@@ -1132,9 +1139,6 @@ export class Engine {
       case "styles": // deprecated alias for /skills
         this.handleSkills(args);
         break;
-      case "debug":
-        this.handleDebug(args);
-        break;
       case "settings":
         this.handleSettings(args);
         break;
@@ -1237,37 +1241,6 @@ export class Engine {
           ? `${id} on — ${summary.name} skill active`
           : `${id} off — ${summary.name} skill disabled`,
     });
-  }
-
-  /**
-   * `/debug <prompt>`: activate the sticky debug skill (reproduce-first,
-   * oracle-script debugging) and start a turn seeded with the workspace
-   * [debug context] header plus the user's bug report. `/debug off` deactivates
-   * it; `/debug` with no argument just turns it on and asks for the symptom.
-   * Activation runs through {@link applyModes} — the same path /skills uses — so
-   * `conflicts:` resolution is respected. Session-only (not persisted).
-   */
-  private handleDebug(args?: string): void {
-    const trimmed = args?.trim() ?? "";
-    const active = this.modeEngine.list().filter((m) => m.active).map((m) => m.id);
-    if (trimmed === "off") {
-      this.applyModes(active.filter((x) => x !== "debug"));
-      this.emit({ type: "command_output", text: "🐛 debug mode off" });
-      return;
-    }
-    const messages = this.applyModes([...new Set([...active, "debug"])]);
-    if (messages.length > 0) return; // a refusal (conflict) was already surfaced
-    if (trimmed === "") {
-      this.emit({
-        type: "command_output",
-        text: "🐛 debug mode on — describe the bug (usage: /debug <what is broken>)",
-      });
-      return;
-    }
-    this.emit({ type: "command_output", text: "🐛 debug mode on" });
-    this.startExclusive("debugging", () =>
-      this.session.runTurn(buildDebugHeader(this.opts.cwd) + "\n\n" + trimmed),
-    );
   }
 
   /** `/settings` lists the effective config; `/settings <key> <value>` persists and applies one. */
@@ -2427,7 +2400,6 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
   },
   { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous stance: nothing asks, self-verified completion" },
   { cmd: "/styles", args: "[on|off <id>]", desc: "deprecated alias for /skills" },
-  { cmd: "/debug", args: "<prompt>", desc: "reproduce-first debugging mode (off: /debug off)" },
   { cmd: "/settings", args: "[global] [k v]", desc: "show settings, or set one (add global to save to ~/.magentra)" },
   { cmd: "/resume", args: "<session-id>", desc: "resume a previous session" },
   { cmd: "/sessions", args: "", desc: "list saved sessions" },

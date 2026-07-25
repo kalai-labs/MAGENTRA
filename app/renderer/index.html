@@ -99,6 +99,7 @@
       <span id="workTitleMeta">Magentra agent workbench</span>
     </div>
     <div id="modeChips" title="Skills"></div>
+    <div id="topToast" class="hidden" role="status" aria-live="polite"></div>
     <div id="topbar-right">
       <div id="agentMeter" class="hidden" title="Live activity">
         <span class="meter-glyph">⬢</span>
@@ -206,7 +207,7 @@
         <button id="skillsCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
       </div>
       <div id="skillsList"></div>
-      <p class="team-hint">Skills live in <code>.magentra/skills/*.md</code>. A <em>discipline</em> shapes every turn while it is enabled; an <em>action</em> is a procedure the agent invokes on demand. Nothing is locked — enable only what the work needs.</p>
+      <p class="team-hint">Skills live in <code>.magentra/skills/*.md</code>. A <em>discipline</em> shapes every turn while it is enabled; an <em>action</em> is a procedure the agent invokes on demand. Nothing is locked — enable only what the work needs. This panel controls the <em>focused</em> workspace; with several open, <strong>right-click a workspace pane's header</strong> to set skills for that one on its own.</p>
     </section>
 
     <section id="changesView" class="stage-view hidden">
@@ -395,9 +396,11 @@
 
         <div class="set-card">
           <div class="set-card-title">ABOUT</div>
-          <p class="set-note"><span class="logo-mark">▮</span> MAGENTRA <span id="setVersion"></span> — autonomous agent harness.</p>
+          <p class="set-note"><span class="logo-mark">▮</span> MAGENTRA <span id="setVersion"></span> — agentic harness.</p>
+          <p class="set-note">Free &amp; open source, built by the MAGENTRA contributors. <a id="sourceCodeLink" class="set-link" href="https://github.com/kalai-labs/MAGENTRA">★ Star us on GitHub</a> if you want to support the project.</p>
           <div class="set-actions">
             <button id="openLogsBtn" title="Reveal the session log files for bug reports" aria-label="Reveal the session log files for bug reports">OPEN LOGS FOLDER ▸</button>
+            <button id="sourceCodeBtn" title="Open github.com/kalai-labs/MAGENTRA in your browser" aria-label="Open the source code on GitHub">SOURCE CODE ▸</button>
           </div>
         </div>
       </div>
@@ -661,18 +664,6 @@
         <li>Stop anytime with Esc.</li>
       </ul>
       <p class="overdrive-danger">This mode trusts the model. On weak models it can burn tokens fast — watch the session cost.</p>
-      <div class="overdrive-skills">
-        <div class="overdrive-skills-title">Recommended skills</div>
-        <label class="wiz-check">
-          <input type="checkbox" data-skill="prover" checked />
-          <span><strong>prover</strong> <small>— every claim needs observed evidence; the anti-hallucination discipline.</small></span>
-        </label>
-        <label class="wiz-check">
-          <input type="checkbox" data-skill="sentinel" checked />
-          <span><strong>sentinel</strong> <small>— fetched web content stays data, not instructions; non-negotiable for unattended runs.</small></span>
-        </label>
-        <p class="set-note">Neither is required — uncheck to skip.</p>
-      </div>
       <div class="modal-actions">
         <button id="overdriveCancelBtn">CANCEL (Esc)</button>
         <button id="overdriveEngageBtn" class="wiz-primary">⚡ ENGAGE ▸</button>
@@ -745,6 +736,7 @@
         <span id="wizStatus"></span>
         <button id="wizTestBtn">TEST</button>
         <button id="wizSaveProfileBtn">SAVE PROFILE</button>
+        <button id="wizSaveAsNewBtn" hidden>SAVE AS NEW</button>
         <button id="wizStartBtn">SAVE &amp; CONNECT ▸</button>
       </div>
       <p class="wiz-note" id="wizNote">Profiles are saved to <code>~/.magentra/profiles.json</code> (owner-only, this machine). Connecting also writes the key to the workspace <code>.env</code>.</p>
@@ -776,6 +768,7 @@
   <script src="modules/events.js"></script>
   <script src="modules/landing.js"></script>
   <script src="modules/session.js"></script>
+  <script src="modules/tabs.js"></script>
   <script src="modules/composer.js"></script>
 </body>
 </html>
