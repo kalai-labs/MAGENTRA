@@ -144,6 +144,13 @@ files only, sorted most-recently-modified first, capped at 1000 with a "narrow t
 notice when exceeded. `node_modules` and `.git` are ignored, and dotfiles are excluded
 unless `dot: true`. An empty result (`No files match the pattern.`) is not an error.
 
+MAGENTRA's own `.magentra/` state directory is ignored **even under `dot: true`**, unless
+the pattern or `path` names it as a path segment (`.magentra/**/*.json`, or
+`path: "<cwd>/.magentra"`). It holds session transcripts and, when worktrees are in use,
+whole second checkouts of the repository, so sweeping it up by accident is a large and
+silent waste of the user's context. The match is on a path segment, so `.magentra-backup/`
+and `docs/magentra-notes.md` are unaffected.
+
 **Error modes.** An internal glob-engine failure returns `Glob failed: …` as an error.
 
 ## Grep

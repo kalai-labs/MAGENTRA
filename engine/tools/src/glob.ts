@@ -17,6 +17,21 @@ const inputSchema = z.object({
     .describe("Set true to also match dotfiles/dot-directories (e.g. .github/**); default false."),
 });
 
+/**
+ * Matches a `.magentra` path SEGMENT — the workspace state directory, not a
+ * file that merely has the word in its name (`docs/magentra-notes.md`,
+ * `.magentra-backup/`). Anchored on separators at both ends for that reason.
+ */
+const STATE_DIR_SEGMENT = /(^|[\\/])\.magentra([\\/]|$)/i;
+
+/** True when the caller deliberately aimed at the state directory, in the
+ *  pattern or in the search root. Only then is it worth listing: everything in
+ *  there is MAGENTRA's own bookkeeping, and an accidental match spends the
+ *  user's context on session transcripts and worktree checkouts. */
+function targetsStateDir(pattern: string, path: string | undefined): boolean {
+  return STATE_DIR_SEGMENT.test(pattern) || (path !== undefined && STATE_DIR_SEGMENT.test(path));
+}
+
 export const globTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "Glob",
   description: `Fast filename/path matching. Supports glob patterns like "**/*.js" or "src/**/*.{ts,tsx}".
@@ -24,6 +39,7 @@ export const globTool: ToolDefinition<z.infer<typeof inputSchema>> = {
 - Matches file names and paths only; it never looks inside files (use Grep for contents).
 - Results are sorted by modification time, most recently modified first.
 - * matches within one path segment; ** crosses directories; {a,b} alternates; ? matches one character.
+- \`node_modules\`, \`.git\`, and MAGENTRA's own \`.magentra/\` state directory are skipped. To search the state directory, name it in the pattern or path (e.g. ".magentra/**/*.json") — it holds session transcripts and worktree checkouts, so an accidental match is a large waste of context.
 - An empty result is not an error. Prefer this over find/ls via Bash.`,
   permissionClass: "read",
   permissionSubject: (input) => input.pattern,
@@ -38,7 +54,16 @@ export const globTool: ToolDefinition<z.infer<typeof inputSchema>> = {
         onlyFiles: true,
         dot: input.dot ?? false,
         suppressErrors: true,
-        ignore: ["**/node_modules/**", "**/.git/**"],
+        // `dot: false` already hides `.magentra` from an ordinary search, but
+        // the moment a caller passes dot:true (to find .github, .claude, …) the
+        // state directory comes with it — session transcripts and whole
+        // worktree checkouts. Exclude it explicitly, and only step aside when
+        // the caller actually asked for it.
+        ignore: [
+          "**/node_modules/**",
+          "**/.git/**",
+          ...(targetsStateDir(input.pattern, input.path) ? [] : ["**/.magentra/**"]),
+        ],
       });
     } catch (err) {
       return { content: `Glob failed: ${(err as Error).message}`, isError: true };
