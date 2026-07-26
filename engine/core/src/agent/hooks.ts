@@ -27,7 +27,8 @@ const DEFAULT_TIMEOUT_MS = 60_000;
  * Runs user-configured shell hooks around agent lifecycle events. Each matching
  * hook command is spawned through the shell with the JSON payload piped to its
  * stdin; stdout/stderr are captured. Hooks never throw — a spawn failure yields
- * exitCode 127. Exit code 2 is the "block" signal (Claude-Code convention).
+ * exitCode 127. Exit code 2 is the "block" signal: it stops the action and
+ * feeds the hook's stderr back as the reason (see {@link HookRunner.summarize}).
  */
 export class HookRunner {
   private readonly cwd: string;

@@ -7,8 +7,8 @@ const { spawnSync } = require("node:child_process");
 const { resolveWorkspaceFile, diffTargetsOnly, undoWorkspaceDiffs } = require("../main/changes.js");
 
 async function main() {
-  // Keep the fixture inside the workspace: Codex/CI sandboxes commonly mount
-  // the host temp directory read-only for child processes such as git.
+  // Keep the fixture inside the workspace: sandboxed CI environments commonly
+  // mount the host temp directory read-only for child processes such as git.
   const fixtureRoot = path.join(__dirname, ".tmp");
   fs.mkdirSync(fixtureRoot, { recursive: true });
   const workspace = fs.mkdtempSync(path.join(fixtureRoot, "changes-"));
