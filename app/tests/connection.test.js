@@ -17,7 +17,7 @@ async function main() {
   // ── normalizeBaseUrl: pasted endpoint paths reduce to the real base ──────
   assert.equal(normalizeBaseUrl("http://192.168.1.20:1234/v1/chat/completions"), "http://192.168.1.20:1234/v1");
   assert.equal(normalizeBaseUrl("http://localhost:8080/v1/models"), "http://localhost:8080/v1");
-  assert.equal(normalizeBaseUrl("  https://api.deepinfra.com/v1/openai/  "), "https://api.deepinfra.com/v1/openai");
+  assert.equal(normalizeBaseUrl("  https://api.example.com/v1/openai/  "), "https://api.example.com/v1/openai");
   assert.equal(normalizeBaseUrl("http://localhost:11434/v1"), "http://localhost:11434/v1");
 
   // ── isLocalBaseUrl: LAN model boxes count as local (key-optional) ────────
@@ -27,7 +27,7 @@ async function main() {
   ]) {
     assert.equal(isLocalBaseUrl(url), true, `${url} should be local`);
   }
-  assert.equal(isLocalBaseUrl("https://api.deepinfra.com/v1/openai"), false);
+  assert.equal(isLocalBaseUrl("https://api.example.com/v1/openai"), false);
   assert.equal(isLocalBaseUrl("http://172.15.0.1/v1"), false, "172.15 is outside the private range");
 
   // ── candidates: localhost gets a 127.0.0.1 fallback, others do not ───────

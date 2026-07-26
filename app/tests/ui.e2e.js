@@ -1109,7 +1109,7 @@ async function run() {
   });
 
   await test("connection profiles: dock opens the picker, USE applies, delete removes", async () => {
-    // The two wizard scenarios above saved "My DeepInfra" and "Coder GW".
+    // The two wizard scenarios above saved "My Endpoint" and "Coder GW".
     const dockCount = await evaluate(`document.querySelectorAll('#dock .dock-btn').length`);
     // The Connect button sits immediately left of Settings.
     const order = await evaluate(`(() => {

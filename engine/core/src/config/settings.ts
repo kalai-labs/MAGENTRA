@@ -4,8 +4,28 @@ import { dirname, join } from "node:path";
 import { z } from "zod";
 import { STATE_DIR_NAME } from "@magentra/protocol";
 
-/** Default OpenAI-compatible endpoint (DeepInfra) used by the provider and the backpack embedder. */
+/**
+ * Fallback OpenAI-compatible endpoint for the provider and the backpack
+ * embedder, used only when no `baseUrl` is configured. Any OpenAI-compatible
+ * server works — set `baseUrl` to point at your own (a hosted `/v1` API, a
+ * gateway, or a local server).
+ */
 export const DEFAULT_OPENAI_BASE_URL = "https://api.deepinfra.com/v1/openai";
+
+/**
+ * Env var the app writes and the engine reads when `apiKeyEnv` is unset and the
+ * provider is OpenAI-compatible. The endpoint is the user's choice, so the name
+ * is deliberately vendor-neutral.
+ */
+export const DEFAULT_API_KEY_ENV = "MAGENTRA_API_KEY";
+
+/**
+ * Env vars tried in order for an OpenAI-compatible endpoint when `apiKeyEnv` is
+ * unset. `OPENAI_API_KEY` is the ecosystem convention; `DEEPINFRA_API_KEY` is a
+ * legacy name workspaces provisioned by older builds were written with, kept
+ * last so those `.env` files keep working without an edit.
+ */
+const OPENAI_COMPAT_KEY_ENV_VARS = [DEFAULT_API_KEY_ENV, "OPENAI_API_KEY", "DEEPINFRA_API_KEY"];
 
 const permissionRuleSchema = z.string();
 /** One "always allow" grant: `{ tool: "Bash", subject: "rm -rf ./tmp/build" }`.
@@ -494,6 +514,6 @@ export function resolveApiKey(settings: Settings): string | undefined {
     ? process.env[settings.apiKeyEnv]
     : settings.provider === "anthropic"
       ? process.env.ANTHROPIC_API_KEY
-      : (process.env.DEEPINFRA_API_KEY ?? process.env.OPENAI_API_KEY);
+      : OPENAI_COMPAT_KEY_ENV_VARS.map((name) => process.env[name]).find((v) => v !== undefined);
   return fromEnv ?? settings.apiKey;
 }

@@ -16,7 +16,7 @@ export interface RedactionFinding {
 }
 
 const SECRET_PATTERNS: RegExp[] = [
-  /\bsk-[A-Za-z0-9_-]{16,}\b/g, // OpenAI/DeepInfra/Anthropic-style keys
+  /\bsk-[A-Za-z0-9_-]{16,}\b/g, // the `sk-` API-key shape most providers issue
   /\bAKIA[0-9A-Z]{16}\b/g, // AWS access key id
   /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, // GitHub tokens
   /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, // Slack tokens

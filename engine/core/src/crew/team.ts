@@ -214,7 +214,7 @@ Frontmatter keys:
 - model (optional) — a model id to run this specialist on; omit it to use the session's default model.
 - provider (optional) — "openai-compatible" (the default) or "anthropic": which API kind this specialist's own endpoint speaks. Only needed together with a dedicated endpoint.
 - baseurl (optional) — a dedicated OpenAI-compatible endpoint URL for this specialist (e.g. http://localhost:11434/v1 for a local Ollama, or another hosted /v1 API). Omit it to use the session's endpoint. With baseurl set, also set model to a model that endpoint actually serves.
-- apikeyenv (optional) — the NAME of the environment variable holding the API key for this specialist's endpoint (e.g. MY_OPENROUTER_KEY). Never write an actual API key into a team file — team files are shareable; keys stay in the environment or .env.
+- apikeyenv (optional) — the NAME of the environment variable holding the API key for this specialist's endpoint (e.g. MY_GATEWAY_KEY). Never write an actual API key into a team file — team files are shareable; keys stay in the environment or .env.
 - emoji (optional) — a single emoji shown next to the agent in the UI.
 - color (optional) — a color name (e.g. blue, green) for the UI.
 - tools (optional) — a comma-separated list of tool names this specialist may use; omit it to grant the standard toolset. Read, Grep, Glob, TaskGet, TaskList and BackpackSearch are always available regardless.

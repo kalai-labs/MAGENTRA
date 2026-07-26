@@ -14,7 +14,7 @@ npm run build
 
 # 2. Make a playground and give it your API key
 mkdir C:\labs\demo1
-copy <repo>\.env C:\labs\demo1\.env        # or create .env with DEEPINFRA_API_KEY=...
+copy <repo>\.env C:\labs\demo1\.env        # or create .env with MAGENTRA_API_KEY=...
 
 # 3. Launch the desktop app and open the playground in it
 cd <repo>
@@ -45,7 +45,7 @@ mkdir notes
 name: Scout
 role: Fast Researcher
 model: deepseek-ai/DeepSeek-V4-Flash
-apikeyenv: DEEPINFRA_API_KEY
+apikeyenv: MAGENTRA_API_KEY
 emoji: 🔎
 docs: notes/project.md
 ---
@@ -62,8 +62,8 @@ endpoint serves; a local Ollama member would instead use
 name: Sage
 role: Deep Analyst
 model: openai/gpt-oss-120b
-baseurl: https://api.deepinfra.com/v1/openai
-apikeyenv: DEEPINFRA_API_KEY
+baseurl: https://api.example.com/v1
+apikeyenv: MY_ENDPOINT_KEY
 emoji: 🦉
 docs: notes/project.md
 ---

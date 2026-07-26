@@ -172,7 +172,7 @@ function renderWizProfiles() {
     meta.className = "wiz-profile-meta";
     const endpoint = p.baseUrl
       ? p.baseUrl.replace(/^https?:\/\//, "")
-      : (p.provider === "anthropic" ? "anthropic.com" : "deepinfra");
+      : (p.provider === "anthropic" ? "anthropic.com" : "default endpoint");
     meta.textContent = `${p.model || "—"} · ${endpoint}${p.hasKey ? "" : " · keyless"}`;
     info.append(name, meta);
     info.addEventListener("click", () => loadProfileIntoForm(p));

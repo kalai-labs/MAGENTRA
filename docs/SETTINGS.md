@@ -32,8 +32,8 @@ file — never the shareable project file — and the file is written mode `0600
 | `provider` | `"openai-compatible"` | Which API dialect to speak: `"anthropic"` or `"openai-compatible"`. |
 | `model` | `"deepseek-ai/DeepSeek-V4-Flash"` | The main model id sent on every turn. |
 | `smallModel` | *(unset)* | Cheap model for WebFetch digestion and compaction summaries; falls back to `model` when unset. |
-| `baseUrl` | *(unset)* | Endpoint override. The openai-compatible provider defaults to DeepInfra (`https://api.deepinfra.com/v1/openai`); point this at any compatible server (e.g. Ollama's `http://localhost:11434/v1`). |
-| `apiKeyEnv` | *(unset)* | Name of the env var holding the API key. When unset, the provider default applies (`ANTHROPIC_API_KEY`, or `DEEPINFRA_API_KEY`/`OPENAI_API_KEY`). |
+| `baseUrl` | *(unset)* | Endpoint the openai-compatible provider talks to. Point it at any compatible server — a hosted `/v1` API, a gateway, or a local one (e.g. Ollama's `http://localhost:11434/v1`). Left unset, a built-in fallback endpoint applies. |
+| `apiKeyEnv` | *(unset)* | Name of the env var holding the API key. When unset, the provider defaults apply: `ANTHROPIC_API_KEY`, or `MAGENTRA_API_KEY`/`OPENAI_API_KEY` for openai-compatible. |
 | `apiKey` | *(unset)* | The key itself, stored in `~/.magentra/settings.json`. A **secret**: never printed by `/settings`, and any matching env var always wins over it. |
 | `allowInsecureTls` | `false` | Skip TLS certificate verification for provider requests — the `verify=False` escape hatch for self-signed certificates on servers you own. The engine warns loudly at boot while this is on; never enable it for endpoints you don't control. Set via the wizard/Settings "Allow self-signed certificate" checkbox. |
 

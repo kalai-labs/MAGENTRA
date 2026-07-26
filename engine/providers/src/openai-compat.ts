@@ -31,8 +31,8 @@ interface WireMessage {
 }
 
 /**
- * Provider for any OpenAI-compatible chat completions endpoint
- * (DeepInfra, OpenRouter, vLLM, ...). Hand-rolled fetch + SSE — no SDK.
+ * Provider for any OpenAI-compatible chat completions endpoint — a hosted API,
+ * a gateway, or a local server. Hand-rolled fetch + SSE — no SDK.
  */
 export class OpenAICompatProvider implements Provider {
   constructor(private readonly opts: OpenAICompatOptions) {}
@@ -229,7 +229,7 @@ function isThinkTagPrefix(sub: string): boolean {
 /**
  * Separates inline <think>…</think> reasoning from the answer in a streamed
  * content channel. Some reasoning models served over an OpenAI-compatible
- * endpoint (DeepSeek-R1, QwQ, …) do not populate the `reasoning_content` field:
+ * endpoint do not populate the `reasoning_content` field:
  * they inline their chain of thought straight into `content`, wrapped in
  * <think>…</think> — and some emit only a stray closing </think> when the chat
  * template opened the block implicitly. Left untouched those tags and the

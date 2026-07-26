@@ -30,8 +30,8 @@ You are Scout. Find answers fast, report bullets with evidence.
 ---
 name: Sage
 role: Deep Analyst
-baseurl: https://api.deepinfra.com/v1/openai
-apikeyenv: DEEPINFRA_API_KEY
+baseurl: https://api.example.com/v1
+apikeyenv: MY_ENDPOINT_KEY
 ---
 You are Sage. Produce structured analyses.
 
@@ -77,14 +77,15 @@ You are Forge, the lab's coder. ...
 name: Sage
 role: Deep Researcher
 model: deepseek-ai/DeepSeek-V4-Pro
-apikeyenv: MY_DEEPINFRA_KEY
+apikeyenv: MY_ENDPOINT_KEY
 ---
 You are Sage, the lab's deep researcher. ...
 ```
 
 - `provider:` — `openai-compatible` (default) or `anthropic`.
 - `baseurl:` — a dedicated OpenAI-compatible endpoint URL (local Ollama /
-  LM Studio / vLLM, or any hosted `/v1` API). Local endpoints need no key.
+  LM Studio / any local inference server, or any hosted `/v1` API). Local
+  endpoints need no key.
 - `apikeyenv:` — the **NAME** of the environment variable holding that
   endpoint's API key. Never the key itself: team files are shareable, keys
   stay in the environment or `.env`.

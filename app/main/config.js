@@ -10,6 +10,22 @@ const { app } = require("electron");
 
 const DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Flash";
 
+// The endpoint the engine falls back to when a workspace configures no base URL
+// (mirrors DEFAULT_OPENAI_BASE_URL in engine/core/src/config/settings.ts — the
+// app cannot import from the engine, which ships as a bundled child process).
+// Any OpenAI-compatible server works; the wizard writes whichever one the user
+// picks, so this value is only ever a fallback.
+const DEFAULT_BASE_URL = "https://api.deepinfra.com/v1/openai";
+
+// The env var name the app writes into a workspace .env and the engine reads
+// back. The endpoint behind it is the user's choice, so the name is neutral.
+const DEFAULT_API_KEY_ENV = "MAGENTRA_API_KEY";
+
+// Names earlier builds wrote instead. The engine still reads them, and saving a
+// connection rewrites them to DEFAULT_API_KEY_ENV, so an existing workspace
+// keeps working with or without a re-save.
+const LEGACY_API_KEY_ENV_VARS = ["DEEPINFRA_API_KEY"];
+
 // The renderer owns the theme choice (it lives in localStorage with the rest of
 // the UI settings), but main needs the *name* one launch early: the window's
 // pre-paint backgroundColor and the native titlebar overlay are both set before
@@ -137,6 +153,9 @@ function writeConfig(config) {
 
 module.exports = {
   DEFAULT_MODEL,
+  DEFAULT_BASE_URL,
+  DEFAULT_API_KEY_ENV,
+  LEGACY_API_KEY_ENV_VARS,
   DEFAULT_THEME,
   THEMES,
   MAX_RECENT_WORKSPACES,

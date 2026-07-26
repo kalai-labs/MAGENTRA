@@ -961,7 +961,7 @@ export class Engine {
     const settings = this.opts.settings;
     const apiKey = resolveApiKey(settings);
     // An Anthropic session without an explicit baseUrl has no OpenAI-compatible
-    // embeddings endpoint — building against the DeepInfra default would send
+    // embeddings endpoint — building against the fallback default would send
     // the Anthropic key to the wrong host. Warn once and build without
     // embeddings (keyword retrieval still works).
     const anthropicNoEndpoint = settings.provider === "anthropic" && settings.baseUrl === undefined;

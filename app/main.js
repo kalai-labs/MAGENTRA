@@ -9,6 +9,9 @@ const { pathToFileURL } = require("node:url");
 
 const {
   DEFAULT_MODEL,
+  DEFAULT_BASE_URL,
+  DEFAULT_API_KEY_ENV,
+  LEGACY_API_KEY_ENV_VARS,
   DEFAULT_THEME,
   THEMES,
   configPath,
@@ -357,10 +360,9 @@ function hasCredentials(workspace) {
     // missing/unreadable .env — ignore
   }
 
-  if (
-    (typeof process.env.DEEPINFRA_API_KEY === "string" && process.env.DEEPINFRA_API_KEY.trim() !== "") ||
-    (typeof process.env.ANTHROPIC_API_KEY === "string" && process.env.ANTHROPIC_API_KEY.trim() !== "")
-  ) {
+  // The names the engine resolves a key from when settings name no apiKeyEnv.
+  const defaultKeyEnvVars = [DEFAULT_API_KEY_ENV, "OPENAI_API_KEY", "ANTHROPIC_API_KEY", ...LEGACY_API_KEY_ENV_VARS];
+  if (defaultKeyEnvVars.some((name) => typeof process.env[name] === "string" && process.env[name].trim() !== "")) {
     return true;
   }
 
@@ -1178,8 +1180,6 @@ function createExtraWindow() {
 // First-run setup wizard (credential entry)
 // ---------------------------------------------------------------------------
 
-const DEEPINFRA_DEFAULT_BASE_URL = "https://api.deepinfra.com/v1/openai";
-
 ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
   // SAVE with an empty key field keeps the already-saved key: the user is
   // updating model/URL/context, not the credential.
@@ -1201,7 +1201,7 @@ ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
 function applyValidatedConnection(workspace, validated) {
   const { apiKey, model, provider, baseUrl, contextWindow, insecureTls } = validated;
 
-  const envVarName = provider === "anthropic" ? "ANTHROPIC_API_KEY" : "DEEPINFRA_API_KEY";
+  const envVarName = provider === "anthropic" ? "ANTHROPIC_API_KEY" : DEFAULT_API_KEY_ENV;
 
   // Keyless local endpoints (Ollama, LM Studio) get no .env key line — the
   // config lives entirely in settings.json below.
@@ -1214,7 +1214,11 @@ function applyValidatedConnection(workspace, validated) {
       } catch {
         existingLines = [];
       }
-      const keyLineRe = new RegExp(`^\\s*(?:export\\s+)?${envVarName}\\s*=`);
+      // Drop the line we are about to rewrite, plus any legacy-named key line
+      // an older build left behind — two keys for one endpoint would leave the
+      // engine resolving whichever name it checks first, not the one saved here.
+      const replacedNames = provider === "anthropic" ? [envVarName] : [envVarName, ...LEGACY_API_KEY_ENV_VARS];
+      const keyLineRe = new RegExp(`^\\s*(?:export\\s+)?(?:${replacedNames.join("|")})\\s*=`);
       const keptLines = existingLines.filter((line) => !keyLineRe.test(line));
       while (keptLines.length > 0 && keptLines[keptLines.length - 1] === "") {
         keptLines.pop();
@@ -1248,7 +1252,7 @@ function applyValidatedConnection(workspace, validated) {
 
     // The engine's settings schema names the provider "openai-compatible".
     settings.provider = provider === "anthropic" ? "anthropic" : "openai-compatible";
-    if (provider === "openai-compat" && baseUrl && baseUrl !== DEEPINFRA_DEFAULT_BASE_URL) {
+    if (provider === "openai-compat" && baseUrl && baseUrl !== DEFAULT_BASE_URL) {
       settings.baseUrl = baseUrl;
     } else {
       delete settings.baseUrl;
@@ -1561,7 +1565,7 @@ ipcMain.handle("setup:testConnection", async (_evt, payload) => {
   // (Windows resolves localhost IPv6-first and stalls on IPv4-only servers),
   // gives local endpoints a longer budget, and treats a local server without
   // a /models catalog as reachable-with-a-note rather than a failure.
-  const result = await testEndpoint(validated, DEEPINFRA_DEFAULT_BASE_URL);
+  const result = await testEndpoint(validated, DEFAULT_BASE_URL);
   logEvent("sys", {
     ev: "connection-test",
     ok: result.ok,
@@ -1635,7 +1639,6 @@ ipcMain.handle("changes:undo", async (_evt, payload) => {
 // links) in the system browser — an allowlist, never an arbitrary URL, so a
 // compromised renderer cannot use the shell as a launcher.
 const EXTERNAL_URL_ALLOWLIST = new Set([
-  "https://deepinfra.com/dash/api_keys",
   "https://console.anthropic.com/settings/keys",
   "https://github.com/kalai-labs/MAGENTRA",
 ]);

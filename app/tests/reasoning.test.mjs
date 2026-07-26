@@ -1,6 +1,6 @@
 // Reasoning-leak defenses: inline <think> segregation in the OpenAI-compatible
 // provider, and robust self-verify DONE detection. Both regressions surfaced
-// together when the active model was a reasoning model (deepseek) served over an
+// together when the active model was a reasoning model served over an
 // OpenAI-compatible endpoint that inlines its chain of thought into `content`.
 
 import assert from "node:assert/strict";

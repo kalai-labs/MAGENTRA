@@ -1,6 +1,7 @@
 /**
- * Hosted embeddings over an OpenAI-compatible /embeddings endpoint (DeepInfra
- * serves this). No local model, no torch — a single POST per batch. `fetchFn`
+ * Hosted embeddings over an OpenAI-compatible /embeddings endpoint (whichever
+ * one the session is pointed at). No local model, no torch — a single POST per
+ * batch. `fetchFn`
  * is injectable so tests never touch the network. Any failure throws; the
  * caller degrades to BM25-only rather than blocking.
  */

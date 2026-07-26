@@ -1,4 +1,5 @@
 import {
+  DEFAULT_API_KEY_ENV,
   DEFAULT_OPENAI_BASE_URL,
   Engine,
   createMcpTools,
@@ -73,7 +74,7 @@ export async function bootstrapEngine(opts: BootstrapOptions): Promise<Bootstrap
   const isLocalEndpoint = settings.provider !== "anthropic" && isLocalBaseUrl(baseUrl);
   if (!apiKey && !isLocalEndpoint) {
     const envName =
-      settings.apiKeyEnv ?? (settings.provider === "anthropic" ? "ANTHROPIC_API_KEY" : "DEEPINFRA_API_KEY");
+      settings.apiKeyEnv ?? (settings.provider === "anthropic" ? "ANTHROPIC_API_KEY" : DEFAULT_API_KEY_ENV);
     throw new MissingApiKeyError(
       `No API key found. Set ${envName} in the environment or in a .env file in ${opts.cwd}, ` +
         "or configure it in the app's settings.",

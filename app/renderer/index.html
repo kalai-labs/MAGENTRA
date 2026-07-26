@@ -356,7 +356,7 @@
 
         <div class="set-card">
           <div class="set-card-title">CONNECTION</div>
-          <div class="set-row"><span class="set-label">Base URL</span><input id="setBaseUrl" type="text" spellcheck="false" placeholder="https://api.deepinfra.com/v1/openai" /></div>
+          <div class="set-row"><span class="set-label">Base URL</span><input id="setBaseUrl" type="text" spellcheck="false" placeholder="https://your-endpoint/v1" /></div>
           <div class="set-row">
             <span class="set-label">API key</span>
             <div class="key-wrap">
@@ -364,7 +364,7 @@
               <button id="setKeyReveal" title="Reveal" aria-label="Reveal">◉</button>
             </div>
           </div>
-          <div class="set-row"><span class="set-label">Model</span><input id="setModelDefault" type="text" spellcheck="false" placeholder="deepseek-ai/DeepSeek-V4-Flash" /></div>
+          <div class="set-row"><span class="set-label">Model</span><input id="setModelDefault" type="text" spellcheck="false" placeholder="provider/model-id" /></div>
           <div class="set-row"><span class="set-label">Context size</span><input id="setContext" type="number" min="256" step="256" placeholder="auto (model-aware)" /></div>
           <label class="wiz-check set-check">
             <input type="checkbox" id="setInsecure" />
@@ -702,7 +702,7 @@
       <div class="wiz-build-head" id="wizBuildHead">＋ NEW PROFILE</div>
 
       <label class="wiz-field"><span>PROFILE NAME</span>
-        <input id="wizName" type="text" spellcheck="false" placeholder="e.g. DeepInfra — DeepSeek" />
+        <input id="wizName" type="text" spellcheck="false" placeholder="e.g. Work endpoint — coder model" />
       </label>
 
       <div class="wiz-presets">
