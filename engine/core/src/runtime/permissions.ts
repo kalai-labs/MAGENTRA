@@ -29,7 +29,24 @@ export interface PermissionOutcome {
 }
 
 /** Why requestApproval was invoked, surfaced to the transcript log. */
-export type ApprovalSource = "ask" | "deletion-guard";
+export type ApprovalSource = "ask" | "deletion-guard" | "protected-path";
+
+/**
+ * Paths a file-editing tool may never write without an explicit confirmation,
+ * in every stance (OVERDRIVE included). Two families:
+ *   - `.magentra/**` — MAGENTRA's own state (settings, sessions, transcripts,
+ *     team files). Corrupting it breaks the workspace, not just the task.
+ *   - `.env`, `.env.*` — secrets. An accidental overwrite is unrecoverable and
+ *     a careless one leaks credentials into a diff.
+ * The deletion guard already covers *removing* these; this covers *editing*.
+ */
+export function protectedEditPath(absPath: string): string | undefined {
+  const segments = absPath.split(/[\\/]/);
+  if (segments.some((s) => s.toLowerCase() === ".magentra")) return absPath;
+  const base = segments[segments.length - 1]?.toLowerCase() ?? "";
+  if (base === ".env" || base.startsWith(".env.")) return absPath;
+  return undefined;
+}
 
 interface ParsedRule {
   tool: string;
@@ -83,20 +100,42 @@ export function deriveAlwaysGrant(subject: string): string | undefined {
 }
 
 /**
- * Resolution order: deny rules > allow rules > stance default. There are
- * exactly two stances: OVERDRIVE (allow everything the rules don't deny) and
- * normal (reads, interactions, and file edits are allowed; commands and other
- * execute-class calls ask, which round-trips via requestApproval).
+ * Resolution order: deny rules > protected-path guard > deletion guard >
+ * allow rules > stance default.
+ *
+ * The stance default is ALLOW for every class (2026-07-26). Commands, network
+ * calls and file edits no longer ask — the friction bought little, because the
+ * two things worth confirming are not classes of tool at all but classes of
+ * TARGET, and both are guarded ahead of the stance:
+ *   - deletion guard — anything that removes a file, folder or worktree.
+ *   - protected-path guard — edits into `.magentra/**` or a `.env*` file.
+ *
+ * OVERDRIVE turns both off: it means nothing asks, literally. Deny rules are
+ * the one thing it does not override — a deny rule refuses rather than asks,
+ * and silently ignoring the user's own configuration would be a different
+ * feature.
+ *
+ * Unattended missions do NOT get that bypass. They run with
+ * workspaceDeletionBypass instead: provably in-workspace deletions proceed,
+ * everything else keeps its guard and is auto-denied by the unattended path.
  */
 export class PermissionEngine {
   /** When true (default), destructive calls always ask the user, in both
    *  stances. The desktop's "Allow deletions" setting turns this off, after
    *  which deletions resolve through the ordinary rules/stance path. */
   private deletionGuard = true;
-  /** OVERDRIVE: every call is allowed unless denied by rule, and deletions
-   *  provably scoped inside the workspace skip the guard (the flow must not
-   *  block); everything unprovable still asks. */
+  /** OVERDRIVE: nothing asks. Every call runs unless a deny rule forbids it —
+   *  deletions at any scope (the `.magentra` state dir included), edits to
+   *  protected paths, and writes outside the workspace. It is an explicit
+   *  user-thrown switch, so it is allowed to mean what it says. */
   private overdrive = false;
+  /** The narrower carve-out unattended missions run under: a deletion whose
+   *  targets provably resolve inside the workspace skips the guard, so a run
+   *  with nobody watching can still clean up after itself. Everything else —
+   *  out-of-tree paths, unprovable scope, `.magentra`, `.env` — keeps its
+   *  guard and is auto-denied by the unattended path. Deliberately NOT
+   *  OVERDRIVE: a background run never gets the full bypass. */
+  private workspaceDeletionBypass = false;
   private readonly deny: ParsedRule[];
   private readonly allow: ParsedRule[];
   private readonly sessionAllow: ParsedRule[] = [];
@@ -129,6 +168,11 @@ export class PermissionEngine {
     this.overdrive = enabled;
   }
 
+  /** Unattended missions only — see workspaceDeletionBypass. */
+  setWorkspaceDeletionBypass(enabled: boolean): void {
+    this.workspaceDeletionBypass = enabled;
+  }
+
   /** Adds a session-scoped allow rule. Subject "*" or undefined matches any subject. */
   addSessionAllow(tool: string, subject?: string): void {
     this.sessionAllow.push(
@@ -155,6 +199,9 @@ export class PermissionEngine {
     /** True when a file-edit call targets a path OUTSIDE the workspace — such an
      *  edit is not auto-safe and must ask (in-workspace edits still auto-run). */
     editOutsideWorkspace?: boolean,
+    /** The absolute path when a file-edit call targets a protected file
+     *  (`.magentra/**` or `.env*`) — such an edit always asks, in every stance. */
+    editProtectedPath?: string,
   ): Promise<PermissionOutcome> {
     if (matches(this.deny, tool.name, subject)) {
       return {
@@ -163,8 +210,41 @@ export class PermissionEngine {
         message: `Permission denied by settings rule. The user's configuration forbids this call; do not retry it verbatim.`,
       };
     }
-    // Deletion guard: a tool call that would delete a file/folder always
-    // requires interactive approval, in both stances (OVERDRIVE included). One
+
+    // Protected-path guard: an edit into MAGENTRA's own state dir or a .env
+    // file confirms every time, ahead of allow rules and the stance — the same
+    // placement, and for the same reason, as the deletion guard below. A
+    // deliberate narrow grant (an explicit `Tool(path)` allow rule, or an
+    // earlier "always allow" on this exact path) satisfies it; broad grants
+    // and OVERDRIVE never do.
+    if (editProtectedPath !== undefined && !this.overdrive) {
+      const deliberatelyAllowed =
+        matchesExplicit(this.allow, tool.name, subject) || this.matchesExact(tool.name, subject, true);
+      if (!deliberatelyAllowed) {
+        const res = await this.requestApproval(
+          {
+            tool: tool.name,
+            input,
+            description: `${description ?? tool.name} — protected path: ${editProtectedPath}`,
+            ...(subject !== undefined ? { subject } : {}),
+          },
+          "protected-path",
+        );
+        if (res.decision === "deny") {
+          return {
+            allowed: false,
+            source: "user",
+            message: `The user declined this edit to a protected path (${editProtectedPath})${res.message ? `: ${res.message}` : "."} Edits to .magentra state and .env files always require approval; do not retry the same call.`,
+          };
+        }
+        // Literal grant only — one approval covers this exact file, never a
+        // command shape or the whole tool.
+        if (res.decision === "allow_always") this.grantExact(tool.name, subject);
+        return { allowed: true, source: "user", ...(res.message ? { note: res.message } : {}) };
+      }
+    }
+    // Deletion guard: a tool call that would delete a file/folder requires
+    // interactive approval. OVERDRIVE skips it outright — see below. One other
     // exception: an EXPLICIT subject-scoped allow rule in the user's settings
     // (e.g. `Bash(rm -rf ./tmp/*)`) is a deliberate standing decision about
     // that exact call shape — it beats the guard, so unattended cleanup
@@ -176,18 +256,22 @@ export class PermissionEngine {
     // destructive variant ("git push --force") skip the always-ask.
     const explicitlyAllowed =
       matchesExplicit(this.allow, tool.name, subject) || this.matchesExact(tool.name, subject, true);
-    // OVERDRIVE scope-split: a deletion whose every target provably resolves
-    // inside the workspace runs without asking — an autonomous run must be
-    // able to clean its own temp files and redo its own work. Only the
-    // provable case skips; "unknown" (out-of-tree paths, history rewrites,
-    // substitution, root wildcards) keeps the always-ask guard even here.
-    const overdriveScoped = this.overdrive && deletionScope === "workspace";
+    // The mission carve-out: a deletion whose every target provably resolves
+    // inside the workspace runs without asking, so an unattended run can clean
+    // its own temp files and redo its own work. Only the provable case skips;
+    // "unknown" (out-of-tree paths, history rewrites, substitution, root
+    // wildcards) keeps the always-ask guard, and the unattended path then
+    // auto-denies it.
+    const scopedBypass = this.workspaceDeletionBypass && deletionScope === "workspace";
     // Protected target — a `.magentra` state directory (settings, sessions,
-    // transcripts). Deleting it always asks, in every mode: it beats the
-    // "allow deletions" off-switch, explicit allow rules, and OVERDRIVE.
+    // transcripts). Deleting it asks in every mode EXCEPT OVERDRIVE: it beats
+    // the "allow deletions" off-switch, explicit allow rules, and the mission
+    // carve-out, but not a switch the user threw by hand.
     const protectedTarget = deletionScope === "protected";
     const deletionSubject =
-      protectedTarget || (this.deletionGuard && !explicitlyAllowed && !overdriveScoped)
+      // OVERDRIVE means nothing asks — including this, at any scope.
+      this.overdrive ? undefined
+      : protectedTarget || (this.deletionGuard && !explicitlyAllowed && !scopedBypass)
         ? tool.deletionSubject?.(input)
         : undefined;
     if (deletionSubject !== undefined) {
@@ -307,11 +391,16 @@ export class PermissionEngine {
     }
   }
 
-  private stanceDefault(tool: AnyToolDefinition): "allow" | "ask" {
-    if (this.overdrive) return "allow";
-    if (tool.permissionClass === "read" || tool.permissionClass === "interact") return "allow";
-    if (tool.isFileEdit) return "allow";
-    return "ask";
+  /**
+   * Allow-all. Every gate that still exists is target-shaped (deletion guard,
+   * protected-path guard, out-of-workspace edits) or user-authored (deny
+   * rules), and all of them are resolved before this point. Kept as a method
+   * rather than inlined so the `"ask"` half of the switch below stays live for
+   * the out-of-workspace downgrade, and so restoring a class-based stance is a
+   * one-line change.
+   */
+  private stanceDefault(_tool: AnyToolDefinition): "allow" | "ask" {
+    return "allow";
   }
 }
 

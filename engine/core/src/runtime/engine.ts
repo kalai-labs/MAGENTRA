@@ -1103,8 +1103,8 @@ export class Engine {
           this.emit({
             type: "command_output",
             text: enabled
-              ? "⚡ OVERDRIVE engaged — the turn loop runs uncapped until the query is verifiably handled."
-              : "OVERDRIVE disengaged — standard turn budgets apply.",
+              ? "⚡ OVERDRIVE engaged — nothing asks (deletions, .magentra and .env edits, writes outside the workspace all run), and the turn self-verifies before it ends."
+              : "OVERDRIVE disengaged — deletions and edits to .magentra/.env ask again; turns end without the self-verify pass.",
           });
         } else if (!arg) {
           this.emit({
@@ -1696,11 +1696,15 @@ export class Engine {
       let ok = false;
       try {
         if (unattended) {
-          // Nobody is present to answer an ask prompt, so the run takes the
-          // allow-all stance; the session's unattended flag auto-denies
-          // whatever still insists on asking (deletion guard, questions).
-          // Stance only — the session's own OVERDRIVE identity is untouched.
-          session.permissions.setOverdrive(true);
+          // Nobody is present to answer an ask prompt. The stance is already
+          // allow-all, so all the run needs is the narrow deletion carve-out
+          // that lets it clean up after itself; the session's unattended flag
+          // auto-denies whatever still insists on asking (out-of-tree or
+          // unprovable deletions, .magentra/.env edits, questions).
+          // Deliberately NOT setOverdrive: a background run must never inherit
+          // the full nothing-asks bypass. The session's own OVERDRIVE identity
+          // is untouched either way.
+          session.permissions.setWorkspaceDeletionBypass(true);
           session.setUnattended(true);
         }
         if (mission.budgetTokens !== undefined) settings.maxTokensPerTurn = mission.budgetTokens;
@@ -1709,7 +1713,8 @@ export class Engine {
         ok = true;
       } finally {
         session.setUnattended(false);
-        // Restore the stance to the session's own OVERDRIVE state.
+        // Drop the mission carve-out and restore the session's own stance.
+        session.permissions.setWorkspaceDeletionBypass(false);
         session.permissions.setOverdrive(session.isOverdrive());
         settings.maxTokensPerTurn = savedBudget;
         this.appendMissionLog(mission.id, {

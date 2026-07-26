@@ -42,7 +42,7 @@ import { BackgroundManager } from "../scheduling/background.js";
 import { FileState } from "./fileState.js";
 import type { HookRunner } from "../agent/hooks.js";
 import type { ModeEngine } from "../ma/modes.js";
-import { PermissionEngine, type PermissionRequestPayload } from "./permissions.js";
+import { PermissionEngine, type PermissionRequestPayload, protectedEditPath } from "./permissions.js";
 import { buildSystemPrompt, skillsBlock } from "../agent/prompts.js";
 import { DEBUG_DIR, commandRunsRepro, reproScriptRelPath } from "../ma/debug.js";
 import { SearchLog, evaluateReuseGate, type ReuseGateResult } from "../knowledge/reuseGate.js";
@@ -136,7 +136,7 @@ You own this query end to end: plan, act, verify, deliver — without stopping f
 - Think ahead: before each consequential action, weigh its consequences. Prefer the smallest change that truly serves the query; optimize your path and skip ceremony the query does not need.
 - Evidence is query-shaped: verify in whatever way the query itself calls for. Never invent verification rituals (builds, tests, linters) for work that does not ask for them.
 - Ask the user ONLY when the answer changes the design, is irreversible, or reaches outside the workspace — the test: would a reasonable user be upset if you guessed wrong? Everything else you decide yourself and note in your wrap-up.
-- Deletions inside the workspace run without prompting. That is license to clean up after yourself, not to be careless; anything outside the workspace still asks.
+- NOTHING asks. Every call runs the moment you make it: deletions at any path, edits to \`.magentra\` state and \`.env\` files, writes outside the workspace. There is no confirmation step and no safety net but your own judgement — read a file before you overwrite it, look before you delete, and prefer the reversible move. The only thing that can still stop a call is a deny rule the user wrote themselves.
 - Do not stop early: the turn ends only when every part of the query is handled and your self-check passes.`;
 
 const SELF_VERIFY_TEXT =
@@ -437,15 +437,20 @@ export class Session {
         opts.settings.permissions,
         async (req, approvalSource) => {
         // Unattended runs never block on a human: deny with a reason instead.
-        // Unattended runs use the OVERDRIVE stance, so only the deletion
-        // guard reaches here — destructive calls are exactly what this refuses.
+        // The stance allows everything, so the only calls that reach here are
+        // the two target-shaped guards — deletions and edits to protected
+        // paths (.magentra state, .env). Refusing both is exactly right for a
+        // run with nobody watching.
         if (this.unattended) {
           this.transcript.append({
             kind: "permission",
             tool: req.tool,
             ...(subjectOf(req) !== undefined ? { subject: subjectOf(req) } : {}),
             decision: "deny",
-            source: approvalSource === "deletion-guard" ? "deletion-guard" : "user",
+            source:
+              approvalSource === "deletion-guard" ? "deletion-guard"
+              : approvalSource === "protected-path" ? "protected-path"
+              : "user",
           });
           return {
             decision: "deny",
@@ -569,9 +574,13 @@ export class Session {
     );
   }
 
-  /** OVERDRIVE toggle. The permission stance flips with it (allow-all vs
-   *  ask-for-commands); the turn-loop policy is identical in both states.
-   *  Emits the state change so every frontend can sync its indicator. */
+  /** OVERDRIVE toggle. It now means exactly what it says: NOTHING asks —
+   *  deletions at any scope, edits to `.magentra` state and `.env` files, and
+   *  writes outside the workspace all run. Only a user-authored deny rule
+   *  still refuses. In exchange the turn self-verifies against the original
+   *  query before it may end, which is the rung an attended turn does not run.
+   *  Turn budgets are unaffected (`capped` keys off unattended/child, not
+   *  this). Emits the state change so every frontend can sync its indicator. */
   setOverdrive(enabled: boolean): void {
     if (this.overdrive === enabled) return;
     this.overdrive = enabled;
@@ -1548,13 +1557,17 @@ export class Session {
           // nothing was built and nothing can be left behind) has nothing to
           // verify: skip the rung so a greeting ends instantly, with no extra
           // round-trip and no risk of a leaked sentinel.
-          if (stopReason === "end_turn" && !selfVerifyFired && totalToolCallsThisTurn > 0) {
+          //
+          // OVERDRIVE only (2026-07-26). Autonomous runs are exactly where an
+          // unverified "I think I'm done" is expensive: nothing asked, so the
+          // user saw no checkpoint along the way. An attended turn already has
+          // one — the user reads the reply — and does not need to pay a round
+          // trip per turn for a second opinion.
+          if (stopReason === "end_turn" && !selfVerifyFired && totalToolCallsThisTurn > 0 && this.overdrive) {
             selfVerifyFired = true;
             verifyBuffered = true;
             this.suppressAssistantText = true; // the verify answer streams silently
-            if (this.overdrive) {
-              this.emit({ type: "command_output", text: "⚡ overdrive: self-verifying against the original query" });
-            }
+            this.emit({ type: "command_output", text: "⚡ overdrive: self-verifying against the original query" });
             this.pushMessage({ role: "user", content: [{ type: "text", text: SELF_VERIFY_TEXT }] });
             continue;
           }
@@ -1866,6 +1879,11 @@ export class Session {
       // "always allow" can grant that exact path.
       const editOutsidePath = tool.isFileEdit ? this.fileEditOutsideWorkspace(input) : undefined;
       if (editOutsidePath && subject === undefined) subject = editOutsidePath;
+      // A file edit into .magentra/ or a .env file always confirms. Computed
+      // here (not in the tool) so it holds for every current and future
+      // isFileEdit tool without each one reimplementing the check.
+      const editProtectedPath = tool.isFileEdit ? this.fileEditProtectedPath(input) : undefined;
+      if (editProtectedPath && subject === undefined) subject = editProtectedPath;
       planned.push({
         call,
         parallel: tool.permissionClass === "read" || tool.parallelSafe === true,
@@ -1930,6 +1948,7 @@ export class Session {
             tool.deletionScope?.(input, { ...this.toolContext(), callId: call.id }),
             // A file edit landing outside the workspace is not auto-safe.
             editOutsidePath !== undefined,
+            editProtectedPath,
           );
           if (outcome.source !== "user") {
             this.transcript.append({
@@ -2077,6 +2096,25 @@ export class Session {
     const abs = isAbsolute(raw) ? resolve(raw) : resolve(this.cwd, raw);
     const root = resolve(this.cwd);
     return abs !== root && !abs.startsWith(root + sep) ? abs : undefined;
+  }
+
+  /**
+   * The absolute target of a file-edit call when it lands on a PROTECTED path
+   * (`.magentra/**` or a `.env*` file), else undefined. Every other edit runs
+   * without asking; these two always confirm. Same structural path read as
+   * fileEditOutsideWorkspace — and note this covers the Write/Edit tools only.
+   * A shell redirect (`echo x > .env`) goes through Bash and is NOT seen here.
+   */
+  private fileEditProtectedPath(input: unknown): string | undefined {
+    if (typeof input !== "object" || input === null) return undefined;
+    const rec = input as Record<string, unknown>;
+    const raw =
+      typeof rec.file_path === "string" ? rec.file_path
+      : typeof rec.path === "string" ? rec.path
+      : typeof rec.notebook_path === "string" ? rec.notebook_path
+      : undefined;
+    if (!raw) return undefined;
+    return protectedEditPath(isAbsolute(raw) ? resolve(raw) : resolve(this.cwd, raw));
   }
 
   /**

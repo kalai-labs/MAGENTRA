@@ -76,7 +76,7 @@ export type TranscriptRecord =
       tool: string;
       subject?: string;
       decision: string;
-      source: "mode" | "rule" | "user" | "deletion-guard";
+      source: "mode" | "rule" | "user" | "deletion-guard" | "protected-path";
     }
   | { kind: "compaction"; ts: string; replacedCount: number; summary: string }
   | { kind: "meta"; ts: string; data: Record<string, unknown> };
