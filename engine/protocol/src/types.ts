@@ -87,6 +87,13 @@ export type CoreEvent =
       model: string;
       /** Whether OVERDRIVE (the fully-autonomous stance) is active for this session. */
       overdrive: boolean;
+      /**
+       * Whether CAREFUL MODE is armed. It is a MODIFIER of OVERDRIVE, not a
+       * stance of its own: it only has an effect while `overdrive` is true, and
+       * it is remembered independently so disengaging OVERDRIVE and re-engaging
+       * it restores the user's choice. Absent on engines that predate it.
+       */
+      careful?: boolean;
       /** The engine's slash-command registry, so the palette can never drift. */
       commands: SlashCommandInfo[];
       /**
@@ -189,8 +196,14 @@ export type CoreEvent =
   | { type: "task_list_updated"; tasks: TaskItem[] }
   | { type: "file_edited"; path: string; diff: string }
   | { type: "background_notification"; taskId: string; kind: string; payload: unknown }
-  /** OVERDRIVE (fully-autonomous turn-loop policy) was toggled; frontends sync their indicator to this. */
-  | { type: "overdrive_changed"; enabled: boolean }
+  /**
+   * OVERDRIVE (fully-autonomous turn-loop policy) was toggled; frontends sync
+   * their indicator to this. `careful` rides the same frame rather than getting
+   * one of its own — CAREFUL MODE is a modifier of OVERDRIVE, so the two states
+   * are always reported together and can never drift apart in a frontend.
+   * Absent means "unchanged/unknown", not "off".
+   */
+  | { type: "overdrive_changed"; enabled: boolean; careful?: boolean }
   | { type: "command_output"; text: string }
   /**
    * The context window's size changed OUTSIDE a turn — currently only a manual
@@ -370,8 +383,14 @@ export type FrontendRequest =
   | { type: "interrupt" }
   /** Toggles the always-ask deletion guard (true = guard active, the default). */
   | { type: "set_deletion_guard"; enabled: boolean }
-  /** Toggles OVERDRIVE: the fully-autonomous turn-loop policy (caps lifted, self-verify end check). */
-  | { type: "set_overdrive"; enabled: boolean }
+  /**
+   * Toggles OVERDRIVE: the fully-autonomous turn-loop policy (caps lifted,
+   * self-verify end check). `careful` arms CAREFUL MODE, the modifier that makes
+   * a substantial request present a plan for approval before it acts; omitting
+   * it leaves the engine's current setting alone, so a frontend that knows
+   * nothing about CAREFUL cannot switch it off by accident.
+   */
+  | { type: "set_overdrive"; enabled: boolean; careful?: boolean }
   /** Auto-compact the conversation at this many context tokens (0 = off). The
    *  ONLY way to set it — no settings key or /settings path — so it stays
    *  consistent with the UI control that owns it. */

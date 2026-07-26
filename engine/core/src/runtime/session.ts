@@ -43,6 +43,19 @@ import { FileState } from "./fileState.js";
 import type { HookRunner } from "../agent/hooks.js";
 import type { ModeEngine } from "../ma/modes.js";
 import { PermissionEngine, type PermissionRequestPayload, protectedEditPath } from "./permissions.js";
+import {
+  CAREFUL_APPROVED_TEXT,
+  CAREFUL_BRIEFING_TEXT,
+  CAREFUL_CANCELLED_TEXT,
+  CAREFUL_CRITIQUE_ROUNDS,
+  CAREFUL_CRITIQUE_TEXT,
+  CAREFUL_PREDICTOR_SYSTEM,
+  CAREFUL_SCOUT_SECTION,
+  carefulApprovalQuestion,
+  carefulRevisionText,
+  classifyCarefulAnswer,
+  parseCarefulVerdict,
+} from "./careful.js";
 import { buildSystemPrompt, skillsBlock } from "../agent/prompts.js";
 import { DEBUG_DIR, commandRunsRepro, reproScriptRelPath } from "../ma/debug.js";
 import { SearchLog, evaluateReuseGate, type ReuseGateResult } from "../knowledge/reuseGate.js";
@@ -355,6 +368,13 @@ export class Session {
    * Session-scoped, persisted in the meta snapshot so /resume restores it.
    */
   private overdrive = false;
+  /**
+   * CAREFUL MODE: armed by the user, but only effective while OVERDRIVE is on
+   * (see isCarefulActive). Stored independently of `overdrive` so disengaging
+   * and re-engaging OVERDRIVE restores the user's choice rather than silently
+   * dropping it. Persisted in the meta snapshot so /resume restores it.
+   */
+  private careful = false;
   /** Auto-compact at this many context tokens; 0 = off (nothing auto-compacts).
    *  Its ONLY source is the UI's set_compact_limit frame — no settings key, no
    *  /settings path — so the value can never disagree with what the UI shows. */
@@ -586,7 +606,28 @@ export class Session {
     this.overdrive = enabled;
     this.permissions.setOverdrive(enabled);
     this.setPromptSection("overdrive", enabled ? OVERDRIVE_PROMPT_SECTION : undefined);
-    this.emit({ type: "overdrive_changed", enabled });
+    this.emit({ type: "overdrive_changed", enabled, careful: this.careful });
+  }
+
+  /** CAREFUL MODE toggle. Arms the modifier; it does nothing until OVERDRIVE is
+   *  also on. Reported on the overdrive_changed frame rather than one of its
+   *  own, so a frontend can never hold the two states out of step. */
+  setCareful(enabled: boolean): void {
+    if (this.careful === enabled) return;
+    this.careful = enabled;
+    this.emit({ type: "overdrive_changed", enabled: this.overdrive, careful: enabled });
+  }
+
+  isCareful(): boolean {
+    return this.careful;
+  }
+
+  /** True when a careful turn is actually possible: the modifier is armed, the
+   *  stance it modifies is engaged, and there is a human at the other end. A
+   *  subagent reports to its parent and an unattended mission has nobody to
+   *  approve anything, so neither ever briefs. */
+  private isCarefulActive(): boolean {
+    return this.careful && this.overdrive && !this.opts.child && !this.unattended;
   }
 
   /** Mid-run steering: queue user text for injection at the running turn's
@@ -1196,6 +1237,55 @@ export class Session {
   }
 
   /**
+   * CAREFUL MODE predictor: decides whether this request earns a plan the user
+   * approves before any work starts. One inference on the MAIN model, grounded
+   * in the same cursory skim the clarify pre-layer uses, and strictly fail-open
+   * — a thrown call or a malformed verdict yields false, so a broken predictor
+   * costs the user a checkpoint but never costs them the turn.
+   */
+  private async predictCareful(userText: string): Promise<boolean> {
+    const recent = this.messages
+      .slice(-4)
+      .map((m) => ({ role: m.role, text: assistantText(m) }))
+      .filter((m) => m.text.trim().length > 0)
+      .slice(-2)
+      .map((m) => `${m.role}: ${m.text.length > 400 ? `${m.text.slice(0, 400)}…` : m.text}`)
+      .join("\n");
+    const skim = this.buildClarifySkim();
+    try {
+      const raw = await this.runInference({
+        system: CAREFUL_PREDICTOR_SYSTEM,
+        user: `${recent ? `Previous exchange:\n${recent}\n\n` : ""}${skim ? `Codebase overview:\n${skim}\n\n` : ""}Incoming request:\n${userText}`,
+        maxTokens: 200,
+        model: this.settings.model,
+      });
+      return parseCarefulVerdict(raw);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Puts the briefing to the user and classifies what comes back. An interrupt
+   * or a frontend that cannot answer resolves as a cancel — the safe reading,
+   * since an unanswered approval must never be treated as approval.
+   */
+  private async askCarefulApproval(
+    revisionsSoFar: number,
+  ): Promise<ReturnType<typeof classifyCarefulAnswer>> {
+    const questions = carefulApprovalQuestion(revisionsSoFar);
+    let answers: Record<string, string[]>;
+    try {
+      answers = await this.opts.askUser(`q_${randomBytes(4).toString("hex")}`, questions);
+    } catch {
+      return { kind: "cancel" };
+    }
+    const first = questions[0];
+    const selected = answers["q:0"] ?? (first ? answers[first.question] : undefined) ?? [];
+    return classifyCarefulAnswer(selected[0]);
+  }
+
+  /**
    * A quick, cursory read of the workspace for the clarify pre-layer, so its
    * questions are grounded in what the code actually is. Layered by cost, richest
    * first, and fail-open — any error yields no skim and the clarify proceeds as
@@ -1336,6 +1426,24 @@ export class Session {
       clarification = await this.maybeClarify(userText);
     }
 
+    // CAREFUL MODE: decide whether this request earns a plan the user approves
+    // before anything happens. Runs AFTER clarify — clarify fixes the shape of
+    // the request, the briefing proposes how to build that shape, and they are
+    // different questions. Raising the hold here (before the first model call)
+    // is what makes the scout phase real rather than advisory.
+    let carefulTurn = false;
+    if (this.isCarefulActive()) {
+      carefulTurn = await this.predictCareful(userText);
+      if (carefulTurn) {
+        this.permissions.setCarefulHold(true);
+        this.setPromptSection("careful", CAREFUL_SCOUT_SECTION);
+        // Deliberation is silent from the very first round: the user asked for
+        // steps 1-3 to happen with no output but the tool activity itself.
+        this.suppressAssistantText = true;
+        this.emit({ type: "command_output", text: "◉ careful: investigating before proposing a plan" });
+      }
+    }
+
     // OVERDRIVE safety net: before an uncapped autonomous turn starts, park a
     // dangling stash commit of the working tree so anything an in-workspace
     // deletion later removes stays recoverable. Root sessions only — children
@@ -1372,6 +1480,26 @@ export class Session {
     // budgets: a mission's budgetTokens must bound a run nobody is watching,
     // and an explicit spawn-time child cap must still be enforced.
     const capped = this.unattended || (this.opts.child ?? false);
+    // CAREFUL MODE turn state. `carefulBriefingArmed` marks that the briefing
+    // instruction has been sent, so the NEXT clean stop is the briefing itself
+    // rather than more deliberation. `carefulCritiqueBudget` starts full and
+    // loses one per revision the user types: their steering outranks the
+    // agent's own second-guessing, so the more they say, the less it argues
+    // with itself.
+    let carefulHeld = carefulTurn;
+    let carefulBriefingArmed = false;
+    let carefulCritiqueBudget = CAREFUL_CRITIQUE_ROUNDS;
+    let carefulCritiquesThisPass = 0;
+    let carefulRevisions = 0;
+    // Lifts the hold and drops the scout prompt section. Idempotent — the
+    // approval path, the cancel path and the turn's `finally` all call it.
+    const releaseCarefulHold = (): void => {
+      if (!carefulHeld) return;
+      carefulHeld = false;
+      this.permissions.setCarefulHold(false);
+      this.setPromptSection("careful", undefined);
+      this.suppressAssistantText = false;
+    };
     // Once per turn (re-armed when mid-run steering arrives): the end check
     // that gates a clean break on "is the query truly handled".
     let selfVerifyFired = false;
@@ -1469,6 +1597,60 @@ export class Session {
           // Pending steering outranks every end-of-turn decision: the user's
           // mid-run guidance must be acted on, not dropped by a clean break.
           if (drainSteering()) continue;
+
+          // CAREFUL MODE: this turn is not ending, it is advancing through the
+          // scout's phases — deliberate, challenge, brief, gate. Placed ahead
+          // of every other rung because nothing has been built yet: there is
+          // no failure to recover from, no task list to finish, and nothing to
+          // self-verify. A response the token limit cut off falls through to
+          // LAYER 3 instead, so a truncated briefing is resumed rather than
+          // mistaken for a finished one.
+          if (carefulHeld && stopReason !== "max_tokens") {
+            // Step 3 — challenge the approach just chosen. Silent, and worth
+            // one round of reading if that is what settles it.
+            if (carefulCritiquesThisPass < carefulCritiqueBudget) {
+              carefulCritiquesThisPass++;
+              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_CRITIQUE_TEXT }] });
+              continue;
+            }
+            // Step 4 — ask for the briefing, and unmute so it reaches the user.
+            if (!carefulBriefingArmed) {
+              carefulBriefingArmed = true;
+              this.suppressAssistantText = false;
+              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_BRIEFING_TEXT }] });
+              continue;
+            }
+            // The text that just streamed IS the briefing. Gate on it.
+            const decision = await this.askCarefulApproval(carefulRevisions);
+            if (decision.kind === "approve") {
+              releaseCarefulHold();
+              this.emit({ type: "command_output", text: "◉ careful: approved — starting work" });
+              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_APPROVED_TEXT }] });
+              continue;
+            }
+            if (decision.kind === "revise") {
+              carefulRevisions++;
+              carefulBriefingArmed = false;
+              carefulCritiquesThisPass = 0;
+              // Each revision spends one self-critique round, floor zero.
+              carefulCritiqueBudget = Math.max(0, carefulCritiqueBudget - 1);
+              this.suppressAssistantText = true;
+              this.emit({
+                type: "command_output",
+                text: `◉ careful: revising the plan (revision ${carefulRevisions})`,
+              });
+              this.pushMessage({
+                role: "user",
+                content: [{ type: "text", text: carefulRevisionText(decision.text) }],
+              });
+              continue;
+            }
+            releaseCarefulHold();
+            this.emit({ type: "command_output", text: "◉ careful: cancelled — nothing was changed" });
+            this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_CANCELLED_TEXT }] });
+            stopReason = "end_turn";
+            break;
+          }
 
           if (stopReason === "end_turn" && !stopHookFired && this.hooks?.has("Stop")) {
             stopHookFired = true;
@@ -1687,6 +1869,10 @@ export class Session {
       this.busy = false;
       // A turn that died mid-self-verify must not leave the next turn muted.
       this.suppressAssistantText = false;
+      // Nor may a turn that died mid-scout leave the session held: an
+      // interrupt, a provider failure or a thrown tool would otherwise lock
+      // every subsequent turn out of writing anything, with no way back.
+      releaseCarefulHold();
       this.abortController = undefined;
       this.lastTurnUsage = turnUsage;
       this.emit({
@@ -1712,6 +1898,7 @@ export class Session {
             stats: this.stats.snapshot(),
             model: this.settings.model,
             overdrive: this.overdrive,
+            careful: this.careful,
             ...(this.label !== undefined ? { label: this.label } : {}),
           },
         });

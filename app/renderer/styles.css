@@ -931,6 +931,14 @@ select.composer-select { color-scheme: var(--color-scheme); }
 .overdrive-btn.on { border-color: var(--od-accent); background: var(--od-accent-soft); color: var(--od-accent-hi); }
 .overdrive-btn.on .od-btn-glyph { color: var(--od-accent); }
 
+/* CAREFUL composer toggle — the OVERDRIVE modifier. Deliberately cooler than
+   OVERDRIVE's hot accent: it reads as a brake beside the throttle, not as a
+   second throttle. Hidden entirely while OVERDRIVE is off. */
+.careful-btn { display: flex; align-items: center; gap: 5px; padding: 0 10px; font-weight: 700; letter-spacing: 0.03em; }
+.careful-btn .cf-btn-glyph { color: var(--text-dim); }
+.careful-btn.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hi); }
+.careful-btn.on .cf-btn-glyph { color: var(--accent); }
+
 /* Shell identity while active: key surfaces shift to the hot hue, cleanly
    reverting when the attribute flips back to off/absent. */
 html[data-overdrive="on"] .composer-inner { border-color: rgba(var(--od-accent-rgb), 0.55); }

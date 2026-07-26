@@ -799,11 +799,17 @@ function syncTabOverdrive(ts) {
 }
 
 /** Set a tab's overdrive (optionally telling its engine) and repaint its pane. */
-function setTabOverdrive(tabId, enabled, sendToEngine) {
+function setTabOverdrive(tabId, enabled, sendToEngine, careful) {
   const ts = tabs.get(tabId);
   if (!ts) return;
   ts.overdrive = enabled === true;
+  // CAREFUL is per-engine too, so each tab remembers its own. Recorded only
+  // when the engine actually reported it — undefined means "this tab has never
+  // said", which must not be read as "off".
+  if (typeof careful === "boolean") ts.careful = careful;
   if (sendToEngine && window.magentra && window.magentra.send) {
+    // No `careful` field: omitting it tells the engine to leave that setting
+    // alone, which is right for a pane button that only toggles OVERDRIVE.
     window.magentra.send({ type: "set_overdrive", enabled: ts.overdrive }, tabId);
   }
   syncTabOverdrive(ts);
@@ -1039,6 +1045,13 @@ function repaintChromeFromFocusedTab() {
   if (focTab && typeof uiSettings !== "undefined") {
     uiSettings.overdrive = focTab.overdrive === true;
     if (typeof lastSentSafety !== "undefined") lastSentSafety.overdrive = uiSettings.overdrive;
+    // Only adopt CAREFUL from a tab that has actually reported one — a fresh
+    // tab has no opinion yet, and treating that as "off" would silently clear
+    // the user's setting just for focusing a new pane.
+    if (typeof focTab.careful === "boolean") {
+      uiSettings.careful = focTab.careful;
+      if (typeof lastSentSafety !== "undefined") lastSentSafety.careful = uiSettings.careful;
+    }
     if (typeof applyOverdriveShell === "function") applyOverdriveShell();
   }
   renderSessions();

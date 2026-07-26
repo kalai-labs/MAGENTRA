@@ -20,9 +20,38 @@ function applyOverdriveShell() {
       ? "OVERDRIVE active — fully autonomous. Click to disengage."
       : "OVERDRIVE — fully autonomous stance (nothing asks)";
   }
+  applyCarefulShell();
   // The footer safety hint reads OVERDRIVE state, so keep it in step on every
   // change — including engine-driven ones that skip applySafetySettings.
   renderSafetyHint();
+}
+
+/** Paint the CAREFUL pill. It only exists while OVERDRIVE is engaged — the mode
+ * is a modifier of that stance, and a toggle that does nothing where it stands
+ * is worse than no toggle at all. The setting itself survives being hidden. */
+function applyCarefulShell() {
+  const overdriveOn = uiSettings.overdrive === true;
+  const on = uiSettings.careful === true;
+  document.documentElement.dataset.careful = overdriveOn && on ? "on" : "off";
+  if (!carefulBtnEl) return;
+  carefulBtnEl.classList.toggle("hidden", !overdriveOn);
+  carefulBtnEl.classList.toggle("on", on);
+  carefulBtnEl.setAttribute("aria-pressed", on ? "true" : "false");
+  carefulBtnEl.title = on
+    ? "CAREFUL active — substantial requests present a plan for your approval first. Click to turn off."
+    : "CAREFUL — propose a plan and wait for approval before acting";
+}
+
+function onCarefulToggleClick() {
+  uiSettings.careful = !uiSettings.careful;
+  saveUiSettings();
+  applySafetySettings(false); // rides the set_overdrive frame
+  applyCarefulShell();
+  announce(
+    uiSettings.careful
+      ? "CAREFUL mode on — Magentra will propose a plan for your approval before acting."
+      : "CAREFUL mode off.",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -125,23 +154,33 @@ function onOverdriveToggleClick() {
  * session resume). Adopt it without echoing back and without the cinematic. */
 function onOverdriveChanged(event) {
   const enabled = Boolean(event && event.enabled);
+  // CAREFUL rides this frame. Absent means "unchanged" (an engine that predates
+  // the field), so only adopt it when the field is actually present.
+  const carefulSent = event && typeof event.careful === "boolean";
   // Reflect on the pane that owns this event — overdrive is per-engine, so each
   // tiled screen keeps its own state and glow.
   const tabId =
     (typeof dispatchTabId !== "undefined" && dispatchTabId) ||
     (typeof focusedTabId !== "undefined" ? focusedTabId : null);
-  if (typeof setTabOverdrive === "function" && tabId) setTabOverdrive(tabId, enabled, false);
+  if (typeof setTabOverdrive === "function" && tabId) {
+    setTabOverdrive(tabId, enabled, false, carefulSent ? event.careful : undefined);
+  }
   // The shared button, document shell, and persisted default track the FOCUSED
   // tab only — a background tab flipping its own stance must not flip the app.
   if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
   uiSettings.overdrive = enabled;
   lastSentSafety.overdrive = enabled; // engine is already there; don't re-send
+  if (carefulSent) {
+    uiSettings.careful = event.careful;
+    lastSentSafety.careful = event.careful;
+  }
   saveUiSettings();
   applyOverdriveShell();
   syncActivityUi();
 }
 
 if (overdriveBtnEl) overdriveBtnEl.addEventListener("click", onOverdriveToggleClick);
+if (carefulBtnEl) carefulBtnEl.addEventListener("click", onCarefulToggleClick);
 if (overdriveEngageBtnEl) overdriveEngageBtnEl.addEventListener("click", confirmOverdriveDialog);
 if (overdriveCancelBtnEl) overdriveCancelBtnEl.addEventListener("click", closeOverdriveDialog);
 

@@ -58,6 +58,18 @@ When ON (composer toggle, `/overdrive on`, or `set_overdrive`), nothing asks: th
 - [ ] **Pre-turn snapshot** — a `git stash create` ref is parked before each root turn and reported as `overdriveSnapshot` on `turn_finished` (tracked files only; absent on a clean tree). `fs`
 - [ ] **Prompt contract** — the OVERDRIVE system-prompt section (plan-first, consequence-thinking, query-shaped evidence, ask-rubric, cleanup license) is present exactly while ON. `pure`
 
+## CAREFUL MODE — the OVERDRIVE modifier
+
+A modifier of OVERDRIVE, not a third stance (composer pill, `/careful on`, or the `careful` field on `set_overdrive`). OVERDRIVE removes approval from every *action*; CAREFUL adds it back at exactly one *decision* — which approach to take. Armed independently of OVERDRIVE and inert while it is off; session-scoped, and `/resume` restores it from the transcript meta.
+
+- [ ] **Predictor** — one main-model inference before the turn decides whether the request needs several tool-driven steps, or one irreversible step. Size and reversibility only, never clarity. Strictly fail-open: a thrown call or malformed verdict runs the turn normally. Root attended sessions only — never children, never unattended missions. `llm`
+- [ ] **Scout hold** — while held, only `Read`/`Grep`/`Glob`/`GraphQuery`/`BackpackSearch`/`Skill` run; everything else is refused with a teaching message. Beats allow rules, `allow_always` grants, session allows, and OVERDRIVE itself; a user's own deny rule still refuses first. Children inherit it via the shared `PermissionEngine`. Lifted unconditionally by the turn's `finally`. `pure`
+- [ ] **Silent deliberation** — assistant text and thinking are suppressed for the whole held phase, so the user sees tool activity but no prose until the briefing. `pure`
+- [ ] **Self-critique** — 2 challenge rounds before the first briefing, one fewer after each revision the user types, floor 0: their steering outranks the agent's own second-guessing. `llm`
+- [ ] **Briefing** — four fixed H1 sections (objective, solution, consequences, unclear). Consequences carries **what changes for you** first, then **what will be touched** with named paths — the forcing function that makes the scout actually open the files it names. `llm`
+- [ ] **Approval gate** — reuses `question_request`; `Start work` lifts the hold, `Cancel — change nothing` ends the turn, and any free text is a revision that re-scouts with the hold still on. Unlimited revisions. An unanswered or interrupted gate reads as cancel, never as approval. `pure`
+- [ ] **Post-approval** — the agent puts its listed unclears to the user via `AskUserQuestion` before starting, then works with full OVERDRIVE autonomy; the self-verify rung is unchanged. `llm`
+
 ## Agent
 
 - [ ] **System prompt assembly** — env, skills, standards, atlas, skill sections compose in the right order. `pure`

@@ -99,6 +99,7 @@ Emitted once when a session begins (on `start()`, after `/clear`, and after a re
 | `cwd` | string | Absolute working directory. |
 | `model` | string | Configured model id. |
 | `overdrive` | boolean | Whether OVERDRIVE (the fully-autonomous stance) is active for the session. |
+| `careful` | boolean? | Whether CAREFUL MODE is armed — the OVERDRIVE modifier that makes a substantial request present a plan for approval before acting. Only has an effect while `overdrive` is true, and remembered independently of it. |
 | `commands` | `SlashCommandInfo[]` | The engine's slash-command registry, so the frontend palette can never drift. |
 | `rateCard` | `Record<string, { input, output, cacheRead?, cacheWrite?, contextWindow }>` | Per-model $/1M rates + context windows — the built-in table with user `pricing` overrides applied. The frontend's single source for model hints; it must keep no pricing copy of its own. |
 
@@ -573,6 +574,28 @@ Toggles the always-ask deletion guard (`true` = guard active, the default).
 
 ```json
 {"type":"set_deletion_guard","enabled":false}
+```
+
+### `set_overdrive`
+
+Toggles OVERDRIVE, the fully-autonomous stance. `careful` arms CAREFUL MODE, the
+modifier that makes a substantial request present a plan for approval before it
+acts.
+
+| Field | Type |
+| --- | --- |
+| `type` | `"set_overdrive"` |
+| `enabled` | boolean |
+| `careful` | boolean? |
+
+`careful` is **optional, and omitting it means "leave that setting alone"** —
+never "off". A frontend that knows nothing about CAREFUL cannot disarm it just by
+toggling OVERDRIVE, and MAGENTRA's own per-pane OVERDRIVE button relies on this.
+The engine reports both states back together on `overdrive_changed`, so the two
+can never drift apart in a frontend.
+
+```json
+{"type":"set_overdrive","enabled":true,"careful":true}
 ```
 
 ### `slash_command`

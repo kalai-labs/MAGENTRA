@@ -354,6 +354,65 @@ async function run() {
     await evaluate(`document.querySelector('#promptInput').value = ''`);
   });
 
+  await test("CAREFUL rides the OVERDRIVE frame, shows only in OVERDRIVE, and is remembered", async () => {
+    // CAREFUL modifies OVERDRIVE, so it has no affordance while OVERDRIVE is off.
+    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('hidden')`), true);
+
+    // Engage OVERDRIVE. The first-ever enable routes through the teaching dialog.
+    await evaluate(`document.querySelector('#overdriveBtn').click()`);
+    await pause();
+    await evaluate(`(() => {
+      const dialog = document.querySelector('#overdriveDialog');
+      if (dialog && !dialog.classList.contains('hidden')) document.querySelector('#overdriveEngageBtn').click();
+    })()`);
+    await pause();
+    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('hidden')`), false);
+    assert.equal(await evaluate(`document.querySelector('#carefulBtn').getAttribute('aria-pressed')`), "false");
+
+    // Toggling CAREFUL rides the existing set_overdrive frame — it has none of
+    // its own, so the two states can never reach the engine out of step.
+    frames.length = 0;
+    await evaluate(`document.querySelector('#carefulBtn').click()`);
+    await pause();
+    const armed = frames.filter((frame) => frame.type === "set_overdrive").pop();
+    assert.ok(armed, "toggling CAREFUL must send a set_overdrive frame");
+    assert.equal(armed.careful, true);
+    assert.equal(armed.enabled, true);
+    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('on')`), true);
+    assert.equal(await evaluate(`document.documentElement.dataset.careful`), "on");
+
+    // An engine-driven change (the /careful slash command) syncs the pill back.
+    await emit({ type: "overdrive_changed", enabled: true, careful: false });
+    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('on')`), false);
+    assert.equal(await evaluate(`document.documentElement.dataset.careful`), "off");
+
+    // An engine that predates the field omits it — that must read as
+    // "unchanged", never as "off", or an old engine would disarm the mode.
+    await evaluate(`document.querySelector('#carefulBtn').click()`);
+    await pause();
+    assert.equal(await evaluate(`uiSettings.careful === true`), true);
+    await emit({ type: "overdrive_changed", enabled: true });
+    assert.equal(await evaluate(`uiSettings.careful === true`), true);
+    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('on')`), true);
+
+    // Disengaging OVERDRIVE hides the pill but keeps the choice, so re-engaging
+    // restores it rather than silently dropping it.
+    await evaluate(`document.querySelector('#overdriveBtn').click()`);
+    await pause();
+    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('hidden')`), true);
+    assert.equal(await evaluate(`document.documentElement.dataset.careful`), "off");
+    assert.equal(await evaluate(`uiSettings.careful === true`), true);
+    await evaluate(`document.querySelector('#overdriveBtn').click()`);
+    await pause();
+    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('hidden')`), false);
+    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('on')`), true);
+
+    // Leave the shell as the rest of the suite expects it.
+    await evaluate(`document.querySelector('#carefulBtn').click()`);
+    await evaluate(`document.querySelector('#overdriveBtn').click()`);
+    await pause();
+  });
+
   await test("streaming, operation expansion, agent activity, queueing, and stop work", async () => {
     await emit({ type: "turn_started" });
     await emit({ type: "thinking_delta", text: "Inspecting the renderer" });

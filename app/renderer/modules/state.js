@@ -133,6 +133,11 @@ const DEFAULT_UI_SETTINGS = {
   // First-enable teaching dialog is shown once, ever; after that, flipping the
   // composer toggle on engages the mode directly.
   overdriveIntroSeen: false,
+  // CAREFUL MODE: the OVERDRIVE modifier that makes a substantial request
+  // present a plan for approval before anything is touched. Remembered
+  // independently of `overdrive`, so disengaging and re-engaging OVERDRIVE
+  // restores the choice instead of quietly dropping it.
+  careful: false,
 };
 
 function loadUiSettings() {
@@ -286,7 +291,7 @@ function syncUiControlsFromSettings() {
 
 // Safety toggles reach the engine as frames; only send what actually changed
 // (a fresh session gets a forced full send since it boots with defaults).
-const lastSentSafety = { deletions: null, overdrive: null, compactLimit: null };
+const lastSentSafety = { deletions: null, overdrive: null, careful: null, compactLimit: null };
 function applySafetySettings(force) {
   if (window.magentra && window.magentra.send) {
     if (force || uiSettings.deletions !== lastSentSafety.deletions) {
@@ -295,9 +300,21 @@ function applySafetySettings(force) {
     }
     // OVERDRIVE rides the same re-send-on-link pattern: a fresh session boots
     // with the mode off, so a forced send re-asserts the user's saved choice.
-    if (force || uiSettings.overdrive !== lastSentSafety.overdrive) {
-      window.magentra.send({ type: "set_overdrive", enabled: uiSettings.overdrive === true });
+    // CAREFUL rides this same frame rather than one of its own — it modifies
+    // OVERDRIVE, so the two can never reach the engine out of step. Either one
+    // changing re-sends both.
+    if (
+      force ||
+      uiSettings.overdrive !== lastSentSafety.overdrive ||
+      uiSettings.careful !== lastSentSafety.careful
+    ) {
+      window.magentra.send({
+        type: "set_overdrive",
+        enabled: uiSettings.overdrive === true,
+        careful: uiSettings.careful === true,
+      });
       lastSentSafety.overdrive = uiSettings.overdrive;
+      lastSentSafety.careful = uiSettings.careful;
     }
     // Auto-compact limit: same pattern. A fresh session's engine starts at 0
     // (off) until this asserts the user's chosen limit on link.

@@ -174,6 +174,9 @@ export class Engine {
    * but the engine must not lose it between those two moments.
    */
   private overdriveEnabled = false;
+  /** Same memory, for the CAREFUL MODE modifier — a /clear-created session must
+   *  inherit the user's armed choice, not silently drop back to unguarded. */
+  private carefulEnabled = false;
   private team: CrewAgent[];
   private teamWarnings: string[];
   /** Agent ids with a backpack build currently in flight (dedupes launches). */
@@ -258,6 +261,7 @@ export class Engine {
     });
     session.services.cron = this.scheduler;
     if (this.overdriveEnabled) session.setOverdrive(true);
+    if (this.carefulEnabled) session.setCareful(true);
     return session;
   }
 
@@ -331,6 +335,7 @@ export class Engine {
       cwd: this.opts.cwd,
       model: this.opts.settings.model,
       overdrive: this.session.isOverdrive(),
+      careful: this.session.isCareful(),
       skills: (this.opts.skills ?? []).map((s) => ({ name: s.name, description: s.description })),
     });
     this.emit({ type: "task_list_updated", tasks: this.session.tasks.list() });
@@ -759,6 +764,12 @@ export class Engine {
       case "set_overdrive":
         this.overdriveEnabled = request.enabled;
         this.session.setOverdrive(request.enabled);
+        // Optional on the frame: an older frontend that never sends it must not
+        // switch CAREFUL off just by toggling OVERDRIVE.
+        if (typeof request.careful === "boolean") {
+          this.carefulEnabled = request.careful;
+          this.session.setCareful(request.careful);
+        }
         break;
       case "set_model":
         this.handleSetModel(request.model);
@@ -1113,6 +1124,31 @@ export class Engine {
           });
         } else {
           this.emit({ type: "command_output", text: "Usage: /overdrive on|off" });
+        }
+        break;
+      }
+      case "careful": {
+        const arg = args?.trim();
+        if (arg === "on" || arg === "off") {
+          const enabled = arg === "on";
+          this.carefulEnabled = enabled;
+          this.session.setCareful(enabled);
+          // Say plainly when the setting is armed but inert — a toggle that
+          // reports success and then does nothing is worse than one that refuses.
+          const inert = enabled && !this.session.isOverdrive();
+          this.emit({
+            type: "command_output",
+            text: enabled
+              ? `◉ CAREFUL MODE armed — substantial requests present a plan for your approval before anything is touched.${inert ? " It takes effect once OVERDRIVE is engaged." : ""}`
+              : "CAREFUL MODE off — OVERDRIVE acts without presenting a plan first.",
+          });
+        } else if (!arg) {
+          this.emit({
+            type: "command_output",
+            text: `CAREFUL MODE is ${this.session.isCareful() ? "ON" : "OFF"}${this.session.isCareful() && !this.session.isOverdrive() ? " (inert — OVERDRIVE is off)" : ""}. Usage: /careful on|off`,
+          });
+        } else {
+          this.emit({ type: "command_output", text: "Usage: /careful on|off" });
         }
         break;
       }
@@ -2262,6 +2298,10 @@ export class Engine {
         this.overdriveEnabled = meta.overdrive;
         this.session.setOverdrive(meta.overdrive);
       }
+      if (typeof meta?.careful === "boolean") {
+        this.carefulEnabled = meta.careful;
+        this.session.setCareful(meta.careful);
+      }
       this.announceSession();
       // Repaint the conversation in the UI. Replaces the old text-only note:
       // the frontend rebuilds the chat from this render-ready snapshot.
@@ -2404,6 +2444,7 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
     ],
   },
   { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous stance: nothing asks, self-verified completion" },
+  { cmd: "/careful", args: "[on|off]", desc: "in OVERDRIVE: propose a plan and wait for your approval before acting" },
   { cmd: "/styles", args: "[on|off <id>]", desc: "deprecated alias for /skills" },
   { cmd: "/settings", args: "[global] [k v]", desc: "show settings, or set one (add global to save to ~/.magentra)" },
   { cmd: "/resume", args: "<session-id>", desc: "resume a previous session" },

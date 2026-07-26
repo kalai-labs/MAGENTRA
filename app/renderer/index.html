@@ -150,6 +150,11 @@
             <button id="overdriveBtn" class="composer-select overdrive-btn" aria-pressed="false" title="OVERDRIVE — fully autonomous mode (self-verifying, no caps)">
               <span class="od-btn-glyph">⚡</span><span class="od-btn-label">OVERDRIVE</span>
             </button>
+            <!-- CAREFUL rides beside OVERDRIVE and is hidden while OVERDRIVE is
+                 off: it is a modifier of that stance, not a mode of its own. -->
+            <button id="carefulBtn" class="composer-select careful-btn hidden" aria-pressed="false" title="CAREFUL — propose a plan and wait for approval before acting">
+              <span class="cf-btn-glyph">◉</span><span class="cf-btn-label">CAREFUL</span>
+            </button>
             <select id="modelSelect" class="composer-select" title="Model">
               <option value="openai/gpt-oss-120b">GPT-OSS 120B</option>
               <option value="deepseek-ai/DeepSeek-V4-Flash" selected>DeepSeek V4 Flash</option>
