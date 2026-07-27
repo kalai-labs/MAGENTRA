@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join, relative, sep } from "node:path";
+import { writeFileAtomic } from "../util/fsAtomic.js";
 import { SCAN_EXTS, extOf, langOf, shouldSkipDir } from "./graph.js";
 
 /**
@@ -17,10 +18,19 @@ export interface SymbolFileEntry {
   size: number;
   /** Top-level exported symbol names declared in this file (deduped, capped). */
   symbols: string[];
+  /**
+   * 1-based declaration line of each symbol, aligned to `symbols`.
+   *
+   * The scanners already had this — every pattern matches at a known offset —
+   * and used to discard it. Keeping it turns the index from "what is declared
+   * here" into "where it is declared", which is what lets a file be summarized
+   * as a skeleton and read by range instead of opened whole.
+   */
+  lines: number[];
 }
 
 export interface SymbolIndexData {
-  version: 1;
+  version: 2;
   files: Record<string, SymbolFileEntry>;
 }
 
@@ -50,11 +60,41 @@ const RE_CJS_EXPORT = /\bmodule\.exports\.([A-Za-z_$][\w$]*)\s*=/g;
 /** Python top-level (column-0) `def`/`class`, optionally `async def`. */
 const RE_PY_DEF = /^(?:async\s+)?(?:def|class)\s+([A-Za-z_]\w*)/;
 
-function extractTsSymbols(content: string, out: Set<string>): void {
+/** A declaration: its name, and the 1-based line it starts on. */
+export interface SymbolSite {
+  name: string;
+  line: number;
+}
+
+/**
+ * Offset → 1-based line, via binary search over precomputed line starts. Doing
+ * it by counting newlines per match would be quadratic on a large file, and
+ * these scanners run over every source file in the workspace.
+ */
+function lineLookup(content: string): (offset: number) => number {
+  const starts: number[] = [0];
+  for (let i = 0; i < content.length; i++) {
+    if (content.charCodeAt(i) === 10) starts.push(i + 1);
+  }
+  return (offset) => {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid]! <= offset) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo + 1;
+  };
+}
+
+function extractTsSymbols(content: string, at: (offset: number) => number, out: Map<string, number>): void {
   for (const re of [RE_TS_EXPORT_DECL, RE_CJS_EXPORT]) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
-    while ((m = re.exec(content)) !== null) out.add(m[1]!);
+    while ((m = re.exec(content)) !== null) {
+      if (!out.has(m[1]!)) out.set(m[1]!, at(m.index));
+    }
   }
   RE_TS_EXPORT_LIST.lastIndex = 0;
   let list: RegExpExecArray | null;
@@ -66,17 +106,20 @@ function extractTsSymbols(content: string, out: Set<string>): void {
       if (!part) continue;
       const halves = part.split(/\s+as\s+/);
       const name = (halves[1] ?? halves[0] ?? "").trim();
-      if (name && name !== "default" && /^[A-Za-z_$][\w$]*$/.test(name)) out.add(name);
+      if (name && name !== "default" && /^[A-Za-z_$][\w$]*$/.test(name) && !out.has(name)) {
+        out.set(name, at(list.index));
+      }
     }
   }
 }
 
-function extractPySymbols(content: string, out: Set<string>): void {
-  for (const line of content.split(/\r?\n/)) {
+function extractPySymbols(content: string, out: Map<string, number>): void {
+  const lines = content.split(/\r?\n/);
+  lines.forEach((line, idx) => {
     const m = RE_PY_DEF.exec(line);
     // Top-level only (no leading indentation) and skip `_private` names.
-    if (m && !m[1]!.startsWith("_")) out.add(m[1]!);
-  }
+    if (m && !m[1]!.startsWith("_") && !out.has(m[1]!)) out.set(m[1]!, idx + 1);
+  });
 }
 
 /**
@@ -120,24 +163,38 @@ const DECL_PATTERNS: Record<string, RegExp[]> = {
   ],
 };
 
-function extractByPatterns(patterns: RegExp[], content: string, out: Set<string>): void {
+function extractByPatterns(
+  patterns: RegExp[],
+  content: string,
+  at: (offset: number) => number,
+  out: Map<string, number>,
+): void {
   for (const re of patterns) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(content)) !== null) {
-      if (m[1]) out.add(m[1]);
+      if (m[1] && !out.has(m[1])) out.set(m[1], at(m.index));
     }
   }
 }
 
+/** Declarations of a source file — name and line — deduped and capped, in line order. */
+export function extractSymbolSites(path: string, content: string): SymbolSite[] {
+  const found = new Map<string, number>();
+  const lang = langOf(path);
+  const at = lineLookup(content);
+  if (lang === "js") extractTsSymbols(content, at, found);
+  else if (lang === "py") extractPySymbols(content, found);
+  else extractByPatterns(DECL_PATTERNS[lang] ?? [], content, at, found);
+  return [...found.entries()]
+    .map(([name, line]) => ({ name, line }))
+    .sort((a, b) => a.line - b.line || a.name.localeCompare(b.name))
+    .slice(0, MAX_SYMBOLS_PER_FILE);
+}
+
 /** Top-level exported symbol names of a source file, deduped and capped. */
 export function extractSymbols(path: string, content: string): string[] {
-  const out = new Set<string>();
-  const lang = langOf(path);
-  if (lang === "js") extractTsSymbols(content, out);
-  else if (lang === "py") extractPySymbols(content, out);
-  else extractByPatterns(DECL_PATTERNS[lang] ?? [], content, out);
-  return [...out].slice(0, MAX_SYMBOLS_PER_FILE);
+  return extractSymbolSites(path, content).map((s) => s.name);
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +237,12 @@ export function buildSymbolIndex(cwd: string, prev?: SymbolIndexData): SymbolInd
         const id = toNodeId(cwd, abs);
         const before = prev?.files[id];
         if (before && before.mtimeMs === st.mtimeMs && before.size === st.size) {
-          files[id] = { mtimeMs: st.mtimeMs, size: st.size, symbols: before.symbols };
+          files[id] = {
+            mtimeMs: st.mtimeMs,
+            size: st.size,
+            symbols: before.symbols,
+            lines: before.lines,
+          };
         } else {
           let content: string;
           try {
@@ -188,10 +250,12 @@ export function buildSymbolIndex(cwd: string, prev?: SymbolIndexData): SymbolInd
           } catch {
             continue;
           }
+          const sites = extractSymbolSites(abs, content);
           files[id] = {
             mtimeMs: st.mtimeMs,
             size: st.size,
-            symbols: extractSymbols(abs, content),
+            symbols: sites.map((s) => s.name),
+            lines: sites.map((s) => s.line),
           };
         }
         count++;
@@ -200,7 +264,7 @@ export function buildSymbolIndex(cwd: string, prev?: SymbolIndexData): SymbolInd
   };
 
   walk(cwd, 0);
-  return { version: 1, files };
+  return { version: 2, files };
 }
 
 function symbolsPath(cwd: string): string {
@@ -209,8 +273,8 @@ function symbolsPath(cwd: string): string {
 
 function saveSymbolIndex(cwd: string, idx: SymbolIndexData): void {
   try {
-    mkdirSync(join(cwd, SYMBOLS_DIR), { recursive: true });
-    writeFileSync(symbolsPath(cwd), JSON.stringify(idx));
+    // Atomic — see saveGraph: a half-written index reads as no index at all.
+    writeFileAtomic(symbolsPath(cwd), JSON.stringify(idx));
   } catch {
     // best-effort persistence; an unwritable state dir must not break the gate
   }
@@ -219,7 +283,7 @@ function saveSymbolIndex(cwd: string, idx: SymbolIndexData): void {
 function isValidIndex(v: unknown): v is SymbolIndexData {
   if (typeof v !== "object" || v === null) return false;
   const g = v as Record<string, unknown>;
-  return g.version === 1 && typeof g.files === "object" && g.files !== null;
+  return g.version === 2 && typeof g.files === "object" && g.files !== null;
 }
 
 function indexesEqual(a: SymbolIndexData, b: SymbolIndexData): boolean {

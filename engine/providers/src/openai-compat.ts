@@ -31,44 +31,101 @@ interface WireMessage {
 }
 
 /**
+ * Request-body fields that "OpenAI-compatible" does not actually guarantee.
+ * Each one is optional to us and load-bearing to somebody: dropping or renaming
+ * a rejected field costs a detail, keeping it costs the whole turn.
+ *
+ *   stream_options  — token usage in the stream. Older vLLM/llama.cpp builds and
+ *                     some gateways 400 on the unknown field; without it usage is
+ *                     estimated instead of measured (see Session's fallback).
+ *   max_tokens      — renamed to `max_completion_tokens` by OpenAI's reasoning
+ *                     models, which reject the old name outright.
+ *   num_ctx         — Ollama's context-window hint; not a standard field.
+ *
+ * Nothing that changes what the model can DO is negotiable this way — `tools` is
+ * never dropped, because a silently tool-less agent looks like a broken model
+ * rather than an unsupported endpoint.
+ */
+type NegotiableField = "stream_options" | "max_tokens" | "num_ctx";
+
+/**
+ * Does this 400/422 body blame one of the negotiable fields? Providers word
+ * these differently ("Unsupported parameter", "unknown field", "extra fields not
+ * permitted"), so the field NAME appearing in a rejection is the signal — a
+ * server that accepted a field does not name it in an error.
+ */
+function rejectedField(errorText: string): NegotiableField | undefined {
+  const text = errorText.toLowerCase();
+  if (text.includes("stream_options")) return "stream_options";
+  if (text.includes("max_completion_tokens")) return "max_tokens";
+  if (text.includes("num_ctx")) return "num_ctx";
+  if (text.includes("max_tokens") && /unsupported|not supported|unknown|unrecognized|not permitted|invalid/.test(text)) {
+    return "max_tokens";
+  }
+  return undefined;
+}
+
+/**
  * Provider for any OpenAI-compatible chat completions endpoint — a hosted API,
  * a gateway, or a local server. Hand-rolled fetch + SSE — no SDK.
+ *
+ * "OpenAI-compatible" is a family resemblance, not a specification: servers
+ * differ over which optional body fields they tolerate. Rather than shipping a
+ * per-vendor table that would rot, this provider learns from the endpoint's own
+ * rejections — see {@link NegotiableField} — and remembers for the rest of its
+ * life, so the cost of an unfamiliar API is one extra request, once.
  */
 export class OpenAICompatProvider implements Provider {
+  /** Fields this endpoint has rejected, learned from its own 400s. */
+  private readonly rejected = new Set<NegotiableField>();
+
   constructor(private readonly opts: OpenAICompatOptions) {}
 
-  async *stream(req: StreamRequest): AsyncIterable<ProviderEvent> {
-    const body = {
+  private buildBody(req: StreamRequest): Record<string, unknown> {
+    const maxTokensKey = this.rejected.has("max_tokens") ? "max_completion_tokens" : "max_tokens";
+    return {
       model: req.model,
-      max_tokens: req.maxTokens,
+      [maxTokensKey]: req.maxTokens,
       stream: true,
-      stream_options: { include_usage: true },
+      ...(this.rejected.has("stream_options") ? {} : { stream_options: { include_usage: true } }),
       messages: toWireMessages(req.system, req.messages),
-      ...(this.opts.numCtx ? { num_ctx: this.opts.numCtx } : {}),
+      ...(this.opts.numCtx && !this.rejected.has("num_ctx") ? { num_ctx: this.opts.numCtx } : {}),
       ...(req.tools.length > 0 ? { tools: req.tools.map(toWireTool) } : {}),
     };
+  }
 
+  async *stream(req: StreamRequest): AsyncIterable<ProviderEvent> {
     const response = await withRetry(
       async () => {
-        const res = await fetch(`${this.opts.baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            // Keyless local servers (Ollama) reject an empty Bearer; omit it.
-            ...(this.opts.apiKey ? { authorization: `Bearer ${this.opts.apiKey}` } : {}),
-          },
-          body: JSON.stringify(body),
-          signal: req.signal,
-        });
-        if (!res.ok) {
+        // Loops only to re-send after learning that a field is unsupported. Each
+        // field is learned at most once and the set is finite, so this
+        // terminates — an unrecognized 400 throws on the first pass.
+        for (;;) {
+          const res = await fetch(`${this.opts.baseUrl}/chat/completions`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              // Keyless local servers (Ollama) reject an empty Bearer; omit it.
+              ...(this.opts.apiKey ? { authorization: `Bearer ${this.opts.apiKey}` } : {}),
+            },
+            body: JSON.stringify(this.buildBody(req)),
+            signal: req.signal,
+          });
+          if (res.ok) return res;
           const text = await res.text().catch(() => "");
+          if (res.status === 400 || res.status === 422) {
+            const field = rejectedField(text);
+            if (field !== undefined && !this.rejected.has(field)) {
+              this.rejected.add(field);
+              continue;
+            }
+          }
           throw new ProviderHttpError(
             res.status,
             `provider returned ${res.status}: ${text.slice(0, 500)}`,
             parseRetryAfter(res.headers.get("retry-after")),
           );
         }
-        return res;
       },
       req.signal,
       { maxRetries: this.opts.maxRetries, ...(req.onRetry ? { onRetry: req.onRetry } : {}) },

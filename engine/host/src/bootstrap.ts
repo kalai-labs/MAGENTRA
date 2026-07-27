@@ -4,10 +4,11 @@ import {
   Engine,
   createMcpTools,
   createProviderForEndpoint,
+  endpointSpecFromSettings,
   isLocalBaseUrl,
   loadSettings,
   loadSkills,
-  resolveApiKey,
+  resolveApiKeySource,
 } from "@magentra/core";
 import type { Provider } from "@magentra/providers";
 import { createDefaultRegistry, resolveBashPath } from "@magentra/tools";
@@ -68,7 +69,24 @@ export async function bootstrapEngine(opts: BootstrapOptions): Promise<Bootstrap
     });
   }
 
-  const apiKey = resolveApiKey(settings);
+  const keySource = resolveApiKeySource(settings);
+  const apiKey = keySource.key;
+  // A settings file that pins `apiKeyEnv` to a variable which is not set is the
+  // fingerprint of a stale connection: the pin outlived the provider it was
+  // written for. Resolution now falls through to the standard names instead of
+  // dropping to a stored key, but the user should still be told — a key coming
+  // from somewhere other than where their settings say is worth one line.
+  if (keySource.danglingKeyEnv) {
+    warnings.push({
+      source: "settings",
+      message:
+        `Settings name apiKeyEnv "${keySource.danglingKeyEnv}", but that variable is not set. ` +
+        (keySource.from === undefined
+          ? "No key was found anywhere else either."
+          : `The key in use came from ${keySource.from === "settings" ? "the stored settings value" : keySource.from} instead.`) +
+        " If you changed provider, clear apiKeyEnv so the stale name stops shadowing the real key.",
+    });
+  }
   const baseUrl = settings.baseUrl ?? DEFAULT_OPENAI_BASE_URL;
   // Local servers (Ollama, llama.cpp, LM Studio) need no key; hosted ones do.
   const isLocalEndpoint = settings.provider !== "anthropic" && isLocalBaseUrl(baseUrl);
@@ -81,17 +99,9 @@ export async function bootstrapEngine(opts: BootstrapOptions): Promise<Bootstrap
     );
   }
 
-  const provider: Provider = createProviderForEndpoint(
-    settings.provider === "anthropic"
-      ? { provider: "anthropic", apiKey: apiKey ?? "" }
-      : {
-          provider: "openai-compatible",
-          baseUrl,
-          apiKey: apiKey ?? "",
-          // Tells a local server which context window to load the model with.
-          ...(isLocalEndpoint && settings.contextWindow !== undefined ? { numCtx: settings.contextWindow } : {}),
-        },
-  );
+  // One mapping from settings to an endpoint, shared with the live
+  // set_connection swap — a switched session is built exactly like a booted one.
+  const provider: Provider = createProviderForEndpoint(endpointSpecFromSettings(settings, apiKey));
 
   const registry = createDefaultRegistry();
   const mcp = await createMcpTools(settings.mcpServers);

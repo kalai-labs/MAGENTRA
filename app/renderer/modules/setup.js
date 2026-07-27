@@ -276,6 +276,26 @@ function openSetupWizard() {
 if (navSetupConnEl) navSetupConnEl.addEventListener("click", () => void openConnectionsWizard());
 if (welcomeSetupConnBtnEl) welcomeSetupConnBtnEl.addEventListener("click", () => void openConnectionsWizard("manage"));
 
+/**
+ * What the UI does after main reports a connection applied.
+ *
+ * `live: true` means the RUNNING session was re-pointed at the new endpoint —
+ * same conversation, same session id, no new `session_started`. Locking the
+ * composer there would wait for a frame that is never coming. Only a spawned
+ * engine (`live` false) has a link to re-establish.
+ */
+function markConnectionApplied(result) {
+  if (!result || result.live !== true) {
+    engineLinked = false;
+  } else if (typeof result.model === "string" && result.model) {
+    // No session_started is coming, so nothing else would tell the picker and the
+    // context hint that this session now runs a different model.
+    sessionModel = result.model;
+    applyModel(result.model);
+  }
+  syncActivityUi();
+}
+
 /** Apply a saved profile to the current workspace and connect. */
 async function useProfile(id) {
   if (!window.magentra.applyProfile || !wizStatusEl) return;
@@ -288,9 +308,7 @@ async function useProfile(id) {
     res = null;
   }
   if (res && res.ok) {
-    // The engine is restarting on the new connection; session_started relinks.
-    engineLinked = false;
-    syncActivityUi();
+    markConnectionApplied(res);
     setupWizardEl.classList.add("hidden");
     closeModalA11y();
     maybeStartTour();
@@ -508,8 +526,7 @@ if (wizStartBtnEl) {
       return;
     }
     if (result && result.ok) {
-      engineLinked = false;
-      syncActivityUi();
+      markConnectionApplied(result);
       setupWizardEl.classList.add("hidden");
       closeModalA11y();
       if (wizApiKeyEl) wizApiKeyEl.value = "";
@@ -611,6 +628,14 @@ if (setTestBtnEl) {
       setTestBtnEl.disabled = false;
     }
     if (result && result.ok) {
+      // TEST walks the known API path shapes (/v1, /v1/openai, /openai/v1, …) and
+      // reports the one that ANSWERED. Reflect it in the field, or SAVE would
+      // persist the URL that did not work and the engine would 404 on the first
+      // prompt — a pass followed by a failure, with nothing between them to
+      // explain it. The wizard has always done this; the card must too.
+      if (result.baseUrl && setBaseUrlEl.value.trim() !== result.baseUrl) {
+        setBaseUrlEl.value = result.baseUrl;
+      }
       setConnStatusEl.textContent = result.note || "link established ✓";
       setConnStatusEl.className = "ok";
     } else {
@@ -645,17 +670,22 @@ if (setSaveBtnEl) {
       return;
     }
     if (result && result.ok) {
+      markConnectionApplied(result);
       setApiKeyEl.value = "";
       setApiKeyEl.type = "password";
       // A key only lands in .env when one was typed; keyless saves (local or
       // custom endpoints) live entirely in settings.json.
       savedKeyExists = savedKeyExists || apiKey !== "";
       setApiKeyEl.placeholder = savedKeyExists ? "●●●●●●●● saved — ◉ reveals" : "no key saved yet";
+      // A running session is re-pointed in place; only a dead or unstarted engine
+      // is spawned. Say which happened — "restarted" on a preserved conversation
+      // reads as "your chat is gone".
+      const applied = result.live ? "switched on the live session — your chat is kept" : "engine started";
       setConnStatusEl.textContent = keepSaved
-        ? "saved (existing key kept) — engine restarted"
+        ? `saved (existing key kept) — ${applied}`
         : apiKey === ""
-          ? "saved to workspace settings — engine restarted"
-          : "written to workspace .env — engine restarted";
+          ? `saved to workspace settings — ${applied}`
+          : `written to workspace .env — ${applied}`;
       setConnStatusEl.className = "ok";
     } else {
       setConnStatusEl.textContent = (result && result.error) || "failed to write .env";

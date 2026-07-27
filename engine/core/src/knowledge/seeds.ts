@@ -1,4 +1,4 @@
-import { loadOrBuildGraph, normalizeToId, slice, type GraphData } from "./graph.js";
+import { normalizeToId, type GraphData } from "./graph.js";
 import { findSimilarSymbols, loadOrBuildSymbolIndex, type SymbolIndexData } from "./symbols.js";
 
 /**
@@ -10,9 +10,6 @@ import { findSimilarSymbols, loadOrBuildSymbolIndex, type SymbolIndexData } from
 /** Symbol-matched seeds: how many, and how close a name has to be to count. */
 const SYMBOL_SEED_MAX_HITS = 12;
 const SYMBOL_SEED_MIN_SCORE = 0.4;
-
-/** Files listed in a request digest before it stops being a glance. */
-const DIGEST_MAX_FILES = 14;
 
 /**
  * Seeds for a personalized-PageRank query: explicit files, plus `query`
@@ -55,47 +52,4 @@ export function resolveSeeds(
     // The symbol index enriches the seed set; losing it must not lose the paths.
   }
   return [...seeds];
-}
-
-/**
- * A compact "where this request lands" digest for CAREFUL MODE's scout map: the
- * highest-ranked files for the request, and the areas they fall in.
- *
- * This is why the Scout Phase no longer has to open a file merely to earn the
- * right to name it (ADR 0003) — the location comes from the graph, so it states
- * what the repository contains rather than what a model assumes it contains.
- * Returns undefined when the request matches nothing, which is honest: a scout
- * with no starting position is better off knowing that.
- */
-export function requestSliceDigest(cwd: string, request: string): string | undefined {
-  let graph: GraphData;
-  try {
-    graph = loadOrBuildGraph(cwd);
-  } catch {
-    return undefined;
-  }
-  if (Object.keys(graph.files).length === 0) return undefined;
-
-  const seeds = resolveSeeds(graph, cwd, { query: request });
-  if (seeds.length === 0) return undefined;
-
-  const selected = slice(graph, seeds, 12000).slice(0, DIGEST_MAX_FILES);
-  if (selected.length === 0) return undefined;
-
-  const areas = new Map<string, number>();
-  for (const { file } of selected) {
-    const dir = file.includes("/") ? file.slice(0, file.lastIndexOf("/")) : ".";
-    areas.set(dir, (areas.get(dir) ?? 0) + 1);
-  }
-  const areaLine = [...areas.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([dir, n]) => `${dir} (${n})`)
-    .join(", ");
-
-  return [
-    "Files this request most likely concerns, ranked by the import graph:",
-    ...selected.map(({ file }) => `  ${file}`),
-    "",
-    `Areas: ${areaLine}`,
-  ].join("\n");
 }

@@ -365,6 +365,30 @@ export interface RestoredMessage {
   toolCalls?: RestoredToolCall[];
 }
 
+/**
+ * One fully-resolved connection, as the frontend knows it: which API shape, at
+ * which endpoint, with which key and model. The app resolves this from a saved
+ * profile or the connection card (the renderer never holds a key — main does)
+ * and hands it over whole, so the engine never has to guess a half-specified
+ * endpoint.
+ *
+ * `provider` uses the app's vocabulary ("openai-compat"); the engine's settings
+ * schema spells the same thing "openai-compatible". The mapping lives at the
+ * boundary that consumes this, deliberately in one place.
+ */
+export interface ConnectionSpec {
+  provider: "anthropic" | "openai-compat";
+  /** Absent means the engine's default OpenAI-compatible endpoint. */
+  baseUrl?: string;
+  /** Empty string for a keyless local server (Ollama, LM Studio). */
+  apiKey: string;
+  model: string;
+  /** Context window to run the model with; also `num_ctx` for a local server. */
+  contextWindow?: number;
+  /** Skip TLS verification for this endpoint (self-signed home-lab gateway). */
+  insecureTls?: boolean;
+}
+
 /** Frontend -> core. */
 export type FrontendRequest =
   | { type: "user_message"; text: string }
@@ -402,6 +426,17 @@ export type FrontendRequest =
    */
   | { type: "set_model"; model: string }
   /**
+   * Change the session's whole CONNECTION live — provider, endpoint, key, model
+   * — without restarting the engine, so the conversation and session id survive
+   * a move from (say) a local Ollama to a hosted API mid-task. The frontend
+   * sends this after it has persisted the connection; the engine rebuilds its
+   * provider from the payload and applies it to the next provider call.
+   *
+   * The key travels in `connection` (not a top-level field) so the app's
+   * stdin-log redaction covers this frame with no extra rule.
+   */
+  | { type: "set_connection"; connection: ConnectionSpec }
+  /**
    * Mid-run steering: user text that joins the RUNNING turn at its next
    * message boundary instead of waiting for the turn to end. Sent by
    * frontends while a turn is busy; falls back to a normal user turn when
@@ -438,7 +473,7 @@ export type FrontendRequest =
        * profile and injects its connection here — the engine builds a one-off
        * provider for the authoring call. `model` is ignored when this is set.
        */
-      connection?: { provider: "anthropic" | "openai-compat"; baseUrl?: string; apiKey: string; model: string };
+      connection?: ConnectionSpec;
     }
   /** Export a skill's .md text (built-in or workspace file) for the app to save. */
   | { type: "export_skill"; id: string }

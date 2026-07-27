@@ -38,14 +38,34 @@ function netCodeOf(err: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
+/**
+ * Network failures worth another attempt. Every one of these is a transport
+ * hiccup, not an answer: the request never reached a decision, so retrying is
+ * the same request, not a second one.
+ *
+ * The list is long on purpose. A laptop that sleeps, a VPN that reconnects, a
+ * local server reloading a model, a proxy that drops idle sockets — each shows
+ * up as its own errno, and any one that is missing here surfaces to the user as
+ * a hard turn failure that a single retry would have hidden.
+ */
 const RETRYABLE_NET_CODES = new Set([
   "ECONNREFUSED",
   "ECONNRESET",
   "ENOTFOUND",
   "ETIMEDOUT",
   "EPIPE",
+  // DNS answered "try again" — the classic after a VPN or wifi switch.
+  "EAI_AGAIN",
+  "ECONNABORTED",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENETRESET",
   "UND_ERR_CONNECT_TIMEOUT",
   "UND_ERR_SOCKET",
+  // undici's own stalls: the server accepted the connection and then went quiet.
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "ERR_STREAM_PREMATURE_CLOSE",
 ]);
 
 export function isRetryable(err: unknown): boolean {
@@ -83,8 +103,14 @@ export function friendlyProviderError(err: unknown, host?: string): string {
         ? (err as { status: number }).status
         : undefined;
 
-  if (status === 401 || status === 403) return `API key rejected by the provider${where}. Check the key in Settings → Connection.`;
-  if (status === 404) return `Model or endpoint not found${where}. Check the model id and base URL.`;
+  // A wrong base URL answers 401 as readily as a wrong key does: most gateways
+  // authenticate before they route. Naming only the key sends people to check
+  // the one thing that was fine, so both causes are stated, URL first — it is
+  // the one the user cannot see is wrong.
+  if (status === 401 || status === 403)
+    return `The provider${where} refused this request (HTTP ${status}). Either the base URL is not this API's real endpoint — providers differ (/v1, /v1/openai, /inference/v1, /openai/v1) — or the API key is wrong. Re-run TEST in Settings → Connection: it probes the known endpoints and tells you which of the two it is.`;
+  if (status === 404)
+    return `Model or endpoint not found${where}. Either the model id does not exist on this provider (they often need a fully-qualified id, e.g. "accounts/fireworks/models/glm-5p2") or the base URL is wrong. Re-run TEST in Settings → Connection to tell them apart.`;
   if (status === 429) return `Rate limited by the provider${where}. It will retry; if this persists, slow down or check your plan.`;
   if (status === 408 || status === 504) return `The provider timed out${where}. Try again.`;
   if (typeof status === "number" && status >= 500) return `The provider had a server error (${status})${where}. Try again shortly.`;
@@ -96,7 +122,14 @@ export function friendlyProviderError(err: unknown, host?: string): string {
     (err as { cause?: { code?: unknown } })?.cause?.code;
   if (code === "ECONNREFUSED") return `Can't reach the provider${where} — is the server running?`;
   if (code === "ENOTFOUND") return `Can't resolve the provider host${where} — check the base URL.`;
+  if (code === "EAI_AGAIN") return `Temporary DNS failure resolving the provider host${where} — check the network, then try again.`;
+  if (code === "EHOSTUNREACH" || code === "ENETUNREACH")
+    return `No network route to the provider${where} — on a LAN or VPN address, check that this machine can reach that network.`;
   if (code === "ETIMEDOUT" || code === "UND_ERR_CONNECT_TIMEOUT") return `Connection to the provider timed out${where}.`;
+  if (code === "UND_ERR_HEADERS_TIMEOUT" || code === "UND_ERR_BODY_TIMEOUT")
+    return `The provider${where} accepted the request and then stopped responding. A local server loading a large model can take a while — try again once it is loaded.`;
+  if (code === "ECONNRESET" || code === "ERR_STREAM_PREMATURE_CLOSE")
+    return `The provider${where} closed the connection mid-response. Try again.`;
 
   return err instanceof Error ? err.message : String(err);
 }

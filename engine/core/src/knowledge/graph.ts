@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative } from "node:path";
+import { writeFileAtomic } from "../util/fsAtomic.js";
 
 /**
  * Tier 1 code graph: a directed graph over the workspace's source files, built
@@ -26,7 +27,8 @@ const GRAPH_DIR = ".magentra";
 const GRAPH_FILE = "graph.json";
 
 const MAX_FILES = 5000;
-const MAX_FILE_BYTES = 1024 * 1024; // 1 MB — skip larger files entirely.
+/** Shared with every scanner over the same tree: graph, symbols, code index. */
+export const MAX_FILE_BYTES = 1024 * 1024; // 1 MB — skip larger files entirely.
 const MAX_DEPTH = 12;
 
 /**
@@ -631,8 +633,9 @@ function graphPath(cwd: string): string {
 
 function saveGraph(cwd: string, g: GraphData): void {
   try {
-    mkdirSync(join(cwd, GRAPH_DIR), { recursive: true });
-    writeFileSync(graphPath(cwd), JSON.stringify(g));
+    // Atomic: the app SIGKILLs the engine 3s into a shutdown, and a cache
+    // truncated mid-write reads as absent — a full rebuild of work already done.
+    writeFileAtomic(graphPath(cwd), JSON.stringify(g));
   } catch {
     // best-effort persistence; an unwritable state dir must not break queries
   }
@@ -731,8 +734,17 @@ export interface PageRankOptions {
   damping?: number;
   epsilon?: number;
   maxIter?: number;
-  /** Personalized teleport: uniform over these nodes; else uniform over all. */
+  /** Personalized teleport: over these nodes; else uniform over all. */
   seeds?: string[];
+  /**
+   * Relative teleport mass per seed. Absent seeds fall back to 1.
+   *
+   * The teleport vector IS the personalization, so telling it that one seed
+   * matched the request far better than another is the whole difference between
+   * "start from these files" and "start from these files, in this order of
+   * confidence". Normalized here, so callers may pass raw retrieval scores.
+   */
+  seedWeights?: Map<string, number>;
   /** Observe convergence for tests without polluting the returned Map. */
   onStats?: (stats: { iterations: number; converged: boolean }) => void;
 }
@@ -800,9 +812,15 @@ export function pagerank(g: GraphData, opts: PageRankOptions = {}): Map<string, 
 
   // Personalized teleport vector.
   const teleport = new Array<number>(n).fill(0);
-  const seeds = (opts.seeds ?? []).map((s) => index.get(s)).filter((i): i is number => i !== undefined);
-  if (seeds.length > 0) {
-    for (const s of seeds) teleport[s] = 1 / seeds.length;
+  const seedIds = (opts.seeds ?? []).filter((s) => index.get(s) !== undefined);
+  if (seedIds.length > 0) {
+    const weightOf = (id: string): number => {
+      const w = opts.seedWeights?.get(id);
+      return w !== undefined && Number.isFinite(w) && w > 0 ? w : 1;
+    };
+    let total = 0;
+    for (const id of seedIds) total += weightOf(id);
+    for (const id of seedIds) teleport[index.get(id)!] = weightOf(id) / total;
   } else {
     teleport.fill(1 / n);
   }

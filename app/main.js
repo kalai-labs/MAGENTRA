@@ -3,22 +3,26 @@
 const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
-const os = require("node:os");
 const { spawn } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
 
 const {
   DEFAULT_MODEL,
   DEFAULT_BASE_URL,
-  DEFAULT_API_KEY_ENV,
   LEGACY_API_KEY_ENV_VARS,
   DEFAULT_THEME,
   THEMES,
-  configPath,
   readConfig,
   writeConfig,
   rememberWorkspace,
   isLocalBaseUrl,
+  apiKeyEnvVarFor,
+  writeJsonAtomic,
+  globalSettingsPath,
+  readWorkspaceSettings,
+  readGlobalSettings,
+  readEffectiveWorkspaceSettings,
+  updateWorkspaceSettings,
   shouldStartMaximized,
 } = require("./main/config.js");
 const { logEvent, setLogWorkspace, flushLog, initFallbackLog, activeLogsDir } = require("./main/logging.js");
@@ -280,6 +284,10 @@ const USER_ACTION_FRAMES = new Set([
   "stop_background",
   "rename_session",
   "archive_session",
+  // Sent only when the child is writable, so a drop here means the engine died
+  // in the same tick — and a connection the user just saved silently not
+  // applying is exactly the confusion this set exists to prevent.
+  "set_connection",
 ]);
 
 // The generate_skill frame can carry a resolved profile's API key (to author
@@ -309,8 +317,6 @@ function writeToEngine(frame, tabId) {
     }, tab && tab.win);
   }
 }
-
-const API_KEY_ENV_LINE_RE = /^\s*(?:export\s+)?[A-Z0-9_]*API_KEY\s*=\s*\S/;
 
 /**
  * The API-key lines of a workspace .env, parsed into { VAR: value }. The
@@ -343,45 +349,70 @@ function readWorkspaceEnvKeys(workspace) {
   return keys;
 }
 
-/** Best-effort check for whether a workspace already has API credentials
- * configured, so we know whether to run the engine or trigger the setup
- * wizard instead. Never throws — treats unreadable/missing files as "no". */
+/**
+ * Whether a workspace is configured well enough for the engine to boot, so we
+ * know whether to start it or show the setup wizard. Never throws — treats
+ * unreadable/missing files as "no".
+ *
+ * It asks the question the ENGINE will ask, in the same order (see
+ * resolveApiKeySource + bootstrapEngine): the key for THIS workspace's provider,
+ * then the env, then a local endpoint that needs no key at all. Answering a
+ * looser question — "is any *_API_KEY line present" — was worse than useless: a
+ * leftover key line for the other provider read as configured, the engine
+ * booted, found nothing it could use, and died with "No API key found" instead
+ * of the wizard opening.
+ */
 function hasCredentials(workspace) {
   if (!workspace) return false;
 
-  try {
-    const envPath = path.join(workspace, ".env");
-    const content = fs.readFileSync(envPath, "utf8");
-    const lines = content.split(/\r?\n/);
-    for (const line of lines) {
-      if (API_KEY_ENV_LINE_RE.test(line)) return true;
-    }
-  } catch {
-    // missing/unreadable .env — ignore
-  }
+  // The MERGED view: the engine reads the global layer too, so a key configured
+  // once in ~/.magentra/settings.json configures every workspace.
+  const settings = readEffectiveWorkspaceSettings(workspace);
+  const anthropic = settings.provider === "anthropic";
+  const keyVar = apiKeyEnvVarFor(anthropic ? "anthropic" : "openai-compat");
+  // The names the engine resolves a key from, for THIS provider, in its order.
+  const names = anthropic
+    ? ["ANTHROPIC_API_KEY"]
+    : [keyVar, "OPENAI_API_KEY", ...LEGACY_API_KEY_ENV_VARS];
+  if (typeof settings.apiKeyEnv === "string" && settings.apiKeyEnv) names.unshift(settings.apiKeyEnv);
 
-  // The names the engine resolves a key from when settings name no apiKeyEnv.
-  const defaultKeyEnvVars = [DEFAULT_API_KEY_ENV, "OPENAI_API_KEY", "ANTHROPIC_API_KEY", ...LEGACY_API_KEY_ENV_VARS];
-  if (defaultKeyEnvVars.some((name) => typeof process.env[name] === "string" && process.env[name].trim() !== "")) {
-    return true;
-  }
-
-  try {
-    const settingsPath = path.join(workspace, ".magentra", "settings.json");
-    const parsed = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-    if (parsed && typeof parsed.apiKeyEnv === "string" && parsed.apiKeyEnv) {
-      const val = process.env[parsed.apiKeyEnv];
-      if (typeof val === "string" && val.trim() !== "") return true;
-    }
-    // A local endpoint (Ollama, LM Studio) is fully configured without a key.
-    if (parsed && parsed.provider === "openai-compatible" && isLocalBaseUrl(parsed.baseUrl)) {
-      return true;
-    }
-  } catch {
-    // missing/invalid settings.json — ignore
-  }
+  const envKeys = readWorkspaceEnvKeys(workspace);
+  if (names.some((name) => (envKeys[name] || "").trim() !== "")) return true;
+  if (names.some((name) => typeof process.env[name] === "string" && process.env[name].trim() !== "")) return true;
+  // A key stored in the engine's own settings (a `/settings global apiKey` user).
+  if (typeof settings.apiKey === "string" && settings.apiKey.trim() !== "") return true;
+  // A local or LAN endpoint (Ollama, LM Studio, a box on the network) is fully
+  // configured without a key. Absent `provider` means the default, which is the
+  // OpenAI-compatible one — an older or hand-written settings file that only set
+  // baseUrl used to fall through here and be sent to the wizard forever.
+  if (!anthropic && typeof settings.baseUrl === "string" && isLocalBaseUrl(settings.baseUrl)) return true;
 
   return false;
+}
+
+/**
+ * Remove keys from ~/.magentra/settings.json.
+ *
+ * The engine merges project settings OVER the global file, so clearing a value
+ * in the workspace layer alone leaves the global one to win straight back. Any
+ * setting the app clears has to be cleared in both places. Best-effort: a
+ * missing or unreadable global file simply has nothing to clear.
+ */
+function clearGlobalSettingsKeys(keys) {
+  try {
+    const globalSettings = readGlobalSettings();
+    let changed = false;
+    for (const key of keys) {
+      if (key in globalSettings) {
+        delete globalSettings[key];
+        changed = true;
+      }
+    }
+    // 0600: this file can hold a stored apiKey.
+    if (changed) writeJsonAtomic(globalSettingsPath(), globalSettings, 0o600);
+  } catch {
+    // no global settings file — nothing to clear
+  }
 }
 
 /**
@@ -1182,9 +1213,10 @@ function createExtraWindow() {
 
 ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
   // SAVE with an empty key field keeps the already-saved key: the user is
-  // updating model/URL/context, not the credential.
+  // updating model/URL/context, not the credential. "The saved key" means the one
+  // for the provider being saved — see savedWorkspaceKey.
   if (payload && typeof payload === "object" && payload.useSavedKey) {
-    payload = { ...payload, apiKey: savedWorkspaceKey() };
+    payload = { ...payload, apiKey: savedWorkspaceKey(currentConfig.workspace, payload.provider) };
   }
   const validated = validateCredentialPayload(payload);
   if (!validated.ok) return validated;
@@ -1194,14 +1226,25 @@ ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
   return applyValidatedConnection(workspace, validated);
 });
 
-/** Commit a validated connection to a workspace: the API key to its .env, the
- * rest to its .magentra/settings.json, then (re)start the engine on it. Shared
- * by the setup wizard's writeEnv and by applying a saved global profile, so
- * both paths land credentials identically. */
+/**
+ * Commit a validated connection to a workspace: the API key to its .env, the rest
+ * to its .magentra/settings.json, then put it to work. Shared by the setup
+ * wizard's writeEnv and by applying a saved global profile, so both paths land
+ * credentials identically.
+ *
+ * A workspace with a LIVE engine is re-pointed in place (the set_connection
+ * frame) instead of being respawned. Switching endpoint used to mean killing the
+ * process, which took the conversation with it — so trying a different provider
+ * mid-task cost the whole session. The persisted files are written either way;
+ * they are what a later restart boots from.
+ *
+ * Returns `{ ok: true, live }` — `live` true when the running session was
+ * re-pointed, false when an engine was started.
+ */
 function applyValidatedConnection(workspace, validated) {
   const { apiKey, model, provider, baseUrl, contextWindow, insecureTls } = validated;
 
-  const envVarName = provider === "anthropic" ? "ANTHROPIC_API_KEY" : DEFAULT_API_KEY_ENV;
+  const envVarName = apiKeyEnvVarFor(provider);
 
   // Keyless local endpoints (Ollama, LM Studio) get no .env key line — the
   // config lives entirely in settings.json below.
@@ -1238,25 +1281,21 @@ function applyValidatedConnection(workspace, validated) {
     }
   }
 
-  try {
-    const magentraDir = path.join(workspace, ".magentra");
-    fs.mkdirSync(magentraDir, { recursive: true });
-    const settingsPath = path.join(magentraDir, "settings.json");
-    let settings = {};
-    try {
-      const parsed = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) settings = parsed;
-    } catch {
-      settings = {};
-    }
+  // The endpoint as it will be STORED: the default hosted URL is left out, so the
+  // engine falls back to it by itself. Computed once and used for both the file
+  // and the live frame, so a re-pointed session and a restarted one see the
+  // identical connection.
+  const storedBaseUrl = provider === "openai-compat" && baseUrl && baseUrl !== DEFAULT_BASE_URL ? baseUrl : "";
+  // Keys to clear in the GLOBAL layer, collected during the mutation and written
+  // after it: the engine merges project settings OVER global, so a value left up
+  // there wins straight back.
+  const staleGlobalKeys = ["apiKeyEnv"];
 
+  const settingsError = updateWorkspaceSettings(workspace, (settings) => {
     // The engine's settings schema names the provider "openai-compatible".
     settings.provider = provider === "anthropic" ? "anthropic" : "openai-compatible";
-    if (provider === "openai-compat" && baseUrl && baseUrl !== DEFAULT_BASE_URL) {
-      settings.baseUrl = baseUrl;
-    } else {
-      delete settings.baseUrl;
-    }
+    if (storedBaseUrl) settings.baseUrl = storedBaseUrl;
+    else delete settings.baseUrl;
     settings.model = model;
     // Self-signed TLS opt-in (the `verify=False` equivalent). Stored only
     // while true so a later un-check fully clears it.
@@ -1269,32 +1308,50 @@ function applyValidatedConnection(workspace, validated) {
       settings.contextWindow = contextWindow;
     } else {
       delete settings.contextWindow;
-      // The engine merges project settings over ~/.magentra/settings.json —
-      // a leftover in the GLOBAL layer would silently win right back, so the
-      // clear must reach it too (best-effort).
-      try {
-        const globalPath = path.join(os.homedir(), ".magentra", "settings.json");
-        const globalSettings = JSON.parse(fs.readFileSync(globalPath, "utf8"));
-        if (globalSettings && typeof globalSettings === "object" && "contextWindow" in globalSettings) {
-          delete globalSettings.contextWindow;
-          fs.writeFileSync(globalPath, JSON.stringify(globalSettings, null, 2), "utf8");
-        }
-      } catch {
-        // no global settings file — nothing to clear
-      }
+      staleGlobalKeys.push("contextWindow");
     }
 
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
-  } catch (err) {
-    const message = err && err.message ? err.message : String(err);
-    return { ok: false, error: `failed to write settings: ${message}` };
-  }
+    // The key this wizard just saved goes to the workspace .env as
+    // MAGENTRA_API_KEY, which makes any `apiKeyEnv` pin left behind by a
+    // PREVIOUS provider actively harmful: it names a variable that is not set,
+    // and resolution then reaches for whatever stored key is lying around —
+    // one provider's key sent to another's URL, reported as a rejected key.
+    // Saving a connection is the moment that pin stops being true.
+    delete settings.apiKeyEnv;
+  });
+  if (settingsError) return { ok: false, error: `failed to write settings: ${settingsError}` };
+  clearGlobalSettingsKeys(staleGlobalKeys);
 
   currentConfig = { ...currentConfig, model };
   writeConfig(currentConfig);
   logEvent("sys", { ev: "env-written", provider });
+
+  // A live engine is re-pointed, not respawned: same session, same conversation,
+  // new endpoint from the next request on. The frame carries the key because the
+  // engine read .env once, at boot — and it travels as `connection` so the
+  // stdin log redacts it (see redactFrameForLog).
+  const tab = tabForWorkspace(workspace);
+  if (tab && tab.child && tab.child.stdin.writable) {
+    tab.model = model;
+    writeToEngine(
+      {
+        type: "set_connection",
+        connection: {
+          provider,
+          ...(storedBaseUrl ? { baseUrl: storedBaseUrl } : {}),
+          apiKey,
+          model,
+          ...(contextWindow !== undefined ? { contextWindow } : {}),
+          ...(insecureTls ? { insecureTls: true } : {}),
+        },
+      },
+      tab.id,
+    );
+    logEvent("sys", { ev: "connection-swapped", provider, live: true });
+    return { ok: true, live: true, model };
+  }
   startEngine(workspace, model);
-  return { ok: true };
+  return { ok: true, live: false, model };
 }
 
 // ---------------------------------------------------------------------------
@@ -1476,25 +1533,39 @@ ipcMain.handle("profiles:apply", (_evt, payload) => {
   return result;
 });
 
-/** The saved key for the current workspace (first *_API_KEY line of .env). */
-function savedWorkspaceKey() {
-  const keys = readWorkspaceEnvKeys(currentConfig.workspace);
-  const name = Object.keys(keys)[0];
-  return name ? keys[name] : "";
+/**
+ * The saved key for a workspace, for the provider it is actually configured with.
+ *
+ * Provider-aware on purpose. Switching a workspace between an OpenAI-compatible
+ * endpoint and Anthropic leaves BOTH key lines in its .env (each save rewrites
+ * only its own name, and deleting the other would throw away a key the user may
+ * switch back to). Taking "the first *_API_KEY line" then handed the reveal
+ * button, "keep the saved key" and TEST whichever key happened to sit higher in
+ * the file — one provider's key sent to the other's URL, reported as a bad key.
+ *
+ * `provider` overrides the saved one, for a card that is testing a provider the
+ * workspace has not been switched to yet.
+ */
+function savedWorkspaceKey(workspace = currentConfig.workspace, provider) {
+  const keys = readWorkspaceEnvKeys(workspace);
+  const settings = readEffectiveWorkspaceSettings(workspace);
+  const kind = provider ?? (settings.provider === "anthropic" ? "anthropic" : "openai-compat");
+  const names = [apiKeyEnvVarFor(kind)];
+  if (kind !== "anthropic") names.push("OPENAI_API_KEY", ...LEGACY_API_KEY_ENV_VARS);
+  // An explicit apiKeyEnv pin is what the engine tries first; match it.
+  if (typeof settings.apiKeyEnv === "string" && settings.apiKeyEnv) names.unshift(settings.apiKeyEnv);
+  for (const name of names) {
+    if ((keys[name] || "").trim() !== "") return keys[name];
+  }
+  return "";
 }
 
 /** The model a workspace has saved in its own .magentra/settings.json, or "" if
  * none. Each tab is a distinct workspace/connection, so opening one must honour
  * ITS model — not whatever the currently-focused tab happens to be running. */
 function savedWorkspaceModel(workspace) {
-  if (!workspace) return "";
-  try {
-    const settings = JSON.parse(fs.readFileSync(path.join(workspace, ".magentra", "settings.json"), "utf8"));
-    if (settings && typeof settings.model === "string" && settings.model.trim()) return settings.model.trim();
-  } catch {
-    // no/unparseable settings.json — treat as no saved model
-  }
-  return "";
+  const settings = readWorkspaceSettings(workspace);
+  return typeof settings.model === "string" && settings.model.trim() ? settings.model.trim() : "";
 }
 
 /** Persist a workspace's chosen model into its .magentra/settings.json so the
@@ -1503,22 +1574,11 @@ function savedWorkspaceModel(workspace) {
  * Best-effort — a failed write must never break the model switch itself. */
 function persistWorkspaceModel(workspace, model) {
   if (!workspace || typeof model !== "string" || !model.trim()) return;
-  try {
-    const dir = path.join(workspace, ".magentra");
-    fs.mkdirSync(dir, { recursive: true });
-    const settingsPath = path.join(dir, "settings.json");
-    let settings = {};
-    try {
-      const parsed = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) settings = parsed;
-    } catch {
-      settings = {};
-    }
+  // Best-effort: updateWorkspaceSettings returns the error instead of throwing,
+  // and a failed write must never break the model switch itself.
+  updateWorkspaceSettings(workspace, (settings) => {
     settings.model = model.trim();
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
-  } catch {
-    // best-effort — never fail a model switch over a settings write
-  }
+  });
 }
 
 // What the Settings → Connection card shows on open: the saved endpoint and
@@ -1527,19 +1587,15 @@ ipcMain.handle("connection:info", () => {
   const workspace = currentConfig.workspace;
   const info = { baseUrl: "", model: currentConfig.model || "", provider: "openai-compat", contextWindow: "", hasKey: false, allowInsecureTls: false };
   if (!workspace) return info;
-  info.hasKey = savedWorkspaceKey() !== "";
-  try {
-    const settings = JSON.parse(fs.readFileSync(path.join(workspace, ".magentra", "settings.json"), "utf8"));
-    if (settings && typeof settings === "object") {
-      if (typeof settings.baseUrl === "string") info.baseUrl = settings.baseUrl;
-      if (typeof settings.model === "string") info.model = settings.model;
-      if (settings.provider === "anthropic") info.provider = "anthropic";
-      if (Number.isFinite(settings.contextWindow)) info.contextWindow = String(settings.contextWindow);
-      info.allowInsecureTls = settings.allowInsecureTls === true;
-    }
-  } catch {
-    // no settings file yet — defaults stand
-  }
+  const settings = readWorkspaceSettings(workspace);
+  if (typeof settings.baseUrl === "string") info.baseUrl = settings.baseUrl;
+  if (typeof settings.model === "string") info.model = settings.model;
+  if (settings.provider === "anthropic") info.provider = "anthropic";
+  if (Number.isFinite(settings.contextWindow)) info.contextWindow = String(settings.contextWindow);
+  info.allowInsecureTls = settings.allowInsecureTls === true;
+  // Asked for THIS workspace's provider, so a leftover key line for the other
+  // one cannot make the card claim a key it would never send.
+  info.hasKey = savedWorkspaceKey(workspace, info.provider) !== "";
   return info;
 });
 
@@ -1548,9 +1604,11 @@ ipcMain.handle("connection:info", () => {
 ipcMain.handle("connection:revealKey", () => ({ key: savedWorkspaceKey() }));
 
 ipcMain.handle("setup:testConnection", async (_evt, payload) => {
-  // An empty key field with a saved key means "test the saved connection".
+  // An empty key field with a saved key means "test the saved connection" — the
+  // key for the provider being tested, which may not be the one saved (the card
+  // infers the provider from the URL being typed).
   if (payload && typeof payload === "object" && payload.useSavedKey) {
-    payload = { ...payload, apiKey: savedWorkspaceKey() };
+    payload = { ...payload, apiKey: savedWorkspaceKey(currentConfig.workspace, payload.provider) };
   }
   // Testing a saved profile with a blank key field: resolve the key from the
   // profile store (the renderer never holds it). Without this, TEST sends no
@@ -1686,18 +1744,9 @@ ipcMain.handle("config:setModel", (evt, model) => {
 });
 
 ipcMain.handle("settings:getWebSearch", () => {
-  const workspace = currentConfig.workspace;
-  if (!workspace) return true;
-  try {
-    const settingsPath = path.join(workspace, ".magentra", "settings.json");
-    const parsed = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return !(parsed.search && parsed.search.enabled === false);
-    }
-  } catch {
-    // missing or unparseable settings.json — the engine defaults to enabled
-  }
-  return true;
+  const settings = readWorkspaceSettings(currentConfig.workspace);
+  // The engine defaults to enabled; only an explicit false turns it off.
+  return !(settings.search && settings.search.enabled === false);
 });
 
 ipcMain.handle("settings:setWebSearch", (_evt, enabled) => {
@@ -1706,29 +1755,14 @@ ipcMain.handle("settings:setWebSearch", (_evt, enabled) => {
   const workspace = currentConfig.workspace;
   if (!workspace) return { ok: false, error: "no workspace" };
 
-  try {
-    const magentraDir = path.join(workspace, ".magentra");
-    fs.mkdirSync(magentraDir, { recursive: true });
-    const settingsPath = path.join(magentraDir, "settings.json");
-    let settings = {};
-    try {
-      const parsed = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) settings = parsed;
-    } catch {
-      settings = {};
-    }
-
+  const error = updateWorkspaceSettings(workspace, (settings) => {
     const search =
       settings.search && typeof settings.search === "object" && !Array.isArray(settings.search)
         ? settings.search
         : {};
     settings.search = { ...search, enabled };
-
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
-  } catch (err) {
-    const message = err && err.message ? err.message : String(err);
-    return { ok: false, error: `failed to write settings: ${message}` };
-  }
+  });
+  if (error) return { ok: false, error: `failed to write settings: ${error}` };
 
   logEvent("sys", { ev: "websearch-changed", enabled });
   startEngine(workspace, currentConfig.model);

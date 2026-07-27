@@ -117,18 +117,71 @@ function validateCredentialPayload(payload) {
   };
 }
 
-/** The base URLs to try, in order: as given, then a localhost→127.0.0.1 swap. */
+/**
+ * Path shapes an OpenAI-compatible API is served under, in the order worth
+ * trying. There is no convention here — every provider picked its own, and the
+ * user is expected to know which:
+ *
+ *   OpenAI, Together, Mistral, DeepSeek   /v1
+ *   DeepInfra                             /v1/openai
+ *   Fireworks                             /inference/v1
+ *   Groq                                  /openai/v1
+ *   OpenRouter                            /api/v1
+ *
+ * Trying them is cheaper than asking a person to know them, and getting it
+ * wrong looks — see testEndpoint — exactly like a bad API key.
+ */
+const API_PATH_SUFFIXES = ["/v1", "/v1/openai", "/inference/v1", "/openai/v1", "/api/v1"];
+
+/**
+ * Strip any of the known suffixes to get at the bare origin the user meant.
+ * Longest first, so "/v1/openai" is not mistaken for a bare "/v1" with an
+ * "openai" directory left dangling in front of the candidates.
+ */
+const SUFFIXES_LONGEST_FIRST = [...API_PATH_SUFFIXES].sort((a, b) => b.length - a.length);
+
+function stripApiSuffix(baseUrl) {
+  const lower = baseUrl.toLowerCase();
+  for (const suffix of SUFFIXES_LONGEST_FIRST) {
+    if (lower.endsWith(suffix)) return baseUrl.slice(0, -suffix.length);
+  }
+  return baseUrl;
+}
+
+/**
+ * The base URLs to try, in order: exactly as given first, then a
+ * localhost→127.0.0.1 swap, then the same origin under each known API path.
+ *
+ * The path candidates exist because "base URL" is not a thing users know. They
+ * paste the host from the provider's home page, or the URL their curl example
+ * posts to, and each provider hangs its API somewhere different. The cost of
+ * being wrong used to be an error blaming the API key.
+ */
 function candidateBaseUrls(baseUrl) {
   const candidates = [baseUrl];
+  const add = (url) => {
+    const clean = url.replace(/\/$/, "");
+    if (clean && !candidates.includes(clean)) candidates.push(clean);
+  };
+  let url;
   try {
-    const url = new URL(baseUrl);
-    if (url.hostname.toLowerCase() === "localhost") {
-      url.hostname = "127.0.0.1";
-      candidates.push(url.toString().replace(/\/$/, ""));
-    }
+    url = new URL(baseUrl);
   } catch {
-    // validation upstream guarantees a parseable URL; belt and braces
+    return candidates; // validation upstream guarantees a parseable URL
   }
+  const localhost = url.hostname.toLowerCase() === "localhost";
+  if (localhost) {
+    const swapped = new URL(baseUrl);
+    swapped.hostname = "127.0.0.1";
+    add(swapped.toString());
+  }
+  // Path shapes are tried for EVERY host, local included. A user's own server
+  // is as free to sit at /openai/v1 as a hosted one, and there is no reason the
+  // rescue should work for api.example.com but not for their own box. The
+  // as-given URL is always tried first, so a correct address still costs one
+  // request; only a failing one walks the alternatives.
+  const origin = stripApiSuffix(baseUrl.replace(/\/$/, ""));
+  for (const suffix of API_PATH_SUFFIXES) add(`${origin}${suffix}`);
   return candidates;
 }
 
@@ -158,13 +211,13 @@ function describeFetchError(err, timeoutMs) {
  * and always restored (the wizard runs one test at a time, so the temporary
  * process-wide flag cannot leak into an unrelated connection).
  */
-async function fetchWithTimeout(url, headers, timeoutMs, fetchImpl, insecureTls) {
+async function fetchWithTimeout(url, headers, timeoutMs, fetchImpl, insecureTls, init = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const prevReject = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
   if (insecureTls) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   try {
-    return await fetchImpl(url, { method: "GET", headers, signal: controller.signal });
+    return await fetchImpl(url, { method: "GET", ...init, headers, signal: controller.signal });
   } finally {
     clearTimeout(timer);
     if (insecureTls) {
@@ -212,6 +265,7 @@ async function testEndpoint(validated, defaultBaseUrl, opts = {}) {
   const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 
   let lastError = null;
+  let authFailure = null;
   for (const candidate of candidateBaseUrls(effectiveBaseUrl)) {
     let res;
     try {
@@ -221,23 +275,86 @@ async function testEndpoint(validated, defaultBaseUrl, opts = {}) {
       continue; // next candidate (e.g. 127.0.0.1 after a stalled localhost)
     }
     if (res.ok) {
-      return { ok: true, status: res.status, models: await modelIds(res), baseUrl: effectiveBaseUrl };
+      // Report the candidate that WORKED, not the one that was typed — the
+      // caller persists this, and echoing the input threw the discovery away.
+      return { ok: true, status: res.status, models: await modelIds(res), baseUrl: candidate };
     }
-    // A local/custom server without a /models catalog is still a working chat
-    // server. Only an explicit base URL earns this tolerance — a 404 from the
-    // default hosted endpoint stays a hard failure.
-    if ((local || baseUrl) && (res.status === 404 || res.status === 405)) {
-      return {
-        ok: true,
-        status: res.status,
-        models: [],
-        baseUrl: effectiveBaseUrl,
-        note: "server reachable — it has no /models catalog, so type the model id manually",
-      };
+    // 401/403 is the most informative answer there is: the route exists and
+    // answered, it just refused this key. Remember it, but keep walking — a
+    // later candidate may be the real endpoint.
+    if (res.status === 401 || res.status === 403) {
+      authFailure = authFailure ?? { status: res.status, baseUrl: candidate };
+      continue;
+    }
+    // A 404 on /models is AMBIGUOUS, and assuming the benign reading is what
+    // made a wrong base URL indistinguishable from a bad API key: a server with
+    // no catalog and a URL with no such route both answer exactly this. Ask the
+    // chat route itself, which is the endpoint that actually matters.
+    if (res.status === 404 || res.status === 405) {
+      const verdict = await probeChatRoute(candidate, headers, timeoutMs, fetchImpl, insecureTls);
+      if (verdict === "exists") {
+        return {
+          ok: true,
+          status: res.status,
+          models: [],
+          baseUrl: candidate,
+          note: "server reachable — it has no /models catalog, so type the model id manually",
+        };
+      }
+      if (verdict === "unauthorized") {
+        authFailure = authFailure ?? { status: 401, baseUrl: candidate };
+      }
+      continue; // "missing" — this is not the API's base; try the next shape
     }
     return { ok: false, status: res.status, models: [] };
   }
-  return { ok: false, error: lastError || "no response" };
+  // Every candidate answered, none served the API. If one refused the key, that
+  // is the endpoint — and the key really is the problem.
+  if (authFailure) {
+    return {
+      ok: false,
+      status: authFailure.status,
+      models: [],
+      baseUrl: authFailure.baseUrl,
+      error: `the endpoint at ${authFailure.baseUrl} rejected this API key (HTTP ${authFailure.status}) — the URL is right, so check the key`,
+    };
+  }
+  if (lastError) return { ok: false, error: lastError };
+  return {
+    ok: false,
+    error:
+      "no OpenAI-compatible API found at that address — the host answered, but not at any known API path " +
+      `(tried ${API_PATH_SUFFIXES.join(", ")}). Check the base URL in the provider's documentation.`,
+  };
+}
+
+/**
+ * Does a chat route live at this base URL? The question `/models` cannot answer.
+ *
+ * A deliberately invalid request: we are asking whether the ROUTE is there, not
+ * whether it works. Every answer except "not found" proves it is:
+ *   - 400/422  the route parsed our nonsense and rejected it — it exists;
+ *   - 401/403  it exists and refused the key;
+ *   - 200      it exists and was somehow happy;
+ *   - 404/405  no such route — this base URL is not the API.
+ */
+async function probeChatRoute(baseUrl, headers, timeoutMs, fetchImpl, insecureTls) {
+  let res;
+  try {
+    res = await fetchWithTimeout(
+      `${baseUrl}/chat/completions`,
+      { ...headers, "Content-Type": "application/json" },
+      timeoutMs,
+      fetchImpl,
+      insecureTls,
+      { method: "POST", body: JSON.stringify({ model: "", messages: [] }) },
+    );
+  } catch {
+    return "missing"; // unreachable counts as absent; the caller keeps walking
+  }
+  if (res.status === 401 || res.status === 403) return "unauthorized";
+  if (res.status === 404 || res.status === 405) return "missing";
+  return "exists";
 }
 
 /** Both API shapes list models as data[].id; a missing catalog is not an error. */

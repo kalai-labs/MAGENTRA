@@ -188,6 +188,8 @@ WHAT TO ASK ABOUT. Go through these and ask about every one the request genuinel
   5. DONE — what would make them call this finished, when that is not obvious from the request.
   6. AUDIENCE or STYLE — whenever the work produces something a person will read or look at.
 
+WHEN THE VOCABULARY CHECK FIRES. You may be told that the request's words barely appear in this codebase. That is a measurement, not an opinion, and it means nothing has yet pinned down what the request refers to. In that case asking is necessary: pick the questions whose answers would most narrow the search, and lean toward the upper end of the range below.
+
 HOW MANY. Ask every question whose answer would change what gets built or where the agent looks. For a request that reached this layer that is usually 2 to 4, and never more than 5. UNDER-ASKING IS THE EXPENSIVE MISTAKE HERE: this request is large enough that the agent is about to spend real effort on it, and one wrong assumption wastes all of it. Do not pad with questions that change nothing — but do not talk yourself out of a real one either.
 
 WHAT NOT TO ASK.

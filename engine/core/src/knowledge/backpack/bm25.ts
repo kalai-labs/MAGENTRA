@@ -31,11 +31,19 @@ export function tokenize(text: string): string[] {
   return out;
 }
 
-/** Build a serializable BM25 index over the given documents (in order). */
+/**
+ * Build a serializable BM25 index over the given documents (in order).
+ *
+ * The term maps are prototype-less. A plain `{}` inherits from Object, so a
+ * corpus containing the word "constructor" (or "toString", "valueOf") finds a
+ * truthy value already sitting at that key: `postings[term] ??= []` then never
+ * assigns and the push fails, while `df[term] ?? 0` adds one to a function.
+ * Ordinary prose rarely trips it; source code trips it in the first file.
+ */
 export function buildBm25(docs: string[]): Bm25Index {
   const lengths: number[] = [];
-  const df: Record<string, number> = {};
-  const postings: Record<string, [number, number][]> = {};
+  const df: Record<string, number> = Object.create(null) as Record<string, number>;
+  const postings: Record<string, [number, number][]> = Object.create(null) as Record<string, [number, number][]>;
   let totalLen = 0;
 
   docs.forEach((doc, i) => {
@@ -71,8 +79,11 @@ export function bm25Search(index: Bm25Index, query: string, k: number): { i: num
   const avgdl = index.avgdl || 1;
   for (const term of new Set(tokenize(query))) {
     const posting = index.postings[term];
-    if (!posting) continue;
-    const termIdf = idf(index.n, index.df[term] ?? posting.length);
+    // Array-checked, not truthy-checked: an index that has been through
+    // JSON.parse carries Object.prototype again, so a term like "constructor"
+    // would hand back a function here.
+    if (!Array.isArray(posting)) continue;
+    const termIdf = idf(index.n, typeof index.df[term] === "number" ? index.df[term]! : posting.length);
     for (const [docIndex, freq] of posting) {
       const dl = index.lengths[docIndex] ?? 0;
       const denom = freq + K1 * (1 - B + (B * dl) / avgdl);

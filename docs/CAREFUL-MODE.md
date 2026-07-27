@@ -12,7 +12,8 @@ the decisions worth knowing are ADRs [0001](adr/0001-careful-mode-is-enforced-by
 [0002](adr/0002-careful-rides-the-overdrive-frame.md),
 [0003](adr/0003-the-briefing-proposes-a-direction-not-a-plan.md),
 [0004](adr/0004-the-import-graph-has-two-tiers.md) and
-[0005](adr/0005-the-scout-phase-has-no-hard-cap.md).
+[0005](adr/0005-the-scout-phase-has-no-hard-cap.md) and
+[0006](adr/0006-code-retrieval-is-deterministic.md).
 
 ## What the user approves
 
@@ -47,9 +48,11 @@ careful predictor         one main-model inference, fail-open
    │
    ├─ no  → clarify pre-layer, then an ordinary OVERDRIVE turn
    │
-   └─ yes → scout map built       atlas or graph skeleton, a slice of the repo
-            ↓                     seeded from the request, and what this session
-            ↓                     already read and is still unchanged
+   └─ yes → scout map built       deterministic retrieval: BM25 over the code
+            ↓                     fused with personalized PageRank, rendered as
+            ↓                     ranked paths, declaration skeletons and the
+            ↓                     top-scoring source itself — plus what this
+            ↓                     session already read and is still unchanged
             OPEN QUESTIONS        up to 5, grounded in that map — asked BEFORE
             ↓                     anything is read, because the answers decide
             ↓                     where to read     ▶ careful: asking
@@ -90,7 +93,8 @@ to prevent.
 | Allowlist, prompts, path extraction, verdict + answer parsing | `engine/core/src/runtime/careful.ts` |
 | The hold itself | `engine/core/src/runtime/permissions.ts` — `setCarefulHold`, checked after deny rules and ahead of everything else |
 | Predictor, scout map, path check, phase orchestration | `engine/core/src/runtime/session.ts` — `predictCareful`, `buildCarefulScoutMap`, `unknownProposalPaths`, `askCarefulApproval`, and the careful rung inside `runTurn` |
-| Request → graph seeds, and the scout's location digest | `engine/core/src/knowledge/seeds.ts` — shared with the GraphQuery tool |
+| Request → ranked code (BM25 + PageRank + RRF, the three-grade ladder) | `engine/core/src/knowledge/retrieval.ts` — a general capability, CAREFUL is its first caller |
+| Request → graph seeds | `engine/core/src/knowledge/seeds.ts` — shared with the GraphQuery tool |
 | Multi-language import graph | `engine/core/src/knowledge/graph.ts`, `symbols.ts` |
 | `careful` field on the two frames | `engine/protocol/src/types.ts` |
 | Frame handling, `/careful on\|off`, resume | `engine/core/src/runtime/engine.ts` |
@@ -116,6 +120,7 @@ Four things about the design that are easy to undo by accident:
 npm run build                                                  # tsc -b, engine only
 node .claude/skills/bigboycoding/careful-hold-check.mjs         # 60 hold + path-claim invariants
 node .claude/skills/bigboycoding/graph-languages-check.mjs      # 20 language invariants on a fixture repo
+node .claude/skills/bigboycoding/retrieval-check.mjs             # 25 retrieval invariants
 node .claude/skills/bigboycoding/permission-check.mjs           # 27 permission invariants
 node app/tests/run-ui-tests.js                                  # 27 scenarios
 ```
@@ -156,6 +161,7 @@ make the scout read more. It worked exactly as designed.
 | How many questions | at most 3, biased toward none | up to 5, biased toward asking |
 | Proposal headings | always English | the user's own language |
 | Second proposal in a session | scouts from zero again | skips files already read and unchanged |
+| What the scout starts with | a list of file paths | ranked paths, declaration skeletons with line numbers, and the top-scoring code quoted |
 | Phase feedback | Four plain notes | `▶ ` phase banners (the Workflow convention) |
 | Graph languages | TS, JS, Python | 8 with edges, everything else as nodes |
 | Slice seeds | File paths only | Paths **and** declared symbol names |

@@ -4,6 +4,7 @@ import { basename, dirname, join } from "node:path";
 import {
   PROTOCOL_VERSION,
   STATE_DIR_NAME,
+  type ConnectionSpec,
   type CoreEvent,
   type FrontendRequest,
   type MissionDraft,
@@ -43,6 +44,7 @@ import { exportTeamPack, hireTeamPack } from "../crew/teamPack.js";
 import {
   createProviderForEndpoint,
   endpointKey,
+  endpointSpecFromSettings,
   resolveCrewEndpoint,
   type EndpointSpec,
 } from "../crew/providerFactory.js";
@@ -50,6 +52,7 @@ import { readRecord, summarizeRecord, verifyRecordChain } from "../crew/serviceR
 import { Session } from "./session.js";
 import { SessionStats } from "./sessionStats.js";
 import {
+  DEFAULT_API_KEY_ENV,
   DEFAULT_OPENAI_BASE_URL,
   describeSettings,
   resolveApiKey,
@@ -84,16 +87,20 @@ const SETTING_TIMING_NOTE: Record<SettingTiming, string> = {
  *   session         — pushed into the live session immediately (see applySettingLive)
  *   nextTurn        — the running session re-reads it at the start of the next turn
  *   backpackRebuild — picked up on the next backpack (re)build
- *   restart         — wired outside the Engine (provider, hooks, MCP); only a restart reads it
+ *   restart         — wired outside the Engine (hooks, MCP); only a restart reads it
  *   clear           — a fresh session via /clear picks it up
  */
 export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTiming> = {
-  provider: "restart",
+  // The five connection keys are "session" because applySettingLive rebuilds the
+  // provider from them on the spot (see CONNECTION_SETTING_KEYS). They used to
+  // say "restart", which was true then and is a lie now — and the note this map
+  // prints is the only thing telling the user whether their change took.
+  provider: "session",
   model: "nextTurn",
   smallModel: "nextTurn",
-  baseUrl: "restart",
-  apiKeyEnv: "restart",
-  apiKey: "restart",
+  baseUrl: "session",
+  apiKeyEnv: "session",
+  apiKey: "session",
   maxTokensPerResponse: "nextTurn",
   maxTokensPerTurn: "nextTurn",
   maxIterationsPerTurn: "nextTurn",
@@ -110,9 +117,22 @@ export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTi
   search: "nextTurn",
   embeddings: "backpackRebuild",
   modes: "clear",
-  allowInsecureTls: "restart",
+  allowInsecureTls: "session",
   reuseCheck: "clear",
 };
+
+/**
+ * The settings keys that describe WHERE inference happens. Changing any of them
+ * rebuilds the provider inside the running session, so this set and the "session"
+ * timings above are two statements of the same fact — keep them in step.
+ */
+const CONNECTION_SETTING_KEYS: ReadonlySet<keyof typeof settingsSchema.shape> = new Set([
+  "provider",
+  "baseUrl",
+  "apiKey",
+  "apiKeyEnv",
+  "allowInsecureTls",
+]);
 
 export interface EngineOptions {
   cwd: string;
@@ -774,6 +794,9 @@ export class Engine {
       case "set_model":
         this.handleSetModel(request.model);
         break;
+      case "set_connection":
+        this.handleSetConnection(request.connection);
+        break;
       case "set_compact_limit":
         this.session.setAutoCompactLimit(request.limit);
         break;
@@ -1356,9 +1379,122 @@ export class Engine {
     setSettingPath(this.opts.settings as unknown as Record<string, unknown>, key, value);
     const topKey = key.split(".")[0] as keyof typeof settingsSchema.shape;
     if (topKey === "retention") this.gcStateFiles();
+    // Node reads the TLS flag per connection, so this one lands on the process,
+    // not on the provider instance.
+    if (topKey === "allowInsecureTls") this.applyInsecureTls(this.opts.settings.allowInsecureTls === true);
+    // Anything that names the endpoint rebuilds the provider on the spot, which
+    // is why SETTING_TIMING calls these "session": /settings baseUrl and a
+    // set_connection frame are two doors into the same swap, and a user who
+    // edits the endpoint by command should not have to guess that this one
+    // change needs a restart while the model does not.
+    if (CONNECTION_SETTING_KEYS.has(topKey)) this.rebuildProvider();
     // A passthrough key outside the schema can't reach here (setSetting rejects it),
     // but default to /clear timing rather than crash if one ever does.
     return SETTING_TIMING_NOTE[SETTING_TIMING[topKey] ?? "clear"];
+  }
+
+  /**
+   * Live connection swap (set_connection frame): re-point the whole session at a
+   * different API — provider shape, endpoint, key, model, context window — with
+   * the conversation intact.
+   *
+   * The frame is the session's connection truth from here on. It is written into
+   * the in-memory settings and into this process's environment, because those
+   * are what every OTHER consumer resolves from: crew endpoints, the backpack
+   * embedder, and the host named in provider error messages. Rebuilding only the
+   * chat provider would leave those three pointed at the previous API.
+   *
+   * Nothing is persisted here. The app writes `.env` and
+   * `.magentra/settings.json` before it sends this frame (that is what a later
+   * restart boots from), so writing again would be a second, racing writer on
+   * the same files.
+   */
+  private handleSetConnection(connection: ConnectionSpec | undefined): void {
+    if (!connection || typeof connection !== "object") {
+      this.emit({ type: "error", message: "set_connection needs a connection object", fatal: false });
+      return;
+    }
+    const settings = this.opts.settings as unknown as Record<string, unknown>;
+    settings.provider = connection.provider === "anthropic" ? "anthropic" : "openai-compatible";
+    if (typeof connection.baseUrl === "string" && connection.baseUrl.trim() !== "") {
+      settings.baseUrl = connection.baseUrl.replace(/\/+$/, "");
+    } else {
+      delete settings.baseUrl;
+    }
+    if (typeof connection.model === "string" && connection.model.trim() !== "") {
+      settings.model = connection.model.trim();
+    }
+    if (typeof connection.contextWindow === "number" && Number.isInteger(connection.contextWindow)) {
+      settings.contextWindow = connection.contextWindow;
+    } else {
+      delete settings.contextWindow;
+    }
+
+    // The key: one storage (the environment), so resolveApiKeySource keeps being
+    // the only thing that answers "which key". A stale `apiKeyEnv` pin from the
+    // previous provider is cleared for the same reason the app clears it on
+    // save — it names a variable this connection does not use.
+    const key = typeof connection.apiKey === "string" ? connection.apiKey.trim() : "";
+    delete settings.apiKeyEnv;
+    const keyVar = connection.provider === "anthropic" ? "ANTHROPIC_API_KEY" : DEFAULT_API_KEY_ENV;
+    if (key) {
+      process.env[keyVar] = key;
+      delete settings.apiKey;
+    } else {
+      // A keyless endpoint must stop sending the old key — including the one a
+      // stored settings value or an inherited shell variable would supply.
+      for (const name of [keyVar, "MAGENTRA_API_KEY", "OPENAI_API_KEY", "DEEPINFRA_API_KEY", "ANTHROPIC_API_KEY"]) {
+        delete process.env[name];
+      }
+      delete settings.apiKey;
+    }
+
+    const insecure = connection.insecureTls === true && connection.provider !== "anthropic";
+    settings.allowInsecureTls = insecure;
+    this.applyInsecureTls(insecure);
+
+    this.rebuildProvider();
+    // The new endpoint has its own catalog; the picker must stop offering the
+    // previous API's models.
+    this.publishModelCatalog();
+  }
+
+  /**
+   * Rebuild the session provider from the current settings, in place. Shared by
+   * the set_connection frame and by /settings on any connection key.
+   *
+   * Cached crew providers are dropped: they were built from the previous key and
+   * endpoint, and `endpointKey` includes both, so keeping them would only hold
+   * stale credentials in memory.
+   */
+  private rebuildProvider(): void {
+    const spec = endpointSpecFromSettings(this.opts.settings, resolveApiKey(this.opts.settings));
+    const provider = (this.opts.providerFactory ?? createProviderForEndpoint)(spec);
+    // opts.provider is what publishModelCatalog and every new session read.
+    this.opts.provider = provider;
+    this.crewProviders.clear();
+    this.session.setProvider(provider);
+  }
+
+  /**
+   * The `verify=False` escape hatch, toggled live. Node reads this variable per
+   * TLS connection, so flipping it here covers every later provider fetch — the
+   * same mechanism bootstrapEngine uses at boot, and just as loud, because it
+   * disables man-in-the-middle protection process-wide.
+   */
+  private applyInsecureTls(enabled: boolean): void {
+    if (enabled) {
+      if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0") return;
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+      this.emit({
+        type: "error",
+        message:
+          "allowInsecureTls is ON — TLS certificate verification is disabled for this engine. Only use with servers you own.",
+        fatal: false,
+      });
+      return;
+    }
+    delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
   }
 
   /**

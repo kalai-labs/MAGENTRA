@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
+import { writeFileAtomic } from "../../util/fsAtomic.js";
 import { buildBm25, type Bm25Index } from "./bm25.js";
 
 /**
@@ -116,18 +117,9 @@ function migrateDocKeys(index: BackpackIndex, cwd: string): BackpackIndex {
 }
 
 export function saveBackpackIndex(cwd: string, agentId: string, index: BackpackIndex): void {
-  const dir = backpackDir(cwd, agentId);
-  mkdirSync(dir, { recursive: true });
-  const file = backpackIndexPath(cwd, agentId);
-  const tmp = `${file}.tmp`;
-  writeFileSync(tmp, JSON.stringify(index));
-  try {
-    renameSync(tmp, file);
-  } catch {
-    // Windows can refuse renaming over an existing/locked file (EEXIST/EPERM).
-    rmSync(file, { force: true });
-    renameSync(tmp, file);
-  }
+  // One atomic-write implementation for every state file — this one used to
+  // hand-roll the same tmp+rename+Windows-fallback dance.
+  writeFileAtomic(backpackIndexPath(cwd, agentId), JSON.stringify(index));
 }
 
 /** True when the doc exists under cwd and its bytes hash to the sha256 recorded for it. */

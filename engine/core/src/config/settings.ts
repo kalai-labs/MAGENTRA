@@ -1,8 +1,9 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { z } from "zod";
 import { STATE_DIR_NAME } from "@magentra/protocol";
+import { writeFileAtomic } from "../util/fsAtomic.js";
 
 /**
  * Fallback OpenAI-compatible endpoint for the provider and the backpack
@@ -436,7 +437,7 @@ export function setSetting(
       if (layer === file || !existsSync(layer)) continue;
       const other: Record<string, unknown> = structuredClone(readJson(layer, discard) ?? {});
       deleteSettingPath(other, dotPath);
-      writeFileSync(layer, `${JSON.stringify(other, null, 2)}\n`, { mode: 0o600 });
+      writeSettingsFile(layer, other);
     }
     deleteSettingPath(candidate, dotPath);
   } else {
@@ -450,19 +451,25 @@ export function setSetting(
     throw new Error(`Invalid value for ${where}: ${issue?.message ?? "does not match the settings schema"}`);
   }
 
-  mkdirSync(dirname(file), { recursive: true });
-  // mode 0600 applies only when the file is created; Node ignores it for an
-  // existing file. When a secret lands, chmod the file too so a pre-existing
-  // world-readable settings file stops exposing the key (no-op on Windows).
-  writeFileSync(file, `${JSON.stringify(candidate, null, 2)}\n`, { mode: 0o600 });
-  if (SECRET_KEYS.has(topKey)) {
-    try {
-      chmodSync(file, 0o600);
-    } catch {
-      // best-effort — the write itself must never fail over permissions polish
-    }
-  }
+  writeSettingsFile(file, candidate);
   return { file, key: dotPath, value };
+}
+
+/**
+ * Persist a settings layer: atomically, at 0600.
+ *
+ * ATOMIC because this file has two writers — the engine (here) and the desktop
+ * app, which writes the same `.magentra/settings.json` when a connection is
+ * saved. A plain write leaves a window in which the other process reads a
+ * truncated file, and the reader treats unparseable settings as "none", which
+ * presents as a workspace that lost its endpoint and key.
+ *
+ * 0600 because the layer may hold `apiKey`. writeFileAtomic applies the mode to
+ * the temporary file, so it takes effect on every write rather than only on
+ * creation — a settings file that was created world-readable stops being one.
+ */
+function writeSettingsFile(file: string, contents: Record<string, unknown>): void {
+  writeFileAtomic(file, `${JSON.stringify(contents, null, 2)}\n`, 0o600);
 }
 
 /**
@@ -488,8 +495,7 @@ export function addExactPermission(cwd: string, tool: string, subject: string, p
   const parsed = settingsSchema.safeParse(candidate);
   if (!parsed.success) throw new Error(`Could not save the permission grant: ${parsed.error.message}`);
 
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, `${JSON.stringify(candidate, null, 2)}\n`, { mode: 0o600 });
+  writeSettingsFile(file, candidate);
   return true;
 }
 
@@ -503,17 +509,65 @@ function isSameGrant(entry: unknown, tool: string, subject: string, prefix: bool
   );
 }
 
+/** Where a resolved key came from — surfaced so a wrong one can be explained. */
+export interface ApiKeySource {
+  key: string | undefined;
+  /** The env var it came from, "settings" for a stored key, or undefined. */
+  from: string | undefined;
+  /** Set when `apiKeyEnv` names a variable that is not present in the environment. */
+  danglingKeyEnv?: string;
+}
+
+/** A blank env var is not a key. Treating "" as "set" hands the provider an
+ *  empty Bearer token, which comes back as an authentication failure. */
+function envKey(name: string): string | undefined {
+  const value = process.env[name];
+  return typeof value === "string" && value.trim() !== "" ? value : undefined;
+}
+
 /**
- * Resolves the API key for the configured provider. An env var always wins so a
- * container/CI can override — the configured `apiKeyEnv`, else the provider's
- * default env name — and only when none is set does the key stored in
- * `settings.apiKey` (from ~/.magentra/settings.json) apply.
+ * Resolves the API key for the configured provider, and says where it came from.
+ *
+ * Order: the configured `apiKeyEnv`, then the standard env names, then the key
+ * stored in settings. An env var wins so a container or CI can override.
+ *
+ * The middle step is load-bearing and used to be missing. `apiKeyEnv` was a
+ * PIN: naming a variable meant nothing else was consulted, so a stale pin left
+ * behind by a previous provider — `DEEPINFRA_API_KEY`, say, after switching to
+ * a different endpoint — sent resolution straight past the key the app had just
+ * written into `MAGENTRA_API_KEY` and down to whatever `settings.apiKey` still
+ * held. The result was one provider's key confidently sent to another's URL,
+ * reported as "API key rejected", with the correct key sitting unused in the
+ * environment the whole time.
  */
+export function resolveApiKeySource(settings: Settings): ApiKeySource {
+  const names =
+    settings.provider === "anthropic" ? ["ANTHROPIC_API_KEY"] : [...OPENAI_COMPAT_KEY_ENV_VARS];
+  const pinned = settings.apiKeyEnv;
+  if (pinned) {
+    const value = envKey(pinned);
+    if (value !== undefined) return { key: value, from: pinned };
+  }
+  for (const name of names) {
+    if (name === pinned) continue; // already tried
+    const value = envKey(name);
+    if (value !== undefined) {
+      return {
+        key: value,
+        from: name,
+        ...(pinned ? { danglingKeyEnv: pinned } : {}),
+      };
+    }
+  }
+  const stored = settings.apiKey?.trim() ? settings.apiKey : undefined;
+  return {
+    key: stored,
+    from: stored !== undefined ? "settings" : undefined,
+    ...(pinned ? { danglingKeyEnv: pinned } : {}),
+  };
+}
+
+/** The resolved API key. See {@link resolveApiKeySource} for provenance. */
 export function resolveApiKey(settings: Settings): string | undefined {
-  const fromEnv = settings.apiKeyEnv
-    ? process.env[settings.apiKeyEnv]
-    : settings.provider === "anthropic"
-      ? process.env.ANTHROPIC_API_KEY
-      : OPENAI_COMPAT_KEY_ENV_VARS.map((name) => process.env[name]).find((v) => v !== undefined);
-  return fromEnv ?? settings.apiKey;
+  return resolveApiKeySource(settings).key;
 }

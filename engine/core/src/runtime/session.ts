@@ -36,7 +36,7 @@ import {
 } from "../knowledge/atlas.js";
 import { areaFacts, graphSummary, planAtlasAreas, projectName } from "../knowledge/atlasPlan.js";
 import { graphStats, loadOrBuildGraph, pagerank, type GraphData } from "../knowledge/graph.js";
-import { requestSliceDigest } from "../knowledge/seeds.js";
+import { renderRetrieval, retrieveContext } from "../knowledge/retrieval.js";
 import { loadStandards } from "../knowledge/standards.js";
 import { formatTokens } from "../config/pricing.js";
 import { BackgroundManager } from "../scheduling/background.js";
@@ -78,7 +78,6 @@ import type {
   SessionServices,
   SpawnAgentOptions,
   ToolContext,
-  ToolDefinition,
   ToolRegistry,
   ToolResult,
 } from "../agent/tool.js";
@@ -343,7 +342,9 @@ export class Session {
 
   messages: Msg[];
   extraPromptSections: string[];
-  private readonly provider: Provider;
+  /** Not readonly: a live connection swap (set_connection) replaces it without
+   *  ending the session — see {@link setProvider}. */
+  private provider: Provider;
   private readonly registry: ToolRegistry;
   private readonly emit: (event: CoreEvent) => void;
   private readonly reminders: string[] = [];
@@ -626,6 +627,21 @@ export class Session {
 
   isCareful(): boolean {
     return this.careful;
+  }
+
+  /**
+   * Point this session at a different inference endpoint mid-conversation (the
+   * set_connection frame). Every provider call reads `this.provider` at call
+   * time, so the swap lands on the next request — the messages, the session id,
+   * the task list, and the stance all stay exactly as they were.
+   *
+   * Child sessions already running keep the provider they were spawned with:
+   * their turn is in flight, and swapping under it would change the model
+   * halfway through one exchange. They are short-lived; the next spawn inherits
+   * the new one.
+   */
+  setProvider(provider: Provider): void {
+    this.provider = provider;
   }
 
   /** True when a careful turn is actually possible: the modifier is armed, the
@@ -1279,12 +1295,31 @@ export class Session {
    * Fail-open throughout: a thrown call, a malformed verdict or a frontend that
    * cannot answer all mean "ask nothing", never a lost turn.
    */
-  private async askCarefulQuestions(userText: string, map: string | undefined): Promise<string | undefined> {
+  private async askCarefulQuestions(
+    userText: string,
+    map: { text: string; weak: boolean } | undefined,
+  ): Promise<string | undefined> {
+    // This runs as its OWN inference, so it sees no system prompt — and
+    // therefore no atlas. The scout map deliberately omits the atlas (the scout
+    // gets it from the system prompt, and duplicating it would spend the user's
+    // context twice), which left this layer with a request-specific slice and
+    // nothing else. On a vague request that slice is the least useful thing it
+    // could have: the layer is trying to work out what the user MEANS, which
+    // needs the shape of the whole project.
+    const overview = this.buildClarifySkim();
+    // The deterministic vagueness measurement, handed to the model as evidence.
+    // Whether to ask should not rest on the model's own sense of how clear a
+    // request was; retrieval already counted how much of it this codebase
+    // recognizes, and that count is a fact.
+    const vagueness =
+      map?.weak === true
+        ? "Vocabulary check: the request's own words barely appear anywhere in this codebase, so nothing has pinned down what it refers to. Treat asking as necessary here, not optional.\n\n"
+        : "";
     let raw: string;
     try {
       raw = await this.runInference({
         system: CAREFUL_QUESTIONS_SYSTEM,
-        user: `${this.recentExchange()}${map ? `Codebase map:\n${map}\n\n` : ""}Incoming request:\n${userText}`,
+        user: `${this.recentExchange()}${overview ? `Codebase overview:\n${overview}\n\n` : ""}${map ? `What the request seems to point at:\n${map.text}\n\n` : ""}${vagueness}Incoming request:\n${userText}`,
         maxTokens: 1200,
         model: this.settings.model,
       });
@@ -1337,8 +1372,9 @@ export class Session {
    * injects it, and putting it in twice would spend the user's context on a
    * duplicate. Best-effort throughout — a scout with no map still works.
    */
-  private buildCarefulScoutMap(request: string): string | undefined {
+  private buildCarefulScoutMap(request: string, answers?: string): { text: string; weak: boolean } | undefined {
     const parts: string[] = [];
+    let weak = true;
     try {
       if (loadAtlas(this.cwd) === undefined) {
         const skim = this.buildClarifySkim();
@@ -1348,14 +1384,21 @@ export class Session {
       // orientation is an enrichment; never let it cost the turn
     }
     try {
-      const digest = requestSliceDigest(this.cwd, request);
-      if (digest) parts.push(digest);
+      // Deterministic retrieval: BM25 over the code fused with personalized
+      // PageRank, rendered as ranked paths, declaration skeletons and the
+      // top-scoring source itself. A general capability (knowledge/retrieval.ts)
+      // that CAREFUL happens to be the first caller of.
+      const retrieved = retrieveContext(this.cwd, request, { answers });
+      if (retrieved) {
+        parts.push(renderRetrieval(retrieved));
+        weak = retrieved.weak;
+      }
     } catch {
       // ditto — the scout can still read its way there
     }
     const alreadyRead = this.alreadyReadDigest();
     if (alreadyRead) parts.push(alreadyRead);
-    return parts.length > 0 ? parts.join("\n\n") : undefined;
+    return parts.length > 0 ? { text: parts.join("\n\n"), weak } : undefined;
   }
 
   /** Files listed as already-read before the list stops being a glance. */
@@ -1599,7 +1642,7 @@ export class Session {
     let carefulTurn = false;
     /** The graph-derived starting position for the scout; undefined when the
      *  workspace yielded nothing to orient with. */
-    let carefulMap: string | undefined;
+    let carefulMap: { text: string; weak: boolean } | undefined;
     let clarification: string | undefined;
     if (this.isCarefulActive()) carefulTurn = await this.predictCareful(userText);
 
@@ -1614,6 +1657,9 @@ export class Session {
     if (carefulTurn) {
       carefulMap = this.buildCarefulScoutMap(userText);
       clarification = await this.askCarefulQuestions(userText, carefulMap);
+      // Re-rank with the user's answers folded into the query: they name the
+      // direction in their own words, which is the strongest query text there is.
+      if (clarification !== undefined) carefulMap = this.buildCarefulScoutMap(userText, clarification);
       this.permissions.setCarefulHold(true);
       this.setPromptSection("careful", CAREFUL_SCOUT_SECTION);
       // Deliberation is silent from the very first round: the user asked for
@@ -1652,7 +1698,9 @@ export class Session {
         ...(clarification !== undefined ? [{ type: "text" as const, text: clarification }] : []),
         // The scout's starting position rides with the request itself, so its
         // very first round already knows where the work lands.
-        ...(carefulMap !== undefined ? [{ type: "text" as const, text: carefulScoutMapText(carefulMap) }] : []),
+        ...(carefulMap !== undefined
+          ? [{ type: "text" as const, text: carefulScoutMapText(carefulMap.text) }]
+          : []),
       ]),
     });
 
@@ -1872,13 +1920,13 @@ export class Session {
                 type: "command_output",
                 text: `▶ careful: revising the proposal (revision ${carefulRevisions})`,
               });
-              const revisedMap = this.buildCarefulScoutMap(`${userText}\n${decision.text}`);
+              const revisedMap = this.buildCarefulScoutMap(`${userText}\n${decision.text}`, decision.text);
               this.pushMessage({
                 role: "user",
                 content: [
                   { type: "text", text: carefulRevisionText(decision.text) },
                   ...(revisedMap !== undefined
-                    ? [{ type: "text" as const, text: carefulScoutMapText(revisedMap) }]
+                    ? [{ type: "text" as const, text: carefulScoutMapText(revisedMap.text) }]
                     : []),
                 ],
               });

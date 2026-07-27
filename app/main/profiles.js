@@ -2,8 +2,9 @@
 
 // Global, named connection profiles — the reusable layer above per-workspace
 // credentials. One JSON file in the user's home ~/.magentra, so a profile built
-// once is offered in every workspace afterwards. Pure I/O, no Electron or engine
-// state, so the setup wizard and the tests can drive it directly.
+// once is offered in every workspace afterwards. Pure I/O over that file — no
+// Electron window and no engine state, so the setup wizard and the tests can
+// drive it directly.
 //
 // The API key lives IN this file (owner-only, 0600) rather than only in each
 // workspace .env — that is the whole point of a profile: pick it and you are
@@ -14,6 +15,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const os = require("node:os");
 const crypto = require("node:crypto");
+const { writeJsonAtomic } = require("./config.js");
 
 function profilesDir() {
   return path.join(os.homedir(), ".magentra");
@@ -43,26 +45,10 @@ function readProfiles() {
 }
 
 function writeProfiles(list) {
-  const dir = profilesDir();
-  fs.mkdirSync(dir, { recursive: true });
-  const file = profilesPath();
-  const tmp = `${file}.tmp`;
-  // Owner-only: the file holds API keys. mode applies on create; the explicit
-  // chmod fixes up a pre-existing looser file too (no-op on Windows).
-  fs.writeFileSync(tmp, JSON.stringify(list, null, 2), { encoding: "utf8", mode: 0o600 });
-  try {
-    fs.renameSync(tmp, file);
-  } catch {
-    // Windows can refuse rename-over-existing; narrow the race to a missing
-    // window that readProfiles() already treats as an empty list.
-    fs.rmSync(file, { force: true });
-    fs.renameSync(tmp, file);
-  }
-  try {
-    fs.chmodSync(file, 0o600);
-  } catch {
-    // best-effort — never fail the write over permissions polish
-  }
+  // Owner-only (0600): this file holds API keys. The atomic writer handles the
+  // rename dance and the chmod — one implementation, shared with config.json,
+  // so the crash-safety of both can never drift apart.
+  writeJsonAtomic(profilesPath(), list, 0o600);
   return list;
 }
 
