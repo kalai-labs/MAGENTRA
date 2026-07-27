@@ -78,10 +78,10 @@ export function planAtlasAreas(
 ): AtlasArea[] {
   let files = Object.keys(graph.files);
 
-  // The import graph only parses TS/JS/Python. In a Go, Rust, Java, C# … repo it
-  // comes back empty — which must not mean "no atlas". Fall back to walking the
-  // tree: the partition is then by directory alone, with no import edges, but an
-  // area map is still an area map.
+  // The graph scans every language in SCAN_EXTS, but a repo written entirely in
+  // something outside it still comes back empty — which must not mean "no
+  // atlas". Fall back to walking the tree: the partition is then by directory
+  // alone, with no import edges, but an area map is still an area map.
   const fromGraph = files.length > 0;
   if (!fromGraph) {
     if (cwd === undefined) return [];
@@ -128,11 +128,10 @@ export function planAtlasAreas(
 }
 
 /**
- * Source extensions for the language-agnostic fallback. Deliberately wider than
- * the import graph's set (which only PARSES TS/JS/Python): here we only need to
- * know a file is source, not to read its imports. Every language the agent might
- * ever be pointed at belongs in this list — the atlas must not be a TypeScript
- * feature.
+ * Source extensions for the language-agnostic fallback. Wider than the import
+ * graph's `SCAN_EXTS`: here we only need to know a file is source, not to read
+ * its imports, so anything the agent might ever be pointed at belongs in the
+ * list — the atlas must not be a TypeScript feature.
  */
 const FALLBACK_SOURCE_EXTS = new Set([
   ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs",

@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, relative, sep } from "node:path";
-import { SCAN_EXTS, extOf, shouldSkipDir } from "./graph.js";
+import { SCAN_EXTS, extOf, langOf, shouldSkipDir } from "./graph.js";
 
 /**
  * Tier 1 symbol index: the top-level exported names of every source file in the
@@ -79,11 +79,64 @@ function extractPySymbols(content: string, out: Set<string>): void {
   }
 }
 
+/**
+ * Declaration patterns for the languages the graph scans, each capturing the
+ * declared name in group 1. Where a language marks visibility (`pub`, `public`,
+ * a capitalized Go identifier) the pattern requires it — an unexported helper is
+ * not a reuse signal. Conservative throughout: a missed symbol costs a weaker
+ * hint, an invented one sends the reuse gate after code that does not exist.
+ */
+const DECL_PATTERNS: Record<string, RegExp[]> = {
+  c: [
+    // A definition (has a body), not a prototype — prototypes repeat in headers.
+    /^[A-Za-z_][\w \t*]*[ \t*]+\**([A-Za-z_]\w*)[ \t]*\([^;{]*\)[ \t]*\{/gm,
+    /^[ \t]*typedef\b[^;]*?\b([A-Za-z_]\w*)[ \t]*;/gm,
+    /^[ \t]*(?:typedef[ \t]+)?(?:struct|union|enum|class)[ \t]+([A-Za-z_]\w*)/gm,
+    /^[ \t]*@(?:interface|implementation|protocol)[ \t]+([A-Za-z_]\w*)/gm,
+  ],
+  ruby: [/^[ \t]*(?:class|module)[ \t]+([A-Z]\w*)/gm, /^[ \t]*def[ \t]+(?:self\.)?([a-z_]\w*)/gm],
+  php: [
+    /^[ \t]*(?:abstract[ \t]+|final[ \t]+)*(?:class|interface|trait|enum)[ \t]+(\w+)/gm,
+    /^[ \t]*function[ \t]+&?(\w+)/gm,
+  ],
+  jvm: [
+    /^[ \t]*(?:@\w+[ \t]+)*(?:public[ \t]+|internal[ \t]+)?(?:final[ \t]+|abstract[ \t]+|sealed[ \t]+|open[ \t]+|data[ \t]+|static[ \t]+)*(?:class|interface|enum|record|object)[ \t]+(\w+)/gm,
+    /^[ \t]*(?:public[ \t]+|internal[ \t]+)?(?:suspend[ \t]+|inline[ \t]+)*fun[ \t]+(?:<[^>]*>[ \t]*)?(\w+)/gm,
+  ],
+  // Go marks export by capitalization, so the pattern carries the visibility rule.
+  go: [
+    /^func[ \t]+(?:\([^)]*\)[ \t]*)?([A-Z]\w*)/gm,
+    /^type[ \t]+([A-Z]\w*)/gm,
+    /^(?:var|const)[ \t]+([A-Z]\w*)/gm,
+  ],
+  rust: [
+    /^[ \t]*pub(?:\([^)]*\))?[ \t]+(?:async[ \t]+|unsafe[ \t]+|const[ \t]+)*(?:fn|struct|enum|trait|type|static|mod)[ \t]+([A-Za-z_]\w*)/gm,
+  ],
+  // Tier 2 languages (C#, Swift, Dart, Scala …) have no import edges, which
+  // makes their symbols the ONLY way a graph slice can find them by name.
+  none: [
+    /^[ \t]*(?:(?:public|internal|open|export|final|abstract|sealed|static|data|partial|record)[ \t]+)*(?:class|struct|interface|protocol|enum|trait|object|extension|actor)[ \t]+([A-Za-z_]\w*)/gm,
+    /^[ \t]*(?:(?:public|internal|open|export|static|override|async)[ \t]+)*(?:func|fun|def|sub|function)[ \t]+([A-Za-z_]\w*)/gm,
+  ],
+};
+
+function extractByPatterns(patterns: RegExp[], content: string, out: Set<string>): void {
+  for (const re of patterns) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(content)) !== null) {
+      if (m[1]) out.add(m[1]);
+    }
+  }
+}
+
 /** Top-level exported symbol names of a source file, deduped and capped. */
 export function extractSymbols(path: string, content: string): string[] {
   const out = new Set<string>();
-  if (extOf(path) === ".py") extractPySymbols(content, out);
-  else extractTsSymbols(content, out);
+  const lang = langOf(path);
+  if (lang === "js") extractTsSymbols(content, out);
+  else if (lang === "py") extractPySymbols(content, out);
+  else extractByPatterns(DECL_PATTERNS[lang] ?? [], content, out);
   return [...out].slice(0, MAX_SYMBOLS_PER_FILE);
 }
 
@@ -116,7 +169,7 @@ export function buildSymbolIndex(cwd: string, prev?: SymbolIndexData): SymbolInd
         if (shouldSkipDir(entry.name)) continue;
         walk(abs, depth + 1);
       } else if (entry.isFile()) {
-        if (!SCAN_EXTS.has(extOf(entry.name))) continue;
+        if (!SCAN_EXTS.has(extOf(entry.name).toLowerCase())) continue;
         let st: import("node:fs").Stats;
         try {
           st = statSync(abs);

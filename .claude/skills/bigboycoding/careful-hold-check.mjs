@@ -13,6 +13,7 @@ import { PermissionEngine } from "../../../engine/core/dist/runtime/permissions.
 import {
   SCOUT_TOOLS,
   classifyCarefulAnswer,
+  extractCandidatePaths,
   parseCarefulVerdict,
   CAREFUL_APPROVE_LABEL,
   CAREFUL_CANCEL_LABEL,
@@ -137,6 +138,33 @@ check("malformed json → false", parseCarefulVerdict("{careful: yes"), false);
 check("empty → false", parseCarefulVerdict(""), false);
 check("non-object json → false", parseCarefulVerdict("[1,2,3]"), false);
 check("wrong type → false", parseCarefulVerdict('{"careful": "true"}'), false);
+
+// ── Path claims are extracted from a proposal, noise is not ─────────────────
+// Every path a proposal names is a claim about the user's repository, and the
+// engine checks each one exists before the user ever sees it. A MISSED path
+// lets a hallucinated file through; a FALSE one sends the model correcting
+// prose that was already right. Both directions are asserted here.
+console.log("");
+{
+  const paths = (text) => extractCandidatePaths(text).join(",");
+
+  check("full path claimed", paths("touches `engine/core/src/runtime/careful.ts` today"), "engine/core/src/runtime/careful.ts");
+  check("bare filename claimed", paths("in `careful.ts`"), "careful.ts");
+  check("file:line reduces to the file", paths("see `session.ts:1482`"), "session.ts");
+  check("leading ./ normalized away", paths("`./app/main.js`"), "app/main.js");
+  check("backslashes normalized", paths("`app\\renderer\\state.js`"), "app/renderer/state.js");
+  check("repeats collapse", paths("`a/b.ts` then `a/b.ts`"), "a/b.ts");
+  check("directory path claimed", paths("`engine/core/src/`"), "engine/core/src/");
+
+  // Noise that must NOT be reported as a missing file.
+  check("bare symbol is not a path", paths("call `GraphQuery` first"), "");
+  check("command is not a path", paths("run `npm run build`"), "");
+  check("flag is not a path", paths("pass `--force`"), "");
+  check("version is not a path", paths("bumped to `0.9.0`"), "");
+  check("url is not a path", paths("`https://example.com/x.ts`"), "");
+  check("prose outside backticks is ignored", paths("I will edit engine/core/src/x.ts"), "");
+  check("empty text yields nothing", paths(""), "");
+}
 
 console.log(`\n${failures === 0 ? "all invariants hold" : `${failures} FAILED`}\n`);
 process.exit(failures === 0 ? 0 : 1);

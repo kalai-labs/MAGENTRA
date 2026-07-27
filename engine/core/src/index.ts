@@ -3,6 +3,7 @@ export * from "./ma/debug.js";
 export * from "./knowledge/standards.js";
 export * from "./knowledge/graph.js";
 export * from "./knowledge/symbols.js";
+export * from "./knowledge/seeds.js";
 export * from "./knowledge/reuseGate.js";
 export * from "./knowledge/docs.js";
 export * from "./agent/tool.js";

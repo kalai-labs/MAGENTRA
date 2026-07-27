@@ -36,6 +36,7 @@ import {
 } from "../knowledge/atlas.js";
 import { areaFacts, graphSummary, planAtlasAreas, projectName } from "../knowledge/atlasPlan.js";
 import { graphStats, loadOrBuildGraph, pagerank, type GraphData } from "../knowledge/graph.js";
+import { requestSliceDigest } from "../knowledge/seeds.js";
 import { loadStandards } from "../knowledge/standards.js";
 import { formatTokens } from "../config/pricing.js";
 import { BackgroundManager } from "../scheduling/background.js";
@@ -44,16 +45,21 @@ import type { HookRunner } from "../agent/hooks.js";
 import type { ModeEngine } from "../ma/modes.js";
 import { PermissionEngine, type PermissionRequestPayload, protectedEditPath } from "./permissions.js";
 import {
-  CAREFUL_APPROVED_TEXT,
-  CAREFUL_BRIEFING_TEXT,
+  CAREFUL_PROPOSAL_TEXT,
   CAREFUL_CANCELLED_TEXT,
-  CAREFUL_CRITIQUE_ROUNDS,
-  CAREFUL_CRITIQUE_TEXT,
   CAREFUL_PREDICTOR_SYSTEM,
+  CAREFUL_REVIEW_TEXT,
   CAREFUL_SCOUT_SECTION,
+  CAREFUL_SCOUT_WARN_AFTER_ROUNDS,
+  CAREFUL_SCOUT_WARN_TEXT,
+  CAREFUL_UNCLEARS_TEXT,
   carefulApprovalQuestion,
+  carefulApprovedText,
   carefulRevisionText,
+  carefulScoutMapText,
+  carefulUnknownPathsText,
   classifyCarefulAnswer,
+  extractCandidatePaths,
   parseCarefulVerdict,
 } from "./careful.js";
 import { buildSystemPrompt, skillsBlock } from "../agent/prompts.js";
@@ -1223,6 +1229,23 @@ export class Session {
     const questions = parseClarifyVerdict(raw);
     if (questions === undefined) return undefined;
     this.emit({ type: "command_output", text: "🧭 open-ended request — clarifying before starting" });
+    return this.askQuestionRound(
+      questions,
+      "Clarify pre-layer: before starting, the user answered these questions — honor the answers as requirements. Unanswered questions are yours to decide sensibly:",
+    );
+  }
+
+  /**
+   * Puts a round of shape-defining questions to the user and records their
+   * answers as a reminder block for the model.
+   *
+   * Shared by the clarify pre-layer and CAREFUL MODE's pre-proposal round: both
+   * ask at most three questions that only the user can settle, and both must
+   * treat the answers as requirements, so the two must not drift apart in how
+   * they record them. Returns undefined when the frontend cannot answer — a
+   * question round that fails must never cost the turn.
+   */
+  private async askQuestionRound(questions: ShapeQuestion[], preamble: string): Promise<string | undefined> {
     let answers: Record<string, string[]>;
     try {
       answers = await this.opts.askUser(`q_${randomBytes(4).toString("hex")}`, questions);
@@ -1233,7 +1256,29 @@ export class Session {
       const selected = answers[`q:${idx}`] ?? answers[q.question] ?? [];
       return `${q.question}\n-> ${selected.length > 0 ? selected.join(", ") : "(no answer)"}`;
     });
-    return `<system-reminder>Clarify pre-layer: before starting, the user answered these questions — honor the answers as requirements. Unanswered questions are yours to decide sensibly:\n\n${lines.join("\n\n")}</system-reminder>`;
+    return `<system-reminder>${preamble}\n\n${lines.join("\n\n")}</system-reminder>`;
+  }
+
+  /**
+   * CAREFUL MODE's pre-proposal round: the questions only the user can settle,
+   * asked BEFORE the proposal is written.
+   *
+   * They used to be asked after approval, which was backwards — a question whose
+   * answer changes what gets built cannot be put to the user after they have
+   * approved what gets built. Asking here means the proposal is written on their
+   * answers, and its fourth section carries only what genuinely remains open.
+   *
+   * Returns undefined when the model had nothing to ask (the common case) or the
+   * round could not run; either way the proposal follows immediately.
+   */
+  private async askCarefulUnclears(raw: string): Promise<string | undefined> {
+    const questions = parseCarefulQuestions(raw);
+    if (questions === undefined) return undefined;
+    this.emit({ type: "command_output", text: "▶ careful: asking what only you can decide" });
+    return this.askQuestionRound(
+      questions,
+      "The user answered these BEFORE you propose. Their answers are requirements, not suggestions — write the proposal on them. Anything left unanswered is yours to decide sensibly, and you should state the assumption you chose:",
+    );
   }
 
   /**
@@ -1266,7 +1311,81 @@ export class Session {
   }
 
   /**
-   * Puts the briefing to the user and classifies what comes back. An interrupt
+   * The Scout Phase's starting position: a general orientation plus the files
+   * this specific request concerns, both derived from the import graph rather
+   * than from a model.
+   *
+   * This is half of why the phase is no longer slow. The old scout began blind
+   * and had to discover the codebase before it could name a single file; this
+   * hands it the answer to "where does this land" for free, so its reading is
+   * spent on what the code MEANS. It is also the source the proposal cites, so
+   * the location it states is a repository fact and not a model's guess.
+   *
+   * The atlas is deliberately skipped when present: buildSystemPrompt already
+   * injects it, and putting it in twice would spend the user's context on a
+   * duplicate. Best-effort throughout — a scout with no map still works.
+   */
+  private buildCarefulScoutMap(request: string): string | undefined {
+    const parts: string[] = [];
+    try {
+      if (loadAtlas(this.cwd) === undefined) {
+        const skim = this.buildClarifySkim();
+        if (skim) parts.push(skim);
+      }
+    } catch {
+      // orientation is an enrichment; never let it cost the turn
+    }
+    try {
+      const digest = requestSliceDigest(this.cwd, request);
+      if (digest) parts.push(digest);
+    } catch {
+      // ditto — the scout can still read its way there
+    }
+    return parts.length > 0 ? parts.join("\n\n") : undefined;
+  }
+
+  /**
+   * The paths a proposal names that this workspace does not have.
+   *
+   * Every path in a proposal is a claim about the user's repository, and it is
+   * the one kind of claim that can be silently false — the user cannot check it
+   * without leaving the conversation. The location section is graph-derived and
+   * so cannot be invented, but the prose around it can still name a file from
+   * memory, which is what this catches before the proposal is ever shown.
+   */
+  private unknownProposalPaths(text: string): string[] {
+    const candidates = extractCandidatePaths(text);
+    if (candidates.length === 0) return [];
+    let basenames: Set<string> | undefined;
+    const unknown: string[] = [];
+    for (const candidate of candidates) {
+      if (existsSync(isAbsolute(candidate) ? candidate : join(this.cwd, candidate))) continue;
+      // A bare filename ("careful.ts") is a real reference even though it is not
+      // a real path — resolve it against the graph before calling it a lie.
+      if (!candidate.includes("/")) {
+        basenames ??= this.workspaceBasenames();
+        if (basenames.has(candidate)) continue;
+      }
+      unknown.push(candidate);
+    }
+    return unknown;
+  }
+
+  /** Every scanned file's basename, for resolving bare filenames in a proposal. */
+  private workspaceBasenames(): Set<string> {
+    const names = new Set<string>();
+    try {
+      for (const id of Object.keys(loadOrBuildGraph(this.cwd).files)) {
+        names.add(id.slice(id.lastIndexOf("/") + 1));
+      }
+    } catch {
+      // no graph — the on-disk check above stands on its own
+    }
+    return names;
+  }
+
+  /**
+   * Puts the proposal to the user and classifies what comes back. An interrupt
    * or a frontend that cannot answer resolves as a cancel — the safe reading,
    * since an unanswered approval must never be treated as approval.
    */
@@ -1428,19 +1547,27 @@ export class Session {
 
     // CAREFUL MODE: decide whether this request earns a plan the user approves
     // before anything happens. Runs AFTER clarify — clarify fixes the shape of
-    // the request, the briefing proposes how to build that shape, and they are
+    // the request, the proposal states the direction for that shape, and they are
     // different questions. Raising the hold here (before the first model call)
     // is what makes the scout phase real rather than advisory.
     let carefulTurn = false;
+    /** The graph-derived starting position for the scout; undefined when the
+     *  workspace yielded nothing to orient with. */
+    let carefulMap: string | undefined;
     if (this.isCarefulActive()) {
       carefulTurn = await this.predictCareful(userText);
       if (carefulTurn) {
+        carefulMap = this.buildCarefulScoutMap(userText);
         this.permissions.setCarefulHold(true);
         this.setPromptSection("careful", CAREFUL_SCOUT_SECTION);
         // Deliberation is silent from the very first round: the user asked for
-        // steps 1-3 to happen with no output but the tool activity itself.
+        // the scouting, the review and the drafting to happen with no output but
+        // the tool activity itself.
         this.suppressAssistantText = true;
-        this.emit({ type: "command_output", text: "◉ careful: investigating before proposing a plan" });
+        // "▶ " marks a phase banner in the renderer — the same convention the
+        // Workflow engine already uses, so the scout's steps are visible without
+        // a new protocol frame (ADR 0002).
+        this.emit({ type: "command_output", text: "▶ careful: scouting" });
       }
     }
 
@@ -1468,6 +1595,9 @@ export class Session {
       content: this.withReminders([
         { type: "text", text: userText },
         ...(clarification !== undefined ? [{ type: "text" as const, text: clarification }] : []),
+        // The scout's starting position rides with the request itself, so its
+        // very first round already knows where the work lands.
+        ...(carefulMap !== undefined ? [{ type: "text" as const, text: carefulScoutMapText(carefulMap) }] : []),
       ]),
     });
 
@@ -1480,17 +1610,34 @@ export class Session {
     // budgets: a mission's budgetTokens must bound a run nobody is watching,
     // and an explicit spawn-time child cap must still be enforced.
     const capped = this.unattended || (this.opts.child ?? false);
-    // CAREFUL MODE turn state. `carefulBriefingArmed` marks that the briefing
-    // instruction has been sent, so the NEXT clean stop is the briefing itself
-    // rather than more deliberation. `carefulCritiqueBudget` starts full and
-    // loses one per revision the user types: their steering outranks the
-    // agent's own second-guessing, so the more they say, the less it argues
-    // with itself.
+    // CAREFUL MODE turn state. `carefulProposalArmed` marks that the proposal
+    // instruction has been sent, so the NEXT clean stop is the proposal itself
+    // rather than more deliberation. The Review Pass happens once, on the first
+    // proposal only — a revision means the user has supplied their judgement,
+    // and the agent's substitute for it is then waste.
     let carefulHeld = carefulTurn;
-    let carefulBriefingArmed = false;
-    let carefulCritiqueBudget = CAREFUL_CRITIQUE_ROUNDS;
-    let carefulCritiquesThisPass = 0;
+    let carefulProposalArmed = false;
+    let carefulReviewDone = false;
+    // The pre-proposal question round: asked once, before the proposal exists,
+    // because a question whose answer changes what gets built cannot be put to
+    // the user after they have approved what gets built.
+    let carefulQuestionsArmed = false;
+    let carefulQuestionsHandled = false;
+    let carefulUnclearAnswers: string | undefined;
     let carefulRevisions = 0;
+    // Rounds spent reading since the phase (or the last revision) began, and
+    // whether the soft warn has fired for this pass. Neither ever ends the
+    // phase: a scout cut off mid-read proposes from a half-formed picture, and
+    // a confident wrong understanding is what CAREFUL exists to prevent
+    // (ADR 0005).
+    let carefulScoutRounds = 0;
+    let carefulWarned = false;
+    // Re-attempts spent getting a SHOWABLE proposal out of the model — one that
+    // is not empty and whose paths exist. Bounded, so a model that cannot manage
+    // either still reaches the user rather than looping: a flawed proposal the
+    // user can reject beats a turn that never produces one.
+    let carefulProposalRetries = 0;
+    const CAREFUL_MAX_PROPOSAL_RETRIES = 2;
     // Lifts the hold and drops the scout prompt section. Idempotent — the
     // approval path, the cancel path and the turn's `finally` all call it.
     const releaseCarefulHold = (): void => {
@@ -1599,49 +1746,121 @@ export class Session {
           if (drainSteering()) continue;
 
           // CAREFUL MODE: this turn is not ending, it is advancing through the
-          // scout's phases — deliberate, challenge, brief, gate. Placed ahead
+          // scout's phases — scout, review, propose, check, gate. Placed ahead
           // of every other rung because nothing has been built yet: there is
           // no failure to recover from, no task list to finish, and nothing to
           // self-verify. A response the token limit cut off falls through to
-          // LAYER 3 instead, so a truncated briefing is resumed rather than
+          // LAYER 3 instead, so a truncated proposal is resumed rather than
           // mistaken for a finished one.
           if (carefulHeld && stopReason !== "max_tokens") {
-            // Step 3 — challenge the approach just chosen. Silent, and worth
-            // one round of reading if that is what settles it.
-            if (carefulCritiquesThisPass < carefulCritiqueBudget) {
-              carefulCritiquesThisPass++;
-              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_CRITIQUE_TEXT }] });
+            // Step 2 — one look at its own draft. Improving it and leaving it
+            // alone are both correct outcomes, so nothing here demands a change.
+            if (!carefulReviewDone) {
+              carefulReviewDone = true;
+              this.emit({ type: "command_output", text: "▶ careful: reviewing its own draft" });
+              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_REVIEW_TEXT }] });
               continue;
             }
-            // Step 4 — ask for the briefing, and unmute so it reaches the user.
-            if (!carefulBriefingArmed) {
-              carefulBriefingArmed = true;
-              this.suppressAssistantText = false;
-              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_BRIEFING_TEXT }] });
+            // Step 3 — surface what only the user can decide, and ask it NOW.
+            // The model answers with a JSON question list (usually empty, since
+            // the scout has just read the repository).
+            if (!carefulQuestionsArmed) {
+              carefulQuestionsArmed = true;
+              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_UNCLEARS_TEXT }] });
               continue;
             }
-            // The text that just streamed IS the briefing. Gate on it.
+            if (!carefulQuestionsHandled) {
+              carefulQuestionsHandled = true;
+              carefulUnclearAnswers = await this.askCarefulUnclears(assistantText(assistant));
+              // Deliberately no `continue`: with nothing to ask (the common
+              // case) the proposal is armed in this same iteration, so the extra
+              // step costs one model round and never a wasted round trip.
+            }
+            // Step 4 — ask for the proposal. Still muted: it is checked before
+            // the user sees it, so a draft naming a file that does not exist is
+            // corrected rather than shown and then contradicted.
+            if (!carefulProposalArmed) {
+              carefulProposalArmed = true;
+              this.emit({ type: "command_output", text: "▶ careful: writing the proposal" });
+              this.pushMessage({
+                role: "user",
+                content: [
+                  ...(carefulUnclearAnswers !== undefined
+                    ? [{ type: "text" as const, text: carefulUnclearAnswers }]
+                    : []),
+                  { type: "text", text: CAREFUL_PROPOSAL_TEXT },
+                ],
+              });
+              continue;
+            }
+            // The text that just streamed IS the proposal.
+            const proposal = assistantText(assistant).trim();
+            const retriesLeft = carefulProposalRetries < CAREFUL_MAX_PROPOSAL_RETRIES;
+            // Nothing came back where the proposal should be. Ask again rather
+            // than gating the user on a blank approval card.
+            if (proposal === "" && retriesLeft) {
+              carefulProposalRetries++;
+              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_PROPOSAL_TEXT }] });
+              continue;
+            }
+            const unknownPaths = retriesLeft ? this.unknownProposalPaths(proposal) : [];
+            if (unknownPaths.length > 0) {
+              carefulProposalRetries++;
+              this.emit({
+                type: "command_output",
+                text: `◉ careful: ${unknownPaths.length} named path${unknownPaths.length === 1 ? " does" : "s do"} not exist — correcting`,
+              });
+              this.pushMessage({
+                role: "user",
+                content: [{ type: "text", text: carefulUnknownPathsText(unknownPaths) }],
+              });
+              continue;
+            }
+            // Clean. Reveal it and gate on it.
+            this.suppressAssistantText = false;
+            if (proposal) this.emit({ type: "text_delta", text: proposal });
             const decision = await this.askCarefulApproval(carefulRevisions);
             if (decision.kind === "approve") {
               releaseCarefulHold();
-              this.emit({ type: "command_output", text: "◉ careful: approved — starting work" });
-              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_APPROVED_TEXT }] });
+              this.emit({ type: "command_output", text: "▶ careful: approved — starting work" });
+              // The approved proposal is repeated as the brief, not referenced:
+              // it is the input the work runs on, and leaving it buried under
+              // the scout's tool results would waste the checkpoint.
+              this.pushMessage({
+                role: "user",
+                content: [{ type: "text", text: carefulApprovedText(proposal) }],
+              });
               continue;
             }
             if (decision.kind === "revise") {
               carefulRevisions++;
-              carefulBriefingArmed = false;
-              carefulCritiquesThisPass = 0;
-              // Each revision spends one self-critique round, floor zero.
-              carefulCritiqueBudget = Math.max(0, carefulCritiqueBudget - 1);
+              carefulProposalArmed = false;
+              carefulReviewDone = true; // a revision gets no Review Pass
+              // …nor another question round: the user has just told the agent
+              // what they want, which is the answer a question would have asked
+              // for. Their earlier answers stay in the conversation and stand.
+              carefulQuestionsArmed = true;
+              carefulQuestionsHandled = true;
+              carefulUnclearAnswers = undefined;
+              carefulProposalRetries = 0;
+              // A revision usually redirects, so the old map now points at the
+              // wrong part of the repository — re-seed it from what they said.
+              carefulScoutRounds = 0;
+              carefulWarned = false;
               this.suppressAssistantText = true;
               this.emit({
                 type: "command_output",
-                text: `◉ careful: revising the plan (revision ${carefulRevisions})`,
+                text: `▶ careful: revising the proposal (revision ${carefulRevisions})`,
               });
+              const revisedMap = this.buildCarefulScoutMap(`${userText}\n${decision.text}`);
               this.pushMessage({
                 role: "user",
-                content: [{ type: "text", text: carefulRevisionText(decision.text) }],
+                content: [
+                  { type: "text", text: carefulRevisionText(decision.text) },
+                  ...(revisedMap !== undefined
+                    ? [{ type: "text" as const, text: carefulScoutMapText(revisedMap) }]
+                    : []),
+                ],
               });
               continue;
             }
@@ -1788,6 +2007,18 @@ export class Session {
           this.emit({ type: "command_output", text: "↻ continuing after output-length cutoff" });
         }
         totalToolCallsThisTurn += toolCalls.length;
+        // CAREFUL MODE soft warn: past a few rounds of reading, remind the scout
+        // of the stop test it was already given — once, and without ending
+        // anything. A numeric cap would cut it mid-read and leave it proposing
+        // from a half-formed picture, which is the failure the whole mode exists
+        // to prevent (ADR 0005).
+        if (carefulHeld) {
+          carefulScoutRounds++;
+          if (!carefulWarned && carefulScoutRounds >= CAREFUL_SCOUT_WARN_AFTER_ROUNDS) {
+            carefulWarned = true;
+            this.remind(CAREFUL_SCOUT_WARN_TEXT);
+          }
+        }
         if (toolCalls.some((c) => c.name === "Write" || c.name === "Edit")) wroteOrEditedThisTurn = true;
         const results = await this.executeToolCalls(toolCalls, signal);
         lastBatchHadError = results.some((r) => r.type === "tool_result" && r.isError === true);
@@ -2610,49 +2841,87 @@ function finalAssistantText(session: Session): string {
   return NO_SUBAGENT_TEXT;
 }
 
+/** A question a pre-layer puts to the user: protocol-shaped, ready for askUser. */
+interface ShapeQuestion {
+  question: string;
+  header: string;
+  options: Array<{ label: string; description: string }>;
+  multiSelect: boolean;
+}
+
+/**
+ * One JSON object out of a model reply — fenced, bare, or wrapped in prose.
+ * Both pre-layers demand strict JSON and both sometimes get it decorated
+ * anyway, so tolerance lives here once rather than in each caller.
+ */
+function parseJsonObject(raw: string): Record<string, unknown> | undefined {
+  const stripped = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  for (const candidate of [stripped, /\{[\s\S]*\}/.exec(stripped)?.[0]]) {
+    if (candidate === undefined || candidate === "") continue;
+    try {
+      const parsed: unknown = JSON.parse(candidate);
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // not this shape — try the next
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Validates a model-authored `questions` array into protocol-shaped questions,
+ * dropping anything malformed. Shared by the clarify pre-layer and CAREFUL
+ * MODE's pre-proposal round: the wire shape they ask for is identical, so
+ * validating it twice would be two places to get the caps wrong.
+ * Returns undefined when nothing usable survives — every caller reads that as
+ * "ask nothing", which is the fail-open direction.
+ */
+function parseQuestionArray(value: unknown, fallbackHeader: string): ShapeQuestion[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const questions = value.slice(0, 3).flatMap<ShapeQuestion>((q) => {
+    if (typeof q !== "object" || q === null) return [];
+    const qr = q as Record<string, unknown>;
+    if (typeof qr.question !== "string" || qr.question.trim() === "" || !Array.isArray(qr.options)) return [];
+    const options = qr.options.slice(0, 4).flatMap((o) => {
+      if (typeof o !== "object" || o === null) return [];
+      const or = o as Record<string, unknown>;
+      if (typeof or.label !== "string" || or.label.trim() === "") return [];
+      return [{ label: or.label, description: typeof or.description === "string" ? or.description : "" }];
+    });
+    if (options.length < 2) return [];
+    return [
+      {
+        question: qr.question,
+        header: typeof qr.header === "string" && qr.header.trim() !== "" ? qr.header.slice(0, 12) : fallbackHeader,
+        options,
+        multiSelect: qr.multiSelect === true,
+      },
+    ];
+  });
+  return questions.length > 0 ? questions : undefined;
+}
+
 /**
  * Parses the clarify pre-layer's verdict into protocol-shaped questions.
  * Returns undefined for clarify:false, malformed JSON, or nothing usable —
  * every failure path means "just start" (fail-open by design).
  */
-function parseClarifyVerdict(
-  raw: string,
-): Array<{ question: string; header: string; options: Array<{ label: string; description: string }>; multiSelect: boolean }> | undefined {
-  const jsonText = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    return undefined;
-  }
-  if (typeof parsed !== "object" || parsed === null) return undefined;
-  const rec = parsed as Record<string, unknown>;
-  if (rec.clarify !== true || !Array.isArray(rec.questions)) return undefined;
-  const questions = rec.questions
-    .slice(0, 3)
-    .flatMap((q) => {
-      if (typeof q !== "object" || q === null) return [];
-      const qr = q as Record<string, unknown>;
-      if (typeof qr.question !== "string" || qr.question.trim() === "" || !Array.isArray(qr.options)) return [];
-      const options = qr.options
-        .slice(0, 4)
-        .flatMap((o) => {
-          if (typeof o !== "object" || o === null) return [];
-          const or = o as Record<string, unknown>;
-          if (typeof or.label !== "string" || or.label.trim() === "") return [];
-          return [{ label: or.label, description: typeof or.description === "string" ? or.description : "" }];
-        });
-      if (options.length < 2) return [];
-      return [
-        {
-          question: qr.question,
-          header: typeof qr.header === "string" && qr.header.trim() !== "" ? qr.header.slice(0, 12) : "Clarify",
-          options,
-          multiSelect: qr.multiSelect === true,
-        },
-      ];
-    });
-  return questions.length > 0 ? questions : undefined;
+function parseClarifyVerdict(raw: string): ShapeQuestion[] | undefined {
+  const rec = parseJsonObject(raw);
+  if (!rec || rec.clarify !== true) return undefined;
+  return parseQuestionArray(rec.questions, "Clarify");
+}
+
+/**
+ * Parses CAREFUL MODE's pre-proposal round. `{"questions": []}` — the common
+ * answer, and the one the prompt asks for when nothing genuinely needs the
+ * user — yields undefined, so the proposal follows with no round trip.
+ */
+function parseCarefulQuestions(raw: string): ShapeQuestion[] | undefined {
+  const rec = parseJsonObject(raw);
+  return rec ? parseQuestionArray(rec.questions, "Decide") : undefined;
 }
 
 /** Total length of the text blocks in an assistant message (used to detect a bare give-up). */

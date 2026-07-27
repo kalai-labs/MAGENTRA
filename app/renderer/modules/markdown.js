@@ -12,8 +12,52 @@
 // Inline: code spans, bold, italic, links — within one block of text
 // ---------------------------------------------------------------------------
 
+/**
+ * The closing `$` of an inline formula opening at `start`, or -1 when this is
+ * not mathematics at all.
+ *
+ * The guards are what keep money out of the parser: "it costs $5, not $7" must
+ * stay text. TeX's own convention is the test — no space after the opening
+ * delimiter, none before the closing one — plus a refusal to close immediately
+ * before a digit, which is what a second price looks like.
+ */
+function findInlineMathEnd(text, start) {
+  const first = text[start + 1];
+  if (first === undefined || /\s/.test(first)) return -1;
+  for (let k = start + 1; k < text.length; k++) {
+    if (text[k] === "\\") {
+      k++; // an escaped character can never be the closing delimiter
+      continue;
+    }
+    if (text[k] !== "$") continue;
+    if (/\s/.test(text[k - 1])) return -1;
+    if (/[0-9]/.test(text[k + 1] ?? "")) return -1;
+    return k > start + 1 && looksLikeMath(text.slice(start + 1, k)) ? k : -1;
+  }
+  return -1;
+}
+
+/**
+ * Whether the text between two `$` delimiters is plausibly a formula.
+ *
+ * The delimiter rules alone are not enough. "costs $5, not $7 — see `$x$`" has a
+ * perfectly well-formed pair of delimiters spanning ordinary prose, so without
+ * this the sentence renders as mathematics. Requiring a positive signal is what
+ * makes the common case — money — stay text.
+ */
+function looksLikeMath(content) {
+  // A code span can never be inside a formula; if one is, the delimiters
+  // belong to different constructs and this is prose.
+  if (content.includes("`")) return false;
+  // A TeX command, a script, a group or a relation is unambiguous.
+  if (/[\\^_{}=<>+/]/.test(content)) return true;
+  // Otherwise only a compact token qualifies: `$x$`, `$a-b$`, `$f(n)$`. Prose
+  // between two dollar signs always carries a space or a comma.
+  return !/[\s,]/.test(content);
+}
+
 /** Append inline-formatted `text` to `parent`. Code spans win over everything
- * (their contents are literal); then links, then bold, then italic. */
+ * (their contents are literal); then math, then links, then bold, then italic. */
 function renderInline(parent, text) {
   let i = 0;
   const flushText = (s) => {
@@ -33,6 +77,31 @@ function renderInline(parent, text) {
         code.textContent = text.slice(i + 1, end);
         parent.appendChild(code);
         i = end + 1;
+        plainStart = i;
+        continue;
+      }
+    }
+
+    // inline math $…$ — checked after code spans so `$x$` inside backticks
+    // stays literal, which is what a reader writing about TeX expects.
+    if (ch === "$" && text[i + 1] !== "$") {
+      const end = findInlineMathEnd(text, i);
+      if (end !== -1) {
+        flushText(text.slice(plainStart, i));
+        parent.appendChild(renderMath(text.slice(i + 1, end), false));
+        i = end + 1;
+        plainStart = i;
+        continue;
+      }
+    }
+
+    // inline math \(…\) — the unambiguous form, with no currency problem
+    if (ch === "\\" && text[i + 1] === "(") {
+      const end = text.indexOf("\\)", i + 2);
+      if (end !== -1) {
+        flushText(text.slice(plainStart, i));
+        parent.appendChild(renderMath(text.slice(i + 2, end), false));
+        i = end + 2;
         plainStart = i;
         continue;
       }
@@ -227,6 +296,36 @@ function renderMarkdown(md) {
       continue;
     }
 
+    // display math $$…$$ or \[…\] — checked AFTER the fence branch, so a `$$`
+    // inside a code block is shown as source rather than rendered.
+    const mathOpen = line.match(/^\s*(\$\$|\\\[)\s*(.*)$/);
+    if (mathOpen) {
+      const closing = mathOpen[1] === "$$" ? "$$" : "\\]";
+      const body = [];
+      const sameLineEnd = mathOpen[2].indexOf(closing);
+      if (sameLineEnd !== -1) {
+        body.push(mathOpen[2].slice(0, sameLineEnd));
+        i++;
+      } else {
+        if (mathOpen[2].trim()) body.push(mathOpen[2]);
+        i++;
+        while (i < lines.length && !lines[i].includes(closing)) {
+          body.push(lines[i]);
+          i++;
+        }
+        if (i < lines.length) {
+          const tail = lines[i].slice(0, lines[i].indexOf(closing));
+          if (tail.trim()) body.push(tail);
+          i++; // consume the closing line (or run off the end — unterminated is fine)
+        }
+      }
+      const wrap = document.createElement("div");
+      wrap.className = "md-math-wrap";
+      wrap.appendChild(renderMath(body.join("\n"), true));
+      frag.appendChild(wrap);
+      continue;
+    }
+
     // blank line — skip
     if (line.trim() === "") {
       i++;
@@ -307,6 +406,8 @@ function renderMarkdown(md) {
       !/^ {0,3}>/.test(lines[i]) &&
       !/^ {0,3}[-*+]\s+/.test(lines[i]) &&
       !/^ {0,3}\d+[.)]\s+/.test(lines[i]) &&
+      // display math may follow prose directly, with no blank line between
+      !/^\s*(\$\$|\\\[)/.test(lines[i]) &&
       // a table may follow prose directly, with no blank line between
       !tableStartsAt(lines, i)
     ) {

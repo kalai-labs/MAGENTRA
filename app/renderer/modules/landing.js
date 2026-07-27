@@ -460,24 +460,28 @@ function onTextDelta(text) {
   if (!currentAssistantEl) {
     const message = createMessageEl("assistant");
     currentAssistantEl = message.el;
-    // Raw source accumulates here; it streams as plain text for liveness and is
-    // re-rendered as Markdown once the message finalizes (finalizeAssistantEl).
+    // Raw source accumulates here. Blocks that are complete are rendered into
+    // `.md-done` as they arrive; the still-arriving tail stays plain in
+    // `.md-live`. finalizeAssistantEl re-renders the whole thing at the end.
     currentAssistantEl._raw = "";
+    currentAssistantEl._committedLen = 0;
+    const done = document.createElement("div");
+    done.className = "md-done";
     const live = document.createElement("span");
     live.className = "md-live";
     const caret = document.createElement("span");
     caret.className = "caret";
     caret.textContent = "▌"; // ▌
+    message.body.appendChild(done);
     message.body.appendChild(live);
     message.body.appendChild(caret);
     withAutoScroll(() => streamEl.appendChild(currentAssistantEl));
   }
   currentAssistantEl._raw += text;
-  const live = currentAssistantEl.querySelector(".md-live");
   withAutoScroll(() => {
-    // Append to the live text span; full Markdown layout waits for finalize so
-    // half-streamed fences/lists don't flicker through partial parses.
-    if (live) live.appendChild(document.createTextNode(text));
+    // Render whatever just became complete; a half-streamed fence, table or
+    // formula stays plain until its closing delimiter arrives.
+    commitStreamedMarkdown(currentAssistantEl);
   });
 }
 
@@ -780,6 +784,26 @@ const RECOMMENDED_SUFFIX = "(Recommended)";
 function onQuestionRequest(event) {
   if (!streamEl) return;
 
+  // Close the streaming assistant message first, exactly as appendSysNote and
+  // appendPhaseBanner do. Text streams in as PLAIN text for liveness and is only
+  // re-rendered as Markdown when it finalizes — so a card appended over a live
+  // message leaves that message showing raw source until something else closes
+  // it, which is the end of the turn. CAREFUL MODE made this obvious (its
+  // proposal is always Markdown and always followed by a card), but it applies
+  // to every question round.
+  finalizeAssistantEl();
+
+  // The card renders into the right pane on its own (routeEngineEvent swaps the
+  // globals to the owning tab before calling this). The ANSWER does not: it is
+  // sent from a click handler that runs long after those globals were restored,
+  // so without capturing the tab here it would reach whichever engine happens to
+  // be focused. In CAREFUL MODE that is an approval starting work in the wrong
+  // workspace. Same shape as sendPermissionDecision's `permission.tabId`.
+  const ownerTabId =
+    (event && event.tabId) ||
+    (typeof dispatchTabId !== "undefined" && dispatchTabId) ||
+    (typeof focusedTabId !== "undefined" ? focusedTabId : null);
+
   const questions = event.questions || [];
   // The engine holds the round open until every question is answered, so a
   // multi-question round needs to say so — otherwise answering the first card
@@ -836,12 +860,15 @@ function onQuestionRequest(event) {
     // select; every chosen label for multi-select.
     function submitAnswers(values) {
       if (answered.has(qIdx)) return; // a locked card must not re-answer
-      window.magentra.send({
-        type: "question_response",
-        id: event.id,
-        // Keyed by position, not question text — duplicate texts must not collide.
-        answers: { [`q:${qIdx}`]: values },
-      });
+      window.magentra.send(
+        {
+          type: "question_response",
+          id: event.id,
+          // Keyed by position, not question text — duplicate texts must not collide.
+          answers: { [`q:${qIdx}`]: values },
+        },
+        ownerTabId,
+      );
       cardEl.classList.add("answered");
       noteAnswered(qIdx);
     }

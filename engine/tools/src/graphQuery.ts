@@ -1,4 +1,3 @@
-import { isAbsolute, relative } from "node:path";
 import { z } from "zod";
 import {
   articulationPoints,
@@ -6,9 +5,10 @@ import {
   dependencies,
   graphStats,
   loadOrBuildGraph,
+  normalizeToId,
   pagerank,
+  resolveSeeds,
   slice,
-  type GraphData,
   type ToolDefinition,
 } from "@magentra/core";
 
@@ -22,30 +22,6 @@ const inputSchema = z.object({
 type Input = z.infer<typeof inputSchema>;
 
 const MAX_LINES = 200;
-
-function normalizeToId(cwd: string, path: string): string {
-  const rel = isAbsolute(path) ? relative(cwd, path) : path;
-  return rel.split(/[\\/]/).join("/").replace(/^\.\//, "");
-}
-
-/** Resolve seeds from explicit files (normalized) plus `query` substring matches. */
-function resolveSeeds(g: GraphData, cwd: string, input: Input): string[] {
-  const seeds = new Set<string>();
-  for (const f of input.files ?? []) {
-    const id = normalizeToId(cwd, f);
-    if (g.files[id]) seeds.add(id);
-  }
-  if (input.query) {
-    const keywords = input.query.toLowerCase().split(/\s+/).filter(Boolean);
-    if (keywords.length > 0) {
-      for (const id of Object.keys(g.files)) {
-        const lower = id.toLowerCase();
-        if (keywords.some((k) => lower.includes(k))) seeds.add(id);
-      }
-    }
-  }
-  return [...seeds];
-}
 
 function cap(lines: string[]): string {
   if (lines.length <= MAX_LINES) return lines.join("\n");

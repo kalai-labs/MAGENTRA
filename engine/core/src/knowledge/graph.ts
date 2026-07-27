@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, sep } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 
 /**
  * Tier 1 code graph: a directed graph over the workspace's source files, built
@@ -29,10 +29,56 @@ const MAX_FILES = 5000;
 const MAX_FILE_BYTES = 1024 * 1024; // 1 MB — skip larger files entirely.
 const MAX_DEPTH = 12;
 
-/** Source extensions the graph and symbol scanners walk — the single source of truth. */
-export const SCAN_EXTS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".py"]);
+/**
+ * Source extensions the graph and symbol scanners walk — the single source of
+ * truth, shared with `symbols.ts`.
+ *
+ * Two tiers, per ADR 0004. TIER 1 languages have an extractor and a resolver
+ * below, so their files carry real import edges. TIER 2 languages are scanned as
+ * NODES ONLY: their imports do not name files (Swift imports modules; a C#
+ * `using` names a namespace that need not correspond to any path), so inventing
+ * edges for them would be guessing. A node without edges is still found and
+ * ranked by `slice`, which seeds on paths and symbols — the failure that
+ * mattered was a language producing no graph at all.
+ */
+export const SCAN_EXTS = new Set([
+  // Tier 1 — imports resolve to files.
+  ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".vue", ".svelte",
+  ".py",
+  ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm",
+  ".rb",
+  ".php",
+  ".java", ".kt", ".kts",
+  ".go",
+  ".rs",
+  // Tier 2 — nodes only.
+  ".cs", ".swift", ".scala", ".dart", ".lua", ".ex", ".exs", ".erl", ".hs",
+  ".clj", ".zig", ".nim", ".pl", ".sh", ".bash", ".ps1", ".sql",
+]);
 /** Extensions tried when a relative TS/JS specifier omits its extension. */
 const TRY_EXTS = [".ts", ".tsx", ".mts", ".js", ".jsx", ".mjs", ".cjs"];
+/** Extensions a JVM `import a.b.C` may land on. */
+const JVM_EXTS = [".java", ".kt", ".kts"];
+
+/** Which extractor an extension routes to; "none" is Tier 2 (node, no edges). */
+type Lang = "js" | "py" | "c" | "ruby" | "php" | "jvm" | "go" | "rust" | "none";
+
+const LANG_BY_EXT = new Map<string, Lang>([
+  [".ts", "js"], [".tsx", "js"], [".mts", "js"], [".cts", "js"], [".js", "js"],
+  [".jsx", "js"], [".mjs", "js"], [".cjs", "js"], [".vue", "js"], [".svelte", "js"],
+  [".py", "py"],
+  [".c", "c"], [".h", "c"], [".cc", "c"], [".cpp", "c"], [".cxx", "c"],
+  [".hpp", "c"], [".hh", "c"], [".hxx", "c"], [".m", "c"], [".mm", "c"],
+  [".rb", "ruby"],
+  [".php", "php"],
+  [".java", "jvm"], [".kt", "jvm"], [".kts", "jvm"],
+  [".go", "go"],
+  [".rs", "rust"],
+]);
+
+export function langOf(path: string): Lang {
+  return LANG_BY_EXT.get(extOf(path).toLowerCase()) ?? "none";
+}
 
 // "build-resources" is this repo's own packaging output (minified bundles). It
 // is not the only such name in the wild, but any dir whose name STARTS with
@@ -48,8 +94,15 @@ export function shouldSkipDir(name: string): boolean {
   return name.startsWith(".") || SKIP_DIR_PREFIXES.some((p) => name.startsWith(p)) || SKIP_DIRS.has(name);
 }
 
-function toNodeId(cwd: string, absPath: string): string {
-  return relative(cwd, absPath).split(sep).join("/");
+/**
+ * A path — absolute or workspace-relative, either separator — as a graph node
+ * id: workspace-relative with forward slashes. The single normalizer, shared
+ * with the seed resolver and the GraphQuery tool, because a node id that two
+ * callers spell differently is a file the graph silently cannot find.
+ */
+export function normalizeToId(cwd: string, path: string): string {
+  const rel = isAbsolute(path) ? relative(cwd, path) : path;
+  return rel.split(/[\\/]/).join("/").replace(/^\.\//, "");
 }
 
 export function extOf(path: string): string {
@@ -143,7 +196,7 @@ function resolveJsSpec(cwd: string, fileDir: string, spec: string): string | und
   for (const ext of TRY_EXTS) candidates.push(join(base, "index") + ext);
 
   for (const cand of candidates) {
-    if (fileExists(cand)) return toNodeId(cwd, cand);
+    if (fileExists(cand)) return normalizeToId(cwd, cand);
   }
   return undefined; // unresolvable relative spec — drop the edge
 }
@@ -163,9 +216,9 @@ function resolvePySpec(cwd: string, fileDir: string, token: string): string {
     for (let take = parts.length; take >= 0; take--) {
       const rel = parts.slice(0, take);
       const asFile = join(baseDir, ...rel) + ".py";
-      if (fileExists(asFile)) return toNodeId(cwd, asFile);
+      if (fileExists(asFile)) return normalizeToId(cwd, asFile);
       const asPkg = join(baseDir, ...rel, "__init__.py");
-      if (fileExists(asPkg)) return toNodeId(cwd, asPkg);
+      if (fileExists(asPkg)) return normalizeToId(cwd, asPkg);
     }
     return pkgNodeId(parts[0] ?? "relative");
   }
@@ -175,26 +228,325 @@ function resolvePySpec(cwd: string, fileDir: string, token: string): string {
     for (let take = parts.length; take >= 1; take--) {
       const rel = parts.slice(0, take);
       const asFile = join(root, ...rel) + ".py";
-      if (fileExists(asFile)) return toNodeId(cwd, asFile);
+      if (fileExists(asFile)) return normalizeToId(cwd, asFile);
       const asPkg = join(root, ...rel, "__init__.py");
-      if (fileExists(asPkg)) return toNodeId(cwd, asPkg);
+      if (fileExists(asPkg)) return normalizeToId(cwd, asPkg);
     }
   }
   return pkgNodeId(parts[0] ?? rest);
 }
 
-function extractImports(cwd: string, absPath: string, content: string): string[] {
-  const fileDir = dirname(absPath);
-  const isPy = extOf(absPath) === ".py";
-  const out = new Set<string>();
-  if (isPy) {
-    for (const token of extractPySpecs(content)) out.add(resolvePySpec(cwd, fileDir, token));
-  } else {
-    for (const spec of extractJsSpecs(content)) {
-      const id = resolveJsSpec(cwd, fileDir, spec);
-      if (id !== undefined) out.add(id);
+// ---------------------------------------------------------------------------
+// Resolution context.
+//
+// Relative specifiers (`./x`, `#include "x.h"`) resolve against the filesystem,
+// one candidate at a time. Namespace specifiers (`com.example.Foo`, `App\Bar`)
+// and Go package paths cannot: they name a position in a package tree whose
+// mapping to directories is a project convention, so resolving them needs the
+// whole file list. That is what this carries.
+// ---------------------------------------------------------------------------
+
+interface ResolveContext {
+  cwd: string;
+  /** Every scanned node id, for exact membership tests. */
+  ids: Set<string>;
+  /** Node ids grouped by their directory ("" at the root) — Go package resolution. */
+  byDir: Map<string, string[]>;
+  /** Node ids grouped by basename — the index behind suffix matching. */
+  byBasename: Map<string, string[]>;
+  /** The module path declared in go.mod, when the workspace has one. */
+  goModule: string | undefined;
+}
+
+function pushInto(map: Map<string, string[]>, key: string, value: string): void {
+  const bucket = map.get(key);
+  if (bucket) bucket.push(value);
+  else map.set(key, [value]);
+}
+
+function readGoModule(cwd: string): string | undefined {
+  try {
+    return /^\s*module\s+(\S+)/m.exec(readFileSync(join(cwd, "go.mod"), "utf8"))?.[1];
+  } catch {
+    return undefined; // not a Go workspace, or unreadable
+  }
+}
+
+function buildResolveContext(cwd: string, ids: string[]): ResolveContext {
+  const byDir = new Map<string, string[]>();
+  const byBasename = new Map<string, string[]>();
+  for (const id of ids) {
+    const slash = id.lastIndexOf("/");
+    pushInto(byDir, slash < 0 ? "" : id.slice(0, slash), id);
+    pushInto(byBasename, slash < 0 ? id : id.slice(slash + 1), id);
+  }
+  return { cwd, ids: new Set(ids), byDir, byBasename, goModule: readGoModule(cwd) };
+}
+
+/**
+ * The scanned file whose path ends with `suffix` (e.g. "com/example/Foo.java").
+ * Returns undefined when nothing matches AND when more than one thing does: an
+ * ambiguous namespace is a guess, and this graph never guesses.
+ */
+function bySuffix(ctx: ResolveContext, suffix: string): string | undefined {
+  const slash = suffix.lastIndexOf("/");
+  const candidates = ctx.byBasename.get(slash < 0 ? suffix : suffix.slice(slash + 1));
+  if (!candidates) return undefined;
+  const hits = candidates.filter((id) => id === suffix || id.endsWith(`/${suffix}`));
+  return hits.length === 1 ? hits[0] : undefined;
+}
+
+/**
+ * Suffix matching that tolerates a namespace root mapped to a source directory
+ * (PSR-4's `App\` → `src/`, a Maven `src/main/java` prefix): try the whole path
+ * first, then drop leading segments until one unique file matches.
+ */
+function bySuffixProgressive(ctx: ResolveContext, segments: string[], exts: string[]): string | undefined {
+  for (let start = 0; start < segments.length; start++) {
+    const tail = segments.slice(start).join("/");
+    for (const ext of exts) {
+      const hit = bySuffix(ctx, tail + ext);
+      if (hit) return hit;
     }
   }
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Per-language edge extraction. Each returns node ids, not raw specifiers, so a
+// language owns both halves of its own convention.
+// ---------------------------------------------------------------------------
+
+const RE_C_INCLUDE = /^[ \t]*#[ \t]*include[ \t]*(["<])([^">]+)[">]/gm;
+const RE_RUBY_REQUIRE = /\brequire(_relative)?\s*\(?\s*['"]([^'"]+)['"]/g;
+const RE_PHP_INCLUDE = /\b(?:require|include)(?:_once)?\s*\(?\s*['"]([^'"]+)['"]/g;
+const RE_PHP_USE = /^[ \t]*use[ \t]+\\?([A-Za-z_][\w\\]*)/gm;
+const RE_JVM_IMPORT = /^[ \t]*import[ \t]+(?:static[ \t]+)?([\w.]+)/gm;
+const RE_GO_IMPORT_BLOCK = /\bimport[ \t]*\(([\s\S]*?)\)/g;
+const RE_GO_IMPORT_ONE = /\bimport[ \t]+(?:[\w.]+[ \t]+)?"([^"]+)"/g;
+const RE_GO_QUOTED = /"([^"]+)"/g;
+const RE_RUST_MOD = /^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?mod[ \t]+([A-Za-z_]\w*)[ \t]*;/gm;
+const RE_RUST_USE = /^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?use[ \t]+([A-Za-z_][\w:]*)/gm;
+
+/** Rust path roots that name the current crate rather than an external one. */
+const RUST_LOCAL_ROOTS = new Set(["crate", "super", "self"]);
+/** Rust roots that are the toolchain, never a dependency worth a node. */
+const RUST_STD_ROOTS = new Set(["std", "core", "alloc"]);
+
+function jsEdges(absPath: string, content: string, ctx: ResolveContext, out: Set<string>): void {
+  const fileDir = dirname(absPath);
+  for (const spec of extractJsSpecs(content)) {
+    const id = resolveJsSpec(ctx.cwd, fileDir, spec);
+    if (id !== undefined) out.add(id);
+  }
+}
+
+function pyEdges(absPath: string, content: string, ctx: ResolveContext, out: Set<string>): void {
+  const fileDir = dirname(absPath);
+  for (const token of extractPySpecs(content)) out.add(resolvePySpec(ctx.cwd, fileDir, token));
+}
+
+function cEdges(absPath: string, content: string, ctx: ResolveContext, out: Set<string>): void {
+  const fileDir = dirname(absPath);
+  RE_C_INCLUDE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = RE_C_INCLUDE.exec(content)) !== null) {
+    const spec = m[2]!;
+    // <angle> is the system/dependency include path; "quoted" is project-local.
+    if (m[1] !== '"') {
+      out.add(pkgNodeId(spec));
+      continue;
+    }
+    const local = join(fileDir, spec);
+    if (fileExists(local)) {
+      out.add(normalizeToId(ctx.cwd, local));
+      continue;
+    }
+    const fromRoot = join(ctx.cwd, spec);
+    if (fileExists(fromRoot)) {
+      out.add(normalizeToId(ctx.cwd, fromRoot));
+      continue;
+    }
+    // An include path relative to some -I root we cannot know: match by tail.
+    const hit = bySuffix(ctx, spec.split(/[\\/]/).filter(Boolean).join("/"));
+    if (hit) out.add(hit);
+  }
+}
+
+function rubyEdges(absPath: string, content: string, ctx: ResolveContext, out: Set<string>): void {
+  const fileDir = dirname(absPath);
+  RE_RUBY_REQUIRE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = RE_RUBY_REQUIRE.exec(content)) !== null) {
+    const spec = m[2]!;
+    // Only `require_relative` names a file; bare `require` goes through the load
+    // path, which is a runtime concern we cannot resolve statically.
+    if (m[1] === undefined) {
+      out.add(pkgNodeId(spec));
+      continue;
+    }
+    const base = join(fileDir, spec);
+    for (const cand of [base, `${base}.rb`]) {
+      if (fileExists(cand)) {
+        out.add(normalizeToId(ctx.cwd, cand));
+        break;
+      }
+    }
+  }
+}
+
+function phpEdges(absPath: string, content: string, ctx: ResolveContext, out: Set<string>): void {
+  const fileDir = dirname(absPath);
+  RE_PHP_INCLUDE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = RE_PHP_INCLUDE.exec(content)) !== null) {
+    const spec = m[1]!;
+    const base = join(fileDir, spec);
+    for (const cand of [base, `${base}.php`]) {
+      if (fileExists(cand)) {
+        out.add(normalizeToId(ctx.cwd, cand));
+        break;
+      }
+    }
+  }
+  RE_PHP_USE.lastIndex = 0;
+  while ((m = RE_PHP_USE.exec(content)) !== null) {
+    // `use App\Service\Mailer` — PSR-4 maps the namespace root to a source dir,
+    // so the tail of the path is what actually appears on disk.
+    const segments = m[1]!.split("\\").filter(Boolean);
+    if (segments.length < 2) continue;
+    const hit = bySuffixProgressive(ctx, segments, [".php"]);
+    if (hit) out.add(hit);
+  }
+}
+
+function jvmEdges(_absPath: string, content: string, ctx: ResolveContext, out: Set<string>): void {
+  RE_JVM_IMPORT.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = RE_JVM_IMPORT.exec(content)) !== null) {
+    const segments = m[1]!.split(".").filter(Boolean);
+    if (segments.length < 2) continue;
+    // A static import ends in a member name, so the type is one segment up.
+    // Nothing is added when neither resolves: unlike JS, a JVM import gives no
+    // syntactic hint whether it is first-party or a dependency, so a pkg node
+    // here would invent an external dependency that may not exist.
+    const hit =
+      bySuffixProgressive(ctx, segments, JVM_EXTS) ??
+      (segments.length > 2 ? bySuffixProgressive(ctx, segments.slice(0, -1), JVM_EXTS) : undefined);
+    if (hit) out.add(hit);
+  }
+}
+
+/** Go dependency node id: the module path for a domain-style import, else the bare package. */
+function goPkgNodeId(spec: string): string {
+  const parts = spec.split("/");
+  return `pkg:${parts.slice(0, parts[0]?.includes(".") ? 3 : 1).join("/")}`;
+}
+
+function goEdges(_absPath: string, content: string, ctx: ResolveContext, out: Set<string>): void {
+  const specs = new Set<string>();
+  RE_GO_IMPORT_BLOCK.lastIndex = 0;
+  let block: RegExpExecArray | null;
+  while ((block = RE_GO_IMPORT_BLOCK.exec(content)) !== null) {
+    RE_GO_QUOTED.lastIndex = 0;
+    let quoted: RegExpExecArray | null;
+    while ((quoted = RE_GO_QUOTED.exec(block[1]!)) !== null) specs.add(quoted[1]!);
+  }
+  RE_GO_IMPORT_ONE.lastIndex = 0;
+  let single: RegExpExecArray | null;
+  while ((single = RE_GO_IMPORT_ONE.exec(content)) !== null) specs.add(single[1]!);
+
+  const module = ctx.goModule;
+  for (const spec of specs) {
+    // A Go import names a PACKAGE, which is a directory — so one import edge
+    // becomes an edge to every .go file that makes up that package.
+    if (module !== undefined && (spec === module || spec.startsWith(`${module}/`))) {
+      const dir = spec === module ? "" : spec.slice(module.length + 1);
+      for (const id of ctx.byDir.get(dir) ?? []) {
+        if (extOf(id) === ".go") out.add(id);
+      }
+      continue;
+    }
+    out.add(goPkgNodeId(spec));
+  }
+}
+
+/** The crate's source root for a file id: the last `src/` on its path, else its own directory. */
+function rustCrateRoot(id: string): string {
+  const parts = id.split("/");
+  const srcAt = parts.lastIndexOf("src");
+  return srcAt >= 0 ? parts.slice(0, srcAt + 1).join("/") : parts.slice(0, -1).join("/");
+}
+
+/** First module file matching `dir/segs…`, shortening the path until one exists (a tail segment may name an item, not a module). */
+function rustModuleFile(ctx: ResolveContext, dir: string, segments: string[]): string | undefined {
+  for (let take = segments.length; take >= 1; take--) {
+    const path = [dir, ...segments.slice(0, take)].filter(Boolean).join("/");
+    for (const cand of [`${path}.rs`, `${path}/mod.rs`]) {
+      if (ctx.ids.has(cand)) return cand;
+    }
+  }
+  return undefined;
+}
+
+function rustEdges(absPath: string, content: string, ctx: ResolveContext, out: Set<string>): void {
+  const id = normalizeToId(ctx.cwd, absPath);
+  const dir = id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : "";
+  const stem = id.slice(id.lastIndexOf("/") + 1).replace(/\.rs$/, "");
+  // A `mod x;` in foo.rs looks for foo/x.rs; in mod.rs/lib.rs/main.rs it looks
+  // beside itself. Trying both covers either layout.
+  const modDirs = ["mod", "lib", "main"].includes(stem) ? [dir] : [dir, [dir, stem].filter(Boolean).join("/")];
+
+  RE_RUST_MOD.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = RE_RUST_MOD.exec(content)) !== null) {
+    for (const base of modDirs) {
+      const hit = rustModuleFile(ctx, base, [m[1]!]);
+      if (hit) {
+        out.add(hit);
+        break;
+      }
+    }
+  }
+
+  RE_RUST_USE.lastIndex = 0;
+  while ((m = RE_RUST_USE.exec(content)) !== null) {
+    const segments = m[1]!.split("::").filter(Boolean);
+    const root = segments[0];
+    if (root === undefined) continue;
+    if (!RUST_LOCAL_ROOTS.has(root)) {
+      if (!RUST_STD_ROOTS.has(root)) out.add(`pkg:${root}`);
+      continue;
+    }
+    const rest = segments.slice(1);
+    if (rest.length === 0) continue;
+    const base =
+      root === "crate" ? rustCrateRoot(id)
+      : root === "self" ? dir
+      : dir.includes("/") ? dir.slice(0, dir.lastIndexOf("/")) : ""; // super
+    const hit = rustModuleFile(ctx, base, rest);
+    if (hit) out.add(hit);
+  }
+}
+
+/**
+ * Import edges for one file, or an empty list for a Tier 2 language whose
+ * imports do not name files (ADR 0004) — such a file is still a graph node.
+ */
+function extractImports(absPath: string, content: string, ctx: ResolveContext): string[] {
+  const out = new Set<string>();
+  switch (langOf(absPath)) {
+    case "js": jsEdges(absPath, content, ctx, out); break;
+    case "py": pyEdges(absPath, content, ctx, out); break;
+    case "c": cEdges(absPath, content, ctx, out); break;
+    case "ruby": rubyEdges(absPath, content, ctx, out); break;
+    case "php": phpEdges(absPath, content, ctx, out); break;
+    case "jvm": jvmEdges(absPath, content, ctx, out); break;
+    case "go": goEdges(absPath, content, ctx, out); break;
+    case "rust": rustEdges(absPath, content, ctx, out); break;
+    case "none": break;
+  }
+  out.delete(normalizeToId(ctx.cwd, absPath)); // a self-edge is noise in every metric
   return [...out];
 }
 
@@ -208,11 +560,14 @@ function extractImports(cwd: string, absPath: string, content: string): string[]
  * re-reading. All fs errors are skipped silently.
  */
 export function buildGraph(cwd: string, prev?: GraphData): GraphData {
-  const files: Record<string, GraphFileEntry> = {};
-  let count = 0;
+  // PHASE 1 — find every source file. No content is read here on purpose:
+  // namespace and package specifiers (Java's `com.example.Foo`, PHP's `App\Bar`,
+  // a Go import path) resolve against the WHOLE file list, so nothing can be
+  // resolved until the walk has finished.
+  const scanned: { id: string; abs: string; mtimeMs: number; size: number }[] = [];
 
   const walk = (dir: string, depth: number): void => {
-    if (count >= MAX_FILES) return;
+    if (scanned.length >= MAX_FILES) return;
     let entries: import("node:fs").Dirent[];
     try {
       entries = readdirSync(dir, { withFileTypes: true });
@@ -220,14 +575,14 @@ export function buildGraph(cwd: string, prev?: GraphData): GraphData {
       return;
     }
     for (const entry of entries) {
-      if (count >= MAX_FILES) return;
+      if (scanned.length >= MAX_FILES) return;
       const abs = join(dir, entry.name);
       if (entry.isDirectory()) {
         if (depth >= MAX_DEPTH) continue; // stop descending past the depth cap
         if (shouldSkipDir(entry.name)) continue;
         walk(abs, depth + 1);
       } else if (entry.isFile()) {
-        if (!SCAN_EXTS.has(extOf(entry.name))) continue;
+        if (!SCAN_EXTS.has(extOf(entry.name).toLowerCase())) continue;
         let st: import("node:fs").Stats;
         try {
           st = statSync(abs);
@@ -235,29 +590,38 @@ export function buildGraph(cwd: string, prev?: GraphData): GraphData {
           continue;
         }
         if (st.size > MAX_FILE_BYTES) continue; // skip oversized files
-        const id = toNodeId(cwd, abs);
-        const before = prev?.files[id];
-        if (before && before.mtimeMs === st.mtimeMs && before.size === st.size) {
-          files[id] = { mtimeMs: st.mtimeMs, size: st.size, imports: before.imports };
-        } else {
-          let content: string;
-          try {
-            content = readFileSync(abs, "utf8");
-          } catch {
-            continue;
-          }
-          files[id] = {
-            mtimeMs: st.mtimeMs,
-            size: st.size,
-            imports: extractImports(cwd, abs, content),
-          };
-        }
-        count++;
+        scanned.push({ id: normalizeToId(cwd, abs), abs, mtimeMs: st.mtimeMs, size: st.size });
       }
     }
   };
 
   walk(cwd, 0);
+
+  // PHASE 2 — resolve each file's imports against the finished file list. An
+  // entry whose mtime+size are unchanged keeps its already-resolved imports; a
+  // specifier that only became resolvable because some OTHER file appeared is
+  // picked up the next time this file itself changes, which is the ordinary
+  // trade of an incremental cache.
+  const ctx = buildResolveContext(cwd, scanned.map((s) => s.id));
+  const files: Record<string, GraphFileEntry> = {};
+  for (const entry of scanned) {
+    const before = prev?.files[entry.id];
+    if (before && before.mtimeMs === entry.mtimeMs && before.size === entry.size) {
+      files[entry.id] = { mtimeMs: entry.mtimeMs, size: entry.size, imports: before.imports };
+      continue;
+    }
+    let content: string;
+    try {
+      content = readFileSync(entry.abs, "utf8");
+    } catch {
+      continue;
+    }
+    files[entry.id] = {
+      mtimeMs: entry.mtimeMs,
+      size: entry.size,
+      imports: extractImports(entry.abs, content, ctx),
+    };
+  }
   return { version: 1, files };
 }
 

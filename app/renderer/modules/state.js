@@ -125,7 +125,7 @@ const DEFAULT_UI_SETTINGS = {
   // 0 turns auto-compaction off (manage it yourself with /compact). This is the
   // ONLY place the limit is set — it rides to the engine as a set_compact_limit
   // frame, never a settings.json key, so it can never disagree with this control.
-  compactLimit: 32000,
+  compactLimit: 256000,
   // OVERDRIVE: fully autonomous stance (nothing asks — commands run without
   // approval prompts). Persisted so it survives a reload and re-asserts itself
   // on the next engine link, exactly like the safety toggles above.
@@ -134,7 +134,7 @@ const DEFAULT_UI_SETTINGS = {
   // composer toggle on engages the mode directly.
   overdriveIntroSeen: false,
   // CAREFUL MODE: the OVERDRIVE modifier that makes a substantial request
-  // present a plan for approval before anything is touched. Remembered
+  // present a short proposal for approval before anything is touched. Remembered
   // independently of `overdrive`, so disengaging and re-engaging OVERDRIVE
   // restores the choice instead of quietly dropping it.
   careful: false,
@@ -169,6 +169,14 @@ function loadUiSettings() {
       settings.font = DEFAULT_UI_SETTINGS.font;
     }
     settings.fontMigrated = true;
+  }
+  // The old 32k default compacted far too eagerly on today's windows: a single
+  // careful turn can hold more than that in scout reads alone. Raise it once,
+  // and only for installs still sitting on that default — a limit the user
+  // chose themselves is theirs, whatever its value.
+  if (!settings.compactLimitMigrated) {
+    if (settings.compactLimit === 32000) settings.compactLimit = DEFAULT_UI_SETTINGS.compactLimit;
+    settings.compactLimitMigrated = true;
   }
   if (!["12", "13", "14", "15"].includes(settings.size)) settings.size = "14";
   settings.zoom = clampZoom(settings.zoom);

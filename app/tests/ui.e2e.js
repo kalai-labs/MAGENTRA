@@ -937,6 +937,90 @@ async function run() {
     });
   });
 
+  await test("markdown renders while streaming, before a question card, and math becomes MathML", async () => {
+    // 1. Progressive rendering. A completed block must become real Markdown as
+    //    it arrives — waiting for turn_finished left long answers on screen as
+    //    raw source for the whole reply.
+    await emit({ type: "turn_started" });
+    await emit({ type: "text_delta", text: "## Live heading\n\nFirst paragraph.\n\n" });
+    const live = await evaluate(`(() => {
+      const last = [...document.querySelectorAll('.msg-assistant')].pop();
+      const done = last && last.querySelector('.md-done');
+      return done && done.querySelector('h2') ? done.querySelector('h2').textContent : null;
+    })()`);
+    assert.equal(live, "Live heading", "a finished block must render before the turn ends");
+
+    // 2. A half-streamed code fence must NOT be committed early — committing it
+    //    would render an unterminated block that changes shape a moment later.
+    await emit({ type: "text_delta", text: "```js\nconst a = 1;\n\nconst b = 2;\n" });
+    const fenceCommitted = `(() => {
+      const last = [...document.querySelectorAll('.msg-assistant')].pop();
+      return Boolean(last && last.querySelector('.md-done .md-code'));
+    })()`;
+    assert.equal(await evaluate(fenceCommitted), false, "an unclosed fence must stay in the live tail");
+    await emit({ type: "text_delta", text: "```\n\n" });
+    assert.equal(await evaluate(fenceCommitted), true, "the fence renders once it closes");
+    await emit({ type: "turn_finished", contextTokens: 10, totalCostUsd: 0, stopReason: "end_turn" });
+
+    // 3. A question card must close the streaming message first, or the text
+    //    above it stays raw until the user answers — which is exactly when they
+    //    are trying to read it.
+    await emit({ type: "turn_started" });
+    await emit({ type: "text_delta", text: "# What's the objective?\n\nShip **it**." });
+    await emit({ type: "question_request", id: "md-gate", questions: [
+      { header: "APPROVE", question: "Approve?", multiSelect: false,
+        options: [{ label: "Start work", description: "" }, { label: "Cancel", description: "" }] },
+    ] });
+    assert.equal(
+      await evaluate(`(() => {
+        const last = [...document.querySelectorAll('.msg-assistant')].pop();
+        return Boolean(last && last.querySelector('h1') && last.querySelector('strong'));
+      })()`),
+      true,
+      "markdown must be rendered before the approval card, not after it is answered",
+    );
+
+    // 4. Math. Rendered as native MathML — no library, no web font, nothing the
+    //    strict CSP would block.
+    await emit({ type: "text_delta", text: "\n\nInline $E = mc^2$ and a block:\n\n$$\\frac{a}{b} + \\sqrt{x}$$\n\n" });
+    await emit({ type: "turn_finished", contextTokens: 10, totalCostUsd: 0, stopReason: "end_turn" });
+    const math = await evaluate(`(() => {
+      const nodes = [...document.querySelectorAll('math')];
+      if (nodes.length < 2) return { count: nodes.length };
+      const inline = nodes[nodes.length - 2];
+      const block = nodes[nodes.length - 1];
+      return {
+        count: nodes.length,
+        ns: inline.namespaceURI,
+        inlineDisplay: inline.getAttribute('display'),
+        sup: inline.querySelector('msup') !== null,
+        blockDisplay: block.getAttribute('display'),
+        frac: block.querySelector('mfrac') !== null,
+        sqrt: block.querySelector('msqrt') !== null,
+        wrapped: Boolean(block.closest('.md-math-wrap')),
+      };
+    })()`);
+    assert.equal(math.ns, "http://www.w3.org/1998/Math/MathML", "math must be real MathML, not styled HTML");
+    assert.equal(math.inlineDisplay, "inline");
+    assert.equal(math.sup, true, "E = mc^2 needs a superscript");
+    assert.equal(math.blockDisplay, "block");
+    assert.equal(math.frac, true, "\\frac must become <mfrac>");
+    assert.equal(math.sqrt, true, "\\sqrt must become <msqrt>");
+    assert.equal(math.wrapped, true, "a wide formula scrolls in its own strip");
+
+    // 5. Money is not mathematics. "$5 ... $7" must survive as plain text, or
+    //    every price in a reply turns into a formula.
+    await emit({ type: "turn_started" });
+    await emit({ type: "text_delta", text: "It costs $5, not $7 — and `$x$` stays literal." });
+    await emit({ type: "turn_finished", contextTokens: 10, totalCostUsd: 0, stopReason: "end_turn" });
+    const prices = await evaluate(`(() => {
+      const last = [...document.querySelectorAll('.msg-assistant')].pop();
+      return { math: last.querySelectorAll('math').length, text: last.textContent };
+    })()`);
+    assert.equal(prices.math, 0, "prices and backticked $x$ must not render as math");
+    assert.match(prices.text, /\$5, not \$7/);
+  });
+
   await test("skills view, chips, recommended set, and create-skill wizard are functional", async () => {
     await emit({ type: "modes_updated", modes: [
       { id: "reshape", name: "Reshape", description: "Deliberate restructuring", why: "Enable for large refactors", active: false, recommended: false, conflicts: [] },

@@ -386,7 +386,7 @@ export type FrontendRequest =
   /**
    * Toggles OVERDRIVE: the fully-autonomous turn-loop policy (caps lifted,
    * self-verify end check). `careful` arms CAREFUL MODE, the modifier that makes
-   * a substantial request present a plan for approval before it acts; omitting
+   * a substantial request present a proposal for approval before it acts; omitting
    * it leaves the engine's current setting alone, so a frontend that knows
    * nothing about CAREFUL cannot switch it off by accident.
    */

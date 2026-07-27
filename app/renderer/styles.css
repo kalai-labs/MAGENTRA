@@ -782,6 +782,23 @@ h1.md-h { font-size: 1.3rem; } h2.md-h { font-size: 1.16rem; } h3.md-h { font-si
 .md-table tbody tr:hover td { background: var(--hover); }
 .md-table code { white-space: nowrap; }
 
+/* Mathematics. Rendered as native MathML (Chromium ships MathML Core), so there
+   is no library to load, no web font to fetch, and nothing that would need the
+   CSP relaxed — see modules/math.js. */
+.md-math { font-size: 1.05em; color: var(--text-hi); }
+/* A long formula scrolls in its own strip for the same reason a wide table
+   does: it must not widen the transcript column. */
+.md-math-wrap { margin: 11px 0; padding: 4px 2px; overflow-x: auto; text-align: center; }
+.md-math-block { font-size: 1.15em; }
+/* The fallback when a formula cannot be parsed: its own source, readable. */
+.md-math-raw { color: var(--text-dim); }
+
+/* Streamed messages render block by block as each one completes; `.md-done`
+   holds what is already Markdown, `.md-live` the tail still being typed. */
+.md-done > :first-child { margin-top: 0; }
+.md-done > :last-child { margin-bottom: 0; }
+.md-live { white-space: pre-wrap; }
+
 .msg-thinking { margin: 7px 0 7px 10px; padding-left: 10px; border-left: 2px solid var(--border-hi); }
 .msg-thinking > summary { color: var(--text-dim); cursor: pointer; font-size: max(10px, 0.72rem); }
 .thinking-body { margin-top: 6px; color: var(--text-dim); font-size: max(10px, 0.78rem); white-space: pre-wrap; }

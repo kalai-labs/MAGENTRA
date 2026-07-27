@@ -2,7 +2,9 @@
 // Run: npm run build && node .claude/skills/bigboycoding/permission-check.mjs
 // Guards the 2026-07-26 allow-all stance: everything runs freely EXCEPT
 // deletions and edits to .magentra/ or .env* .
-import { PermissionEngine } from "file:///C:/Users/alini/phdworks/MAGENTRA/engine/core/dist/runtime/permissions.js";
+// Relative, like the sibling checks: an absolute path pins this script to one
+// machine and it silently stops running everywhere else.
+import { PermissionEngine } from "../../../engine/core/dist/runtime/permissions.js";
 
 let asked = [];
 const mk = (rules = { allow: [], deny: [], allowExact: [] }) => {

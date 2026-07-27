@@ -1139,8 +1139,8 @@ export class Engine {
           this.emit({
             type: "command_output",
             text: enabled
-              ? `◉ CAREFUL MODE armed — substantial requests present a plan for your approval before anything is touched.${inert ? " It takes effect once OVERDRIVE is engaged." : ""}`
-              : "CAREFUL MODE off — OVERDRIVE acts without presenting a plan first.",
+              ? `◉ CAREFUL MODE armed — substantial requests present a short proposal for your approval before anything is touched.${inert ? " It takes effect once OVERDRIVE is engaged." : ""}`
+              : "CAREFUL MODE off — OVERDRIVE acts without proposing first.",
           });
         } else if (!arg) {
           this.emit({
@@ -2444,7 +2444,7 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
     ],
   },
   { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous stance: nothing asks, self-verified completion" },
-  { cmd: "/careful", args: "[on|off]", desc: "in OVERDRIVE: propose a plan and wait for your approval before acting" },
+  { cmd: "/careful", args: "[on|off]", desc: "in OVERDRIVE: propose a direction and wait for your approval before acting" },
   { cmd: "/styles", args: "[on|off <id>]", desc: "deprecated alias for /skills" },
   { cmd: "/settings", args: "[global] [k v]", desc: "show settings, or set one (add global to save to ~/.magentra)" },
   { cmd: "/resume", args: "<session-id>", desc: "resume a previous session" },

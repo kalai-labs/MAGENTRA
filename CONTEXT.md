@@ -21,35 +21,56 @@ original request.
 
 A modifier available **inside OVERDRIVE** that reinstates exactly one
 checkpoint: before a request that needs real work, the agent must investigate,
-decide on an approach, and get the user's approval of that approach — after
-which it proceeds with OVERDRIVE's full autonomy.
+state the direction it proposes, and get the user's approval of that direction —
+after which it proceeds with OVERDRIVE's full autonomy.
 
 It is not a third stance and not a retreat from OVERDRIVE. OVERDRIVE removes
 approval from every *action*; CAREFUL MODE adds approval back at exactly one
-*decision* — which approach to take — and nowhere else.
+*decision* — which direction to take — and nowhere else.
 
 ## Scout Phase
 
 The part of a careful turn before approval, in which the agent may look but not
-touch. Its purpose is to make the Briefing honest: consequences stated from
-what the repository actually contains, not from a guess about it.
+touch. Its purpose is to make the Proposal correct: the agent confirms what the
+request means and where in the repository it lands, so that what the user
+approves is a real understanding and not a guess.
+
+It confirms the target. It does not prove the path — no file manifest, no
+impact analysis, no decomposition. That work belongs after approval, where
+OVERDRIVE already does it.
 
 A scout phase reads. It does not delegate work, does not record a task plan,
 and does not change anything a later step would have to undo.
 
-## Briefing
+## Proposal
 
 What the agent shows the user at the end of the Scout Phase, and the only
 output of a careful turn before approval. It answers four questions in a fixed
-order: the objective, the proposed solution, the Consequences for this
+order: the objective, the solution it suggests, the Consequences for this
 repository, and what remains unclear.
+_Avoid_: plan, briefing
 
-The Briefing is a proposal, not a report. It describes work that has not
-happened yet.
+A Proposal is of DIRECTION, not of implementation. The user approves that the
+agent read the request correctly and is pointed the right way — not a
+decomposition, a task list, or a promised diff. Those come after approval.
+
+"Plan" is the word this is not. A plan needs an ordered decomposition and the
+files it will touch, and demanding those before approval is what made the first
+version of this feature unusable.
+
+It describes work that has not happened yet, and it is written in Plain Speech.
+
+## Plain Speech
+
+The style the agent writes to the user in: short sentences, one idea each,
+common words, active voice.
+
+It is a style, never a language. It follows whatever language the user writes
+in — plain Turkish for a Turkish user, plain English for an English one.
 
 ## Consequences
 
-The third section of a Briefing, and the one that carries its weight. Not a
+The third section of a Proposal, and the one that carries its weight. Not a
 description of the work — a description of *what will be true afterwards that
 is not true now*.
 
@@ -64,15 +85,12 @@ They come in two halves, always in this order:
    do that it does not do now, what the user will be able to do that they could
    not, what will feel different, what will break. On a purely internal change
    this half says so plainly rather than being omitted.
-2. **What will be touched** — the concrete prediction: which files change, which
-   files are new, which scripts appear. Named paths, not descriptions of areas.
-
-The second half is not documentation of the first. It is a forcing function: a
-Briefing that must name real paths cannot be written without having opened
-them, so requiring it makes the Scout Phase read more than it otherwise would.
+2. **Where it lands** — which part of the repository the work falls in. Derived
+   from the import graph rather than claimed by the agent, so it states what the
+   repository contains and never what the agent assumes it contains.
 
 Effects come first because the user reads to decide, and the decision is about
-effects. Paths are the evidence, and evidence follows the claim.
+effects. Location is context for that decision, not a promise about the diff.
 
 ## Hold
 
@@ -85,22 +103,36 @@ reason at all. It never outlives the turn that raised it.
 
 ## Approval
 
-The user's decision on a Briefing. Work that changes the repository may not
+The user's decision on a Proposal. Work that changes the repository may not
 begin without it. Silence is not approval: an unanswered or interrupted gate
 cancels.
 
+## Review Pass
+
+One silent look the agent takes at its own draft Proposal before showing it.
+It may improve the draft or leave it exactly as it is; both are correct
+outcomes and neither needs defending.
+
+It happens once, on the first Proposal of a turn, and it reads nothing new —
+anything the agent does not know at that point is an Unclear, not a reason to
+go back to the repository.
+
 ## Revision
 
-A Briefing the user answered with words instead of a decision. The words are
+A Proposal the user answered with words instead of a decision. The words are
 treated as a requirement rather than a suggestion, the Hold stays raised, and
-the agent scouts further and briefs again. Revisions are unlimited.
+the agent scouts further and proposes again. Revisions are unlimited.
 
-Each Revision costs the agent one round of self-critique, to a floor of none.
-Self-critique substitutes for the user's judgement; once they have supplied it,
-the substitute is waste.
+A Revision gets no Review Pass. The Review Pass substitutes for the user's
+judgement; once they have supplied it, the substitute is waste.
 
 ## Unclears
 
-The open questions a Briefing names in its fourth section. They are raised in
-the Briefing but not answered there — the user approves the approach first,
-and only then are the unclears put to them as questions.
+What is still open once the agent has asked the user everything that was
+theirs to decide. Named in a Proposal's fourth section, each with the
+assumption the agent chose to proceed on.
+
+The questions themselves are put to the user BEFORE the Proposal is written,
+never after it is approved. A question whose answer would change what gets
+built cannot be asked after the user has approved what gets built — by then
+they have approved a direction chosen on a question they never answered.

@@ -6,6 +6,59 @@
 // Stream append helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * The longest prefix of `raw` that is safe to render as Markdown right now.
+ *
+ * Live text streams in as plain characters and only became Markdown when the
+ * message finished, which meant a long answer sat on screen as raw source —
+ * and, when a question card followed it, until the user had answered. So we
+ * render progressively instead: everything up to the last blank line is
+ * COMPLETE Markdown and can be committed, while the tail after it is still
+ * being typed and stays plain.
+ *
+ * The blank line alone is not enough. A blank line inside an unterminated code
+ * fence or display-math block would commit half a construct, which then
+ * re-renders differently a moment later — the flicker the original all-at-once
+ * approach was written to avoid. So a candidate cut point is only accepted
+ * when the fences and `$$` delimiters before it are balanced.
+ */
+function markdownCommitPoint(raw) {
+  let cut = raw.lastIndexOf("\n\n");
+  while (cut > 0) {
+    const head = raw.slice(0, cut + 1);
+    const fences = (head.match(/^[ \t]*(?:```|~~~)/gm) || []).length;
+    const display = (head.match(/\$\$/g) || []).length;
+    if (fences % 2 === 0 && display % 2 === 0) return head;
+    cut = raw.lastIndexOf("\n\n", cut - 1);
+  }
+  return "";
+}
+
+/**
+ * Renders whatever has become complete since the last call, and leaves the rest
+ * as live plain text. Only the NEW segment is parsed each time, so a long
+ * message costs linear work overall rather than re-rendering itself on every
+ * delta. finalizeAssistantEl re-renders the whole message at the end, which
+ * corrects anything the segment-by-segment view split awkwardly.
+ */
+function commitStreamedMarkdown(el) {
+  const raw = el._raw || "";
+  const done = el.querySelector(".md-done");
+  const live = el.querySelector(".md-live");
+  if (!done || !live) return;
+  const committed = el._committedLen || 0;
+  const prefix = markdownCommitPoint(raw);
+  if (prefix.length > committed) {
+    try {
+      done.appendChild(renderMarkdown(raw.slice(committed, prefix.length)));
+      el._committedLen = prefix.length;
+    } catch {
+      /* keep the plain live text; the final render will fix it */
+    }
+  }
+  live.textContent = raw.slice(el._committedLen || 0);
+}
+
 /* Close the streaming assistant paragraph so the NEXT text delta starts a
  * fresh one below whatever is appended after this call. Keeps the transcript
  * strictly chronological instead of splicing later text into an old bubble. */

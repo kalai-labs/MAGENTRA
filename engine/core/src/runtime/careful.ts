@@ -1,15 +1,20 @@
 // CAREFUL MODE — the OVERDRIVE modifier that reinstates exactly one checkpoint.
 //
 // OVERDRIVE removes approval from every ACTION. CAREFUL adds it back at exactly
-// one DECISION — which approach to take — and nowhere else. A careful turn runs:
+// one DECISION — which direction to take — and nowhere else. A careful turn runs:
 //
-//   predictor  → is this substantial enough to brief?   (one inference, fail-open)
+//   predictor  → is this substantial enough to propose?  (one inference, fail-open)
 //   scout      → read-only investigation, everything else held by the permission
 //                engine, deliberation suppressed so the user sees no prose yet
-//   critique   → "is there a better way?", 2 rounds on the first briefing and one
-//                fewer after each revision — user steering outranks self-doubt
-//   briefing   → the four-section proposal, the first prose the user sees
+//   review     → one silent look at its own draft; leaving it unchanged is fine
+//   proposal   → the five-section document, the first prose the user sees
 //   approval   → start / cancel / free-text revision (revisions are unlimited)
+//
+// What the user approves is a PROPOSAL OF DIRECTION, not a plan: what they want,
+// what MAGENTRA suggests, what changes for them, and what is still unclear. The
+// decomposition happens after approval, where OVERDRIVE already does it. See
+// ADR 0003 — the earlier design demanded a proven file manifest before approval,
+// which is what made the scout phase cost ten minutes.
 //
 // Everything here is data and prose; the orchestration lives in Session.runTurn
 // and the enforcement in PermissionEngine. This file deliberately imports
@@ -37,23 +42,30 @@ export const SCOUT_TOOLS: ReadonlySet<string> = new Set([
   "Skill",
 ]);
 
-/** Self-critique rounds granted to the FIRST briefing of a turn. Each revision
- *  the user types spends one, floor zero: once they have steered, the agent
- *  arguing with itself is wasted work. */
-export const CAREFUL_CRITIQUE_ROUNDS = 2;
+/**
+ * Tool rounds a held scout may spend before the soft warn fires.
+ *
+ * This is NOT a cap — nothing is cut off at this number (ADR 0005). It is when
+ * the engine reminds the agent of the stop test it was already given. A cap
+ * would stop the scout mid-read and leave it proposing from a half-formed
+ * picture, and a confident wrong understanding is the one thing CAREFUL exists
+ * to prevent.
+ */
+export const CAREFUL_SCOUT_WARN_AFTER_ROUNDS = 4;
 
 /** Refusal shown to the model when the hold blocks a call. It must teach, not
  *  just deny — a bare "denied" reads as a broken tool and gets retried. */
 export function carefulHoldMessage(toolName: string): string {
-  return `CAREFUL MODE: ${toolName} is held until the user approves your plan. You are in the scout phase — you may only ${[...SCOUT_TOOLS].join(", ")}. Do not retry this call and do not look for a way around it. Finish investigating with the reading tools, then present your briefing; every held tool unlocks the moment the user approves.`;
+  return `CAREFUL MODE: ${toolName} is held until the user approves your proposal. You are in the scout phase — you may only ${[...SCOUT_TOOLS].join(", ")}. Do not retry this call and do not look for a way around it. Finish investigating with the reading tools, then present your proposal; every held tool unlocks the moment the user approves.`;
 }
 
 // ── Predictor ───────────────────────────────────────────────────────────────
 // Decides whether an incoming request earns the ritual. Size decides, not
-// clarity: a perfectly clear ten-step refactor still briefs, because the point
-// is that the user sees what is about to happen, not that the agent was unsure.
+// clarity: a perfectly clear ten-step refactor still gets a proposal, because
+// the point is that the user sees what is about to happen, not that the agent
+// was unsure. (Clarity is the clarify pre-layer's job, and it runs first.)
 
-export const CAREFUL_PREDICTOR_SYSTEM = `You are the CAREFUL MODE predictor of an autonomous coding agent. You see ONE incoming user request (plus a snippet of the previous exchange, and an overview of the codebase) and decide one thing: does this request deserve a plan the user approves before any work starts?
+export const CAREFUL_PREDICTOR_SYSTEM = `You are the CAREFUL MODE predictor of an autonomous coding agent. You see ONE incoming user request (plus a snippet of the previous exchange, and an overview of the codebase) and decide one thing: does this request deserve a short proposal the user approves before any work starts?
 
 Answer with JSON and nothing else.
   {"careful": false}
@@ -69,7 +81,7 @@ Set careful=false for everything else:
   - a single small reversible edit (fix this typo, rename this variable, bump this version);
   - follow-ups that just continue work already approved in this conversation.
 
-Judge SIZE and REVERSIBILITY only. Do NOT judge whether the request is clear — a request can be perfectly unambiguous and still deserve a briefing, because the briefing exists so the user sees what is coming, not because you were confused. When genuinely torn, prefer true: an unwanted briefing costs one round trip, an unwanted refactor costs the user their afternoon.`;
+Judge SIZE and REVERSIBILITY only. Do NOT judge whether the request is clear — a request can be perfectly unambiguous and still deserve a proposal, because the proposal exists so the user sees what is coming, not because you were confused. When genuinely torn, prefer true: an unwanted proposal costs one round trip, an unwanted refactor costs the user their afternoon.`;
 
 /**
  * Parses the predictor's verdict. Anything malformed reads as false — the
@@ -92,44 +104,175 @@ export function parseCarefulVerdict(raw: string): boolean {
 // ── Scout phase ─────────────────────────────────────────────────────────────
 
 /** The system-prompt section that rides for the whole held phase. Removed the
- *  moment the hold lifts, so the working half of the turn is ordinary OVERDRIVE. */
+ *  moment the hold lifts, so the working half of the turn is ordinary OVERDRIVE.
+ *
+ *  This prompt is load-bearing: the phase has no numeric cap (ADR 0005), so the
+ *  stop test below is the whole bound. Weakening it brings the ten minutes back. */
 export const CAREFUL_SCOUT_SECTION = `# CAREFUL MODE — scout phase (you have NOT been approved to act yet)
-The user has asked to approve your plan before you touch anything. Right now you may look, and nothing else.
+The user has asked to approve your proposal before you touch anything. Right now you may look, and nothing else.
 
 - Available to you: Read, Grep, Glob, GraphQuery, BackpackSearch, Skill. Every other tool — writing, editing, running commands, spawning agents, recording tasks, network — is held by the permission engine and will refuse. That is not a malfunction and there is no way around it; it unlocks when the user approves.
-- Investigate properly. You are about to promise the user which files this change touches, and you cannot know that from guessing. Open the files you intend to name. Follow the imports. Find the callers. A briefing that names a file you never opened is the one failure this phase exists to prevent.
-- Think in whole-system terms: what depends on the thing you are about to change, what breaks if you are wrong, and what the smallest change is that genuinely serves the request.
-- Say nothing to the user yet. Your prose during this phase is not shown to them — you are thinking, not reporting. When you have investigated enough, state the approach you have chosen and why, and you will be prompted for the next step.`;
+- You are confirming the TARGET, not proving the PATH. What you write at the end is a proposal of DIRECTION, not a plan: no step list, no task breakdown, no promised diff. You do NOT need to know which files you will change. You will plan properly after the user approves, when every tool is back.
+- LOCATE BEFORE YOU OPEN. GraphQuery answers "which files matter for this topic" (slice), "what breaks if these change" (blast) and "what does this rely on" (deps) from the import graph, without reading anything. Grep finds a name across the whole repository in one call. Use Read when you need to know what code MEANS — and read the part you need with offset/limit instead of opening whole files.
+- STOP TEST. After each round, ask yourself: can I answer all five of these without guessing?
+    1. What does the user want?
+    2. What do I suggest?
+    3. What changes for them?
+    4. Does this need anything the app does not already have?
+    5. What am I unsure about?
+  The moment the answer is yes, stop reading. You are not trying to reach certainty — you are trying to reach an honest proposal the user can correct in one sentence. Anything still unknown after that is question 4, never a reason to read more.
+- Say nothing to the user yet. Your prose during this phase is not shown to them — you are thinking, not reporting. When you have what the stop test asks for, state the direction you have chosen and why, and you will be prompted for the next step.`;
 
-export const CAREFUL_CRITIQUE_TEXT =
-  "<system-reminder>Internal challenge — NOT a user message, and nothing you write here is shown to the user. Attack the approach you just chose.\n\n- Is there a genuinely better option you dismissed too fast, or never considered? Name it.\n- Why this approach and not that one? If you cannot give a concrete reason, you do not yet have a reason.\n- What does this approach cost that the alternative does not — in blast radius, in things that could break, in work the user did not ask for?\n\nIf the challenge changes your mind, say so and state the new approach. If it does not, say so and state plainly why the original still wins. You may read more first if that is what settles it. Do not write the briefing yet.</system-reminder>";
+/**
+ * The starting position handed to the scout before its first round: the design
+ * atlas or import-graph skeleton, plus a slice of the files this request
+ * actually touches. Deterministic — it comes from the graph, not from a model —
+ * which is what lets the proposal state where the work lands without the agent
+ * having to open every file to earn the right to name it.
+ */
+export function carefulScoutMapText(map: string): string {
+  return `<system-reminder>Starting position for this scout phase. It was derived from this workspace's import graph and design map — no model wrote it, so treat it as a statement of what the repository actually contains and start FROM it rather than rediscovering it.
 
-export const CAREFUL_BRIEFING_TEXT = `<system-reminder>Now write the briefing. THIS text IS shown to the user — it is the first thing they will see from you this turn, and the only thing they have to decide on.
+${map}
 
-Use exactly these four headings, in this order, as markdown H1s and with this exact wording:
+Use it to decide what is worth opening. It is also the source for the "where it lands" half of your proposal, so you do not need to open a file merely to be allowed to name it.</system-reminder>`;
+}
+
+/** The soft warn — a reminder of the stop test, never an interruption (ADR 0005). */
+export const CAREFUL_SCOUT_WARN_TEXT =
+  "<system-reminder>You have now spent several rounds reading. Apply the stop test: can you answer all five questions without guessing? If yes, stop reading and state your direction — the proposal comes next. If something is still unknown, that is the last question (\"unclear things\"), not a reason to keep going. Finish the round you are in; nothing is being cut off.</system-reminder>";
+
+/**
+ * The Review Pass: one silent look at the draft before the user sees it. It may
+ * leave the draft untouched — that is a correct outcome and needs no defence,
+ * which is why this text does not ask for one. It also grants no permission to
+ * read, because that is what turned the old two-round critique into a second
+ * scout phase.
+ */
+export const CAREFUL_REVIEW_TEXT =
+  "<system-reminder>Internal review — NOT a user message, and nothing you write here is shown to the user. Read your own draft once, and once only.\n\n- Does it answer the user's actual question, or a nearby one you found more interesting?\n- Did you add scope they did not ask for?\n- Is anything in it a guess about this repository rather than something you saw or the map told you?\n\nIf one of those is true, improve the draft. If none is, leave it exactly as it is and say so in one line — an unchanged draft is a correct outcome. Do not read anything new: if you do not know, that is the fourth section, not a reason to go back to the repository.</system-reminder>";
+
+/**
+ * The pre-proposal round: what only the user can decide, asked BEFORE the
+ * proposal exists.
+ *
+ * These used to be raised in the proposal's fourth section and put to the user
+ * only AFTER they approved. That was backwards — a question whose answer changes
+ * what gets built cannot be asked after the user has approved what gets built,
+ * and an open-ended request ("improve the UI") got a direction invented for it
+ * and only then was asked which direction was wanted.
+ *
+ * The JSON contract is the clarify pre-layer's, so one validator serves both.
+ * The empty answer is the expected one: this fires after the scout has read the
+ * repository, so most questions it might have are already answered.
+ */
+export const CAREFUL_UNCLEARS_TEXT = `<system-reminder>Before you write the proposal: is there anything only the USER can decide?
+
+This is the moment to ask. Anything whose answer would change WHAT YOU BUILD has to be asked now — after they approve is too late, because by then they have approved a direction chosen on a question they never answered.
+
+Reply with STRICT JSON only — no markdown fences, no prose:
+  {"questions": []}
+or
+  {"questions": [{"question": "...?", "header": "max 12 chars", "options": [{"label": "...", "description": "..."}, ...], "multiSelect": false}]}
+
+Ask ONLY about choices that are genuinely theirs:
+  - the DIRECTION or SCOPE of an open-ended request — "improve the UI" does not say improve it HOW, and the repository cannot tell you;
+  - a trade-off with no defensible default, where guessing wrong wastes the work.
+
+Do NOT ask anything you can settle by reading — you have just read the repository. Do NOT ask about implementation detail that is yours to choose. Do NOT ask the user to confirm what the code plainly shows.
+
+At most 3 questions, each one decision-changing, 2-4 mutually distinct options with a one-line description each; put your recommended option first with " (Recommended)" appended to its label. multiSelect true only when the choices genuinely combine.
+
+If nothing genuinely needs them, answer {"questions": []} — asking needlessly is friction, and an assumption you state plainly in the proposal is cheaper than a question.</system-reminder>`;
+
+export const CAREFUL_PROPOSAL_TEXT = `<system-reminder>Now write the proposal. THIS text IS shown to the user — it is the first thing they will see from you this turn, and the only thing they have to decide on.
+
+Use exactly these five headings, in this order, as markdown H1s and with this exact wording:
 
 # What's the objective?
 # What solution am I suggesting as MAGENTRA?
 # What are you going to see as consequences after this change at this repository?
-# Are there any unclear things that have to be clarified by you?
+# Could these changes introduce any new dependencies other than the ones the app's current version uses?
+# Are there any unclear things that have to be clarified by the user?
+
+WRITE IN PLAIN SPEECH. Short sentences, one idea each, common words, active voice. No nested clauses, no long asides. Plain is a STYLE, never a language: write it in whatever language the user is writing to you in — plain Turkish for a Turkish user, plain English for an English one.
 
 Rules for each section:
 
 1. OBJECTIVE — what the user actually wants, in your own words, in a sentence or two. If your reading of it differs at all from a literal reading of their message, say so here.
 
-2. SOLUTION — the approach you chose. Short. The reasoning that got you here belongs in one line, not a page.
+2. SOLUTION — the direction you propose, and the one line of reasoning behind it. This is a DIRECTION, not a plan: no numbered steps, no task breakdown, no ordering. The user is approving where you are headed, and you will plan the route after they say yes.
 
 3. CONSEQUENCES — the section that carries the weight. Two labelled halves, always in this order:
 
    **What changes for you**
-   Plain language, no file paths. What the product will do that it does not do now, what the user will be able to do that they could not, what will feel different, what will slow down, what will break. This is a restatement of your solution in the user's terms — someone who skipped section 2 must still learn here what you are about to do and what they will be left with. If the change is purely internal and they will notice nothing, say exactly that in one bullet rather than inventing an effect.
+   Plain language, no file paths. What the product will do that it does not do now, what the user will be able to do that they could not, what will feel different, what will slow down, what will break. This is a restatement of your direction in the user's terms — someone who skipped section 2 must still learn here what you are about to do and what they will be left with. If the change is purely internal and they will notice nothing, say exactly that in one bullet rather than inventing an effect.
 
-   **What will be touched**
-   The concrete prediction: every file you will change, every file you will create, every script you will add. Named paths in backticks, one per bullet, each with a few words on what happens to it. Mark new files NEW. Only name files you actually opened during the scout — if you are guessing, go back and look first.
+   **Where it lands**
+   Which part of the repository this falls in: the area, and the few files that matter most. The map you were given at the start of this phase is the source — it came from the import graph, so it states what this repository contains. Do NOT promise a complete file list and do NOT predict the diff. Naming the neighbourhood is the job; a list you cannot stand behind is worse than no list.
 
-4. UNCLEAR — the questions whose answers would change what you build. ASK NOTHING HERE — just list them, and note what you would assume if the user says nothing. You will get to put them to the user properly if they approve. If there are genuinely none, say "Nothing — the request is unambiguous." and do not manufacture doubt.
+4. DEPENDENCIES — could this make the app need anything it does not already ship with? Three kinds count, not just the first:
+   - a new PACKAGE (npm or otherwise);
+   - a new SYSTEM requirement — a binary on the machine, a service, a call to the network at runtime;
+   - a new PLATFORM capability the app would now rely on (a browser/runtime feature newer than what it already needs).
+   For each one: name it, say in one line why the work needs it, and name its licence. If writing the code instead would avoid it, say so and say what that costs. MAGENTRA is deliberately close to dependency-free and ships everything it uses locally, so that it works offline — "None — this uses what is already here." is both the expected answer and the best one. Never list something that is already in package.json; the question is about what would be ADDED.
 
-Itemize. Keep every bullet to something a person can read at a glance. Write the briefing now and nothing else — no preamble, no sign-off, no offer to proceed. The approval prompt is added for you.</system-reminder>`;
+5. UNCLEAR — what is still open AFTER the round of questions you just had. You have already asked the user everything that was theirs to decide, and their answers are above and binding; this section is the remainder. List the assumptions you are proceeding on that they did not settle, and anything you could not check, each with the assumption you chose. ASK NOTHING HERE — the time for questions has passed, and the user is about to decide on the whole proposal. If nothing genuinely remains, say "Nothing — the request is unambiguous." and do not manufacture doubt.
+
+Itemize. Keep every bullet to something a person can read at a glance. Write the proposal now and nothing else — no preamble, no sign-off, no offer to proceed. The approval prompt is added for you.</system-reminder>`;
+
+// ── Path check ──────────────────────────────────────────────────────────────
+// Every path the proposal names is a claim about the user's repository, and the
+// one kind of claim that can be silently false. The location half of section 3
+// comes from the graph and so cannot be invented — but the prose around it can
+// still name a file from memory, and that is what this catches.
+
+const CODE_SPAN_RE = /`([^`\n]+)`/g;
+/** A single path-ish token: word characters and separators, nothing else. The
+ *  optional trailing separator admits a directory — the location half of a
+ *  proposal names areas, and an area is as checkable as a file. */
+const PATH_SHAPE_RE = /^[A-Za-z0-9_.@~-]+(?:[\\/][A-Za-z0-9_.@~-]+)*[\\/]?$/;
+/** A file extension proper — starts with a letter, so "0.9.0" is not a file. */
+const FILE_EXT_RE = /\.[A-Za-z][A-Za-z0-9]{0,7}$/;
+
+/**
+ * The path-like tokens a proposal claims, taken from its backticked spans only
+ * (the format the proposal instructions ask for). Pure, so it can be checked
+ * without a workspace.
+ *
+ * Deliberately conservative in what it treats as a path: prose, commands, flags
+ * and version numbers must not be reported as missing files, because a false
+ * alarm sends the model editing something that was already correct.
+ */
+export function extractCandidatePaths(text: string): string[] {
+  const out = new Set<string>();
+  CODE_SPAN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = CODE_SPAN_RE.exec(text)) !== null) {
+    const raw = match[1]!
+      .trim()
+      .replace(/:\d+(?::\d+)?$/, "") // a file:line reference is still a file
+      .replace(/[),.;:]+$/, "");
+    if (raw.length === 0 || raw.length > 200) continue;
+    if (/\s/.test(raw)) continue; // a command or a sentence, not a path
+    if (/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(raw)) continue; // a URL
+    if (!PATH_SHAPE_RE.test(raw)) continue;
+    // A bare backticked word is a symbol or a flag. Only a separator or a real
+    // file extension makes it a claim about a file.
+    if (!raw.includes("/") && !raw.includes("\\") && !FILE_EXT_RE.test(raw)) continue;
+    out.add(raw.replace(/\\/g, "/").replace(/^\.\//, ""));
+  }
+  return [...out];
+}
+
+/** Sent back when the proposal names paths this workspace does not have. */
+export function carefulUnknownPathsText(paths: string[]): string {
+  return `<system-reminder>Path check — these do not exist in this workspace:
+
+${paths.map((p) => `- ${p}`).join("\n")}
+
+Every path you name is a claim about the user's repository, and they will read it as one. For each: correct it to the real path, say plainly that it is a file you would CREATE, or drop the mention. Then output the whole proposal again in the same five-section format, changing nothing else.</system-reminder>`;
+}
 
 // ── Approval gate ───────────────────────────────────────────────────────────
 // The card reuses the existing question_request path, so there is no new wire
@@ -145,15 +288,15 @@ export function carefulApprovalQuestion(revisionsSoFar: number): Question[] {
     {
       question:
         revisionsSoFar === 0
-          ? "Approve this plan and start work? To change it, type what you want different."
-          : `Approve this revised plan (revision ${revisionsSoFar}) and start work? To change it again, type what you want different.`,
+          ? "Approve this proposal and start work? To change it, type what you want different."
+          : `Approve this revised proposal (revision ${revisionsSoFar}) and start work? To change it again, type what you want different.`,
       header: "APPROVE",
       multiSelect: false,
       options: [
         {
           label: CAREFUL_APPROVE_LABEL,
           description:
-            "The hold lifts and the agent does exactly what it just described, with full OVERDRIVE autonomy. Anything it listed as unclear is put to you first.",
+            "The hold lifts and the agent works in the direction it just described, with full OVERDRIVE autonomy. Anything it listed as unclear is put to you first.",
         },
         {
           label: CAREFUL_CANCEL_LABEL,
@@ -177,14 +320,28 @@ export function classifyCarefulAnswer(
 }
 
 export function carefulRevisionText(feedback: string): string {
-  return `<system-reminder>The user did NOT approve that plan. They read your briefing and replied:\n\n${feedback}\n\nThis is direct steering and it outranks your own judgement about the approach — take it as a requirement, not a suggestion. You are still in the scout phase and still held to the reading tools. Read whatever you now need to read, revise the approach accordingly, and write a fresh briefing in the same four-section format. Do not defend the previous plan; do not re-present it unchanged unless the user's message actually asks you to.</system-reminder>`;
+  return `<system-reminder>The user did NOT approve that proposal. They read it and replied:\n\n${feedback}\n\nThis is direct steering and it outranks your own judgement about the direction — take it as a requirement, not a suggestion. You are still in the scout phase and still held to the reading tools. A fresh map for their new direction follows this message. Read whatever you now need to read, revise the direction accordingly, and write a fresh proposal in the same five-section format. Do not defend the previous one; do not re-present it unchanged unless the user's message actually asks you to.</system-reminder>`;
 }
 
-export const CAREFUL_APPROVED_TEXT = `<system-reminder>The user APPROVED your plan. The hold is lifted — every tool is available to you again and you are back in ordinary OVERDRIVE: nothing asks from here on.
+/**
+ * Handed to the model the moment the hold lifts. The approved proposal is
+ * repeated here in full ON PURPOSE: it is the brief for the work, not a
+ * reference back to something buried in the transcript under the scout's tool
+ * results. This is what makes the checkpoint worth its cost — the working phase
+ * starts from an understanding the user has already corrected, which is better
+ * input than the raw request was.
+ */
+export function carefulApprovedText(proposal: string): string {
+  return `<system-reminder>The user APPROVED your proposal. The hold is lifted — every tool is available to you again and you are back in ordinary OVERDRIVE: nothing asks from here on.
 
-Before you touch anything: if your briefing listed unclear items, put them to the user NOW with a single AskUserQuestion call, offering concrete options and your recommendation for each. That was the promise the briefing made. If it listed nothing unclear, skip this and start.
+This is what they approved. It is your brief for the work:
 
-Then build exactly what you described. If the work turns out to need something materially different from what the user approved — a file you did not list, a consequence you did not predict — say so plainly in your wrap-up rather than quietly widening the scope.</system-reminder>`;
+${proposal.trim()}
+
+Everything that was the user's to decide was already put to them before this proposal was written, and their answers are in this conversation above. Do NOT open another round of questions now — they have answered, read, and approved. Start.
+
+Plan the work and build it. The proposal is a direction; the plan is yours to make now, so decompose it with TaskCreate as you normally would. If the work turns out to need something materially different from what the user approved — a consequence you did not predict, a scope you did not describe — say so plainly rather than quietly widening it.</system-reminder>`;
+}
 
 export const CAREFUL_CANCELLED_TEXT =
-  "<system-reminder>The user declined the plan and the turn is over. Nothing was changed.</system-reminder>";
+  "<system-reminder>The user declined the proposal and the turn is over. Nothing was changed.</system-reminder>";

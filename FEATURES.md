@@ -60,15 +60,19 @@ When ON (composer toggle, `/overdrive on`, or `set_overdrive`), nothing asks: th
 
 ## CAREFUL MODE — the OVERDRIVE modifier
 
-A modifier of OVERDRIVE, not a third stance (composer pill, `/careful on`, or the `careful` field on `set_overdrive`). OVERDRIVE removes approval from every *action*; CAREFUL adds it back at exactly one *decision* — which approach to take. Armed independently of OVERDRIVE and inert while it is off; session-scoped, and `/resume` restores it from the transcript meta.
+A modifier of OVERDRIVE, not a third stance (composer pill, `/careful on`, or the `careful` field on `set_overdrive`). OVERDRIVE removes approval from every *action*; CAREFUL adds it back at exactly one *decision* — which direction to take. What the user approves is a **proposal of direction, never a plan** (ADR 0003), and the approved proposal then becomes the brief the work runs on. Armed independently of OVERDRIVE and inert while it is off; session-scoped, and `/resume` restores it from the transcript meta.
 
 - [ ] **Predictor** — one main-model inference before the turn decides whether the request needs several tool-driven steps, or one irreversible step. Size and reversibility only, never clarity. Strictly fail-open: a thrown call or malformed verdict runs the turn normally. Root attended sessions only — never children, never unattended missions. `llm`
 - [ ] **Scout hold** — while held, only `Read`/`Grep`/`Glob`/`GraphQuery`/`BackpackSearch`/`Skill` run; everything else is refused with a teaching message. Beats allow rules, `allow_always` grants, session allows, and OVERDRIVE itself; a user's own deny rule still refuses first. Children inherit it via the shared `PermissionEngine`. Lifted unconditionally by the turn's `finally`. `pure`
-- [ ] **Silent deliberation** — assistant text and thinking are suppressed for the whole held phase, so the user sees tool activity but no prose until the briefing. `pure`
-- [ ] **Self-critique** — 2 challenge rounds before the first briefing, one fewer after each revision the user types, floor 0: their steering outranks the agent's own second-guessing. `llm`
-- [ ] **Briefing** — four fixed H1 sections (objective, solution, consequences, unclear). Consequences carries **what changes for you** first, then **what will be touched** with named paths — the forcing function that makes the scout actually open the files it names. `llm`
-- [ ] **Approval gate** — reuses `question_request`; `Start work` lifts the hold, `Cancel — change nothing` ends the turn, and any free text is a revision that re-scouts with the hold still on. Unlimited revisions. An unanswered or interrupted gate reads as cancel, never as approval. `pure`
-- [ ] **Post-approval** — the agent puts its listed unclears to the user via `AskUserQuestion` before starting, then works with full OVERDRIVE autonomy; the self-verify rung is unchanged. `llm`
+- [ ] **Scout map** — before its first round the scout is handed the atlas (or an import-graph skeleton) plus a slice of the repository seeded from the request itself, so it starts from where the work lands instead of discovering it. Graph-derived, so it is a repository fact and not a model's guess. `pure`
+- [ ] **Silent deliberation** — assistant text and thinking are suppressed for the whole held phase, so the user sees tool activity but no prose until the proposal. Phase edges are marked with `▶ ` banners. `pure`
+- [ ] **Stop test, not a cap** — the scout prompt carries a checkable stop condition ("can you answer all four without guessing?"), and after 4 rounds one soft warn repeats it. Nothing is ever cut mid-read: a scout stopped early proposes from a half-formed picture (ADR 0005). `llm`
+- [ ] **Review pass** — one silent look at its own draft before the user sees it; leaving the draft unchanged is a correct outcome, and it reads nothing new. A revision gets none — the user has supplied the judgement it substitutes for. `llm`
+- [ ] **Open questions first** — after scouting and before the proposal exists, the agent surfaces anything only the user can decide as a question round (same JSON contract and validator as the clarify pre-layer). Usually empty, since the scout has just read the repository; when empty it costs no round trip. A revision gets no new round — the user's own words are the answer. `llm`
+- [ ] **Proposal** — four fixed H1 sections (objective, solution, consequences, unclear), written in Plain Speech in the user's own language. Consequences carries **what changes for you** first, then **where it lands** — the area from the import graph, never a promised file manifest. `llm`
+- [ ] **Path check** — the proposal is written muted; every path it names is checked against the workspace, and unknown ones are sent back to be corrected or declared new (max 2 rounds) before it is ever shown. `pure`
+- [ ] **Approval gate** — reuses `question_request`; `Start work` lifts the hold, `Cancel — change nothing` ends the turn, and any free text is a revision that re-scouts with the hold still on and a fresh map seeded from what the user said. Unlimited revisions. An unanswered or interrupted gate reads as cancel, never as approval. `pure`
+- [ ] **Post-approval** — the approved proposal is injected as the working brief and work starts immediately; no further question round, because everything the user could settle was settled before the proposal. Plans with `TaskCreate` and works with full OVERDRIVE autonomy; the self-verify rung is unchanged. `llm`
 
 ## Agent
 
@@ -162,6 +166,10 @@ A modifier of OVERDRIVE, not a third stance (composer pill, `/careful on`, or th
 - [ ] **Setup wizard** — first-run credential entry writes `.env` and tests the connection. `ui` + `net`
 - [ ] **Crew designer** — the CREW view lists agents and can add a doc to a backpack by drag-and-drop. `ui`
 - [ ] **Changes panel** — accumulated `file_edited` diffs render. `ui`
+- [x] **Streaming Markdown** — each block renders as soon as it is complete, not when the turn ends; a half-streamed fence, table or formula stays plain text until its closing delimiter arrives, so nothing flickers through a partial parse. `ui`
+- [x] **Markdown before a question card** — a `question_request` closes the streaming message first, so the text above an approval card is rendered while the user is deciding on it rather than after. `ui`
+- [x] **Mathematics** — `$…$`/`\(…\)` inline and `$$…$$`/`\[…\]` display LaTeX render as native **MathML**: no library, no CDN, no extra web font, and nothing the strict CSP has to be relaxed for. Symbols, sub/superscripts, fractions, roots, big operators with limits, delimiters, text runs and matrix/cases environments; anything unparsed falls back to its own source. Prices (`$5, not $7`) and backticked `` `$x$` `` stay text. `ui`
+- [x] **Fully local assets** — `default-src 'none'` with `style-src`/`script-src`/`font-src` all `'self'`: nothing is fetched from the web at runtime, so the app works offline and in an air-gapped environment. Both bundled fonts are SIL OFL 1.1 with the licence text and copyright notices shipped alongside them (`app/renderer/fonts/`). `ui`
 
 ## Packaging
 

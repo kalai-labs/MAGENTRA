@@ -38,8 +38,8 @@ function applyCarefulShell() {
   carefulBtnEl.classList.toggle("on", on);
   carefulBtnEl.setAttribute("aria-pressed", on ? "true" : "false");
   carefulBtnEl.title = on
-    ? "CAREFUL active — substantial requests present a plan for your approval first. Click to turn off."
-    : "CAREFUL — propose a plan and wait for approval before acting";
+    ? "CAREFUL active — substantial requests present a short proposal for your approval first. Click to turn off."
+    : "CAREFUL — propose a direction and wait for approval before acting";
 }
 
 function onCarefulToggleClick() {
@@ -49,7 +49,7 @@ function onCarefulToggleClick() {
   applyCarefulShell();
   announce(
     uiSettings.careful
-      ? "CAREFUL mode on — Magentra will propose a plan for your approval before acting."
+      ? "CAREFUL mode on — Magentra will propose a direction for your approval before acting."
       : "CAREFUL mode off.",
   );
 }

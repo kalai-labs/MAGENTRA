@@ -99,7 +99,7 @@ Emitted once when a session begins (on `start()`, after `/clear`, and after a re
 | `cwd` | string | Absolute working directory. |
 | `model` | string | Configured model id. |
 | `overdrive` | boolean | Whether OVERDRIVE (the fully-autonomous stance) is active for the session. |
-| `careful` | boolean? | Whether CAREFUL MODE is armed — the OVERDRIVE modifier that makes a substantial request present a plan for approval before acting. Only has an effect while `overdrive` is true, and remembered independently of it. |
+| `careful` | boolean? | Whether CAREFUL MODE is armed — the OVERDRIVE modifier that makes a substantial request present a proposal for approval before acting. Only has an effect while `overdrive` is true, and remembered independently of it. |
 | `commands` | `SlashCommandInfo[]` | The engine's slash-command registry, so the frontend palette can never drift. |
 | `rateCard` | `Record<string, { input, output, cacheRead?, cacheWrite?, contextWindow }>` | Per-model $/1M rates + context windows — the built-in table with user `pricing` overrides applied. The frontend's single source for model hints; it must keep no pricing copy of its own. |
 
@@ -579,7 +579,7 @@ Toggles the always-ask deletion guard (`true` = guard active, the default).
 ### `set_overdrive`
 
 Toggles OVERDRIVE, the fully-autonomous stance. `careful` arms CAREFUL MODE, the
-modifier that makes a substantial request present a plan for approval before it
+modifier that makes a substantial request present a proposal for approval before it
 acts.
 
 | Field | Type |
