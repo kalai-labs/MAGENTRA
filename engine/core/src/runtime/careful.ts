@@ -4,10 +4,15 @@
 // one DECISION — which direction to take — and nowhere else. A careful turn runs:
 //
 //   predictor  → is this substantial enough to propose?  (one inference, fail-open)
+//   questions  → what only the user can decide, asked before anything is read
 //   scout      → read-only investigation, everything else held by the permission
 //                engine, deliberation suppressed so the user sees no prose yet
-//   review     → one silent look at its own draft; leaving it unchanged is fine
-//   proposal   → the five-section document, the first prose the user sees
+//   proposal   → the five-section document, the first prose the user sees. The
+//                scout writes it the moment its stop test passes, because the
+//                format rides in its own system prompt — no round trip is spent
+//                asking for it, and none on reviewing a draft that did not exist
+//                yet. The self-check happens inside the same inference, on the
+//                real draft.
 //   approval   → start / cancel / free-text revision (revisions are unlimited)
 //
 // What the user approves is a PROPOSAL OF DIRECTION, not a plan: what they want,
@@ -102,14 +107,81 @@ export function parseCarefulVerdict(raw: string): boolean {
   return (parsed as Record<string, unknown>).careful === true;
 }
 
+/** Salvaged objects kept, and the longest span worth attempting to parse. */
+const SALVAGE_MAX_OBJECTS = 16;
+const SALVAGE_MAX_SPAN = 8000;
+
+/**
+ * The complete question objects in a reply that is not valid JSON, in the order
+ * they appear.
+ *
+ * The way this layer fails is not "malformed" — it is TRUNCATED. Five questions
+ * with four described options each is a long reply, and one cut off at the token
+ * limit ends mid-string with no closing brace. Strict parsing then reads an
+ * over-long, entirely correct answer as "ask the user nothing", silently: the
+ * request reaches the scout unclarified and the user is never told a question
+ * round happened at all. Whatever question objects completed before the cutoff
+ * are still good, and asking three of five questions beats asking none.
+ *
+ * Scans for balanced braces at any depth while respecting strings and escapes,
+ * so a `}` inside a question's own text does not close it early. Keeps only
+ * spans that parse AND carry a `question` key — which excludes both the outer
+ * `{"questions": …}` wrapper and the `{"label": …}` option objects nested
+ * inside. The unterminated tail the cutoff landed in is simply never emitted.
+ * Bounded, and never throws: anything it cannot make sense of comes back as an
+ * empty list, which every caller reads as "ask nothing".
+ */
+export function salvageQuestionObjects(raw: string): unknown[] {
+  const out: unknown[] = [];
+  const starts: number[] = [];
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < raw.length && out.length < SALVAGE_MAX_OBJECTS; i++) {
+    const ch = raw[i]!;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") starts.push(i);
+    else if (ch === "}") {
+      const start = starts.pop();
+      if (start === undefined) continue; // a stray brace in prose before the JSON
+      if (i + 1 - start > SALVAGE_MAX_SPAN) continue;
+      try {
+        const parsed: unknown = JSON.parse(raw.slice(start, i + 1));
+        if (typeof parsed === "object" && parsed !== null && "question" in parsed) out.push(parsed);
+      } catch {
+        // not JSON after all — a later balanced span may still be
+      }
+    }
+  }
+  return out;
+}
+
 // ── Scout phase ─────────────────────────────────────────────────────────────
 
-/** The system-prompt section that rides for the whole held phase. Removed the
- *  moment the hold lifts, so the working half of the turn is ordinary OVERDRIVE.
+/**
+ * The system-prompt section that rides for the whole held phase. Removed the
+ * moment the hold lifts, so the working half of the turn is ordinary OVERDRIVE.
  *
- *  This prompt is load-bearing: the phase has no numeric cap (ADR 0005), so the
- *  stop test below is the whole bound. Weakening it brings the ten minutes back. */
-export const CAREFUL_SCOUT_SECTION = `# CAREFUL MODE — scout phase (you have NOT been approved to act yet)
+ * This prompt is load-bearing: the phase has no numeric cap (ADR 0005), so the
+ * stop test below is the whole bound. Weakening it brings the ten minutes back.
+ *
+ * It carries the proposal format itself, which is what removed the two round
+ * trips the phase used to spend after the reading was already finished. The old
+ * shape was: the scout announces it is ready (one inference), a reminder asks it
+ * to review its draft (a second inference — reviewing a draft that did not exist
+ * yet, since the proposal had not been written), a reminder asks for the
+ * proposal (a third). Now the scout writes the proposal as its first text-only
+ * response, and the self-check happens inside that same inference, against the
+ * real draft. {@link carefulProposalText} remains as the fallback for a scout
+ * that stops without proposing.
+ */
+export function carefulScoutSection(userText: string): string {
+  return `# CAREFUL MODE — scout phase (you have NOT been approved to act yet)
 The user has asked to approve your proposal before you touch anything. Right now you may look, and nothing else.
 
 - Available to you: Read, Grep, Glob, GraphQuery, BackpackSearch, Skill. Every other tool — writing, editing, running commands, spawning agents, recording tasks, network — is held by the permission engine and will refuse. That is not a malfunction and there is no way around it; it unlocks when the user approves.
@@ -117,6 +189,7 @@ The user has asked to approve your proposal before you touch anything. Right now
 - THE USER HAS ALREADY ANSWERED your questions, above. Those answers are requirements, and they also tell you where to look — let them narrow what you open rather than reading as if you had never asked.
 - DO NOT RE-READ. On a second or later proposal in this conversation, the map lists what you already read and what has not changed since. Trust it. Re-open a file only when you need a part you did not see, or when it is no longer visible above.
 - LOCATE BEFORE YOU OPEN. GraphQuery answers "which files matter for this topic" (slice), "what breaks if these change" (blast) and "what does this rely on" (deps) from the import graph, without reading anything. Grep finds a name across the whole repository in one call. Use Read when you need to know what code MEANS — and read the part you need with offset/limit instead of opening whole files.
+- READ THE CODE, NOT ONLY THE PROSE. A README, a changelog or a file of constants states intent; the code decides behaviour. If you are about to propose a change to what this app DOES, open the file where that behaviour lives first — your map ranks the source files for exactly this, most relevant first. A proposal built from documentation alone is a guess with a confident face, and the user cannot tell the difference.
 - STOP TEST. After each round, ask yourself: can I answer all five of these without guessing?
     1. What does the user want?
     2. What do I suggest?
@@ -124,7 +197,10 @@ The user has asked to approve your proposal before you touch anything. Right now
     4. Does this need anything the app does not already have?
     5. What am I unsure about?
   The moment the answer is yes, stop reading. You are not trying to reach certainty — you are trying to reach an honest proposal the user can correct in one sentence. Anything still unknown after that is question 5, never a reason to read more.
-- Say nothing to the user yet. Your prose during this phase is not shown to them — you are thinking, not reporting. When you have what the stop test asks for, state the direction you have chosen and why, and you will be prompted for the next step.`;
+- Nothing you write is shown to the user until the proposal itself — you are thinking, not reporting. So do not announce that you are ready and wait to be asked: the moment the stop test passes, write the proposal. The next message you send that calls no tool must BE the proposal, in the format below, and nothing else.
+
+${carefulProposalSpec(userText)}`;
+}
 
 /**
  * The starting position handed to the scout before its first round: the design
@@ -141,19 +217,32 @@ ${map}
 Use it to decide what is worth opening. It is also the source for the "where it lands" half of your proposal, so you do not need to open a file merely to be allowed to name it.</system-reminder>`;
 }
 
+/**
+ * The grounding floor: fired once, when a scout is about to propose without
+ * having opened a single one of the source files its own map ranked.
+ *
+ * The failure it catches is quiet and looks like success — a scout reads the
+ * README and a file of constants, finds them readable, passes its own stop test
+ * and proposes a change to behaviour it never looked at. The stop test cannot
+ * catch this, because a vague request makes all five of its questions easy to
+ * answer badly. This is deterministic: the engine knows what was ranked and it
+ * knows what was read.
+ *
+ * A reminder, not a block — the scout may genuinely have no need of the code
+ * (a documentation request, a dependency question), and it is told to say so
+ * and carry on. Firing once per proposal is the whole budget.
+ */
+export function carefulGroundingText(files: string[]): string {
+  return `<system-reminder>Before you propose: you have not opened any of the source files your map ranked for this request. These are the top of that ranking:
+
+${files.map((f) => `- ${f}`).join("\n")}
+
+If your proposal changes what this app DOES, open the part of these that decides it — you are about to describe behaviour you have not read, and the user cannot tell that from the proposal. Use offset/limit and read the part you need, not the whole file. If the work genuinely does not touch the code — it is about documentation, or a dependency, or a question the map already answered — then say so in one line and write the proposal now. This is asked once; nothing is being blocked.</system-reminder>`;
+}
+
 /** The soft warn — a reminder of the stop test, never an interruption (ADR 0005). */
 export const CAREFUL_SCOUT_WARN_TEXT =
-  "<system-reminder>You have now spent several rounds reading. Apply the stop test: can you answer all five questions without guessing? If yes, stop reading and state your direction — the proposal comes next. If something is still unknown, that is the last question (\"unclear things\"), not a reason to keep going. Finish the round you are in; nothing is being cut off.</system-reminder>";
-
-/**
- * The Review Pass: one silent look at the draft before the user sees it. It may
- * leave the draft untouched — that is a correct outcome and needs no defence,
- * which is why this text does not ask for one. It also grants no permission to
- * read, because that is what turned the old two-round critique into a second
- * scout phase.
- */
-export const CAREFUL_REVIEW_TEXT =
-  "<system-reminder>Internal review — NOT a user message, and nothing you write here is shown to the user. Read your own draft once, and once only.\n\n- Does it answer the user's actual question, or a nearby one you found more interesting?\n- Did you add scope they did not ask for?\n- Is anything in it a guess about this repository rather than something you saw or the map told you?\n\nIf one of those is true, improve the draft. If none is, leave it exactly as it is and say so in one line — an unchanged draft is a correct outcome. Do not read anything new: if you do not know, that is the last section, not a reason to go back to the repository.</system-reminder>";
+  "<system-reminder>You have now spent several rounds reading. Apply the stop test: can you answer all five questions without guessing? If yes, stop reading and write the proposal — the format is in your instructions and it is what the user is waiting for. If something is still unknown, that is the last section (\"unclear things\"), not a reason to keep going. Finish the round you are in; nothing is being cut off.</system-reminder>";
 
 /**
  * The question round: what only the user can decide, asked BEFORE the scout
@@ -171,7 +260,8 @@ export const CAREFUL_REVIEW_TEXT =
  * the repository, do not ask what you can see" — which suppresses the questions
  * that were never about the repository at all.
  */
-export const CAREFUL_QUESTIONS_SYSTEM = `You are the question layer of CAREFUL MODE in an autonomous coding agent. A substantial piece of work is about to begin. You see the user's request, a snippet of the previous exchange, and a map of the codebase derived from its import graph.
+export function carefulQuestionsSystem(userText: string): string {
+  return `You are the question layer of CAREFUL MODE in an autonomous coding agent. A substantial piece of work is about to begin. You see the user's request, a snippet of the previous exchange, and a map of the codebase derived from its import graph.
 
 Ask the user everything that only THEY can decide — BEFORE the agent reads anything or proposes anything. Their answers do two jobs: they decide what gets built, and they tell the agent WHERE TO LOOK. A question asked later is worth far less.
 
@@ -179,6 +269,8 @@ Reply with STRICT JSON only — no markdown fences, no prose:
   {"questions": []}
 or
   {"questions": [{"question": "...?", "header": "max 12 chars", "options": [{"label": "...", "description": "..."}, ...], "multiSelect": false}]}
+
+YOUR REPLY IS READ BY A MACHINE AND IT IS LENGTH-LIMITED. Keep every label under 40 characters and every description to ONE short line. A reply that runs long is cut off mid-JSON, and a cut-off reply asks the user nothing at all — which is the worst outcome available to you.
 
 WHAT TO ASK ABOUT. Go through these and ask about every one the request genuinely leaves open:
   1. DIRECTION — "improve the UI" does not say improve it HOW. Which way do they want to go?
@@ -188,9 +280,11 @@ WHAT TO ASK ABOUT. Go through these and ask about every one the request genuinel
   5. DONE — what would make them call this finished, when that is not obvious from the request.
   6. AUDIENCE or STYLE — whenever the work produces something a person will read or look at.
 
-WHEN THE VOCABULARY CHECK FIRES. You may be told that the request's words barely appear in this codebase. That is a measurement, not an opinion, and it means nothing has yet pinned down what the request refers to. In that case asking is necessary: pick the questions whose answers would most narrow the search, and lean toward the upper end of the range below.
+WHEN THE VOCABULARY CHECK FIRES. You may be told that the request's words barely appear in this codebase. That is a measurement, not an opinion, and it means nothing has yet pinned down what the request refers to. When you are told that, returning an empty list is WRONG: ask at least two questions, and pick the ones whose answers would most narrow the search.
 
 HOW MANY. Ask every question whose answer would change what gets built or where the agent looks. For a request that reached this layer that is usually 2 to 4, and never more than 5. UNDER-ASKING IS THE EXPENSIVE MISTAKE HERE: this request is large enough that the agent is about to spend real effort on it, and one wrong assumption wastes all of it. Do not pad with questions that change nothing — but do not talk yourself out of a real one either.
+
+A REQUEST THAT NAMES NO DIRECTION ALWAYS NEEDS ONE. "Improve it", "make it better", "add features", "clean this up" name a wish, not a direction — there are a dozen good answers and the user has one of them in mind. Ask which. Never let the agent pick the direction for a request shaped like that.
 
 WHAT NOT TO ASK.
   - Anything the codebase answers. The map shows what exists and the agent will read the code itself. Never ask the user to describe their own repository.
@@ -198,13 +292,63 @@ WHAT NOT TO ASK.
   - Anything the user already said in the request or the previous exchange.
   - Confirmation ("shall I proceed?", "is this OK?"). The user approves the proposal at a later step; that is not this.
 
-HOW TO ASK. Write every question and every option in THE USER'S OWN LANGUAGE — if they write Turkish, ask in Turkish. Keep them short and plain: one idea per sentence, common words. 2-4 mutually distinct options each, with a one-line description; put your recommended option first with " (Recommended)" appended to its label. multiSelect true only when the choices genuinely combine.
+HOW TO ASK. Keep every question short and plain: one idea per sentence, common words. 2-4 mutually distinct options each, with a one-line description; put your recommended option first with " (Recommended)" appended to its label — translated, if you are not writing in English. multiSelect true only when the choices genuinely combine.
+
+${carefulLanguageRule(userText, "every question and every option")}
 
 If the request truly leaves nothing open — it names exactly what to do and there is one sensible way to do it — answer {"questions": []}.`;
+}
 
-export const CAREFUL_PROPOSAL_TEXT = `<system-reminder>Now write the proposal. THIS text IS shown to the user — it is the first thing they will see from you this turn, and the only thing they have to decide on.
+/**
+ * Appended to the question prompt for the one retry a cut-off round gets.
+ *
+ * Only reached when the engine SAW the reply stop at the token limit and
+ * nothing could be salvaged from it. The instruction is to write less, not to
+ * think less: the failure was length, and a short round that reaches the user
+ * beats a thorough one that does not.
+ */
+export const CAREFUL_QUESTIONS_RETRY = `
 
-Use exactly these five headings, in this order, as markdown H1s:
+YOUR PREVIOUS REPLY WAS CUT OFF by the length limit, and nothing could be recovered from it — so the user was asked nothing at all. Answer again and answer SHORTER: at most 3 questions, at most 3 options each, and every description at most 12 words. Ask about the things that matter most and drop the rest. A short round the user actually sees beats a thorough one that never arrives.`;
+
+/**
+ * The language rule, anchored to the user's OWN words rather than left as an
+ * abstraction.
+ *
+ * "Write in the language the user is writing in" is not enough, and the failure
+ * it produces is specific: the model takes its cue from whatever it has just
+ * been reading. Scout a repository whose comments are Turkish on behalf of a
+ * user writing English and you get English headings over a Turkish body, with
+ * any English phrase this instruction happens to contain pasted through
+ * verbatim. Quoting the request back makes the decision concrete — there is one
+ * sample, it is the user's, and the code is explicitly not it.
+ */
+function carefulLanguageRule(userText: string, what: string): string {
+  const sample = userText.trim().replace(/\s+/g, " ").slice(0, 300);
+  return `LANGUAGE — decide it once, from this and nothing else. The user wrote:
+
+  «${sample}»
+
+Write EVERY word of ${what} in THAT language — headings, bullets, labels, all of it. The language of this instruction, of the code, of the comments, of the file names and of the documents you read is IRRELEVANT: a repository written in one language and a user writing in another is normal, and the user's language always wins. Never mix two languages in one document, and never copy an English phrase out of these instructions into text that is not in English — translate it.`;
+}
+
+/**
+ * The five sections and how to write them — ONE definition, used twice.
+ *
+ * It rides inside {@link carefulScoutSection} so the scout can write the
+ * proposal the moment its stop test passes, and it is repeated by
+ * {@link carefulProposalText} only when a scout stops without having written
+ * one. Two copies of this text would drift, and a proposal format that differs
+ * between the common path and the fallback path is a format the user sees
+ * change under them.
+ */
+export function carefulProposalSpec(userText: string): string {
+  return `## The proposal
+It is the first thing the user sees from you this turn, and the only thing they decide on.
+
+${carefulLanguageRule(userText, "the proposal")}
+
+Use exactly these five headings, in this order, as markdown H1s. They are written here in English; translate each one naturally into the user's language, keep it a question, and keep its meaning exact. Never add, merge, drop or reorder one.
 
 # What's the objective?
 # What solution am I suggesting as MAGENTRA?
@@ -212,9 +356,7 @@ Use exactly these five headings, in this order, as markdown H1s:
 # Could these changes introduce any new dependencies other than the ones the app's current version uses?
 # Are there any unclear things that have to be clarified by the user?
 
-They are written above in English. Write them in THE LANGUAGE THE USER IS WRITING IN, translated naturally — a Turkish user must read Turkish headings. Keep all five, keep this order, keep each one a question, and keep its meaning exact. Never add, merge, drop or reorder one.
-
-WRITE IN PLAIN SPEECH. Short sentences, one idea each, common words, active voice. No nested clauses, no long asides. Plain is a STYLE, never a language: write it in whatever language the user is writing to you in — plain Turkish for a Turkish user, plain English for an English one.
+WRITE IN PLAIN SPEECH. Short sentences, one idea each, common words, active voice. No nested clauses, no long asides. Plain is a STYLE, not a language.
 
 Rules for each section:
 
@@ -234,11 +376,48 @@ Rules for each section:
    - a new PACKAGE (npm or otherwise);
    - a new SYSTEM requirement — a binary on the machine, a service, a call to the network at runtime;
    - a new PLATFORM capability the app would now rely on (a browser/runtime feature newer than what it already needs).
-   For each one: name it, say in one line why the work needs it, and name its licence. If writing the code instead would avoid it, say so and say what that costs. MAGENTRA is deliberately close to dependency-free and ships everything it uses locally, so that it works offline — "None — this uses what is already here." is both the expected answer and the best one. Never list something that is already in package.json; the question is about what would be ADDED.
+   For each one: name it, say in one line why the work needs it, and name its licence. If writing the code instead would avoid it, say so and say what that costs. MAGENTRA is deliberately close to dependency-free and ships everything it uses locally, so that it works offline: the expected answer is that nothing new is needed, and it is also the best one. Say that in your own words, in the user's language. Never list something the project already depends on; the question is only about what would be ADDED.
 
-5. UNCLEAR — what is still open AFTER the round of questions you just had. You have already asked the user everything that was theirs to decide, and their answers are above and binding; this section is the remainder. List the assumptions you are proceeding on that they did not settle, and anything you could not check, each with the assumption you chose. ASK NOTHING HERE — the time for questions has passed, and the user is about to decide on the whole proposal. If nothing genuinely remains, say "Nothing — the request is unambiguous." and do not manufacture doubt.
+5. UNCLEAR — what is still open AFTER the round of questions you just had. You have already asked the user everything that was theirs to decide, and their answers are above and binding; this section is the remainder. List the assumptions you are proceeding on that they did not settle, and anything you could not check, each with the assumption you chose. ASK NOTHING HERE — the time for questions has passed, and the user is about to decide on the whole proposal. If nothing genuinely remains, say so in one line and do not manufacture doubt.
 
-Itemize. Keep every bullet to something a person can read at a glance. Write the proposal now and nothing else — no preamble, no sign-off, no offer to proceed. The approval prompt is added for you.</system-reminder>`;
+BEFORE YOU SEND IT, read your draft back once. Three questions, and this is the only review it gets:
+  - Does it answer the user's actual request, or a nearby one you found more interesting?
+  - Did you add scope they never asked for?
+  - Is anything in it a guess about this repository rather than something you saw, or something the map told you?
+Fix whatever fails. If nothing fails, send it unchanged — that is a correct outcome, and it needs no defence. Do not go back to the repository to settle a doubt: an open question belongs in section 5.
+
+Itemize. Keep every bullet to something a person can read at a glance. Write the proposal and nothing else — no preamble, no sign-off, no offer to proceed. The approval prompt is added for you.`;
+}
+
+/**
+ * The fallback: sent only when a scout stops without producing a proposal,
+ * because the format is already in its system prompt. Reaching this costs the
+ * user one extra round trip, which is why it is a fallback and not the path.
+ */
+export function carefulProposalText(userText: string): string {
+  return `<system-reminder>You stopped without writing the proposal. Write it now, and write nothing else — this text IS what the user sees.
+
+${carefulProposalSpec(userText)}</system-reminder>`;
+}
+
+/** H1s, which is what the five proposal headings are. */
+const H1_LINE_RE = /^#[ \t]+\S/gm;
+/** Headings that must be present before a text-only response is taken for the
+ *  proposal rather than for more deliberation. */
+const PROPOSAL_MIN_HEADINGS = 4;
+
+/**
+ * Whether a text-only response IS the proposal.
+ *
+ * Counting H1s rather than matching their words, because the headings are
+ * written in the user's language and so cannot be matched literally. Five are
+ * asked for; four is the threshold, so a model that folds one heading in still
+ * gets its proposal shown rather than being told to write it again. Ordinary
+ * scout deliberation contains no H1 at all, so the two are not close.
+ */
+export function looksLikeProposal(text: string): boolean {
+  return (text.match(H1_LINE_RE) ?? []).length >= PROPOSAL_MIN_HEADINGS;
+}
 
 // ── Path check ──────────────────────────────────────────────────────────────
 // Every path the proposal names is a claim about the user's repository, and the

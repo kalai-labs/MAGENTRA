@@ -12,9 +12,14 @@
 import { PermissionEngine } from "../../../engine/core/dist/runtime/permissions.js";
 import {
   SCOUT_TOOLS,
+  carefulProposalSpec,
+  carefulQuestionsSystem,
+  carefulScoutSection,
   classifyCarefulAnswer,
   extractCandidatePaths,
+  looksLikeProposal,
   parseCarefulVerdict,
+  salvageQuestionObjects,
   CAREFUL_APPROVE_LABEL,
   CAREFUL_CANCEL_LABEL,
 } from "../../../engine/core/dist/runtime/careful.js";
@@ -164,6 +169,104 @@ console.log("");
   check("url is not a path", paths("`https://example.com/x.ts`"), "");
   check("prose outside backticks is ignored", paths("I will edit engine/core/src/x.ts"), "");
   check("empty text yields nothing", paths(""), "");
+}
+
+// ── A truncated question round still asks something ─────────────────────────
+// The failure that let "I want to improve existing game" reach the scout with
+// nothing asked. The model answered correctly and at length; the reply hit the
+// token limit, ended mid-string, failed strict JSON parsing, and the whole round
+// was read as "ask nothing" — silently, with no banner and no trace. Asking
+// three of five questions beats asking none, so the complete objects survive.
+console.log("");
+{
+  const OPT = '{"label":"A","description":"d"},{"label":"B","description":"d"}';
+  const q = (name) => `{"question":"${name}?","header":"H","options":[${OPT}],"multiSelect":false}`;
+  const names = (raw) => salvageQuestionObjects(raw).map((o) => o.question).join(",");
+
+  check(
+    "truncated mid-object: the completed questions survive",
+    names(`{"questions": [${q("one")},${q("two")},{"question":"three?","opt`),
+    "one?,two?",
+  );
+  check(
+    "truncated with no complete question yields nothing",
+    names('{"questions": [{"question":"only'),
+    "",
+  );
+  check("a complete reply salvages identically", names(`{"questions":[${q("one")}]}`), "one?");
+  check("the wrapper object is not mistaken for a question", salvageQuestionObjects('{"questions":[]}').length, 0);
+  check("option objects are not mistaken for questions", salvageQuestionObjects(`{"x":[${OPT}]}`).length, 0);
+  // A brace inside the question's own prose must not close the object early.
+  check(
+    "a brace inside a string does not end the object",
+    names(`{"questions":[{"question":"use {} here?","header":"H","options":[${OPT}]}`),
+    "use {} here?",
+  );
+  check("prose before the JSON is skipped", names(`Sure! {"questions":[${q("one")}`), "one?");
+  check("empty input yields nothing", salvageQuestionObjects("").length, 0);
+  check("no JSON at all yields nothing", salvageQuestionObjects("I have no questions.").length, 0);
+  // Salvage is only for the truncation signature. A `questions` array that
+  // parsed is the model's answer, empty or not — the caller must not let a
+  // question object quoted in the surrounding prose override a deliberate
+  // "nothing to ask".
+  check(
+    "a closed empty array is an answer, and salvage is not consulted for it",
+    salvageQuestionObjects('{"questions": []}').length,
+    0,
+  );
+}
+
+// ── A text-only scout response is recognized as the proposal ────────────────
+// The scout carries the proposal format in its own system prompt, so it writes
+// the proposal directly instead of being asked for it two round trips later.
+// This test is what decides which of the two happened, and it has to work in
+// every language, because the headings are written in the user's.
+console.log("");
+{
+  const five = (h) => h.map((t) => `# ${t}\n\ntext\n`).join("\n");
+  check(
+    "five English headings → proposal",
+    looksLikeProposal(five(["Objective", "Solution", "Consequences", "Dependencies", "Unclear"])),
+    true,
+  );
+  check(
+    "five Turkish headings → proposal",
+    looksLikeProposal(five(["Amac nedir?", "Ne oneriyorum?", "Sonuclar", "Bagimliliklar", "Belirsizler"])),
+    true,
+  );
+  check("four headings still count", looksLikeProposal(five(["a", "b", "c", "d"])), true);
+  check("three headings do not", looksLikeProposal(five(["a", "b", "c"])), false);
+  check("scout deliberation is not a proposal", looksLikeProposal("I have read game.py. I will propose obstacles."), false);
+  check("empty text is not a proposal", looksLikeProposal(""), false);
+  check("a markdown list is not a proposal", looksLikeProposal("- one\n- two\n- three\n- four\n- five"), false);
+  check("H2s are not H1s", looksLikeProposal(five(["a", "b", "c", "d"]).replace(/^# /gm, "## ")), false);
+  check("a hashtag in prose is not a heading", looksLikeProposal("see #1 #2 #3 #4 #5 in the log"), false);
+}
+
+// ── The language of the proposal is anchored to the user's own words ────────
+// A Turkish repository and an English-speaking user produced a proposal with
+// English headings over a Turkish body, and an English phrase copied verbatim
+// out of the instructions. The rule is only reliable when the request itself is
+// quoted into the prompt — "write in the user's language" alone loses to the
+// language the model has just spent a phase reading.
+console.log("");
+{
+  const request = "I want to improve existing game";
+  const spec = carefulProposalSpec(request);
+  check("the proposal spec quotes the request verbatim", spec.includes(request), true);
+  check("the questions layer quotes it too", carefulQuestionsSystem(request).includes(request), true);
+  check("the scout section carries the proposal spec", carefulScoutSection(request).includes(spec), true);
+  check("the scout section quotes the request", carefulScoutSection(request).includes(request), true);
+  // The old spec offered a literal English answer for the dependencies section,
+  // and a model writing Turkish pasted it through unchanged.
+  check("no English model answer is offered for copying", spec.includes("None — this uses what is already here."), false);
+  // Whitespace is normalized so a multi-line request stays one quotable line.
+  check(
+    "a multi-line request is flattened into the quote",
+    carefulProposalSpec("improve\n\n  the game").includes("«improve the game»"),
+    true,
+  );
+  check("a long request is truncated, not dropped", carefulProposalSpec("x".repeat(500)).includes("x".repeat(300)), true);
 }
 
 console.log(`\n${failures === 0 ? "all invariants hold" : `${failures} FAILED`}\n`);

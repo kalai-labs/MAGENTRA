@@ -606,6 +606,8 @@ const DEFAULTS: Required<Omit<RetrievalOptions, "answers">> = {
 
 /** Keeps one neighbourhood from spending the whole budget. */
 const MAX_CHUNKS_PER_FILE = 2;
+/** Floor on files admitted per directory; the real allowance scales with how
+ *  many directories the ranking actually spans (see the spread, below). */
 const MAX_FILES_PER_DIR = 4;
 /** Prose files listed beside the code, at most. */
 const MAX_DOC_FILES = 5;
@@ -732,17 +734,29 @@ export function retrieveContext(
     { ranking: structuralRanking, eligible: new Set(Object.keys(graph.files)) },
     ...(expandedRanking.length > 0 ? [{ ranking: expandedRanking }] : []),
   ]);
+  const ordered_ = [...fused.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  // The spread keeps ONE neighbourhood from filling the whole result. In a
+  // repository that has only one neighbourhood there is nothing to spread, and
+  // a fixed cap then truncates the entire ranking: a flat project — a script, a
+  // game, anything without a src/ tree — could never surface more than four
+  // files however many it had, and the fifth-best was simply invisible. So the
+  // allowance is the budget divided by the directories actually in play, and
+  // never tighter than the fixed cap.
+  const dirsInPlay = new Set(
+    ordered_.filter(([file]) => !PROSE_EXTS.has(extOf(file).toLowerCase())).map(([file]) => dirOf(file)),
+  ).size;
+  const perDirLimit = Math.max(MAX_FILES_PER_DIR, Math.ceil(opts.maxPaths / Math.max(dirsInPlay, 1)));
   const perDir = new Map<string, number>();
   const files: string[] = [];
   const docs: string[] = [];
-  for (const [file] of [...fused.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))) {
+  for (const [file] of ordered_) {
     if (PROSE_EXTS.has(extOf(file).toLowerCase())) {
       if (docs.length < MAX_DOC_FILES) docs.push(file);
       continue;
     }
     const dir = dirOf(file);
     const used = perDir.get(dir) ?? 0;
-    if (used >= MAX_FILES_PER_DIR) continue;
+    if (used >= perDirLimit) continue;
     perDir.set(dir, used + 1);
     files.push(file);
     if (files.length >= opts.maxPaths) break;

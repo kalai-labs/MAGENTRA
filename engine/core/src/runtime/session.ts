@@ -49,22 +49,25 @@ import type { HookRunner } from "../agent/hooks.js";
 import type { ModeEngine } from "../ma/modes.js";
 import { PermissionEngine, type PermissionRequestPayload, protectedEditPath } from "./permissions.js";
 import {
-  CAREFUL_PROPOSAL_TEXT,
   CAREFUL_CANCELLED_TEXT,
   CAREFUL_PREDICTOR_SYSTEM,
-  CAREFUL_REVIEW_TEXT,
-  CAREFUL_SCOUT_SECTION,
   CAREFUL_SCOUT_WARN_AFTER_ROUNDS,
   CAREFUL_SCOUT_WARN_TEXT,
-  CAREFUL_QUESTIONS_SYSTEM,
   carefulApprovalQuestion,
   carefulApprovedText,
+  carefulGroundingText,
+  carefulProposalText,
+  carefulQuestionsSystem,
+  CAREFUL_QUESTIONS_RETRY,
   carefulRevisionText,
   carefulScoutMapText,
+  carefulScoutSection,
   carefulUnknownPathsText,
   classifyCarefulAnswer,
   extractCandidatePaths,
+  looksLikeProposal,
   parseCarefulVerdict,
+  salvageQuestionObjects,
 } from "./careful.js";
 import { buildSystemPrompt, skillsBlock } from "../agent/prompts.js";
 import { DEBUG_DIR, commandRunsRepro, reproScriptRelPath } from "../ma/debug.js";
@@ -330,6 +333,16 @@ interface PendingToolCall {
   id: string;
   name: string;
   json: string;
+}
+
+/** The deterministic starting position a CAREFUL scout is handed. */
+interface CarefulScoutMap {
+  /** The rendered map, as the scout reads it. */
+  text: string;
+  /** True when the request's own words had little purchase on this codebase. */
+  weak: boolean;
+  /** Top-ranked SOURCE files (never documentation), for the grounding floor. */
+  ranked: string[];
 }
 
 export class Session {
@@ -709,6 +722,14 @@ export class Session {
     maxTokens: number;
     model?: string;
     provider?: Provider;
+    /**
+     * Why the reply ended. Optional because most callers do not care — but a
+     * caller that parses the reply as JSON does: `max_tokens` means the text is
+     * TRUNCATED, not malformed, and the two need different handling. Without
+     * this the layer has to guess from a failed parse, and guessing wrong reads
+     * a correct-but-cut-off answer as no answer at all.
+     */
+    onEnd?: (stopReason: StopReason) => void;
   }): Promise<string> {
     let text = "";
     const model = opts.model ?? this.settings.smallModel ?? this.settings.model;
@@ -725,7 +746,10 @@ export class Session {
     try {
       for await (const event of stream) {
         if (event.type === "text_delta") text += event.text;
-        else if (event.type === "message_end") usage = event.usage;
+        else if (event.type === "message_end") {
+          usage = event.usage;
+          opts.onEnd?.(event.stopReason);
+        }
       }
     } finally {
       // Banked even when the call throws part-way: the tokens it did consume
@@ -1263,7 +1287,12 @@ export class Session {
       raw = await this.runInference({
         system: CLARIFY_SYSTEM,
         user: `${this.recentExchange()}${skim ? `Codebase overview:\n${skim}\n\n` : ""}Incoming request:\n${userText}`,
-        maxTokens: 600,
+        // Three questions with four described options each does not fit in 600
+        // either — the same undersized budget as CAREFUL's round, and the same
+        // silent outcome, because a truncated reply has no `"clarify": true` to
+        // find. This layer is older and quieter, so it was never reported; that
+        // makes it more worth fixing, not less.
+        maxTokens: 2000,
         model: this.settings.model,
       });
     } catch {
@@ -1317,8 +1346,13 @@ export class Session {
    */
   private async askCarefulQuestions(
     userText: string,
-    map: { text: string; weak: boolean } | undefined,
+    map: CarefulScoutMap | undefined,
   ): Promise<string | undefined> {
+    // Announced BEFORE the inference, not after it. This call and the predictor
+    // before it are two main-model round trips that happen while the user is
+    // looking at nothing at all — which is most of what "it sat there for
+    // minutes" was. The banner costs nothing and makes the wait legible.
+    this.emit({ type: "command_output", text: "▶ careful: working out what to ask you" });
     // This runs as its OWN inference, so it sees no system prompt — and
     // therefore no atlas. The scout map deliberately omits the atlas (the scout
     // gets it from the system prompt, and duplicating it would spend the user's
@@ -1335,20 +1369,44 @@ export class Session {
       map?.weak === true
         ? "Vocabulary check: the request's own words barely appear anywhere in this codebase, so nothing has pinned down what it refers to. Treat asking as necessary here, not optional.\n\n"
         : "";
-    let raw: string;
-    try {
-      raw = await this.runInference({
-        system: CAREFUL_QUESTIONS_SYSTEM,
-        user: `${this.recentExchange()}${overview ? `Codebase overview:\n${overview}\n\n` : ""}${map ? `What the request seems to point at:\n${map.text}\n\n` : ""}${vagueness}Incoming request:\n${userText}`,
-        maxTokens: 1200,
+    const prompt = `${this.recentExchange()}${overview ? `Codebase overview:\n${overview}\n\n` : ""}${map ? `What the request seems to point at:\n${map.text}\n\n` : ""}${vagueness}Incoming request:\n${userText}`;
+    // Three defences against the same failure, because a token budget is a
+    // guess and this layer's replies are long. Measured: five questions with
+    // four described options each is ~3.6k characters at the lengths the prompt
+    // asks for, and a model that writes fuller descriptions reaches ~6.6k —
+    // which in Turkish is roughly 1.8k and 3.3k tokens. The old 1200 could not
+    // fit even the disciplined case.
+    //   1. a budget with real headroom over the measured worst case;
+    //   2. salvage, so a cut-off reply still asks whatever completed;
+    //   3. and this — the engine now KNOWS it was cut off, so when salvage
+    //      recovers nothing it can ask again shorter instead of silently
+    //      deciding the user had nothing to be asked.
+    const ask = async (system: string): Promise<{ raw: string; truncated: boolean }> => {
+      let truncated = false;
+      const raw = await this.runInference({
+        system,
+        user: prompt,
+        maxTokens: 4000,
         model: this.settings.model,
+        onEnd: (reason) => {
+          truncated = reason === "max_tokens";
+        },
       });
+      return { raw, truncated };
+    };
+    let questions: ShapeQuestion[] | undefined;
+    try {
+      const first = await ask(carefulQuestionsSystem(userText));
+      questions = parseCarefulQuestions(first.raw);
+      if (questions === undefined && first.truncated) {
+        this.emit({ type: "command_output", text: "▶ careful: that ran long — asking again, shorter" });
+        const retry = await ask(`${carefulQuestionsSystem(userText)}${CAREFUL_QUESTIONS_RETRY}`);
+        questions = parseCarefulQuestions(retry.raw);
+      }
     } catch {
       return undefined;
     }
-    const questions = parseCarefulQuestions(raw);
     if (questions === undefined) return undefined;
-    this.emit({ type: "command_output", text: "▶ careful: asking what only you can decide" });
     return this.askQuestionRound(
       questions,
       "The user answered these BEFORE any investigation began. Treat the answers as requirements — they decide what you build, and they tell you where to look while you scout. Anything left unanswered is yours to decide sensibly, and you should state the assumption you chose:",
@@ -1363,6 +1421,11 @@ export class Session {
    * predictor costs the user a checkpoint but never costs them the turn.
    */
   private async predictCareful(userText: string): Promise<boolean> {
+    // Announced before the call, like the question round after it. This is the
+    // first thing a careful turn does and it is a full main-model round trip:
+    // unannounced, it is a blank screen for as long as the model takes to
+    // answer, and the user reads that as the product having hung.
+    this.emit({ type: "command_output", text: "▶ careful: sizing up the request" });
     const skim = this.buildClarifySkim();
     try {
       const raw = await this.runInference({
@@ -1392,9 +1455,10 @@ export class Session {
    * injects it, and putting it in twice would spend the user's context on a
    * duplicate. Best-effort throughout — a scout with no map still works.
    */
-  private buildCarefulScoutMap(request: string, answers?: string): { text: string; weak: boolean } | undefined {
+  private buildCarefulScoutMap(request: string, answers?: string): CarefulScoutMap | undefined {
     const parts: string[] = [];
     let weak = true;
+    let ranked: string[] = [];
     try {
       if (loadAtlas(this.cwd) === undefined) {
         const skim = this.buildClarifySkim();
@@ -1412,13 +1476,34 @@ export class Session {
       if (retrieved) {
         parts.push(renderRetrieval(retrieved));
         weak = retrieved.weak;
+        // Source files only — `docs` is deliberately kept separate by retrieval,
+        // and reading the README is exactly the grounding this floor exists to
+        // reject as sufficient.
+        ranked = retrieved.files.slice(0, Session.GROUNDING_FLOOR_FILES);
       }
     } catch {
       // ditto — the scout can still read its way there
     }
     const alreadyRead = this.alreadyReadDigest();
     if (alreadyRead) parts.push(alreadyRead);
-    return parts.length > 0 ? { text: parts.join("\n\n"), weak } : undefined;
+    return parts.length > 0 ? { text: parts.join("\n\n"), weak, ranked } : undefined;
+  }
+
+  /** Top-ranked source files the grounding floor is measured against. */
+  private static readonly GROUNDING_FLOOR_FILES = 5;
+
+  /**
+   * Whether the scout has opened any of the source files its map ranked.
+   *
+   * The one thing a proposal about behaviour cannot be honest without, and the
+   * one thing the model's own stop test cannot police: a vague request makes all
+   * five stop-test questions easy to answer from a README. `wasRead` is
+   * session-scoped, not turn-scoped, which is right — a file read on an earlier
+   * proposal in this conversation is still read.
+   */
+  private carefulGroundingGap(ranked: string[]): string[] {
+    if (ranked.length === 0) return [];
+    return ranked.some((rel) => this.fileState.wasRead(join(this.cwd, rel))) ? [] : ranked;
   }
 
   /** Files listed as already-read before the list stops being a glance. */
@@ -1670,7 +1755,7 @@ export class Session {
     let carefulTurn = false;
     /** The graph-derived starting position for the scout; undefined when the
      *  workspace yielded nothing to orient with. */
-    let carefulMap: { text: string; weak: boolean } | undefined;
+    let carefulMap: CarefulScoutMap | undefined;
     let clarification: string | undefined;
     if (this.isCarefulActive()) carefulTurn = await this.predictCareful(userText);
 
@@ -1689,7 +1774,12 @@ export class Session {
       // direction in their own words, which is the strongest query text there is.
       if (clarification !== undefined) carefulMap = this.buildCarefulScoutMap(userText, clarification);
       this.permissions.setCarefulHold(true);
-      this.setPromptSection("careful", CAREFUL_SCOUT_SECTION);
+      // The section carries the proposal format, so the scout writes the
+      // proposal itself the moment its stop test passes rather than being asked
+      // for it two round trips later. It also carries the user's own words, so
+      // the language of the proposal is decided from the request and not from
+      // whatever language this repository's comments happen to be in.
+      this.setPromptSection("careful", carefulScoutSection(userText));
       // Deliberation is silent from the very first round: the user asked for
       // the scouting, the review and the drafting to happen with no output but
       // the tool activity itself.
@@ -1741,14 +1831,13 @@ export class Session {
     // budgets: a mission's budgetTokens must bound a run nobody is watching,
     // and an explicit spawn-time child cap must still be enforced.
     const capped = this.unattended || (this.opts.child ?? false);
-    // CAREFUL MODE turn state. `carefulProposalArmed` marks that the proposal
-    // instruction has been sent, so the NEXT clean stop is the proposal itself
-    // rather than more deliberation. The Review Pass happens once, on the first
-    // proposal only — a revision means the user has supplied their judgement,
-    // and the agent's substitute for it is then waste.
+    // CAREFUL MODE turn state. `carefulProposalArmed` marks that the fallback
+    // proposal instruction has already been sent, so a scout that stops a second
+    // time without proposing is not asked a third time.
     let carefulHeld = carefulTurn;
     let carefulProposalArmed = false;
-    let carefulReviewDone = false;
+    /** The grounding floor fires once per proposal — see carefulGroundingGap. */
+    let carefulGroundingChecked = false;
     let carefulRevisions = 0;
     // Rounds spent reading since the phase (or the last revision) began, and
     // whether the soft warn has fired for this pass. Neither ever ends the
@@ -1868,40 +1957,54 @@ export class Session {
           if (drainSteering()) continue;
 
           // CAREFUL MODE: this turn is not ending, it is advancing through the
-          // scout's phases — scout, review, propose, check, gate. Placed ahead
-          // of every other rung because nothing has been built yet: there is
-          // no failure to recover from, no task list to finish, and nothing to
+          // scout's phases — ground, propose, check, gate. Placed ahead of
+          // every other rung because nothing has been built yet: there is no
+          // failure to recover from, no task list to finish, and nothing to
           // self-verify. A response the token limit cut off falls through to
           // LAYER 3 instead, so a truncated proposal is resumed rather than
           // mistaken for a finished one.
           if (carefulHeld && stopReason !== "max_tokens") {
-            // Step 2 — one look at its own draft. Improving it and leaving it
-            // alone are both correct outcomes, so nothing here demands a change.
-            if (!carefulReviewDone) {
-              carefulReviewDone = true;
-              this.emit({ type: "command_output", text: "▶ careful: reviewing its own draft" });
-              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_REVIEW_TEXT }] });
-              continue;
-            }
-            // Step 3 — ask for the proposal. Still muted: it is checked before
-            // the user sees it, so a draft naming a file that does not exist is
-            // corrected rather than shown and then contradicted.
-            if (!carefulProposalArmed) {
-              carefulProposalArmed = true;
-              this.emit({ type: "command_output", text: "▶ careful: writing the proposal" });
-              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_PROPOSAL_TEXT }] });
-              continue;
-            }
-            // The text that just streamed IS the proposal.
             const proposal = assistantText(assistant).trim();
-            const retriesLeft = carefulProposalRetries < CAREFUL_MAX_PROPOSAL_RETRIES;
-            // Nothing came back where the proposal should be. Ask again rather
-            // than gating the user on a blank approval card.
-            if (proposal === "" && retriesLeft) {
-              carefulProposalRetries++;
-              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_PROPOSAL_TEXT }] });
-              continue;
+            // The grounding floor, before anything else: a scout that has opened
+            // none of the source files its own map ranked is about to describe
+            // behaviour it never read. Deterministic, and asked once.
+            if (!carefulGroundingChecked) {
+              carefulGroundingChecked = true;
+              const gap = this.carefulGroundingGap(carefulMap?.ranked ?? []);
+              if (gap.length > 0) {
+                this.emit({
+                  type: "command_output",
+                  text: `◉ careful: about to propose without reading the code — pointing it at ${gap[0]}`,
+                });
+                this.pushMessage({ role: "user", content: [{ type: "text", text: carefulGroundingText(gap) }] });
+                continue;
+              }
             }
+            // The scout carries the proposal format in its own system prompt, so
+            // the common case is that this text ALREADY is the proposal — no
+            // round trip is spent asking for one. Only a scout that stopped
+            // without writing it is prompted, and only once.
+            if (!looksLikeProposal(proposal)) {
+              if (!carefulProposalArmed) {
+                carefulProposalArmed = true;
+                this.emit({ type: "command_output", text: "▶ careful: writing the proposal" });
+                this.pushMessage({ role: "user", content: [{ type: "text", text: carefulProposalText(userText) }] });
+                continue;
+              }
+              // It was asked and still did not produce one. An empty response
+              // has nothing to gate on at all; anything else is shown as it is
+              // and the user judges it, which beats a turn that never ends.
+              if (proposal === "") {
+                releaseCarefulHold();
+                this.emit({
+                  type: "command_output",
+                  text: "◉ careful: no proposal came back — nothing was changed. Try again, or /careful off.",
+                });
+                stopReason = "end_turn";
+                break;
+              }
+            }
+            const retriesLeft = carefulProposalRetries < CAREFUL_MAX_PROPOSAL_RETRIES;
             const unknownPaths = retriesLeft ? this.unknownProposalPaths(proposal) : [];
             if (unknownPaths.length > 0) {
               carefulProposalRetries++;
@@ -1934,18 +2037,21 @@ export class Session {
             if (decision.kind === "revise") {
               carefulRevisions++;
               carefulProposalArmed = false;
-              carefulReviewDone = true; // a revision gets no Review Pass
               carefulProposalRetries = 0;
-              // A revision usually redirects, so the old map now points at the
-              // wrong part of the repository — re-seed it from what they said.
               carefulScoutRounds = 0;
               carefulWarned = false;
+              // The new direction gets its own floor: files that grounded the
+              // last proposal say nothing about where this one lands.
+              carefulGroundingChecked = false;
               this.suppressAssistantText = true;
               this.emit({
                 type: "command_output",
                 text: `▶ careful: revising the proposal (revision ${carefulRevisions})`,
               });
+              // A revision usually redirects, so the old map now points at the
+              // wrong part of the repository — re-seed it from what they said.
               const revisedMap = this.buildCarefulScoutMap(`${userText}\n${decision.text}`, decision.text);
+              if (revisedMap !== undefined) carefulMap = revisedMap;
               this.pushMessage({
                 role: "user",
                 content: [
@@ -3046,21 +3152,46 @@ function parseQuestionArray(
  * Parses the clarify pre-layer's verdict into protocol-shaped questions.
  * Returns undefined for clarify:false, malformed JSON, or nothing usable —
  * every failure path means "just start" (fail-open by design).
+ *
+ * Salvages a truncated reply the same way CAREFUL's round does, and for the
+ * same reason. A cut-off reply has no closing brace, so `clarify` cannot be
+ * read at all — but a reply containing question objects is one where the model
+ * had already decided to ask, so recovering them is sound. Without this, a
+ * layer that ran too long asks nothing and says nothing.
  */
 function parseClarifyVerdict(raw: string): ShapeQuestion[] | undefined {
   const rec = parseJsonObject(raw);
-  if (!rec || rec.clarify !== true) return undefined;
-  return parseQuestionArray(rec.questions, "Clarify", CLARIFY_MAX_QUESTIONS);
+  if (rec !== undefined) {
+    if (rec.clarify !== true) return undefined;
+    return parseQuestionArray(rec.questions, "Clarify", CLARIFY_MAX_QUESTIONS);
+  }
+  return parseQuestionArray(salvageQuestionObjects(raw), "Clarify", CLARIFY_MAX_QUESTIONS);
 }
 
 /**
- * Parses CAREFUL MODE's pre-proposal round. `{"questions": []}` — the common
- * answer, and the one the prompt asks for when nothing genuinely needs the
- * user — yields undefined, so the proposal follows with no round trip.
+ * Parses CAREFUL MODE's pre-proposal round. `{"questions": []}` — the answer the
+ * prompt asks for when nothing genuinely needs the user — yields undefined, so
+ * the scout starts with no round trip.
+ *
+ * Falls back to {@link salvageQuestionObjects} when the reply is not valid JSON,
+ * because the way this layer fails is not "malformed": it is TRUNCATED. Five
+ * questions with described options is a long reply, and a reply cut off at the
+ * token limit ends mid-string with no closing brace. Strict parsing then reads
+ * an over-long, entirely correct answer as "ask the user nothing" — the exact
+ * failure that let a request as open as "improve the existing game" reach the
+ * scout unclarified. Whatever question objects completed are still good.
  */
 function parseCarefulQuestions(raw: string): ShapeQuestion[] | undefined {
   const rec = parseJsonObject(raw);
-  return rec ? parseQuestionArray(rec.questions, "Decide", CAREFUL_MAX_QUESTIONS) : undefined;
+  // A `questions` array that parsed is the model's ANSWER, empty or not, and it
+  // stands. Salvage is only for the truncation signature — no parseable object,
+  // or one whose `questions` never closed — so a deliberate `{"questions": []}`
+  // can never be overridden by a question object echoed back somewhere in the
+  // prose around it.
+  if (rec !== undefined && Array.isArray(rec.questions)) {
+    return parseQuestionArray(rec.questions, "Decide", CAREFUL_MAX_QUESTIONS);
+  }
+  return parseQuestionArray(salvageQuestionObjects(raw), "Decide", CAREFUL_MAX_QUESTIONS);
 }
 
 /** Total length of the text blocks in an assistant message (used to detect a bare give-up). */

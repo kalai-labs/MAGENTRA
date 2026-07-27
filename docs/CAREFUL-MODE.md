@@ -11,9 +11,10 @@ to take — and nowhere else. Domain vocabulary is in [`CONTEXT.md`](../CONTEXT.
 the decisions worth knowing are ADRs [0001](adr/0001-careful-mode-is-enforced-by-the-permission-engine.md),
 [0002](adr/0002-careful-rides-the-overdrive-frame.md),
 [0003](adr/0003-the-briefing-proposes-a-direction-not-a-plan.md),
-[0004](adr/0004-the-import-graph-has-two-tiers.md) and
-[0005](adr/0005-the-scout-phase-has-no-hard-cap.md) and
-[0006](adr/0006-code-retrieval-is-deterministic.md).
+[0004](adr/0004-the-import-graph-has-two-tiers.md),
+[0005](adr/0005-the-scout-phase-has-no-hard-cap.md),
+[0006](adr/0006-code-retrieval-is-deterministic.md) and
+[0008](adr/0008-a-silent-pre-layer-is-worse-than-a-slow-one.md).
 
 ## What the user approves
 
@@ -55,17 +56,18 @@ careful predictor         one main-model inference, fail-open
             ↓                     session already read and is still unchanged
             OPEN QUESTIONS        up to 5, grounded in that map — asked BEFORE
             ↓                     anything is read, because the answers decide
-            ↓                     where to read     ▶ careful: asking
+            ↓                     where to read  ▶ careful: working out what to ask you
+            ↓                     a truncated reply is salvaged, never silently dropped
             HOLD RAISED (PermissionEngine)          ▶ careful: scouting
             ↓
             scout: Read / Grep / Glob / GraphQuery / BackpackSearch / Skill
                    everything else refused; all prose suppressed
                    soft warn after 4 rounds — a reminder, never a cut
             ↓
-            review pass ×1        "read your own draft once"   ▶ careful: reviewing
-            ↓
-            PROPOSAL written      five H1 sections — still not shown
-            ↓                                                  ▶ careful: writing
+            grounding floor       opened NONE of the ranked source files? one
+            ↓                     reminder naming them, then never again
+            PROPOSAL written      five H1 sections, written straight from the
+            ↓                     scout's own system prompt — still not shown
             path check            every path it names must exist (≤2 corrections)
             ↓
             proposal revealed to the user
@@ -75,7 +77,7 @@ careful predictor         one main-model inference, fail-open
               │                           brief → work starts immediately
               ├─ "Cancel"               → hold lifts → turn ends, nothing changed
               └─ free text (a Revision) → hold STAYS → FRESH map seeded from what
-                                          they said → new proposal, no review pass
+                                          they said → new proposal
 ```
 
 Revisions are unlimited. An unanswered or interrupted gate reads as **cancel**,
@@ -86,13 +88,23 @@ out. Streaming it live would mean showing a proposal that names a file which doe
 not exist, then contradicting it — which is exactly the failure the check exists
 to prevent.
 
+**Two main-model rounds, not four.** The scout carries the proposal format in its
+own system prompt, so the first response it sends with no tool call in it *is*
+the proposal. The phase used to spend two further rounds after the reading was
+already finished — one where the scout announced it was ready, and one "review
+your own draft" that reviewed a draft which did not exist yet, since the proposal
+had not been written. The three review questions now run inside the same
+inference that writes it, against the real text. A scout that stops without
+proposing is asked once, explicitly; that fallback is the only path that still
+costs a round trip.
+
 ## Where the code is
 
 | Concern | Location |
 | --- | --- |
-| Allowlist, prompts, path extraction, verdict + answer parsing | `engine/core/src/runtime/careful.ts` |
+| Allowlist, prompts, path extraction, verdict + answer parsing, truncated-JSON salvage, proposal detection | `engine/core/src/runtime/careful.ts` |
 | The hold itself | `engine/core/src/runtime/permissions.ts` — `setCarefulHold`, checked after deny rules and ahead of everything else |
-| Predictor, scout map, path check, phase orchestration | `engine/core/src/runtime/session.ts` — `predictCareful`, `buildCarefulScoutMap`, `unknownProposalPaths`, `askCarefulApproval`, and the careful rung inside `runTurn` |
+| Predictor, scout map, grounding floor, path check, phase orchestration | `engine/core/src/runtime/session.ts` — `predictCareful`, `buildCarefulScoutMap`, `carefulGroundingGap`, `unknownProposalPaths`, `askCarefulApproval`, and the careful rung inside `runTurn` |
 | Request → ranked code (BM25 + PageRank + RRF, the three-grade ladder) | `engine/core/src/knowledge/retrieval.ts` — a general capability, CAREFUL is its first caller |
 | Request → graph seeds | `engine/core/src/knowledge/seeds.ts` — shared with the GraphQuery tool |
 | Multi-language import graph | `engine/core/src/knowledge/graph.ts`, `symbols.ts` |
@@ -111,28 +123,49 @@ Four things about the design that are easy to undo by accident:
   every prompt the model reads on purpose: an approval card that says "approve
   this plan" reliably produces a plan, and a plan needs a file manifest, and a
   file manifest needs the ten minutes back. ADR 0003.
-- **`CAREFUL_SCOUT_SECTION` is load-bearing.** The phase has no numeric cap, so
+- **`carefulScoutSection` is load-bearing.** The phase has no numeric cap, so
   its stop test is the entire bound. ADR 0005.
+- **The question layer's parse must stay tolerant.** Its reply is long, and the
+  way it fails is truncation, not corruption. Strict JSON parsing reads a
+  correct-but-cut-off answer as "ask the user nothing" — silently, with no card
+  and no banner. `salvageQuestionObjects` keeps whatever completed. ADR 0008.
+- **The language is decided from the user's own words, quoted into the prompt.**
+  "Write in the user's language" alone loses to the language the model has just
+  spent a whole phase reading. ADR 0008.
 
 ## What is verified
 
 ```bash
 npm run build                                                  # tsc -b, engine only
+node .claude/skills/bigboycoding/careful-turn-check.mjs         # 41 whole-turn invariants
+node .claude/skills/bigboycoding/careful-turn-check.mjs ~/repo  # …or against a real repository
 node .claude/skills/bigboycoding/careful-hold-check.mjs         # 60 hold + path-claim invariants
 node .claude/skills/bigboycoding/graph-languages-check.mjs      # 20 language invariants on a fixture repo
 node .claude/skills/bigboycoding/retrieval-check.mjs             # 25 retrieval invariants
 node .claude/skills/bigboycoding/permission-check.mjs           # 27 permission invariants
-node app/tests/run-ui-tests.js                                  # 27 scenarios
+node app/tests/run-ui-tests.js                                  # 28 scenarios
 ```
 
-`engine/*` has no unit suite and `tsc` cannot see any of this, so the two check
+`engine/*` has no unit suite and `tsc` cannot see any of this, so the check
 scripts assert against `engine/core/dist/` directly:
 
+- **the turn check** — a whole careful turn, driven over the protocol frames a
+  frontend uses, against a scripted provider that never touches the network. It
+  asserts the choreography, which is where the bugs were: that the question card
+  comes before any reading, that a *truncated* question reply still asks
+  something, that the phase costs two main-loop rounds and not four, that a
+  scout which opened no ranked source file is caught, that a scout which never
+  proposes ends the turn instead of gating the user on a blank card, and that a
+  `Write` during the phase is refused and the file really is not created. It
+  takes an optional repository path, so it can be run against the codebase where
+  a report came from.
 - **the hold check** — that the hold refuses `Write`/`Edit`/`Bash`, admits the
   six scout tools, and outranks allow rules, `allow_always` grants, session
-  allows and OVERDRIVE itself; and that a proposal's path claims are extracted
+  allows and OVERDRIVE itself; that a proposal's path claims are extracted
   without swallowing commands, flags, versions or URLs (a false alarm sends the
-  model correcting prose that was already right).
+  model correcting prose that was already right); that a truncated question
+  reply salvages; that a proposal is recognized in any language; and that the
+  user's own words are quoted into every prompt that has to choose one.
 - **the language check** — that a Go import reaches its package's files, a Rust
   `mod` its sibling, a Java import its class, a PSR-4 `use` its file through the
   namespace root, and that a Tier 2 language still produces a *node*.
@@ -154,7 +187,12 @@ make the scout read more. It worked exactly as designed.
 | Location in section 3 | Every file, only ones the agent opened | The area, derived from the import graph |
 | Scout's starting point | Nothing — it discovered the repo itself | Atlas/graph skeleton + a slice seeded from the request |
 | Scout's bound | None at all | A stop test in the prompt + one soft warn |
-| Self-critique | 2 rounds, each inviting more reading | 1 review pass, reads nothing new |
+| Self-critique | 2 rounds, each inviting more reading | 3 questions inside the same inference that writes the proposal |
+| Rounds after the reading is done | 3 (announce, review, write) | 1 (write), and the review is part of it |
+| A question round cut off at the token limit | read as "ask nothing", silently | the complete questions are salvaged and asked |
+| While a pre-layer thinks | a blank screen | `▶ careful: working out what to ask you` |
+| Proposing without opening any ranked source file | nothing noticed | one reminder naming the files, then never again |
+| Which language the proposal is in | inferred — and it drifted to the code's | decided from the user's own words, quoted into the prompt |
 | Hallucinated paths | Nothing checked them | Engine checks each, sends bad ones back |
 | After approval | "Build what you described", then ask the unclears | The proposal injected as the working brief; work starts |
 | When questions are asked | After approval | Before the scout reads anything |
@@ -165,6 +203,7 @@ make the scout read more. It worked exactly as designed.
 | Phase feedback | Four plain notes | `▶ ` phase banners (the Workflow convention) |
 | Graph languages | TS, JS, Python | 8 with edges, everything else as nodes |
 | Slice seeds | File paths only | Paths **and** declared symbol names |
+| Ranked files in a flat repository | capped at 4, the rest unreachable | the whole ranking, up to the path budget |
 
 Two supporting changes fell out of it. `resolveSeeds` moved into
 `knowledge/seeds.ts` so the GraphQuery tool and the scout map cannot disagree
@@ -177,9 +216,13 @@ approval could start work in the wrong one.
 
 - **Plain Speech applies to the Proposal only.** The rule — short sentences, one idea each,
   active voice, in whatever language the user writes in — lives in
-  `CAREFUL_PROPOSAL_TEXT`. Applying it product-wide means moving it to
+  `carefulProposalSpec`. Applying it product-wide means moving it to
   `SECTION_COMMUNICATION` in `prompts.ts`, which changes MAGENTRA's whole voice
   and is a wider decision than this feature.
+- **The language rule is anchored, not detected.** The user's request is quoted
+  into the prompt and the model picks the language from that quote. Detecting it
+  in the engine would be a language-ID table for a decision the model already
+  makes correctly once it is told which text to look at.
 - **The scout's reading stays in context after approval.** The proposal is the
   distillate of it, so the raw file reads could be compacted away once the hold
   lifts — the working phase would then start with the request plus the approved
@@ -189,8 +232,10 @@ approval could start work in the wrong one.
 - **The scout cannot run `git`.** `Bash` is `execute`, so no `git log`/`git
   diff`/`npm ls` while held. Deliberate: widening it is one entry in
   `SCOUT_TOOLS`, but a scout confirming a target needs less, not more.
-- **Clarify still runs first**, so a careful turn can ask up to three times
-  (clarify → approval → unclears). Chosen deliberately; revisit if it grates.
+- **A careful turn interrupts the user exactly twice** — the question round, then
+  the approval gate. The clarify pre-layer is skipped on a careful turn (the
+  question round replaces it and is strictly richer), and the Unclears are stated
+  in the proposal rather than asked after approval.
 - **Multi-tab is partly verified.** The answer-routing bug is fixed and covered
   by the existing concurrent-tabs UI scenario. Still untested with two *live*
   engines: whether a background pane's proposal behaves, and whether

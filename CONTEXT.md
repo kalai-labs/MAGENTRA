@@ -124,13 +124,26 @@ cancels.
 
 ## Review Pass
 
-One silent look the agent takes at its own draft Proposal before showing it.
-It may improve the draft or leave it exactly as it is; both are correct
-outcomes and neither needs defending.
+The three questions the agent puts to its own draft Proposal before sending it:
+does it answer the actual request, did it add unasked-for scope, and is anything
+in it a guess about the repository. It may improve the draft or leave it exactly
+as it is; both are correct outcomes and neither needs defending.
 
-It happens once, on the first Proposal of a turn, and it reads nothing new —
-anything the agent does not know at that point is an Unclear, not a reason to
-go back to the repository.
+It is not a separate step. It runs inside the same inference that writes the
+Proposal, against the real text — as a step of its own it cost a full model
+round trip to review a draft that had not been written yet. It reads nothing
+new: anything the agent does not know at that point is an Unclear, not a reason
+to go back to the repository.
+
+## Grounding Floor
+
+The deterministic check that an agent has opened at least one of the source
+files retrieval ranked for this request, before it proposes. What it catches is
+quiet and looks like success — a scout reads a README, passes its own Stop Test,
+and proposes a change to behaviour it never looked at.
+
+A reminder, never a block: it fires once per Proposal, names the ranked files,
+and tells the agent to say so and carry on if the work genuinely needs no code.
 
 ## Revision
 
@@ -138,8 +151,9 @@ A Proposal the user answered with words instead of a decision. The words are
 treated as a requirement rather than a suggestion, the Hold stays raised, and
 the agent scouts further and proposes again. Revisions are unlimited.
 
-A Revision gets no Review Pass. The Review Pass substitutes for the user's
-judgement; once they have supplied it, the substitute is waste.
+A Revision re-seeds the map from what the user said, and the Grounding Floor
+resets with it: the files that grounded the last Proposal say nothing about
+where the new direction lands.
 
 ## Unclears
 
