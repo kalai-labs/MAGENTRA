@@ -39,6 +39,10 @@ It confirms the target. It does not prove the path — no file manifest, no
 impact analysis, no decomposition. That work belongs after approval, where
 OVERDRIVE already does it.
 
+A Scout Phase starts from the user's own answers, not from a blank page: the
+Unclears are settled before it opens a single file, so its reading is already
+pointed somewhere.
+
 A scout phase reads. It does not delegate work, does not record a task plan,
 and does not change anything a later step would have to undo.
 
@@ -143,7 +147,8 @@ What is still open once the agent has asked the user everything that was
 theirs to decide. Named in a Proposal's fourth section, each with the
 assumption the agent chose to proceed on.
 
-The questions themselves are put to the user BEFORE the Proposal is written,
-never after it is approved. A question whose answer would change what gets
-built cannot be asked after the user has approved what gets built — by then
-they have approved a direction chosen on a question they never answered.
+The questions themselves are put to the user BEFORE the Scout Phase begins.
+Their answers do two jobs: they decide what gets built, and they tell the agent
+where to look. Asked after the reading they would arrive too late to save any
+of it; asked after Approval they would be a question about a direction the user
+has already agreed to.

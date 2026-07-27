@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { loadBackpackIndex } from "../knowledge/backpack/index.js";
 import {
   STATE_DIR_NAME,
@@ -52,7 +52,7 @@ import {
   CAREFUL_SCOUT_SECTION,
   CAREFUL_SCOUT_WARN_AFTER_ROUNDS,
   CAREFUL_SCOUT_WARN_TEXT,
-  CAREFUL_UNCLEARS_TEXT,
+  CAREFUL_QUESTIONS_SYSTEM,
   carefulApprovalQuestion,
   carefulApprovedText,
   carefulRevisionText,
@@ -1194,15 +1194,11 @@ export class Session {
   }
 
   /**
-   * Clarify pre-layer: judges the incoming request with the MAIN model and,
-   * when it is genuinely open-ended, asks the user up to three shape-defining
-   * multiple-choice questions before any work starts. Returns the answers as
-   * a text block to ride with the user message, or undefined to just start.
-   * Strictly fail-open — a broken verdict must never cost the user the turn.
+   * A compact snippet of the last exchange, so a follow-up ("improve it") is
+   * judged with what came before in view instead of looking open-ended on its
+   * own. Shared by every pre-layer that has to reason about the request.
    */
-  private async maybeClarify(userText: string): Promise<string | undefined> {
-    // Compact recent context so a follow-up ("improve it") is judged with the
-    // preceding exchange in view instead of looking open-ended in isolation.
+  private recentExchange(): string {
     const recent = this.messages
       .slice(-4)
       .map((m) => ({ role: m.role, text: assistantText(m) }))
@@ -1210,6 +1206,17 @@ export class Session {
       .slice(-2)
       .map((m) => `${m.role}: ${m.text.length > 400 ? `${m.text.slice(0, 400)}…` : m.text}`)
       .join("\n");
+    return recent ? `Previous exchange:\n${recent}\n\n` : "";
+  }
+
+  /**
+   * Clarify pre-layer: judges the incoming request with the MAIN model and,
+   * when it is genuinely open-ended, asks the user up to three shape-defining
+   * multiple-choice questions before any work starts. Returns the answers as
+   * a text block to ride with the user message, or undefined to just start.
+   * Strictly fail-open — a broken verdict must never cost the user the turn.
+   */
+  private async maybeClarify(userText: string): Promise<string | undefined> {
     // Ground the verdict in a cursory look at the code, so the questions are
     // about real, specific choices — and so nothing the code already answers
     // gets asked. Deterministic (file/graph reads, no model call): it rides
@@ -1219,7 +1226,7 @@ export class Session {
     try {
       raw = await this.runInference({
         system: CLARIFY_SYSTEM,
-        user: `${recent ? `Previous exchange:\n${recent}\n\n` : ""}${skim ? `Codebase overview:\n${skim}\n\n` : ""}Incoming request:\n${userText}`,
+        user: `${this.recentExchange()}${skim ? `Codebase overview:\n${skim}\n\n` : ""}Incoming request:\n${userText}`,
         maxTokens: 600,
         model: this.settings.model,
       });
@@ -1260,47 +1267,52 @@ export class Session {
   }
 
   /**
-   * CAREFUL MODE's pre-proposal round: the questions only the user can settle,
-   * asked BEFORE the proposal is written.
+   * CAREFUL MODE's question round: what only the user can decide, asked BEFORE
+   * the scout reads anything.
    *
-   * They used to be asked after approval, which was backwards — a question whose
-   * answer changes what gets built cannot be put to the user after they have
-   * approved what gets built. Asking here means the proposal is written on their
-   * answers, and its fourth section carries only what genuinely remains open.
+   * A separate inference rather than a turn in the conversation, for the same
+   * reason predictCareful is one — it has to happen before the hold goes up and
+   * before the first model turn, and it is grounded in the deterministic scout
+   * map rather than in anything the agent has read. The answers then ride with
+   * the user message, so they steer the scout's reading as well as the proposal.
    *
-   * Returns undefined when the model had nothing to ask (the common case) or the
-   * round could not run; either way the proposal follows immediately.
+   * Fail-open throughout: a thrown call, a malformed verdict or a frontend that
+   * cannot answer all mean "ask nothing", never a lost turn.
    */
-  private async askCarefulUnclears(raw: string): Promise<string | undefined> {
+  private async askCarefulQuestions(userText: string, map: string | undefined): Promise<string | undefined> {
+    let raw: string;
+    try {
+      raw = await this.runInference({
+        system: CAREFUL_QUESTIONS_SYSTEM,
+        user: `${this.recentExchange()}${map ? `Codebase map:\n${map}\n\n` : ""}Incoming request:\n${userText}`,
+        maxTokens: 1200,
+        model: this.settings.model,
+      });
+    } catch {
+      return undefined;
+    }
     const questions = parseCarefulQuestions(raw);
     if (questions === undefined) return undefined;
     this.emit({ type: "command_output", text: "▶ careful: asking what only you can decide" });
     return this.askQuestionRound(
       questions,
-      "The user answered these BEFORE you propose. Their answers are requirements, not suggestions — write the proposal on them. Anything left unanswered is yours to decide sensibly, and you should state the assumption you chose:",
+      "The user answered these BEFORE any investigation began. Treat the answers as requirements — they decide what you build, and they tell you where to look while you scout. Anything left unanswered is yours to decide sensibly, and you should state the assumption you chose:",
     );
   }
 
   /**
-   * CAREFUL MODE predictor: decides whether this request earns a plan the user
-   * approves before any work starts. One inference on the MAIN model, grounded
-   * in the same cursory skim the clarify pre-layer uses, and strictly fail-open
-   * — a thrown call or a malformed verdict yields false, so a broken predictor
-   * costs the user a checkpoint but never costs them the turn.
+   * CAREFUL MODE predictor: decides whether this request earns a proposal the
+   * user approves before any work starts. One inference on the MAIN model,
+   * grounded in the same cursory skim the clarify pre-layer uses, and strictly
+   * fail-open — a thrown call or a malformed verdict yields false, so a broken
+   * predictor costs the user a checkpoint but never costs them the turn.
    */
   private async predictCareful(userText: string): Promise<boolean> {
-    const recent = this.messages
-      .slice(-4)
-      .map((m) => ({ role: m.role, text: assistantText(m) }))
-      .filter((m) => m.text.trim().length > 0)
-      .slice(-2)
-      .map((m) => `${m.role}: ${m.text.length > 400 ? `${m.text.slice(0, 400)}…` : m.text}`)
-      .join("\n");
     const skim = this.buildClarifySkim();
     try {
       const raw = await this.runInference({
         system: CAREFUL_PREDICTOR_SYSTEM,
-        user: `${recent ? `Previous exchange:\n${recent}\n\n` : ""}${skim ? `Codebase overview:\n${skim}\n\n` : ""}Incoming request:\n${userText}`,
+        user: `${this.recentExchange()}${skim ? `Codebase overview:\n${skim}\n\n` : ""}Incoming request:\n${userText}`,
         maxTokens: 200,
         model: this.settings.model,
       });
@@ -1341,7 +1353,47 @@ export class Session {
     } catch {
       // ditto — the scout can still read its way there
     }
+    const alreadyRead = this.alreadyReadDigest();
+    if (alreadyRead) parts.push(alreadyRead);
     return parts.length > 0 ? parts.join("\n\n") : undefined;
+  }
+
+  /** Files listed as already-read before the list stops being a glance. */
+  private static readonly ALREADY_READ_LIMIT = 25;
+
+  /**
+   * The files this session has already read and that have not changed on disk
+   * since — the second and later CAREFUL turns of a conversation.
+   *
+   * Without this, every proposal in a session scouts from zero: the same files,
+   * opened again, for a request in the same codebase. The freshness data needed
+   * to know better is already kept for Edit/Write, so this costs one stat per
+   * remembered file and no model round at all. Deliberately phrased to the model
+   * as evidence rather than a prohibition — a file may have been read only in
+   * part, or its contents may have been summarized away by compaction, and in
+   * either case re-reading is the right call.
+   */
+  private alreadyReadDigest(): string | undefined {
+    let paths: string[];
+    try {
+      paths = this.fileState.unchangedSinceRead();
+    } catch {
+      return undefined;
+    }
+    if (paths.length === 0) return undefined;
+    const inside = paths
+      .map((abs) => relative(this.cwd, abs).split(sep).join("/"))
+      .filter((rel) => rel !== "" && !rel.startsWith(".."))
+      .sort();
+    if (inside.length === 0) return undefined;
+    const shown = inside.slice(0, Session.ALREADY_READ_LIMIT);
+    const more = inside.length - shown.length;
+    return [
+      "Already read earlier in this conversation, and UNCHANGED on disk since:",
+      ...shown.map((rel) => `  ${rel}`),
+      ...(more > 0 ? [`  …and ${more} more`] : []),
+      "Do not open these again to re-learn what they contain. Read one only if you need a part you did not see, or if it is no longer visible in the conversation above.",
+    ].join("\n");
   }
 
   /**
@@ -1537,38 +1589,41 @@ export class Session {
 
     this.emit({ type: "turn_started", turnId });
 
-    // Clarify pre-layer: on a genuinely open-ended request, the few
-    // shape-defining questions come BEFORE any work. Root attended turns
-    // only — children report to their parent, unattended runs have no user.
-    let clarification: string | undefined;
-    if (this.settings.clarify && !this.opts.child && !this.unattended) {
-      clarification = await this.maybeClarify(userText);
-    }
-
-    // CAREFUL MODE: decide whether this request earns a plan the user approves
-    // before anything happens. Runs AFTER clarify — clarify fixes the shape of
-    // the request, the proposal states the direction for that shape, and they are
-    // different questions. Raising the hold here (before the first model call)
-    // is what makes the scout phase real rather than advisory.
+    // The pre-layers that put questions to the user, in the order they matter.
+    //
+    // The CAREFUL predictor runs FIRST, because its verdict decides which
+    // question layer the turn gets. A careful turn asks its own, richer round —
+    // grounded in the codebase map, and allowed more questions — so running the
+    // lighter clarify layer as well would ask the user about the same choices
+    // twice. Everything else keeps clarify exactly as it was.
     let carefulTurn = false;
     /** The graph-derived starting position for the scout; undefined when the
      *  workspace yielded nothing to orient with. */
     let carefulMap: string | undefined;
-    if (this.isCarefulActive()) {
-      carefulTurn = await this.predictCareful(userText);
-      if (carefulTurn) {
-        carefulMap = this.buildCarefulScoutMap(userText);
-        this.permissions.setCarefulHold(true);
-        this.setPromptSection("careful", CAREFUL_SCOUT_SECTION);
-        // Deliberation is silent from the very first round: the user asked for
-        // the scouting, the review and the drafting to happen with no output but
-        // the tool activity itself.
-        this.suppressAssistantText = true;
-        // "▶ " marks a phase banner in the renderer — the same convention the
-        // Workflow engine already uses, so the scout's steps are visible without
-        // a new protocol frame (ADR 0002).
-        this.emit({ type: "command_output", text: "▶ careful: scouting" });
-      }
+    let clarification: string | undefined;
+    if (this.isCarefulActive()) carefulTurn = await this.predictCareful(userText);
+
+    if (!carefulTurn && this.settings.clarify && !this.opts.child && !this.unattended) {
+      clarification = await this.maybeClarify(userText);
+    }
+
+    // CAREFUL MODE. The hold goes up before the first model call, which is what
+    // makes the scout phase real rather than advisory — but the questions come
+    // up BEFORE even that: their answers steer where the scout looks, so asking
+    // after the reading would arrive too late to save any of it.
+    if (carefulTurn) {
+      carefulMap = this.buildCarefulScoutMap(userText);
+      clarification = await this.askCarefulQuestions(userText, carefulMap);
+      this.permissions.setCarefulHold(true);
+      this.setPromptSection("careful", CAREFUL_SCOUT_SECTION);
+      // Deliberation is silent from the very first round: the user asked for
+      // the scouting, the review and the drafting to happen with no output but
+      // the tool activity itself.
+      this.suppressAssistantText = true;
+      // "▶ " marks a phase banner in the renderer — the same convention the
+      // Workflow engine already uses, so the scout's steps are visible without
+      // a new protocol frame (ADR 0002).
+      this.emit({ type: "command_output", text: "▶ careful: scouting" });
     }
 
     // OVERDRIVE safety net: before an uncapped autonomous turn starts, park a
@@ -1618,12 +1673,6 @@ export class Session {
     let carefulHeld = carefulTurn;
     let carefulProposalArmed = false;
     let carefulReviewDone = false;
-    // The pre-proposal question round: asked once, before the proposal exists,
-    // because a question whose answer changes what gets built cannot be put to
-    // the user after they have approved what gets built.
-    let carefulQuestionsArmed = false;
-    let carefulQuestionsHandled = false;
-    let carefulUnclearAnswers: string | undefined;
     let carefulRevisions = 0;
     // Rounds spent reading since the phase (or the last revision) began, and
     // whether the soft warn has fired for this pass. Neither ever ends the
@@ -1761,36 +1810,13 @@ export class Session {
               this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_REVIEW_TEXT }] });
               continue;
             }
-            // Step 3 — surface what only the user can decide, and ask it NOW.
-            // The model answers with a JSON question list (usually empty, since
-            // the scout has just read the repository).
-            if (!carefulQuestionsArmed) {
-              carefulQuestionsArmed = true;
-              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_UNCLEARS_TEXT }] });
-              continue;
-            }
-            if (!carefulQuestionsHandled) {
-              carefulQuestionsHandled = true;
-              carefulUnclearAnswers = await this.askCarefulUnclears(assistantText(assistant));
-              // Deliberately no `continue`: with nothing to ask (the common
-              // case) the proposal is armed in this same iteration, so the extra
-              // step costs one model round and never a wasted round trip.
-            }
-            // Step 4 — ask for the proposal. Still muted: it is checked before
+            // Step 3 — ask for the proposal. Still muted: it is checked before
             // the user sees it, so a draft naming a file that does not exist is
             // corrected rather than shown and then contradicted.
             if (!carefulProposalArmed) {
               carefulProposalArmed = true;
               this.emit({ type: "command_output", text: "▶ careful: writing the proposal" });
-              this.pushMessage({
-                role: "user",
-                content: [
-                  ...(carefulUnclearAnswers !== undefined
-                    ? [{ type: "text" as const, text: carefulUnclearAnswers }]
-                    : []),
-                  { type: "text", text: CAREFUL_PROPOSAL_TEXT },
-                ],
-              });
+              this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_PROPOSAL_TEXT }] });
               continue;
             }
             // The text that just streamed IS the proposal.
@@ -1836,12 +1862,6 @@ export class Session {
               carefulRevisions++;
               carefulProposalArmed = false;
               carefulReviewDone = true; // a revision gets no Review Pass
-              // …nor another question round: the user has just told the agent
-              // what they want, which is the answer a question would have asked
-              // for. Their earlier answers stay in the conversation and stand.
-              carefulQuestionsArmed = true;
-              carefulQuestionsHandled = true;
-              carefulUnclearAnswers = undefined;
               carefulProposalRetries = 0;
               // A revision usually redirects, so the old map now points at the
               // wrong part of the repository — re-seed it from what they said.
@@ -2841,6 +2861,18 @@ function finalAssistantText(session: Session): string {
   return NO_SUBAGENT_TEXT;
 }
 
+/**
+ * How many questions each layer may ask.
+ *
+ * The clarify pre-layer runs on ordinary turns and stays deliberately light.
+ * CAREFUL's round is allowed more: it only fires on substantial work, it runs
+ * before the agent reads anything, and its answers steer that reading — so
+ * under-asking there wastes a whole investigation, which is the expensive
+ * direction to be wrong in.
+ */
+const CLARIFY_MAX_QUESTIONS = 3;
+const CAREFUL_MAX_QUESTIONS = 5;
+
 /** A question a pre-layer puts to the user: protocol-shaped, ready for askUser. */
 interface ShapeQuestion {
   question: string;
@@ -2878,9 +2910,13 @@ function parseJsonObject(raw: string): Record<string, unknown> | undefined {
  * Returns undefined when nothing usable survives — every caller reads that as
  * "ask nothing", which is the fail-open direction.
  */
-function parseQuestionArray(value: unknown, fallbackHeader: string): ShapeQuestion[] | undefined {
+function parseQuestionArray(
+  value: unknown,
+  fallbackHeader: string,
+  maxQuestions: number,
+): ShapeQuestion[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const questions = value.slice(0, 3).flatMap<ShapeQuestion>((q) => {
+  const questions = value.slice(0, maxQuestions).flatMap<ShapeQuestion>((q) => {
     if (typeof q !== "object" || q === null) return [];
     const qr = q as Record<string, unknown>;
     if (typeof qr.question !== "string" || qr.question.trim() === "" || !Array.isArray(qr.options)) return [];
@@ -2911,7 +2947,7 @@ function parseQuestionArray(value: unknown, fallbackHeader: string): ShapeQuesti
 function parseClarifyVerdict(raw: string): ShapeQuestion[] | undefined {
   const rec = parseJsonObject(raw);
   if (!rec || rec.clarify !== true) return undefined;
-  return parseQuestionArray(rec.questions, "Clarify");
+  return parseQuestionArray(rec.questions, "Clarify", CLARIFY_MAX_QUESTIONS);
 }
 
 /**
@@ -2921,7 +2957,7 @@ function parseClarifyVerdict(raw: string): ShapeQuestion[] | undefined {
  */
 function parseCarefulQuestions(raw: string): ShapeQuestion[] | undefined {
   const rec = parseJsonObject(raw);
-  return rec ? parseQuestionArray(rec.questions, "Decide") : undefined;
+  return rec ? parseQuestionArray(rec.questions, "Decide", CAREFUL_MAX_QUESTIONS) : undefined;
 }
 
 /** Total length of the text blocks in an assistant message (used to detect a bare give-up). */

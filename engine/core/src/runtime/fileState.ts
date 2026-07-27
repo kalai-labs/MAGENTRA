@@ -28,6 +28,28 @@ export class FileState implements FileStateStore {
     return this.entries.has(resolve(path));
   }
 
+  /**
+   * Absolute paths read this session whose bytes are unchanged on disk since.
+   *
+   * The same mtime+size the freshness check uses, asked the other way round:
+   * not "may I edit this?" but "is what was read still true?". A later CAREFUL
+   * turn uses it to avoid re-opening files it already read earlier in the
+   * conversation — on the second or third proposal of a session, most of the
+   * scout's reading is otherwise a repeat of the first.
+   */
+  unchangedSinceRead(): string[] {
+    const paths: string[] = [];
+    for (const [key, entry] of this.entries) {
+      try {
+        const stat = statSync(key);
+        if (stat.mtimeMs === entry.mtimeMs && stat.size === entry.size) paths.push(key);
+      } catch {
+        // deleted since it was read — nothing to reuse
+      }
+    }
+    return paths;
+  }
+
   checkFresh(path: string): string | undefined {
     const key = resolve(path);
     const entry = this.entries.get(key);

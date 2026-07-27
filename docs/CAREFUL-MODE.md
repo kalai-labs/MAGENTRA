@@ -42,26 +42,24 @@ request was. CAREFUL is a context-building step; the gate is a side effect.
 ```
 user message
    ↓
-clarify pre-layer         unchanged, still runs first
-   ↓
 careful predictor         one main-model inference, fail-open
    ↓ several steps, or one irreversible step?
    │
-   ├─ no  → ordinary OVERDRIVE turn
+   ├─ no  → clarify pre-layer, then an ordinary OVERDRIVE turn
    │
-   └─ yes → HOLD RAISED (PermissionEngine)          ▶ careful: scouting
-            ↓
-            scout map injected    atlas or graph skeleton, plus a slice of the
-                                  repo seeded from the request itself
+   └─ yes → scout map built       atlas or graph skeleton, a slice of the repo
+            ↓                     seeded from the request, and what this session
+            ↓                     already read and is still unchanged
+            OPEN QUESTIONS        up to 5, grounded in that map — asked BEFORE
+            ↓                     anything is read, because the answers decide
+            ↓                     where to read     ▶ careful: asking
+            HOLD RAISED (PermissionEngine)          ▶ careful: scouting
             ↓
             scout: Read / Grep / Glob / GraphQuery / BackpackSearch / Skill
                    everything else refused; all prose suppressed
                    soft warn after 4 rounds — a reminder, never a cut
             ↓
             review pass ×1        "read your own draft once"   ▶ careful: reviewing
-            ↓
-            open questions        anything only the USER can decide is asked
-                                  HERE — before a direction exists to bias it
             ↓
             PROPOSAL written      five H1 sections — still not shown
             ↓                                                  ▶ careful: writing
@@ -154,7 +152,10 @@ make the scout read more. It worked exactly as designed.
 | Self-critique | 2 rounds, each inviting more reading | 1 review pass, reads nothing new |
 | Hallucinated paths | Nothing checked them | Engine checks each, sends bad ones back |
 | After approval | "Build what you described", then ask the unclears | The proposal injected as the working brief; work starts |
-| When questions are asked | After approval | Before the proposal is written |
+| When questions are asked | After approval | Before the scout reads anything |
+| How many questions | at most 3, biased toward none | up to 5, biased toward asking |
+| Proposal headings | always English | the user's own language |
+| Second proposal in a session | scouts from zero again | skips files already read and unchanged |
 | Phase feedback | Four plain notes | `▶ ` phase banners (the Workflow convention) |
 | Graph languages | TS, JS, Python | 8 with edges, everything else as nodes |
 | Slice seeds | File paths only | Paths **and** declared symbol names |
