@@ -5,6 +5,11 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { loadBackpackIndex } from "../knowledge/backpack/index.js";
 import {
   STATE_DIR_NAME,
+  addUsage,
+  emptyUsage,
+  estimateTokens,
+  formatTokens,
+  inputTokensOf,
   type CoreEvent,
   type PermissionDecision,
   type TaskItem,
@@ -38,7 +43,6 @@ import { areaFacts, graphSummary, planAtlasAreas, projectName } from "../knowled
 import { graphStats, loadOrBuildGraph, pagerank, type GraphData } from "../knowledge/graph.js";
 import { renderRetrieval, retrieveContext } from "../knowledge/retrieval.js";
 import { loadStandards } from "../knowledge/standards.js";
-import { formatTokens } from "../config/pricing.js";
 import { BackgroundManager } from "../scheduling/background.js";
 import { FileState } from "./fileState.js";
 import type { HookRunner } from "../agent/hooks.js";
@@ -66,7 +70,7 @@ import { buildSystemPrompt, skillsBlock } from "../agent/prompts.js";
 import { DEBUG_DIR, commandRunsRepro, reproScriptRelPath } from "../ma/debug.js";
 import { SearchLog, evaluateReuseGate, type ReuseGateResult } from "../knowledge/reuseGate.js";
 import { buildSymbolIndex, loadOrBuildSymbolIndex, type SymbolIndexData } from "../knowledge/symbols.js";
-import { SessionStats } from "./sessionStats.js";
+import { SessionStats, type ContextBreakdown } from "./sessionStats.js";
 import type { Settings } from "../config/settings.js";
 import { addExactPermission } from "../config/settings.js";
 import { type CrewAgent, CREW_ALWAYS_ALLOWED, crewSection } from "../crew/team.js";
@@ -693,7 +697,12 @@ export class Session {
 
   /** One-shot completion with no tools; returns concatenated text. Runs on the
    *  small model unless `model` overrides it (the clarify pre-layer runs on
-   *  the main model by design). */
+   *  the main model by design).
+   *
+   *  This is a real model invocation, so it is banked like any other: its tokens
+   *  join the session ledger and the open turn's deliberation total. It is NOT
+   *  conversational — its private prompt never enters the conversation's window,
+   *  so it must not be mistaken for the context size. */
   async runInference(opts: {
     system: string;
     user: string;
@@ -702,16 +711,27 @@ export class Session {
     provider?: Provider;
   }): Promise<string> {
     let text = "";
+    const model = opts.model ?? this.settings.smallModel ?? this.settings.model;
+    const startedAt = Date.now();
+    let usage = emptyUsage();
     const stream = (opts.provider ?? this.provider).stream({
-      model: opts.model ?? this.settings.smallModel ?? this.settings.model,
+      model,
       system: opts.system,
       messages: [{ role: "user", content: [{ type: "text", text: opts.user }] }],
       tools: [],
       maxTokens: opts.maxTokens,
       signal: new AbortController().signal,
     });
-    for await (const event of stream) {
-      if (event.type === "text_delta") text += event.text;
+    try {
+      for await (const event of stream) {
+        if (event.type === "text_delta") text += event.text;
+        else if (event.type === "message_end") usage = event.usage;
+      }
+    } finally {
+      // Banked even when the call throws part-way: the tokens it did consume
+      // were still spent, and a silent hole in the ledger is worse than a
+      // partial figure.
+      this.stats.recordResponse(model, usage, Date.now() - startedAt, false);
     }
     return text;
   }
@@ -1628,7 +1648,15 @@ export class Session {
     const turnId = `t_${++this.turnCounter}`;
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
-    const turnUsage: Usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    /** This session's OWN main-loop spend, which is what the per-turn budget and
+     *  the crew ledger are about. The tree-wide total (this plus the auxiliary
+     *  prompts and every subagent) is the stats phase, opened just below. */
+    const turnUsage: Usage = emptyUsage();
+    // Open the deliberation phase: from here every invocation anywhere in the
+    // tree counts toward this turn's D(t) and T_turn. Only the root opens one —
+    // children share this ledger, so a subagent must add to the phase in flight
+    // rather than restart it and zero the meter the user is watching.
+    if (!this.opts.child) this.stats.beginPhase();
 
     this.emit({ type: "turn_started", turnId });
 
@@ -1805,11 +1833,8 @@ export class Session {
         const { assistant, toolCalls, end } = await this.streamAssistantTurn(signal);
         // turnUsage ACCUMULATES (it is billed cost for this turn). The context
         // size does NOT — streamAssistantTurn already set stats.contextTokens
-        // from this one response's whole prompt. Never sum the two concepts.
-        turnUsage.inputTokens += end.usage.inputTokens;
-        turnUsage.outputTokens += end.usage.outputTokens;
-        turnUsage.cacheReadTokens += end.usage.cacheReadTokens;
-        turnUsage.cacheWriteTokens += end.usage.cacheWriteTokens;
+        // from this one response's own input. Never sum the two concepts.
+        addUsage(turnUsage, end.usage);
 
         // Self-verify result: this one response was streamed silently.
         // A bare DONE means the query was already handled — end the turn with
@@ -2174,11 +2199,18 @@ export class Session {
       releaseCarefulHold();
       this.abortController = undefined;
       this.lastTurnUsage = turnUsage;
+      // Close the phase. Its total is T_turn — every invocation the turn made,
+      // this session's plus its auxiliary prompts plus every subagent's — and
+      // its output component is the authoritative D_final that supersedes the
+      // estimates streamed while the turn ran. A child never closes the phase:
+      // the root's turn is still open around it, so it reports only its own
+      // spend and leaves the tree-wide total to the root.
+      const reportedUsage = this.opts.child ? turnUsage : this.stats.endPhase();
       this.emit({
         type: "turn_finished",
         turnId,
         stopReason,
-        usage: turnUsage,
+        usage: reportedUsage,
         contextTokens: this.stats.contextTokens,
         // Cost is intentionally not surfaced: our token counting and a
         // provider's billing can diverge, so any figure risks misinforming.
@@ -2218,30 +2250,53 @@ export class Session {
     let thinking = "";
     let end: { stopReason: StopReason; usage: Usage } = {
       stopReason: "end_turn",
-      usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      usage: emptyUsage(),
     };
 
     const model = this.settings.model;
     const apiStartedAt = Date.now();
 
-    // Live context meter: the frontend otherwise only learns the context size
-    // once per turn (at turn_finished), so a long reply looks frozen. Seed with
-    // the prompt about to be processed and grow it as the reply streams, pushing
-    // a throttled context_update so the "ctx ~N" figure climbs in real time
-    // (an estimate — turn_finished replaces it with the measured value). Only
-    // the top-level session drives the meter; a subagent must not clobber it.
-    const liveBaseTokens = this.opts.child ? 0 : this.estimateContextNow();
-    let liveLastEmitted = 0;
-    const emitLiveContext = (): void => {
-      if (this.opts.child) return;
-      const live = liveBaseTokens + this.estimateTokens(text.length + thinking.length);
-      // Step-gate so a fast stream emits a handful of updates, not hundreds.
-      if (live - liveLastEmitted < 200) return;
-      liveLastEmitted = live;
+    // The live token meters. Without them a frontend only learns either figure
+    // once per turn (at turn_finished), so a long reply looks frozen.
+    //
+    // B(t) — the INPUT of the call now in flight. FIXED for the whole call:
+    // generated output does not enter the input context, so this is seeded with
+    // an estimate of the prompt about to go out and then replaced by the exact
+    // figure the moment the provider reports one (at message_start on APIs that
+    // send it, otherwise at message_end). Only a root session measures a window:
+    // a subagent's conversation is a different one, so a child reports the
+    // root's last measurement unchanged rather than its own, much smaller, size.
+    //
+    // D(t) — output tokens generated by this TURN, and it only grows: every
+    // completed call in the phase (this session's, its auxiliary prompts, and
+    // every subagent's) is already banked exactly on the shared ledger, and this
+    // call's still-streaming tail is estimated from characters until its usage
+    // lands.
+    //
+    // The seed is computed for a root only: building the system prompt and
+    // serializing the tool schemas is not free, and a child replaces this with
+    // the root's measurement at emit time anyway.
+    let liveContext = this.opts.child ? 0 : this.estimateContextNow();
+    let emittedContext = -1;
+    let emittedOutput = -1;
+    const emitLiveTokens = (): void => {
+      // A child reads the root's figure fresh each time rather than seeding its
+      // own: the window it should report is the one the frontend is showing.
+      if (this.opts.child) liveContext = this.stats.contextTokens;
+      // Nothing has measured a window yet — say nothing rather than push a 0 a
+      // frontend would adopt as "the context is empty".
+      if (liveContext <= 0) return;
+      const output = this.stats.liveDeliberationTokens(estimateTokens(text.length + thinking.length));
+      // Step-gate so a fast stream emits a handful of updates, not hundreds —
+      // but never swallow a context change, which moves at most once per call.
+      if (liveContext === emittedContext && output - emittedOutput < 200) return;
+      emittedContext = liveContext;
+      emittedOutput = output;
       this.emit({
         type: "context_update",
-        contextTokens: live,
-        ...(this.autoCompactLimit > 0 && live >= Math.floor(this.autoCompactLimit * 0.9)
+        contextTokens: liveContext,
+        outputTokens: output,
+        ...(this.autoCompactLimit > 0 && liveContext >= Math.floor(this.autoCompactLimit * 0.9)
           ? { contextWarn: true }
           : {}),
       });
@@ -2261,15 +2316,24 @@ export class Session {
 
     for await (const event of stream) {
       switch (event.type) {
+        case "message_start":
+          // The exact input context of this call, known before a single output
+          // token exists — adopt it so the meter stops estimating immediately.
+          if (!this.opts.child) {
+            this.stats.observeContext(event.usage);
+            liveContext = this.stats.contextTokens;
+          }
+          emitLiveTokens();
+          break;
         case "text_delta":
           text += event.text;
           if (!this.suppressAssistantText) this.emit({ type: "text_delta", text: event.text });
-          emitLiveContext();
+          emitLiveTokens();
           break;
         case "thinking_delta":
           thinking += event.text;
           if (!this.suppressAssistantText) this.emit({ type: "thinking_delta", text: event.text });
-          emitLiveContext();
+          emitLiveTokens();
           break;
         case "tool_use_start":
           toolCalls.push({ id: event.id, name: event.name, json: "" });
@@ -2289,16 +2353,16 @@ export class Session {
 
     // Bank this response against the whole-session ledger: its billed tokens
     // (per model — a crew child may run on a different one), the API time it
-    // took, and the context size it reveals. Shared with the parent session, so
-    // a crew/subagent's spend lands in the same /session report.
-    this.stats.recordResponse(model, end.usage, Date.now() - apiStartedAt);
-    // Provider omitted usage (some do on very large prompts): recordResponse
-    // kept the prior size, but this turn's history may have grown. Fall back to
-    // a conservative estimate from the real messages so the compaction safety
-    // still sees roughly the true size instead of a stale, too-small number.
-    const measured =
-      end.usage.inputTokens + end.usage.cacheReadTokens + end.usage.cacheWriteTokens + end.usage.outputTokens;
-    if (measured === 0) {
+    // took, and, for a root session, the window occupancy its input reveals.
+    // The ledger is shared with the parent, so a crew/subagent's spend lands in
+    // the same /session report — but its window is its own conversation's, so a
+    // child never writes the root's context figure.
+    this.stats.recordResponse(model, end.usage, Date.now() - apiStartedAt, !this.opts.child);
+    // Provider omitted usage entirely (some do on very large prompts): the
+    // recorded size stayed put, but this turn's history may have grown. Fall
+    // back to a conservative estimate from the real messages so the compaction
+    // safety still sees roughly the true size instead of a stale, too-small one.
+    if (!this.opts.child && inputTokensOf(end.usage) === 0) {
       this.stats.contextTokens = Math.max(this.stats.contextTokens, this.estimateContextTokens());
     }
 
@@ -2650,14 +2714,13 @@ export class Session {
 
   /**
    * A conservative token estimate of the current message history, used only when
-   * the provider gave no usage to measure from. ~3.5 chars/token (deliberately
-   * low, so it OVER-counts) — better to compact a little early than to
-   * under-count and overflow the provider.
+   * the provider gave no usage to measure from — better to compact a little
+   * early than to under-count and overflow the provider.
    */
   private estimateContextTokens(): number {
     let chars = 0;
     for (const m of this.messages) chars += JSON.stringify(m.content).length;
-    return this.estimateTokens(chars);
+    return estimateTokens(chars);
   }
 
   /** Estimated token weight of the CONVERSATION alone (message history), excluding
@@ -2718,34 +2781,23 @@ export class Session {
     }
   }
 
-  /** Rough token count from a character length (or a string), ~3.5 chars/token,
-   * rounded up. Deliberately low chars/token so it over-counts rather than under. */
-  private estimateTokens(input: string | number): number {
-    const chars = typeof input === "number" ? input : input.length;
-    return Math.ceil(chars / 3.5);
-  }
-
   /**
-   * A composition estimate of what currently fills the context, for the /session
-   * report. Each part is an ESTIMATE (~3.5 chars/token) of its own size — the
-   * measured total (`stats.contextTokens`, from provider usage) is the source of
-   * truth and will not sum to these exactly. Skills physically live inside the
-   * system string; they are broken out so their weight is visible on its own.
-   * `limit` is the user's auto-compact limit (0 = none set), used to show free
-   * space; without a limit there is no window to compute free space against.
+   * The category-sum estimate of what currently fills the context, for the
+   * /session report: the input context broken into its disjoint parts. Each part
+   * is an ESTIMATE of its own size — the measured total (`stats.contextTokens`,
+   * from provider usage) is the source of truth and will not sum to these
+   * exactly. Skills physically live inside the system string; they are broken
+   * out (and subtracted from it) so their weight is visible on its own without
+   * being counted twice. `limit` is the user's auto-compact limit (0 = none
+   * set), used to show free space; without a limit there is no window to compute
+   * free space against.
    */
-  contextBreakdown(): {
-    systemPrompt: number;
-    tools: number;
-    skills: number;
-    messages: number;
-    limit: number;
-  } {
+  contextBreakdown(): ContextBreakdown {
     const skillsText = skillsBlock(this.opts.skills ?? []) ?? "";
-    const skills = this.estimateTokens(skillsText);
+    const skills = estimateTokens(skillsText);
     // System prompt without the skills block, so the two don't double-count.
-    const systemPrompt = Math.max(0, this.estimateTokens(this.buildSystemPrompt()) - skills);
-    const tools = this.estimateTokens(JSON.stringify(this.toolSchemas()));
+    const systemPrompt = Math.max(0, estimateTokens(this.buildSystemPrompt()) - skills);
+    const tools = estimateTokens(JSON.stringify(this.toolSchemas()));
     const messages = this.estimateContextTokens();
     return { systemPrompt, tools, skills, messages, limit: this.autoCompactLimit };
   }
@@ -2813,7 +2865,9 @@ export class Session {
     // The window is far from empty, and a ~0 reading would both misinform the
     // context meter and disarm the compaction safety until the next response
     // re-measures. (Cost/usage totals stay — compaction does not un-bill spend.)
-    this.stats.contextTokens = this.estimateContextNow();
+    // Root only: the shared figure describes the root's window, and a child
+    // compacting its own history says nothing about how full that one is.
+    if (!this.opts.child) this.stats.contextTokens = this.estimateContextNow();
     // The original skill reminders likely lived in the summarized span — let
     // the next turn re-establish them in the surviving conversation.
     this.injectedSkillReminders.clear();
@@ -2843,8 +2897,9 @@ export class Session {
    * rolling summary that carries forward what earlier chunks established.
    */
   private async summarizeForCompaction(head: Msg[]): Promise<string> {
-    // ~4 chars/token: keep each summarizer prompt well inside even a small
-    // (128k-token) window, leaving room for the rolling summary + reply.
+    // A character budget, not a token count: at the shared chars-per-token
+    // estimate this keeps each summarizer prompt (~57k tokens) well inside even
+    // a small 128k window, leaving room for the rolling summary + reply.
     const MAX_CHUNK_CHARS = 200_000;
     const serialized = head.map((m) => serializeForSummary([m]));
     const chunks: string[] = [];

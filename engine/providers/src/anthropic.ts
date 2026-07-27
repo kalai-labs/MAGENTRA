@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { emptyUsage } from "@magentra/protocol";
 import { withRetry } from "./retry.js";
 import type {
   ContentBlock,
@@ -69,7 +70,7 @@ export class AnthropicProvider implements Provider {
     // block index -> tool_use id, so stop events can be attributed
     const toolBlocks = new Map<number, string>();
     let stopReason: StopReason = "end_turn";
-    let usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    let usage = emptyUsage();
 
     for await (const event of stream) {
       switch (event.type) {
@@ -80,6 +81,10 @@ export class AnthropicProvider implements Provider {
             cacheReadTokens: event.message.usage.cache_read_input_tokens ?? 0,
             cacheWriteTokens: event.message.usage.cache_creation_input_tokens ?? 0,
           };
+          // The whole input context is known here, before a single output token
+          // exists — surface it so the caller's context meter is exact for the
+          // entire call rather than only after it ends.
+          yield { type: "message_start", usage };
           break;
         case "content_block_start":
           if (event.content_block.type === "tool_use") {

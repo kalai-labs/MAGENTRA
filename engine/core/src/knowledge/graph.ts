@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative } from "node:path";
+import { estimateTokens } from "@magentra/protocol";
 import { writeFileAtomic } from "../util/fsAtomic.js";
 
 /**
@@ -1017,10 +1018,10 @@ export function articulationPoints(g: GraphData): { points: string[]; bridges: [
 // Slicing / stats.
 // ---------------------------------------------------------------------------
 
-/** Estimated token cost of a file (~4 chars per token). */
+/** Estimated token cost of putting a file in the context, from its byte size —
+ *  the same characters-per-token estimate every other Magentra token figure uses. */
 function estTokensOf(g: GraphData, file: string): number {
-  const size = g.files[file]?.size ?? 0;
-  return Math.max(1, Math.ceil(size / 4));
+  return Math.max(1, estimateTokens(g.files[file]?.size ?? 0));
 }
 
 /**

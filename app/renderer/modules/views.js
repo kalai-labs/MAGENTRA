@@ -292,6 +292,19 @@ function renderNowText() {
   nowTextEl.appendChild(document.createTextNode(tail));
 }
 
+/**
+ * The live output counter on the shared liveness strip: D(t), what THIS turn has
+ * generated so far. Hidden until the first tokens land, so an idle strip stays
+ * quiet. The engine owns the number (see modules/tokens.js); this only paints it.
+ */
+function renderNowTokens() {
+  if (!nowTokensEl) return;
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // the strip shows the focused tab only
+  const show = outputTokens > 0;
+  nowTokensEl.classList.toggle("hidden", !show);
+  if (show) nowTokensEl.textContent = `↑ ${formatTokens(outputTokens)} out`;
+}
+
 function setNowActivity(verb, detail) {
   nowVerb = verb;
   nowDetail = detail || "";
@@ -315,6 +328,7 @@ function tickNowLine() {
     nowTimerEl.textContent = formatTurnElapsed(Date.now() - nowTurnStart);
   }
   renderNowText();
+  renderNowTokens();
 }
 
 function startNowLine() {
@@ -331,6 +345,7 @@ function startNowLine() {
   if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // background tab: don't drive the shared liveness strip
   nowLineEl.classList.remove("hidden");
   nowTimerEl.textContent = "0:00";
+  renderNowTokens(); // the turn's output counter restarts from 0 with the strip
 
   nowSpinnerIdx = 0;
   if (nowSpinnerIntervalId) clearInterval(nowSpinnerIntervalId);

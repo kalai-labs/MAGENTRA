@@ -1,3 +1,4 @@
+import { emptyUsage } from "@magentra/protocol";
 import type {
   ContentBlock,
   Msg,
@@ -155,7 +156,10 @@ export class OpenAICompatProvider implements Provider {
     // Pulls inline <think> reasoning out of the content stream (see class doc).
     const think = new ThinkTagSplitter();
     let finishReason: string | undefined;
-    let usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    // No message_start counterpart here: OpenAI-compatible endpoints report
+    // usage only in the final chunk, so the caller keeps its own estimate of the
+    // input context until `message_end` lands.
+    let usage = emptyUsage();
     let buffer = "";
     const decoder = new TextDecoder();
 

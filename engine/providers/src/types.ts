@@ -40,6 +40,15 @@ export type StopReason =
   | "error";
 
 export type ProviderEvent =
+  /**
+   * The invocation's input context, reported before any output arrives. Only the
+   * three INPUT classes are authoritative here (`outputTokens` is a partial the
+   * caller must ignore) — it exists so the context meter shows the ACTIVE call's
+   * exact B(t) instead of an estimate for the whole time it runs. Optional:
+   * endpoints that only report usage at the end simply never emit it, and the
+   * caller falls back to its estimate until `message_end`.
+   */
+  | { type: "message_start"; usage: Usage }
   | { type: "text_delta"; text: string }
   | { type: "thinking_delta"; text: string }
   | { type: "tool_use_start"; id: string; name: string }
@@ -64,10 +73,3 @@ export interface Provider {
   /** Model ids the endpoint actually serves (GET /models); feeds the UI's model picker. */
   listModels?(): Promise<string[]>;
 }
-
-export const EMPTY_USAGE: Usage = {
-  inputTokens: 0,
-  outputTokens: 0,
-  cacheReadTokens: 0,
-  cacheWriteTokens: 0,
-};

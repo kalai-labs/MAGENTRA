@@ -1,4 +1,4 @@
-import type { Usage } from "@magentra/protocol";
+import { formatTokens, type Usage } from "@magentra/protocol";
 import type { Settings } from "./settings.js";
 
 /**
@@ -73,9 +73,10 @@ export function contextWindowFor(model: string, settings?: Settings): number {
 }
 
 /**
- * Dollar cost of `usage` at `pricing`, billing each of the four token classes at
- * its own rate. Returns undefined when the model has no rate card, so callers
- * can print counts without inventing a number.
+ * C = Σ (p_in·T_uncached + p_cw·T_cache write + p_cr·T_cache read + p_out·T_out)
+ * for one usage record — the cache-aware cost formula, each of the four token
+ * classes billed at its own rate. Returns undefined when the model has no rate
+ * card, so callers can print counts without inventing a number.
  */
 export function estimateCost(usage: Usage, pricing: ModelPricing | undefined): number | undefined {
   if (!pricing) return undefined;
@@ -93,13 +94,6 @@ export function formatUsd(dollars: number): string {
   if (dollars === 0) return "$0.00";
   if (dollars < 0.01) return `$${dollars.toFixed(4)}`;
   return `$${dollars.toFixed(2)}`;
-}
-
-/** "12.3k" — compact token counts for status lines. */
-export function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
 }
 
 /**

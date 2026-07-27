@@ -306,6 +306,11 @@ function onTurnStarted() {
   currentAssistantEl = null;
   currentThinkingEl = null;
   updateAgentMeter();
+  // D(t) is per TURN, not per session: the counter starts every turn at 0 and
+  // climbs as the engine reports what it has generated. The context counter is
+  // deliberately untouched — the window did not empty just because a turn began.
+  outputTokens = 0;
+  updateSessionMeter();
 
   busy = true;
   syncActivityUi();
@@ -422,6 +427,11 @@ function onTurnFinished(event) {
     // point; the counter tints on it. Cost is intentionally never shown.
     contextTokens = event.contextTokens ?? contextTokens;
     contextWarn = event.contextWarn === true;
+    // usage.outputTokens is D_final — the turn's exact output total from the
+    // API's own usage records, which supersedes every streamed estimate.
+    if (event.usage && typeof event.usage.outputTokens === "number") {
+      outputTokens = event.usage.outputTokens;
+    }
     updateSessionMeter();
   }
 
@@ -1057,9 +1067,12 @@ function handleEngineEvent(event) {
       onCommandOutput(event);
       break;
     case "context_update":
-      // The window changed outside a turn (a manual /compact) — mirror what
-      // turn_finished does for the context meter, minus the turn bookkeeping.
+      // The live token meters. Arrives mid-stream while the agent deliberates,
+      // and outside a turn when a manual /compact shrinks the window (no
+      // turn_finished carries that one). An absent field means "unchanged", so
+      // a compaction frame with no outputTokens leaves the turn's counter be.
       contextTokens = event.contextTokens ?? contextTokens;
+      if (typeof event.outputTokens === "number") outputTokens = event.outputTokens;
       contextWarn = event.contextWarn === true;
       updateSessionMeter();
       break;

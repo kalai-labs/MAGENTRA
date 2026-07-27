@@ -465,6 +465,57 @@ async function run() {
     assert.equal(meter.warn, false);
   });
 
+  await test("the turn's output counter starts at 0, climbs live, and never mixes into the context", async () => {
+    // A new turn zeroes the OUTPUT counter. The context counter is untouched —
+    // the window did not empty just because a turn began.
+    await emit({ type: "turn_started", turnId: "tok1" });
+    await pause();
+    let live = await evaluate(`(() => ({
+      hidden: document.querySelector('#nowTokens').classList.contains('hidden'),
+      out: outputTokens, ctx: contextTokens,
+      ctxText: document.querySelector('#hintUsage').textContent,
+    }))()`);
+    assert.equal(live.out, 0, "output starts every turn at zero");
+    assert.equal(live.hidden, true, "nothing generated yet — the counter stays out of the way");
+    assert.equal(live.ctx, 5000, "a new turn does not reset the context reading");
+    assert.match(live.ctxText, /ctx ~5\.0k/);
+    // The engine streams the two figures together while it deliberates. Output
+    // climbs; the input context of the call in flight does not move with it.
+    await emit({ type: "context_update", contextTokens: 5000, outputTokens: 420 });
+    await pause();
+    live = await evaluate(`(() => ({ text: document.querySelector('#nowTokens').textContent, hidden: document.querySelector('#nowTokens').classList.contains('hidden') }))()`);
+    assert.equal(live.hidden, false, "the counter appears as soon as output exists");
+    assert.match(live.text, /420 out/);
+    await emit({ type: "context_update", contextTokens: 5000, outputTokens: 1400 });
+    await pause();
+    live = await evaluate(`(() => ({
+      text: document.querySelector('#nowTokens').textContent,
+      ctxText: document.querySelector('#hintUsage').textContent,
+    }))()`);
+    assert.match(live.text, /1\.4k out/, "it climbs as the agent works");
+    assert.match(live.ctxText, /ctx ~5\.0k/, "output is never added into the context counter");
+    // turn_finished carries the turn's exact usage — D_final replaces the estimate.
+    await emit({
+      type: "turn_finished", turnId: "tok1", stopReason: "end_turn", contextTokens: 5000,
+      usage: { inputTokens: 900, outputTokens: 1531, cacheReadTokens: 4100, cacheWriteTokens: 0 },
+    });
+    await pause();
+    const done = await evaluate(`(() => ({
+      out: outputTokens, ctx: contextTokens,
+      inspector: document.querySelector('#inspectorUsage').textContent,
+    }))()`);
+    assert.equal(done.out, 1531, "the API's own output total supersedes the live estimate");
+    assert.equal(done.ctx, 5000, "cumulative turn usage never becomes the context size");
+    assert.match(done.inspector, /~5\.0k ctx · 1\.5k out/, "both figures read side by side, never summed");
+    // A compaction frame carries no output figure: absent means unchanged, so
+    // the turn's total survives a window that shrank underneath it.
+    await emit({ type: "context_update", contextTokens: 2200, contextWarn: false });
+    await pause();
+    const after = await evaluate(`(() => ({ out: outputTokens, ctxText: document.querySelector('#hintUsage').textContent }))()`);
+    assert.equal(after.out, 1531, "an absent outputTokens means unchanged, not zero");
+    assert.match(after.ctxText, /ctx ~2\.2k/, "the context counter still adopts the compacted size");
+  });
+
   await test("compaction shows an in-chat indicator, stays out of the jobs chip, and refreshes ctx", async () => {
     // /compact runs outside a turn; the engine brackets it in a background
     // notification. The indicator belongs IN the transcript (professional, no
@@ -1442,6 +1493,24 @@ async function run() {
     assert.ok(t.aNoBeta, "tab B's text never leaks into tab A's pane");
     assert.ok(t.bHasBeta, "tab B's stream holds its own text");
     assert.ok(t.bNoAlpha, "tab A's text never leaks into tab B's pane");
+    // Token meters under tiling: each pane counts its OWN turn's output, and the
+    // top bar carries the input context added up across every open workspace.
+    await emit({ type: "turn_started", turnId: "tnB", tabId: "tB" });
+    await emit({ type: "context_update", contextTokens: 24000, outputTokens: 900, tabId: "tA" });
+    await emit({ type: "context_update", contextTokens: 6000, outputTokens: 150, tabId: "tB" });
+    await pause(40);
+    const meters = await evaluate(`(() => ({
+      aOut: tabs.get('tA').paneEl.querySelector('.pane-now-tokens').textContent,
+      bOut: tabs.get('tB').paneEl.querySelector('.pane-now-tokens').textContent,
+      topHidden: document.querySelector('#ctxMeter').classList.contains('hidden'),
+      top: document.querySelector('#ctxMeterValue').textContent,
+      composerHidden: document.querySelector('#composer').offsetParent === null,
+    }))()`);
+    assert.match(meters.aOut, /900 out/, "each pane counts its own workspace's output");
+    assert.match(meters.bOut, /150 out/, "a second workspace counts its own, not the first's");
+    assert.equal(meters.topHidden, false, "tiling moves the context total up to the top bar");
+    assert.equal(meters.top, "~30k", "the top bar sums the input context of every open workspace");
+    assert.ok(meters.composerHidden, "the bottom counter's composer is not on screen while tiled");
     // Focus tab A: its pane gains the focus ring; both panes stay visible.
     tabEvt("test:tab-focused", { tabId: "tA" });
     await pause(40);

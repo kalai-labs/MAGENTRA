@@ -40,6 +40,17 @@ export class FakeProvider implements Provider {
     }
     if (turn.error) throw turn.error;
 
+    const usage: Usage = {
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      ...turn.usage,
+    };
+    // Mirrors a real streaming API: the input context is known up front, the
+    // output total only at the end.
+    yield { type: "message_start", usage: { ...usage, outputTokens: 0 } };
+
     if (turn.thinking) {
       req.signal.throwIfAborted();
       yield { type: "thinking_delta", text: turn.thinking };
@@ -61,13 +72,7 @@ export class FakeProvider implements Provider {
     yield {
       type: "message_end",
       stopReason: turn.stopReason ?? (turn.toolCalls?.length ? "tool_use" : "end_turn"),
-      usage: {
-        inputTokens: 10,
-        outputTokens: 5,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        ...turn.usage,
-      },
+      usage,
     };
   }
 }

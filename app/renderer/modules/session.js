@@ -130,49 +130,92 @@ function modelHintText(model) {
 }
 
 // ---------------------------------------------------------------------------
-// Live session meter: context now + running cost
+// Live token meters — see modules/tokens.js for the definitions.
 //
-// CONTEXT is read straight from turn_finished.contextTokens — the engine's own
-// measure of how full the window is (last prompt incl. cached tokens + reply).
-// It is deliberately shown as an absolute count with no "% of window": the real
-// limit varies per model and endpoint, so a percentage would be confidently
-// wrong more often than right.
+// Both figures come from the engine; the renderer never computes either one, and
+// never adds them together. They answer different questions:
 //
-// COST accumulates turn_finished.usage per model (that one IS cumulative) and
-// bills each token class at its own rate. `/session` in the engine is the
-// authoritative bill (packages/core/src/pricing.ts is the canonical rate card);
-// this is the at-a-glance version of the same numbers.
+//   contextTokens  B(t)  "how full is the window right now" — the INPUT of the
+//                        latest request. Point-in-time. Shown as an absolute
+//                        count with no "% of window": the real limit varies per
+//                        model and endpoint, so a percentage would be
+//                        confidently wrong more often than right.
+//
+//   outputTokens   D(t)  "how much has this turn generated so far" — every
+//                        output token of the running turn, subagents included.
+//                        Resets to 0 at turn_started and climbs from there.
+//
+// Where they live: the context counter sits under the composer with one
+// workspace open, and moves to the top bar (summed over every console) once
+// several are tiled. The output counter rides the liveness strip in each chat,
+// because it is a property of that turn rather than of the window.
 // ---------------------------------------------------------------------------
 
 let contextTokens = 0;
+// D(t) for THIS tab's turn. Per-tab (swapped by tabs.js) so each workspace
+// counts its own work.
+let outputTokens = 0;
 let sessionModel = ""; // the model this session runs on (from session_started)
 // True once the engine reports the context has grown past the "run /compact"
 // warn threshold (turn_finished.contextWarn). Tints the context counter.
 let contextWarn = false;
 
-// Context is an ESTIMATE (our count and a provider's can differ), so it always
-// carries a "~". Values are rounded coarsely for the same reason — a precise
-// figure would imply a precision we don't have.
-function formatTokensShort(n) {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 10_000) return `${Math.round(n / 1_000)}k`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
+/** The context reading as text. It carries a "~" because our count and a
+ *  provider's can differ, and it is rounded coarsely for the same reason. */
+function contextLabel(tokens) {
+  return `ctx ~${formatTokens(tokens)}`;
 }
 
 function updateSessionMeter() {
+  updateContextMeter(); // the top-bar total spans every tab, focused or not
+  // Tiled: the owning pane draws its own liveness strip, so repaint it here
+  // rather than waiting on the ~8/s ticker — the figure it shows just moved.
+  if (typeof renderPaneNowLine === "function" && typeof tabs !== "undefined") {
+    const owner = tabs.get(typeof liveTabId === "function" ? liveTabId() : focusedTabId);
+    if (owner) renderPaneNowLine(owner);
+  }
   if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // background tab: leave the focused meter alone
-  if (!hintUsageEl) return;
-  const parts = [];
-  if (contextTokens > 0) parts.push(`ctx ~${formatTokensShort(contextTokens)}`);
-  hintUsageEl.textContent = parts.join(" · ");
-  hintUsageEl.classList.toggle("hidden", parts.length === 0);
-  hintUsageEl.classList.toggle("warn", contextWarn);
+  renderNowTokens(); // the chat's own output counter, independent of the composer strip
+  if (hintUsageEl) {
+    const show = contextTokens > 0;
+    hintUsageEl.textContent = show ? contextLabel(contextTokens) : "";
+    hintUsageEl.classList.toggle("hidden", !show);
+    hintUsageEl.classList.toggle("warn", contextWarn);
+  }
   syncWorkbenchContext();
+}
+
+/**
+ * The top bar's context meter: the input context of every open workspace added
+ * up. Shown only when several are tiled — with one console the composer's own
+ * counter already says it, and two copies of one number is just noise.
+ */
+function updateContextMeter() {
+  if (!ctxMeterEl || !ctxMeterValueEl) return;
+  const tiled = document.body.classList.contains("tiled");
+  if (!tiled || typeof tabs === "undefined" || tabs.size === 0) {
+    ctxMeterEl.classList.add("hidden");
+    return;
+  }
+  // Exactly one tab's state is live in the globals at any moment — the one being
+  // dispatched, else the focused one. Every other tab's is the copy captured on
+  // its TabState, so read each from wherever it actually is (see tabs.js).
+  const live = typeof liveTabId === "function" ? liveTabId() : focusedTabId;
+  let total = 0;
+  let warn = false;
+  for (const ts of tabs.values()) {
+    total += (ts.id === live ? contextTokens : ts.contextTokens) || 0;
+    if (ts.id === live ? contextWarn : ts.contextWarn) warn = true;
+  }
+  ctxMeterEl.classList.toggle("hidden", total <= 0);
+  ctxMeterValueEl.textContent = `~${formatTokens(total)}`;
+  ctxMeterEl.classList.toggle("warn", warn);
+  ctxMeterEl.title = `Input context across ${tabs.size} open workspaces`;
 }
 
 function resetSessionMeter() {
   contextTokens = 0;
+  outputTokens = 0;
   contextWarn = false;
   updateSessionMeter();
 }

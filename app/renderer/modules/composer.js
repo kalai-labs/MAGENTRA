@@ -212,20 +212,18 @@ const messageQueue = [];
 const pendingAttachments = [];
 
 // Hard ceiling on one outgoing message (typed text + folded-in attachments).
-// The ~4-chars/token estimate is deliberately rough: the point is to stop a
-// multi-megabyte paste from blowing up the model context or wedging the UI, not
-// to bill precisely.
+// Sized with the shared character estimate (modules/tokens.js) — deliberately
+// rough, because the point is to stop a multi-megabyte paste from blowing up the
+// model context or wedging the UI, not to bill precisely.
 const MAX_MESSAGE_TOKENS = 100_000;
-const CHARS_PER_TOKEN = 4;
-const MAX_MESSAGE_CHARS = MAX_MESSAGE_TOKENS * CHARS_PER_TOKEN;
+const MAX_MESSAGE_CHARS = Math.floor(MAX_MESSAGE_TOKENS * CHARS_PER_TOKEN);
 
 /** True (and complains in the transcript) when `text` exceeds the per-message
  *  ceiling. Callers must abort the send without clearing the draft. */
 function messageOverCap(text) {
   if (text.length <= MAX_MESSAGE_CHARS) return false;
-  const approxK = Math.round(text.length / CHARS_PER_TOKEN / 1000);
   appendSysError(
-    `Message too large (~${approxK}k tokens, limit ${MAX_MESSAGE_TOKENS / 1000}k). ` +
+    `Message too large (~${formatTokens(estimateTokens(text))} tokens, limit ${formatTokens(MAX_MESSAGE_TOKENS)}). ` +
       "Trim the text or remove an attachment, then send again.",
   );
   return true;

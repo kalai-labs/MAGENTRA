@@ -344,13 +344,35 @@ Reply to `list_sessions` / `/sessions`.
 | `type` | `"turn_finished"` | |
 | `turnId` | string | Matches `turn_started`. |
 | `stopReason` | string | e.g. `end_turn`, `max_iterations`, `aborted`, `error`. |
-| `usage` | `Usage` | Tokens **billed** for the turn — the sum over every model call it made (cumulative cost, not context size). |
-| `contextTokens` | number | Tokens currently **in** the context window (whole prompt of the last request + the reply). Point-in-time — this is what a context meter must show; `usage.inputTokens` under-reports whenever prompt caching is on. |
-| `totalCostUsd` | number? | Whole-session cost so far in USD, priced engine-side per model (crew runs on other models included). Absent when no used model has a rate card — show nothing rather than a fake $0. |
+| `usage` | `Usage` | `T_turn` — tokens **billed** for the turn: the sum over every model call it made, auxiliary prompts and subagents included (cumulative cost, not context size). `usage.outputTokens` is also `D_final`, the turn's authoritative output total. |
+| `contextTokens` | number | `B(t)` — tokens currently **in** the context window: the whole **input** of the last request (`inputTokens + cacheWriteTokens + cacheReadTokens`). Point-in-time — this is what a context meter must show. Generated output is *not* part of it, and `usage.inputTokens` alone under-reports whenever prompt caching is on. |
+| `contextWarn` | bool? | The context has passed the user's "run /compact" warn threshold; frontends tint their counter. Absent while it is comfortably small. |
+| `overdriveSnapshot` | string? | OVERDRIVE only: the pre-turn `git stash create` ref, the recovery handle for an in-workspace deletion. |
 
 ```json
-{"type":"turn_finished","turnId":"t_1","stopReason":"end_turn","usage":{"inputTokens":8123,"outputTokens":412,"cacheReadTokens":0,"cacheWriteTokens":0},"contextTokens":8535,"totalCostUsd":0.0031}
+{"type":"turn_finished","turnId":"t_1","stopReason":"end_turn","usage":{"inputTokens":8123,"outputTokens":412,"cacheReadTokens":0,"cacheWriteTokens":0},"contextTokens":8123}
 ```
+
+### `context_update`
+
+The live token meters, pushed whenever either figure moves: mid-stream while the
+agent deliberates, and outside a turn when a manual `/compact` shrinks the window
+with no `turn_finished` to carry the new figure.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `type` | `"context_update"` | |
+| `contextTokens` | number | `B(t)`, exactly as in `turn_finished`. Fixed for the duration of one model call — output never enters it. Exact once the provider reports its input, estimated before that. |
+| `outputTokens` | number? | `D(t)` — output tokens generated so far by the **current turn**, summed over every model call it has made (subagents included). Starts each turn at 0 and only climbs; the tail of the in-flight reply is estimated until the call's usage lands. **Absent means "unchanged", not zero.** |
+| `contextWarn` | bool? | As in `turn_finished`. |
+
+```json
+{"type":"context_update","contextTokens":8123,"outputTokens":1420}
+```
+
+The three quantities are defined once, in `engine/protocol/src/tokens.ts`, and must
+never be added together: `B(t)` is a point-in-time window occupancy, `D(t)` is the
+running turn's output, and `T_turn` is cumulative billed spend.
 
 ### `error`
 

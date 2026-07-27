@@ -693,9 +693,11 @@ body.review-open #topbar { right: var(--review-w); }
 .topbar-tool { width: 30px; height: 30px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-dim); }
 .topbar-tool:hover, .topbar-tool.active { color: var(--text-hi); background: var(--hover); }
 
-#agentMeter { display: flex; align-items: center; gap: 5px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-dim); font-size: max(10px, 0.72rem); font-variant-numeric: tabular-nums; }
+#agentMeter, #ctxMeter { display: flex; align-items: center; gap: 5px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-dim); font-size: max(10px, 0.72rem); font-variant-numeric: tabular-nums; }
 .meter-glyph { color: var(--accent); }
 .meter-label, .meter-dot { color: var(--text-faint); }
+/* Same amber "getting large" signal the composer's own counter uses. */
+#ctxMeter.warn, #ctxMeter.warn .meter-glyph { color: var(--amber); font-weight: 600; }
 
 #modeChips { display: flex; align-items: center; gap: 6px; position: relative; margin-left: auto; }
 .mode-chip { padding: 4px 9px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--text-dim); font-size: max(10px, 0.69rem); }
@@ -915,6 +917,13 @@ h1.md-h { font-size: 1.3rem; } h2.md-h { font-size: 1.16rem; } h3.md-h { font-si
 .now-inner { max-width: var(--col); display: flex; align-items: center; gap: 8px; margin: 0 auto; padding: 6px 10px; color: var(--text-dim); font-size: max(10px, 0.72rem); font-variant-numeric: tabular-nums; }
 #nowSpinner, .now-verb, .pane-now-spin { color: var(--accent); }
 #nowTimer { margin-left: auto; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+/* The turn's live output count. Pushed to the right edge, ahead of the timer, so
+   the activity text keeps the space it needs and the two numbers read together. */
+.now-tokens, .pane-now-tokens { margin-left: auto; color: var(--text-faint); font-variant-numeric: tabular-nums; flex: none; }
+/* Only when the count is actually showing does it take over the right-push; the
+   timer keeps its own `margin-left: auto` whenever the count is hidden. */
+.now-tokens:not(.hidden) + #nowTimer,
+.pane-now-tokens:not(.hidden) + .pane-now-timer { margin-left: 8px; }
 .pane-nowline { display: flex; align-items: center; gap: 8px; padding: 4px 10px 0; color: var(--text-dim); font-size: max(10px, 0.7rem); font-variant-numeric: tabular-nums; }
 .pane-now-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pane-now-timer { margin-left: auto; color: var(--text-faint); flex: none; }

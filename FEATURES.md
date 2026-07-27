@@ -35,11 +35,13 @@ land?), not on the model's prose.
 - [ ] **Stall detector** — three consecutive identical rounds (same calls, same results) force a strategy pivot; after two pivots, the model must ask the user one concrete question. `pure` + `llm`
 - [ ] **Reuse gate reminds, never blocks** — a would-be new-file Write block becomes a reminder; the signal survives, the refusal doesn't. `pure`
 - [ ] **Mid-run steering (both stances)** — typing while a turn runs sends `steer_message`: the text joins the running turn at its next message boundary, re-arms self-verify, refunds pivots; when the turn already ended, it becomes a normal user turn. Slash/bang commands still queue for turn end. `llm`
-- [ ] **Context accounting** — `contextTokens` is the *last* request's whole prompt (input + cacheRead + cacheWrite) plus its reply, and does NOT accumulate across rounds. `pure`
-- [ ] **Usage accounting** — billed usage DOES accumulate, per model, across the session and every subagent. `pure`
+- [ ] **One token algebra** — every token quantity in the app (context, deliberation, turn usage, estimates, display rounding, cost) is defined exactly once, in `engine/protocol/src/tokens.ts`, mirrored for the renderer in `app/renderer/modules/tokens.js`. No surface computes its own. `pure`
+- [ ] **Context accounting** — `contextTokens` (`B(t)`) is the *last* request's whole INPUT (input + cacheWrite + cacheRead). Point-in-time: it does NOT accumulate across rounds, and generated output is NOT part of it. Only the root conversation's window is measured — a subagent's context never overwrites it. `pure`
+- [ ] **Live deliberation counter** — `outputTokens` (`D(t)`) is what the CURRENT turn has generated, over every model call it made including subagents'. Starts each turn at 0, climbs in the chat's liveness strip as the agent works, and is replaced at turn end by the API's exact total. `pure`
+- [ ] **Usage accounting** — billed usage DOES accumulate, per model, across the session and every subagent — including the auxiliary prompts (clarify, CAREFUL prediction, auto-naming, the compaction summarizer). `pure`
 - [ ] **Provider usage normalization** — OpenAI-compatible `prompt_tokens` (whole prompt) minus `cached_tokens` (a subset) yields disjoint classes; Anthropic already reports them disjoint. Getting this wrong double-counts cache. `pure`
 - [ ] **Cost estimate** — four token classes billed at four different rates; no rate card ⇒ no cost shown (never a fabricated `$0.00`). `pure`
-- [ ] **`/session` report** — cost, API vs wall time, code churn, context now, usage per model. `pure`
+- [ ] **`/session` report** — API vs wall time, code churn, current context (with its per-part breakdown, free space and % of the auto-compact limit), cumulative usage per model. `pure`
 - [ ] **Compaction** — the oldest span is summarized when context crosses the threshold; the summary replaces it and context resets. `llm`
 - [ ] **Permission stances** — exactly two: normal (reads/interactions/file edits allowed, commands ask with once/session/always grants) and OVERDRIVE (everything allowed); deny-rule beats allow-rule beats stance. `pure`
 - [ ] **Approval note** — the approval card takes an optional note with ANY decision: on deny it becomes the refusal reason the model reads; on allow it reaches the model as a reminder with that round's results. `pure` + `llm`

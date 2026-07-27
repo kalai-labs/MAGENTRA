@@ -29,8 +29,11 @@ function syncWorkbenchContext() {
     inspectorModelEl.title = activeModel || "";
   }
   if (inspectorUsageEl) {
+    // Input context now, then what this turn has generated — the same two
+    // figures the composer strip and the liveness strip show, never added.
     const parts = [];
-    if (contextTokens > 0) parts.push(`~${formatTokensShort(contextTokens)} ctx`);
+    if (contextTokens > 0) parts.push(`~${formatTokens(contextTokens)} ctx`);
+    if (outputTokens > 0) parts.push(`${formatTokens(outputTokens)} out`);
     inspectorUsageEl.textContent = parts.join(" · ") || "—";
     inspectorUsageEl.classList.toggle("warn", contextWarn);
   }

@@ -1,32 +1,49 @@
-import type { Usage } from "@magentra/protocol";
-import { formatDuration, formatTokens } from "../config/pricing.js";
+import {
+  addUsage,
+  contextPercentOf,
+  emptyUsage,
+  formatTokens,
+  freeContextOf,
+  inputTokensOf,
+  type Usage,
+} from "@magentra/protocol";
+import { formatDuration } from "../config/pricing.js";
 import type { Settings } from "../config/settings.js";
 
 /**
  * Whole-session accounting, shared by a session and every subagent/crew child it
  * spawns (children hold a reference to the parent's instance, so a `/session`
- * summary covers the entire tree, not just the orchestrator's own calls).
+ * summary — and the live meters — cover the entire tree, not just the
+ * orchestrator's own calls).
  *
- * The critical distinction this type exists to keep straight:
+ * Three quantities live here, and the whole point of this class is that they can
+ * never be confused with one another. All three are defined once, in
+ * `@magentra/protocol`'s token module; nothing here re-derives them.
  *
- *   CONTEXT  — a point-in-time measure: how full the model's window is RIGHT
- *              NOW. It is the last request's whole prompt (input + cacheRead +
- *              cacheWrite) plus the reply appended to history (output). It does
- *              NOT accumulate: a 10-round turn does not make the context 10x
- *              bigger, it just re-sends a similar prompt 10 times.
+ *   CONTEXT  B(t) — a point-in-time measure: how full the model's window is
+ *            RIGHT NOW, i.e. the whole INPUT of the latest conversational
+ *            invocation (fresh + cache-write + cache-read). It does NOT
+ *            accumulate, and it does NOT include generated output.
  *
- *   USAGE    — a cumulative measure: every token ever billed this session, per
- *              model. THIS is what accumulates, and what cost is computed from.
+ *   PHASE    D(t) / T_turn — everything billed since the current agent turn
+ *            opened, across this session AND its children. Reset at the start of
+ *            each turn; `D(t)` is its output component, the live "deliberation"
+ *            figure the UI counts up while the agent works.
  *
- * Summing usage and calling it "context" (or reading `inputTokens` alone while
- * prompt caching routes most of the prompt through `cacheReadTokens`) are the
- * two classic ways to get this wrong; both produce a context number that has no
+ *   USAGE    every token ever billed this session, per model. THIS is what
+ *            accumulates over the session, and what cost is computed from.
+ *
+ * Summing usage and calling it "context", or reading `inputTokens` alone while
+ * prompt caching routes most of the prompt through `cacheReadTokens`, are the
+ * two classic ways to get this wrong; both produce a context number with no
  * relationship to how full the window actually is.
  */
 /**
  * A per-part estimate of what fills the context now, sourced from the live
- * session (system prompt, tool schemas, skills, message history). Every field is
- * an estimate; `limit` is the user's auto-compact token limit (0 = none set).
+ * session (system prompt, tool schemas, skills, message history). It is the
+ * category-sum form of the input context — the parts are disjoint, so they add.
+ * Every field is an estimate; `limit` is the user's auto-compact token limit
+ * (0 = none set).
  */
 export interface ContextBreakdown {
   systemPrompt: number;
@@ -46,39 +63,116 @@ export class SessionStats {
   linesAdded = 0;
   linesRemoved = 0;
   /**
-   * Current context size in tokens: the whole prompt of the most recent request
-   * plus its reply. Point-in-time, NOT a running total — see the class docs.
-   * Zero until the first provider response, and reset to zero by /clear.
+   * B(t) — current context size in tokens: the whole INPUT of the most recent
+   * conversational request. Point-in-time, NOT a running total, and NOT
+   * including the reply (see the class docs). Zero until the first provider
+   * response, and reset by /clear.
+   *
+   * This belongs to the LEDGER OWNER's conversation — the root session. Usage
+   * accumulates across the whole tree, but a window does not: an orchestrator's
+   * context and a subagent's are different conversations, so a child's responses
+   * must never be allowed to overwrite this (they bank their usage instead).
    */
   contextTokens = 0;
+
+  /**
+   * The open phase's ledger: every invocation banked since {@link beginPhase},
+   * across this session and every child sharing this instance. `outputTokens` is
+   * D(t) — the live deliberation figure. Closed phases stop accumulating so a
+   * post-turn housekeeping call (auto-naming, a summarizer) can't inflate a
+   * figure the UI has already reported as final.
+   */
+  private phase: Usage = emptyUsage();
+  private phaseOpen = false;
+  /** The highest D(t) already pushed to a frontend this phase — see {@link liveDeliberationTokens}. */
+  private liveDeliberation = 0;
 
   constructor(now: number = Date.now()) {
     this.startedAt = now;
   }
 
-  /** Bank one provider response: its billed tokens, its API time, and the context size it reveals. */
-  recordResponse(model: string, usage: Usage, apiMs: number): void {
-    const entry = this.byModel.get(model) ?? {
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-    };
-    entry.inputTokens += usage.inputTokens;
-    entry.outputTokens += usage.outputTokens;
-    entry.cacheReadTokens += usage.cacheReadTokens;
-    entry.cacheWriteTokens += usage.cacheWriteTokens;
-    this.byModel.set(model, entry);
+  /**
+   * Open a fresh deliberation phase — one agent turn. Only the ROOT session may
+   * call this: children share this ledger, so a subagent starting its own turn
+   * must add to the phase in flight, never restart it.
+   */
+  beginPhase(): void {
+    this.phase = emptyUsage();
+    this.liveDeliberation = 0;
+    this.phaseOpen = true;
+  }
+
+  /**
+   * Close the phase and return its final total: T_turn across every invocation
+   * the turn made (this session's, its auxiliary prompts, and its children's).
+   * `outputTokens` is the authoritative D_final that replaces every live
+   * estimate.
+   */
+  endPhase(): Usage {
+    this.phaseOpen = false;
+    return { ...this.phase };
+  }
+
+  /** D(t) — output tokens generated so far by the open phase. 0 between turns. */
+  get deliberationTokens(): number {
+    return this.phase.outputTokens;
+  }
+
+  /**
+   * The live D(t) to display: everything the phase has banked exactly, plus
+   * `pendingOutput` — the character-based estimate of the reply still streaming
+   * out of the caller's own in-flight invocation.
+   *
+   * Ratcheted, because several subagents can stream at once: each one knows the
+   * banked total and its OWN tail, so without a floor the figure would jump
+   * backwards every time a different one reported. A live counter that goes down
+   * while the agent is visibly working reads as a bug. Any small over-estimate
+   * the ratchet holds onto is corrected by the exact D_final at turn end.
+   */
+  liveDeliberationTokens(pendingOutput: number): number {
+    this.liveDeliberation = Math.max(this.liveDeliberation, this.phase.outputTokens + pendingOutput);
+    return this.liveDeliberation;
+  }
+
+  /**
+   * Bank one model invocation: its billed tokens (per model — a crew child may
+   * run on a different one), its API time, and, for a conversational call, the
+   * context size its prompt reveals.
+   *
+   * `conversational` is false for the one-off prompts that never sit in the
+   * window — clarification, CAREFUL prediction, auto-naming, the compaction
+   * summarizer. Those are real spend and real deliberation, so they count toward
+   * usage and toward the phase, but their tiny private prompt must NOT be
+   * mistaken for the conversation's context size.
+   */
+  recordResponse(model: string, usage: Usage, apiMs: number, conversational = true): void {
+    let entry = this.byModel.get(model);
+    if (!entry) {
+      entry = emptyUsage();
+      this.byModel.set(model, entry);
+    }
+    addUsage(entry, usage);
     this.apiMs += apiMs;
-    // Context size is read from the response's own usage. Some providers
-    // intermittently omit usage on very large prompts (or a stream ends without
-    // a usage frame), which reports as all-zeros — but a real response always
-    // had a prompt, so zero means "not measured", NOT "the context emptied".
-    // Collapsing to 0 there would blind the compaction safety (the next turn
-    // would think the window is empty and never compact, then overflow), so a
-    // zero measurement retains the last known size. Compaction is what actually
-    // shrinks contextTokens, and it sets it explicitly.
-    const measured = contextSizeOf(usage);
+    if (this.phaseOpen) addUsage(this.phase, usage);
+    if (conversational) this.observeContext(usage);
+  }
+
+  /**
+   * Adopt an exact B(t) from one invocation's usage. Callable as soon as the
+   * provider reports the input — the definition counts the latest ACTIVE
+   * invocation, not only completed ones, so a long call shows its true window
+   * occupancy for its whole duration instead of a stale figure.
+   *
+   * Some providers intermittently omit usage on very large prompts (or a stream
+   * ends without a usage frame), which reports as all-zeros — but a real request
+   * always had a prompt, so zero means "not measured", NOT "the context
+   * emptied". Collapsing to 0 there would blind the compaction safety (the next
+   * turn would think the window is empty, never compact, then overflow), so a
+   * zero measurement retains the last known size. Compaction is what actually
+   * shrinks the context, and it sets this explicitly.
+   */
+  observeContext(usage: Usage): void {
+    const measured = inputTokensOf(usage);
     if (measured > 0) this.contextTokens = measured;
   }
 
@@ -134,13 +228,8 @@ export class SessionStats {
 
   /** Total across every model, for the headline cost/token figures. */
   totalUsage(): Usage {
-    const total: Usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
-    for (const usage of this.byModel.values()) {
-      total.inputTokens += usage.inputTokens;
-      total.outputTokens += usage.outputTokens;
-      total.cacheReadTokens += usage.cacheReadTokens;
-      total.cacheWriteTokens += usage.cacheWriteTokens;
-    }
+    const total = emptyUsage();
+    for (const usage of this.byModel.values()) addUsage(total, usage);
     return total;
   }
 
@@ -148,21 +237,27 @@ export class SessionStats {
    * The `/session` report — the whole-session summary a user reads at the end.
    * Cost is deliberately omitted: our token counting and a provider's billing
    * can diverge, so any dollar figure risks misinforming. Token counts (which
-   * we measure directly) stay; context is shown "~" to signal it is an estimate.
+   * we measure directly) stay; the context line is labelled for what it is — the
+   * CURRENT window occupancy, not a session total — and shown "~" whenever it
+   * falls back to the estimate.
    */
   format(_settings?: Settings, now: number = Date.now(), breakdown?: ContextBreakdown): string {
     const lines: string[] = ["Session", ""];
     lines.push(`  Total duration (API):  ${formatDuration(this.apiMs)}`);
     lines.push(`  Total duration (wall): ${formatDuration(now - this.startedAt)}`);
     lines.push(`  Total code changes:    ${this.linesAdded} lines added, ${this.linesRemoved} lines removed`);
-    lines.push(`  Context now:            ~${formatTokens(this.contextNowValue(breakdown))} tokens`);
+    const measured = this.contextTokens > 0;
+    lines.push(
+      `  Current context:       ${measured ? "" : "~"}${formatTokens(this.contextNowValue(breakdown))} tokens` +
+        ` (input of the last request${measured ? "" : ", estimated — no response measured yet"})`,
+    );
     if (breakdown) lines.push(...this.formatBreakdown(breakdown));
 
     if (this.byModel.size === 0) {
       lines.push("  Usage by model:        (no model calls yet)");
       return lines.join("\n");
     }
-    lines.push("  Usage by model:");
+    lines.push("  Usage by model (cumulative, every call this session):");
     for (const [model, usage] of this.byModel) {
       lines.push(
         `      ${model}:  ${formatTokens(usage.inputTokens)} input, ` +
@@ -175,19 +270,12 @@ export class SessionStats {
   }
 
   /**
-   * The "what's filling the context" lines under `/session`. Estimated per-part
-   * sizes (system prompt, tools, skills, message history), plus free space when
-   * the user has set an auto-compact limit to measure against. All approximate —
-   * they show the shape of the context, not an exact accounting; the measured
-   * "Context now" above is the true total.
-   */
-  /**
-   * The context size to display: the measured total when a provider response has
-   * reported one, otherwise the per-part estimate (system prompt + tools + skills
-   * + message history). `contextTokens` is 0 before the first response, but the
-   * window is NOT empty then — the system prompt and tool schemas always occupy
-   * it — so showing ~0 would be plainly wrong. The estimate keeps the figure
-   * honest until a response measures it exactly.
+   * The context size to display: the measured B(t) when a provider response has
+   * reported one, otherwise the per-part estimate (system prompt + tools +
+   * skills + message history). `contextTokens` is 0 before the first response,
+   * but the window is NOT empty then — the system prompt and tool schemas always
+   * occupy it — so showing 0 would be plainly wrong. The estimate keeps the
+   * figure honest until a response measures it exactly.
    */
   private contextNowValue(b?: ContextBreakdown): number {
     if (this.contextTokens > 0) return this.contextTokens;
@@ -195,6 +283,13 @@ export class SessionStats {
     return b.systemPrompt + b.tools + b.skills + b.messages;
   }
 
+  /**
+   * The "what's filling the context" lines under `/session`. Estimated per-part
+   * sizes, plus free space when the user has set an auto-compact limit to
+   * measure against. All approximate — they show the SHAPE of the context; the
+   * measured "Current context" above is the true total, and the two will not sum
+   * to each other exactly.
+   */
   private formatBreakdown(b: ContextBreakdown): string[] {
     const lines: string[] = ["  Context breakdown (~estimated):"];
     const pad = (label: string) => `${label}:`.padEnd(16);
@@ -203,22 +298,19 @@ export class SessionStats {
     if (b.skills > 0) lines.push(`      ${pad("Skills")}~${formatTokens(b.skills)} tokens`);
     lines.push(`      ${pad("Messages")}~${formatTokens(b.messages)} tokens`);
     if (b.limit > 0) {
-      const free = Math.max(0, b.limit - this.contextNowValue(b));
-      lines.push(`      ${pad("Free space")}~${formatTokens(free)} tokens (until auto-compact at ~${formatTokens(b.limit)})`);
+      // Free space and occupancy against the user's auto-compact limit, with
+      // nothing held back: the limit IS the reserve they chose, so the reply's
+      // own headroom lives between it and the model's real window.
+      const used = this.contextNowValue(b);
+      const free = freeContextOf(b.limit, used);
+      const percent = Math.round(contextPercentOf(used, b.limit));
+      lines.push(
+        `      ${pad("Free space")}~${formatTokens(free)} tokens` +
+          ` (${percent}% of the ~${formatTokens(b.limit)} auto-compact limit used)`,
+      );
     } else {
       lines.push("      (no auto-compact limit set — no fixed window to measure free space against; set one in Settings → Context)");
     }
     return lines;
   }
-}
-
-/**
- * The context size a single provider response implies: its ENTIRE prompt — fresh
- * input plus cache reads plus cache writes — plus the reply that is appended to
- * the history. Reading `inputTokens` alone is the classic bug: with prompt
- * caching most of the prompt arrives as `cacheReadTokens`, so input-only reports
- * a near-empty context for a nearly-full window.
- */
-export function contextSizeOf(usage: Usage): number {
-  return usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens + usage.outputTokens;
 }

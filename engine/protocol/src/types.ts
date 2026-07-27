@@ -206,12 +206,27 @@ export type CoreEvent =
   | { type: "overdrive_changed"; enabled: boolean; careful?: boolean }
   | { type: "command_output"; text: string }
   /**
-   * The context window's size changed OUTSIDE a turn — currently only a manual
-   * `/compact`, which shrinks the window with no turn_finished to carry the new
-   * figure. Frontends update their context meter from this exactly as they do
-   * from turn_finished.contextTokens.
+   * The live token meters, pushed whenever either figure moves: mid-stream as
+   * the agent deliberates, and outside a turn when a manual `/compact` shrinks
+   * the window with no turn_finished to carry the new figure. Frontends update
+   * their meters from this exactly as they do from turn_finished.
    */
-  | { type: "context_update"; contextTokens: number; contextWarn?: boolean }
+  | {
+      type: "context_update";
+      /**
+       * B(t) — tokens currently IN the window: the whole INPUT of the latest
+       * request. Exact once a provider reports it, estimated before that.
+       */
+      contextTokens: number;
+      /**
+       * D(t) — output tokens generated so far by the CURRENT turn, summed over
+       * every model call it has made (including subagents). Starts each turn at
+       * 0 and only grows; the tail of the in-flight reply is estimated until the
+       * call's usage lands. Absent means "unchanged", not zero.
+       */
+      outputTokens?: number;
+      contextWarn?: boolean;
+    }
   /** The /session report — the whole formatted summary, shown by frontends in a
    * dedicated modal (line-by-line) rather than a single inline console note. */
   | { type: "session_report"; text: string }
@@ -221,18 +236,24 @@ export type CoreEvent =
       turnId: string;
       stopReason: string;
       /**
-       * Tokens BILLED for this turn: the sum over every model call it made.
-       * A cumulative cost figure — NOT the context size (a 10-round turn
-       * re-sends a similar prompt 10 times; the window did not grow 10x).
+       * T_turn — tokens BILLED for this turn: the sum over every model call it
+       * made, including the auxiliary prompts (clarification, CAREFUL
+       * prediction, summarization) and every subagent it spawned. A cumulative
+       * cost figure — NOT the context size (a 10-round turn re-sends a similar
+       * prompt 10 times; the window did not grow 10x).
+       *
+       * `usage.outputTokens` is also D_final: the authoritative deliberation
+       * total that replaces the live estimates streamed via context_update.
        */
       usage: Usage;
       /**
-       * Tokens currently IN the context window: the whole prompt of the last
-       * request (input + cacheRead + cacheWrite) plus the reply appended to the
-       * history. Point-in-time, not cumulative — this is the number a context
-       * meter must show. Reading `usage.inputTokens` instead reports a near-empty
-       * context whenever prompt caching is on, since most of the prompt then
-       * arrives as cacheRead.
+       * B(t) — tokens currently IN the context window: the whole INPUT of the
+       * last request (fresh + cacheWrite + cacheRead). Point-in-time, not
+       * cumulative — this is the number a context meter must show. Reading
+       * `usage.inputTokens` instead reports a near-empty context whenever prompt
+       * caching is on, since most of the prompt then arrives as cacheRead; and
+       * generated output is NOT part of it, because the next prompt is not
+       * "this prompt plus this reply".
        */
       contextTokens: number;
       /**

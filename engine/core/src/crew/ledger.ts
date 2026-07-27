@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Usage } from "@magentra/protocol";
+import { addUsage, formatTokens, type Usage } from "@magentra/protocol";
 import { writeFileAtomic } from "../util/fsAtomic.js";
 
 /**
@@ -51,10 +51,7 @@ export function recordCrewRun(cwd: string, memberId: string, usage: Usage): void
     cacheWriteTokens: 0,
   };
   entry.runs += 1;
-  entry.inputTokens += usage.inputTokens;
-  entry.outputTokens += usage.outputTokens;
-  entry.cacheReadTokens += usage.cacheReadTokens;
-  entry.cacheWriteTokens += usage.cacheWriteTokens;
+  addUsage(entry, usage);
   entry.lastRunAt = new Date().toISOString();
   ledger.members[memberId] = entry;
   writeFileAtomic(ledgerPath(cwd), `${JSON.stringify(ledger, null, 2)}\n`);
@@ -62,6 +59,8 @@ export function recordCrewRun(cwd: string, memberId: string, usage: Usage): void
 
 /** "12.3k in / 4.1k out over 7 runs" — the /crew roster's cost suffix. */
 export function formatLedgerEntry(entry: MemberLedgerEntry): string {
-  const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
-  return `${k(entry.inputTokens)} in / ${k(entry.outputTokens)} out over ${entry.runs} run${entry.runs === 1 ? "" : "s"}`;
+  return (
+    `${formatTokens(entry.inputTokens)} in / ${formatTokens(entry.outputTokens)} out ` +
+    `over ${entry.runs} run${entry.runs === 1 ? "" : "s"}`
+  );
 }
