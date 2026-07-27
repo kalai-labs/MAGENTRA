@@ -45,9 +45,9 @@ and does not change anything a later step would have to undo.
 ## Proposal
 
 What the agent shows the user at the end of the Scout Phase, and the only
-output of a careful turn before approval. It answers four questions in a fixed
+output of a careful turn before approval. It answers five questions in a fixed
 order: the objective, the solution it suggests, the Consequences for this
-repository, and what remains unclear.
+repository, the Dependencies it would add, and what remains unclear.
 _Avoid_: plan, briefing
 
 A Proposal is of DIRECTION, not of implementation. The user approves that the
@@ -91,6 +91,17 @@ They come in two halves, always in this order:
 
 Effects come first because the user reads to decide, and the decision is about
 effects. Location is context for that decision, not a promise about the diff.
+
+## Dependencies
+
+The fourth section of a Proposal: anything the app would need that it does not
+already ship with. Three kinds count — a new package, a new system requirement
+(a binary, a service, a call to the network at runtime), and a new platform
+capability the app would come to rely on.
+
+The expected answer is none. MAGENTRA ships what it uses and runs offline, so
+adding to that list is a decision the user gets to see before it is made, with
+the reason and the licence stated.
 
 ## Hold
 

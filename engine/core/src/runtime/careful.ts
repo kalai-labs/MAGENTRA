@@ -11,8 +11,9 @@
 //   approval   → start / cancel / free-text revision (revisions are unlimited)
 //
 // What the user approves is a PROPOSAL OF DIRECTION, not a plan: what they want,
-// what MAGENTRA suggests, what changes for them, and what is still unclear. The
-// decomposition happens after approval, where OVERDRIVE already does it. See
+// what MAGENTRA suggests, what changes for them, what it would newly depend on,
+// and what is still unclear. The decomposition happens after approval, where
+// OVERDRIVE already does it. See
 // ADR 0003 — the earlier design demanded a proven file manifest before approval,
 // which is what made the scout phase cost ten minutes.
 //
@@ -120,7 +121,7 @@ The user has asked to approve your proposal before you touch anything. Right now
     3. What changes for them?
     4. Does this need anything the app does not already have?
     5. What am I unsure about?
-  The moment the answer is yes, stop reading. You are not trying to reach certainty — you are trying to reach an honest proposal the user can correct in one sentence. Anything still unknown after that is question 4, never a reason to read more.
+  The moment the answer is yes, stop reading. You are not trying to reach certainty — you are trying to reach an honest proposal the user can correct in one sentence. Anything still unknown after that is question 5, never a reason to read more.
 - Say nothing to the user yet. Your prose during this phase is not shown to them — you are thinking, not reporting. When you have what the stop test asks for, state the direction you have chosen and why, and you will be prompted for the next step.`;
 
 /**
@@ -150,13 +151,13 @@ export const CAREFUL_SCOUT_WARN_TEXT =
  * scout phase.
  */
 export const CAREFUL_REVIEW_TEXT =
-  "<system-reminder>Internal review — NOT a user message, and nothing you write here is shown to the user. Read your own draft once, and once only.\n\n- Does it answer the user's actual question, or a nearby one you found more interesting?\n- Did you add scope they did not ask for?\n- Is anything in it a guess about this repository rather than something you saw or the map told you?\n\nIf one of those is true, improve the draft. If none is, leave it exactly as it is and say so in one line — an unchanged draft is a correct outcome. Do not read anything new: if you do not know, that is the fourth section, not a reason to go back to the repository.</system-reminder>";
+  "<system-reminder>Internal review — NOT a user message, and nothing you write here is shown to the user. Read your own draft once, and once only.\n\n- Does it answer the user's actual question, or a nearby one you found more interesting?\n- Did you add scope they did not ask for?\n- Is anything in it a guess about this repository rather than something you saw or the map told you?\n\nIf one of those is true, improve the draft. If none is, leave it exactly as it is and say so in one line — an unchanged draft is a correct outcome. Do not read anything new: if you do not know, that is the last section, not a reason to go back to the repository.</system-reminder>";
 
 /**
  * The pre-proposal round: what only the user can decide, asked BEFORE the
  * proposal exists.
  *
- * These used to be raised in the proposal's fourth section and put to the user
+ * These used to be raised in the proposal's final section and put to the user
  * only AFTER they approved. That was backwards — a question whose answer changes
  * what gets built cannot be asked after the user has approved what gets built,
  * and an open-ended request ("improve the UI") got a direction invented for it

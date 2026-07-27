@@ -16,12 +16,13 @@ the decisions worth knowing are ADRs [0001](adr/0001-careful-mode-is-enforced-by
 
 ## What the user approves
 
-A **Proposal** — of direction, not of implementation. Four questions:
+A **Proposal** — of direction, not of implementation. Five questions:
 
 ```
 # What's the objective?
 # What solution am I suggesting as MAGENTRA?
 # What are you going to see as consequences after this change at this repository?
+# Could these changes introduce any new dependencies other than the ones the app's current version uses?
 # Are there any unclear things that have to be clarified by the user?
 ```
 
@@ -62,7 +63,7 @@ careful predictor         one main-model inference, fail-open
             open questions        anything only the USER can decide is asked
                                   HERE — before a direction exists to bias it
             ↓
-            PROPOSAL written      four H1 sections — still not shown
+            PROPOSAL written      five H1 sections — still not shown
             ↓                                                  ▶ careful: writing
             path check            every path it names must exist (≤2 corrections)
             ↓
