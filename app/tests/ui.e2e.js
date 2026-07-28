@@ -1548,6 +1548,71 @@ async function run() {
     await evaluate(`tabs.get('tB').paneEl.querySelector('.pane-reveal-btn').click()`);
     await pause();
     assert.ok(calls.some((c) => c.name === "revealWorkspace" && c.args[0] === "tB"));
+    // OVERDRIVE on a tiled screen must read exactly as it does in a single
+    // console: the pane's MESSAGE BOX goes hot, the pane's own outline (which
+    // means "focused" / "needs approval") is left alone, and the engage sweep
+    // plays inside that screen only.
+    const beforeOd = await evaluate(`(() => {
+      const b = tabs.get('tB').paneEl;
+      return { edge: getComputedStyle(b).borderTopColor, input: getComputedStyle(b.querySelector('.pane-input')).borderTopColor };
+    })()`);
+    const odFramesBefore = frames.filter((f) => f.type === "set_overdrive").length;
+    await evaluate(`tabs.get('tB').paneEl.querySelector('.pane-od-btn').click()`);
+    await pause(40);
+    const od = await evaluate(`(() => {
+      const b = tabs.get('tB').paneEl, a = tabs.get('tA').paneEl;
+      const cin = b.querySelector(':scope > .overdrive-cinematic');
+      return {
+        bOn: b.classList.contains('overdrive'),
+        aOff: !a.classList.contains('overdrive'),
+        edge: getComputedStyle(b).borderTopColor,
+        input: getComputedStyle(b.querySelector('.pane-input')).borderTopColor,
+        cinematicPlaying: Boolean(cin) && cin.classList.contains('in-pane') && cin.classList.contains('playing'),
+        cinematicScoped: Boolean(cin) && cin.parentElement === b,
+        aNoCinematic: !a.querySelector(':scope > .overdrive-cinematic'),
+        inputClass: b.querySelector('.pane-input').classList.value,
+        cfShown: !b.querySelector('.pane-cf-btn').classList.contains('hidden'),
+        aCfHidden: a.querySelector('.pane-cf-btn').classList.contains('hidden'),
+      };
+    })()`);
+    assert.ok(od.bOn, "the pane button engages OVERDRIVE for its own workspace");
+    assert.ok(od.aOff, "one screen's OVERDRIVE never spreads to another");
+    assert.equal(od.edge, beforeOd.edge, "the pane outline keeps meaning focus, not OVERDRIVE");
+    assert.match(od.inputClass, /\boverdrive\b/, "the pane's message box is what carries the hot line");
+    assert.ok(od.cinematicPlaying, "the engage sweep plays, bounded by the pane");
+    assert.ok(od.cinematicScoped, "the sweep is a child of the engaging pane, not the window");
+    assert.ok(od.aNoCinematic, "no other screen plays it");
+    // The hot line itself, read once the sweep has finished: while its veil
+    // animates over the pane, Chromium serves that subtree's older computed
+    // style, so measuring mid-sweep reads the pre-OVERDRIVE border.
+    await pause(2300);
+    const painted = await evaluate(`(() => {
+      const b = tabs.get('tB').paneEl, a = tabs.get('tA').paneEl;
+      return { hot: getComputedStyle(b.querySelector('.pane-input')).borderTopColor,
+               plain: getComputedStyle(a.querySelector('.pane-input')).borderTopColor,
+               edge: getComputedStyle(b).borderTopColor };
+    })()`);
+    assert.match(painted.hot, /^rgba\(255, 140, 26/, "the message box carries the OVERDRIVE hue");
+    assert.notEqual(painted.plain, painted.hot, "a screen not in OVERDRIVE keeps the plain box");
+    assert.equal(painted.edge, beforeOd.edge, "and the pane outline never took the hue");
+    const odFrame = frames.filter((f) => f.type === "set_overdrive").pop();
+    assert.equal(frames.filter((f) => f.type === "set_overdrive").length - odFramesBefore, 1);
+    assert.equal(odFrame.enabled, true);
+    // CAREFUL is reachable in this layout — tiling hides the shared composer, so
+    // without the pane pill the mode could not be turned on or off at all.
+    assert.ok(od.cfShown, "CAREFUL appears on the screen whose OVERDRIVE is engaged");
+    assert.ok(od.aCfHidden, "and stays hidden on a screen that is not in OVERDRIVE");
+    const cfClick = `tabs.get('tB').paneEl.querySelector('.pane-cf-btn').click()`;
+    await evaluate(cfClick);
+    await pause(40);
+    const cfOn = frames.filter((f) => f.type === "set_overdrive").pop();
+    assert.equal(cfOn.careful, true, "the pane's CAREFUL rides its own set_overdrive frame");
+    assert.equal(cfOn.enabled, true, "toggling CAREFUL leaves that screen's OVERDRIVE alone");
+    assert.equal(await evaluate(`tabs.get('tB').paneEl.querySelector('.pane-cf-btn').classList.contains('on')`), true);
+    await evaluate(cfClick);
+    await pause(40);
+    assert.equal(frames.filter((f) => f.type === "set_overdrive").pop().careful, false, "and turns back off");
+    assert.equal(await evaluate(`tabs.get('tB').careful === true`), false);
     // Open a 3rd tab → 3-pane layout; the big (bottom) pane defaults to the last.
     tabEvt("test:tab-opened", { tabId: "tC", workspace: "/tmp/ws-c" });
     await emit({ type: "workspace_changed", workspace: "/tmp/ws-c", tabId: "tC" });

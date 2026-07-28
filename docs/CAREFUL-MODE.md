@@ -56,9 +56,9 @@ careful predictor         one main-model inference, fail-open
             ↓                     session already read and is still unchanged
             OPEN QUESTIONS        up to 5, grounded in that map — asked BEFORE
             ↓                     anything is read, because the answers decide
-            ↓                     where to read  ▶ careful: working out what to ask you
+            ↓                     where to read  ▶ carefully: working out what to ask you
             ↓                     a truncated reply is salvaged, never silently dropped
-            HOLD RAISED (PermissionEngine)          ▶ careful: scouting
+            HOLD RAISED (PermissionEngine)          ▶ carefully: scouting
             ↓
             scout: Read / Grep / Glob / GraphQuery / BackpackSearch / Skill
                    everything else refused; all prose suppressed
@@ -190,7 +190,7 @@ make the scout read more. It worked exactly as designed.
 | Self-critique | 2 rounds, each inviting more reading | 3 questions inside the same inference that writes the proposal |
 | Rounds after the reading is done | 3 (announce, review, write) | 1 (write), and the review is part of it |
 | A question round cut off at the token limit | read as "ask nothing", silently | the complete questions are salvaged and asked |
-| While a pre-layer thinks | a blank screen | `▶ careful: working out what to ask you` |
+| While a pre-layer thinks | a blank screen | `▶ carefully: working out what to ask you` |
 | Proposing without opening any ranked source file | nothing noticed | one reminder naming the files, then never again |
 | Which language the proposal is in | inferred — and it drifted to the code's | decided from the user's own words, quoted into the prompt |
 | Hallucinated paths | Nothing checked them | Engine checks each, sends bad ones back |

@@ -60,25 +60,55 @@ function onCarefulToggleClick() {
 // instant flash on their own; we only shorten the cleanup timer to match.
 // ---------------------------------------------------------------------------
 
-let overdriveCinematicTimer = null;
+// One timer per cinematic element (the shared full-window one, and one per tiled
+// pane) so a re-engage restarts only its own sweep. Keyed by the element itself:
+// a pane's cinematic lives and dies with its pane.
+const overdriveCinematicTimers = new WeakMap();
 
 function overdriveMotionReduced() {
   if (uiSettings.motion === "calm") return true;
   return Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 }
 
-function playOverdriveCinematic() {
-  if (!overdriveCinematicEl) return;
+/** The cinematic layer inside a tiled pane, created on first use. Same markup
+ * and same classes as the shared full-window one — only the host differs, so the
+ * animation a single console plays is exactly the animation a pane plays,
+ * bounded by that pane instead of the window. */
+function paneCinematicEl(paneEl) {
+  let el = paneEl.querySelector(":scope > .overdrive-cinematic");
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "overdrive-cinematic in-pane hidden";
+    el.setAttribute("aria-hidden", "true");
+    const veil = document.createElement("div");
+    veil.className = "od-veil";
+    const word = document.createElement("div");
+    word.className = "od-word";
+    word.textContent = "OVERDRIVE";
+    el.append(veil, word);
+    paneEl.appendChild(el);
+  }
+  return el;
+}
+
+/** Play the engage sweep. Without a pane it fills the window (single console);
+ * with one it is bounded to that screen — the tiled equivalent. */
+function playOverdriveCinematic(paneEl) {
+  const el = paneEl ? paneCinematicEl(paneEl) : overdriveCinematicEl;
+  if (!el) return;
   const reduced = overdriveMotionReduced();
-  overdriveCinematicEl.classList.remove("hidden");
+  el.classList.remove("hidden");
   // Force a reflow so a rapid re-engage restarts the animation cleanly.
-  void overdriveCinematicEl.offsetWidth;
-  overdriveCinematicEl.classList.add("playing");
-  clearTimeout(overdriveCinematicTimer);
-  overdriveCinematicTimer = setTimeout(() => {
-    overdriveCinematicEl.classList.remove("playing");
-    overdriveCinematicEl.classList.add("hidden");
-  }, reduced ? 320 : 1900);
+  void el.offsetWidth;
+  el.classList.add("playing");
+  clearTimeout(overdriveCinematicTimers.get(el));
+  overdriveCinematicTimers.set(
+    el,
+    setTimeout(() => {
+      el.classList.remove("playing");
+      el.classList.add("hidden");
+    }, reduced ? 320 : 1900),
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -559,7 +559,7 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
 .console-pane.focused .console-pane-head { color: var(--text-hi); }
 /* Per-screen OVERDRIVE toggle + scoped glow (never full-screen in the tiled view),
    and the per-screen "reveal this workspace folder" button beside it. */
-.pane-od-btn, .pane-reveal-btn {
+.pane-od-btn, .pane-reveal-btn, .pane-cf-btn {
   flex: none; padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px;
   background: transparent; color: var(--amber); font-size: max(9px, 0.7rem); line-height: 1.4; cursor: pointer;
 }
@@ -567,8 +567,11 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
 .pane-reveal-btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .pane-od-btn:hover { border-color: var(--od-accent); }
 .pane-od-btn.on { border-color: var(--od-accent); background: var(--od-accent-soft); color: var(--od-accent-hi); }
-.console-pane.overdrive { border-color: rgba(var(--od-accent-rgb), 0.7); box-shadow: 0 0 0 1px rgba(var(--od-accent-rgb), 0.45); }
-.console-pane.overdrive .console-pane-head { color: var(--od-accent-hi); }
+/* Per-screen CAREFUL — the same cooler accent the shared pill uses, so it reads
+   as the brake beside OVERDRIVE's throttle rather than a second throttle. */
+.pane-cf-btn { color: var(--text-dim); }
+.pane-cf-btn:hover { border-color: var(--accent); color: var(--text); }
+.pane-cf-btn.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hi); }
 /* Per-tab task-progress dots, pushed to the right edge of the pane header. */
 .pane-task-bubbles { flex: none; display: flex; align-items: center; gap: 3px; margin-left: auto; }
 .pane-bubble {
@@ -587,6 +590,15 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
   color: var(--text); font: inherit; font-size: max(11px, 0.82rem); line-height: 1.4;
 }
 .pane-input:focus { outline: none; border-color: rgba(var(--accent-rgb), 0.55); box-shadow: var(--shadow-composer-focus); }
+/* OVERDRIVE on a tiled screen reads exactly as it does in a single console: the
+   MESSAGE BOX is hot-lined, not the pane's outline. The pane border is how the
+   layout says "focused" / "needs approval", and a second meaning on the same
+   edge made those unreadable. Mirrors the html[data-overdrive="on"] rules.
+   The class sits on the input itself, not on the pane: an ancestor-class rule
+   left the long-lived textarea painting its old border in Chromium (a fresh
+   node in the same parent picked the rule up, that one never did). */
+.pane-input.overdrive { border-color: rgba(var(--od-accent-rgb), 0.55); }
+.pane-input.overdrive:focus { border-color: rgba(var(--od-accent-rgb), 0.82); box-shadow: 0 0 0 1px rgba(var(--od-accent-rgb), 0.2), var(--shadow-composer); }
 .pane-send {
   flex: none; width: 30px; height: 30px; border: 0; border-radius: var(--radius-sm);
   background: var(--accent); color: var(--bg); font-size: 1rem; cursor: pointer;
@@ -986,6 +998,11 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
    the animation to an instant flash on their own (see the rules at file end). */
 .overdrive-cinematic { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; overflow: hidden; pointer-events: none; }
 .overdrive-cinematic.hidden { display: none; }
+/* The same sweep bounded by one tiled screen: absolute inside the pane (which is
+   position: relative), and a word sized from the pane's own width so it reads at
+   any tile size. Everything else — veil, keyframes, timing — is shared. */
+.overdrive-cinematic.in-pane { position: absolute; z-index: 8; border-radius: var(--radius); }
+.overdrive-cinematic.in-pane .od-word { font-size: clamp(0.85rem, 11cqw, 2.6rem); letter-spacing: 0.16em; text-shadow: 0 0 16px rgba(var(--od-accent-rgb), 0.7); }
 .overdrive-cinematic .od-veil { position: absolute; inset: 0; opacity: 0;
   background:
     radial-gradient(circle at 50% 50%, rgba(var(--od-accent-rgb), 0.3), transparent 62%),

@@ -1352,7 +1352,7 @@ export class Session {
     // before it are two main-model round trips that happen while the user is
     // looking at nothing at all — which is most of what "it sat there for
     // minutes" was. The banner costs nothing and makes the wait legible.
-    this.emit({ type: "command_output", text: "▶ careful: working out what to ask you" });
+    this.emit({ type: "command_output", text: "▶ carefully: working out what to ask you" });
     // This runs as its OWN inference, so it sees no system prompt — and
     // therefore no atlas. The scout map deliberately omits the atlas (the scout
     // gets it from the system prompt, and duplicating it would spend the user's
@@ -1399,7 +1399,7 @@ export class Session {
       const first = await ask(carefulQuestionsSystem(userText));
       questions = parseCarefulQuestions(first.raw);
       if (questions === undefined && first.truncated) {
-        this.emit({ type: "command_output", text: "▶ careful: that ran long — asking again, shorter" });
+        this.emit({ type: "command_output", text: "▶ carefully: that ran long — asking again, shorter" });
         const retry = await ask(`${carefulQuestionsSystem(userText)}${CAREFUL_QUESTIONS_RETRY}`);
         questions = parseCarefulQuestions(retry.raw);
       }
@@ -1425,7 +1425,7 @@ export class Session {
     // first thing a careful turn does and it is a full main-model round trip:
     // unannounced, it is a blank screen for as long as the model takes to
     // answer, and the user reads that as the product having hung.
-    this.emit({ type: "command_output", text: "▶ careful: sizing up the request" });
+    this.emit({ type: "command_output", text: "▶ carefully: sizing up the request" });
     const skim = this.buildClarifySkim();
     try {
       const raw = await this.runInference({
@@ -1787,7 +1787,7 @@ export class Session {
       // "▶ " marks a phase banner in the renderer — the same convention the
       // Workflow engine already uses, so the scout's steps are visible without
       // a new protocol frame (ADR 0002).
-      this.emit({ type: "command_output", text: "▶ careful: scouting" });
+      this.emit({ type: "command_output", text: "▶ carefully: scouting" });
     }
 
     // OVERDRIVE safety net: before an uncapped autonomous turn starts, park a
@@ -1974,7 +1974,7 @@ export class Session {
               if (gap.length > 0) {
                 this.emit({
                   type: "command_output",
-                  text: `◉ careful: about to propose without reading the code — pointing it at ${gap[0]}`,
+                  text: `◉ carefully: about to propose without reading the code — pointing it at ${gap[0]}`,
                 });
                 this.pushMessage({ role: "user", content: [{ type: "text", text: carefulGroundingText(gap) }] });
                 continue;
@@ -1987,7 +1987,7 @@ export class Session {
             if (!looksLikeProposal(proposal)) {
               if (!carefulProposalArmed) {
                 carefulProposalArmed = true;
-                this.emit({ type: "command_output", text: "▶ careful: writing the proposal" });
+                this.emit({ type: "command_output", text: "▶ carefully: writing the proposal" });
                 this.pushMessage({ role: "user", content: [{ type: "text", text: carefulProposalText(userText) }] });
                 continue;
               }
@@ -1998,7 +1998,7 @@ export class Session {
                 releaseCarefulHold();
                 this.emit({
                   type: "command_output",
-                  text: "◉ careful: no proposal came back — nothing was changed. Try again, or /careful off.",
+                  text: "◉ carefully: no proposal came back — nothing was changed. Try again, or /careful off.",
                 });
                 stopReason = "end_turn";
                 break;
@@ -2010,7 +2010,7 @@ export class Session {
               carefulProposalRetries++;
               this.emit({
                 type: "command_output",
-                text: `◉ careful: ${unknownPaths.length} named path${unknownPaths.length === 1 ? " does" : "s do"} not exist — correcting`,
+                text: `◉ carefully: ${unknownPaths.length} named path${unknownPaths.length === 1 ? " does" : "s do"} not exist — correcting`,
               });
               this.pushMessage({
                 role: "user",
@@ -2024,7 +2024,7 @@ export class Session {
             const decision = await this.askCarefulApproval(carefulRevisions);
             if (decision.kind === "approve") {
               releaseCarefulHold();
-              this.emit({ type: "command_output", text: "▶ careful: approved — starting work" });
+              this.emit({ type: "command_output", text: "▶ carefully: approved — starting work" });
               // The approved proposal is repeated as the brief, not referenced:
               // it is the input the work runs on, and leaving it buried under
               // the scout's tool results would waste the checkpoint.
@@ -2046,7 +2046,7 @@ export class Session {
               this.suppressAssistantText = true;
               this.emit({
                 type: "command_output",
-                text: `▶ careful: revising the proposal (revision ${carefulRevisions})`,
+                text: `▶ carefully: revising the proposal (revision ${carefulRevisions})`,
               });
               // A revision usually redirects, so the old map now points at the
               // wrong part of the repository — re-seed it from what they said.
@@ -2064,7 +2064,7 @@ export class Session {
               continue;
             }
             releaseCarefulHold();
-            this.emit({ type: "command_output", text: "◉ careful: cancelled — nothing was changed" });
+            this.emit({ type: "command_output", text: "◉ carefully: cancelled — nothing was changed" });
             this.pushMessage({ role: "user", content: [{ type: "text", text: CAREFUL_CANCELLED_TEXT }] });
             stopReason = "end_turn";
             break;
