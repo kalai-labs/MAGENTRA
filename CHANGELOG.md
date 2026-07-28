@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.10.1.0 — 2026-07-28
+
+### Bug fixes
+
+- fix at windows full screen bug ([f5c9d48](https://github.com/kalai-labs/MAGENTRA/commit/f5c9d483480b513d7afd5357262925c65ae7a440))
+
+[Compare with v0.10.0.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.10.0.0...v0.10.1.0)
+
 ## 0.10.0.0 — 2026-07-28
 
 ### Features
