@@ -1,3 +1,7 @@
+import { definePrompt, promptText } from "@magentra/protocol";
+
+const GROUP = "6 · Subagents (Agent tool)";
+
 /**
  * Subagent-type registry. Each type maps to a restricted tool set and a role
  * section appended to the subagent's system prompt. No type ever grants the
@@ -40,9 +44,50 @@ export const AGENT_TYPES: Record<string, AgentTypeDef> = {
   },
 };
 
-export const SUBAGENT_RESULT_SECTION = `Subagent output contract:
+export const SUBAGENT_RESULT_ID = definePrompt({
+  id: "subagent.result-contract",
+  group: GROUP,
+  label: "Subagent output contract",
+  channel: "subagent",
+  where:
+    "Appended to EVERY subagent's system prompt, on top of the normal core sections. Tells the subagent its final message is captured verbatim as the tool result, not shown to a human.",
+  text: `Subagent output contract:
 - You are running as a subagent. Your FINAL message is captured verbatim and returned to the calling agent as the result of its tool call. It is raw data for another agent, not a message to a human.
-- Do not open with a preamble, greeting, or a description of what you are about to do. Do not ask questions — there is no user to answer. Lead with the answer and include only what the caller needs.`;
+- Do not open with a preamble, greeting, or a description of what you are about to do. Do not ask questions — there is no user to answer. Lead with the answer and include only what the caller needs.`,
+});
+
+/** Registers each subagent type's role text so it can be tuned like any other
+ *  prompt, and rewrites the roster in place to hold ids instead of literals. */
+for (const [key, def] of Object.entries(AGENT_TYPES)) {
+  def.role = definePrompt({
+    id: `subagent.role.${key}`,
+    group: GROUP,
+    label: `Role — ${key}`,
+    channel: "subagent",
+    where: `Prepended to the system prompt of a subagent spawned with agentType "${key}". ${
+      def.tools === "*" ? "Has every tool except Agent." : `Restricted to: ${def.tools.join(", ")}.`
+    }`,
+    text: def.role,
+  });
+  def.description = definePrompt({
+    id: `subagent.description.${key}`,
+    group: GROUP,
+    label: `Picker blurb — ${key}`,
+    channel: "tool",
+    where: `Listed inside the Agent tool's own description so the main agent can choose the "${key}" type. Sent on every request that has the Agent tool.`,
+    text: def.description,
+  });
+}
+
+/** The role text in force for a subagent type. */
+export function agentRoleText(def: AgentTypeDef): string {
+  return promptText(def.role);
+}
+
+/** The picker blurb in force for a subagent type. */
+export function agentDescriptionText(def: AgentTypeDef): string {
+  return promptText(def.description);
+}
 
 export function resolveAgentType(agentType: string): AgentTypeDef | undefined {
   return AGENT_TYPES[agentType];

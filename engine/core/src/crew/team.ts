@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { definePrompt, promptText, renderPrompt } from "@magentra/protocol";
 
 /**
  * The CREW team system: a workspace defines specialist agents as small markdown
@@ -204,7 +205,14 @@ export const CREW_ALWAYS_ALLOWED = ["Read", "Grep", "Glob", "TaskGet", "TaskList
  * parses can never drift. Concrete and few-shot on purpose: the product targets
  * weak (26B-class) models. Keep it in step with parseAgentFile above if you change it.
  */
-export const TEAM_FILE_FORMAT = `Each specialist is ONE markdown file at .magentra/team/<id>.md. The file name without the .md is the agent id: lowercase letters, digits, hyphen or underscore only (e.g. reviewer.md, test-runner.md). The id "orchestrator" is reserved — never use it.
+export const TEAM_FILE_FORMAT_ID = definePrompt({
+  id: "crew.team-file-format",
+  group: "8 · Crew & missions",
+  label: "Team file format",
+  channel: "system-conditional",
+  where:
+    "The strict .magentra/team/<id>.md format. Used twice: inside the /build-crew authoring prompt, and at the bottom of the orchestrator's crew section so it can write new specialists itself.",
+  text: `Each specialist is ONE markdown file at .magentra/team/<id>.md. The file name without the .md is the agent id: lowercase letters, digits, hyphen or underscore only (e.g. reviewer.md, test-runner.md). The id "orchestrator" is reserved — never use it.
 
 The file is EXACTLY: a "---" fence alone on the first line, then "key: value" frontmatter lines, then a closing "---" fence alone on its own line, then the role prompt as the plain markdown body. Do NOT wrap the file in code fences or backticks.
 
@@ -233,7 +241,11 @@ docs: docs/ARCHITECTURE.md
 You are Sentinel-7, the crew's code reviewer. Given a diff or a set of changed files,
 check correctness, error handling, and adherence to the project's conventions.
 Report concrete findings as "path:line — problem — suggested fix", most severe
-first. Do not rewrite the code yourself; your job is the review.`;
+first. Do not rewrite the code yourself; your job is the review.`,
+});
+
+/** The shipped default text. */
+export const TEAM_FILE_FORMAT = promptText(TEAM_FILE_FORMAT_ID);
 
 /**
  * The self-contained task handed to the /build-crew general-purpose subagent. It
@@ -257,7 +269,7 @@ Pick 2-4 specialists whose roles are DISTINCT and do not overlap, matched to the
 
 Write EACH specialist to its own file at .magentra/team/<id>.md with the Write tool, following this EXACT format:
 
-${TEAM_FILE_FORMAT}
+${promptText(TEAM_FILE_FORMAT_ID)}
 
 Valid tool names for the "tools:" key in THIS workspace: ${opts.toolNames.join(", ")}. Use only names from this list, or omit the "tools:" key entirely to grant the standard toolset.
 
@@ -278,11 +290,22 @@ export function crewSection(agents: CrewAgent[]): string {
       return `- ${a.id} — ${a.name}, ${a.role}${oneLine ? `: ${oneLine}` : ""} (${a.docs.length} doc${a.docs.length === 1 ? "" : "s"})`;
     })
     .join("\n");
-  return `# Your crew (you are the orchestrator)
+  return renderPrompt(CREW_SECTION, { roster, format: promptText(TEAM_FILE_FORMAT_ID) });
+}
+
+const CREW_SECTION = definePrompt({
+  id: "crew.orchestrator-section",
+  group: "8 · Crew & missions",
+  label: "Orchestrator crew section",
+  channel: "system-conditional",
+  where:
+    "Appended to the main session's system prompt whenever .magentra/team/ holds at least one specialist. `{{roster}}` is the generated crew list; `{{format}}` is the team file format above.",
+  placeholders: ["roster", "format"],
+  text: `# Your crew (you are the orchestrator)
 You carry no specialist knowledge yourself — the crew does. Route the work; do not try to be every specialist.
 
 Roster:
-${roster}
+{{roster}}
 
 Rules:
 - For any team-relevant mission, assign every task an owner from the roster (an id above) via TaskUpdate's owner field.
@@ -293,5 +316,5 @@ Rules:
 - You may design and evolve this crew yourself: when the user asks for a crew (or a new specialist), propose the roster in chat first — names, roles, what each owns, suggested backpack documents — and after the user agrees, Write the .magentra/team/<id>.md files. They hot-load. (The /build-crew command bootstraps a whole crew from scratch when none exists.)
 
 Team file format (exact — the loader is strict):
-${TEAM_FILE_FORMAT}`;
-}
+{{format}}`,
+});

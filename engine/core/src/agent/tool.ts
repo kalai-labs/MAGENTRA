@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { CoreEvent, TaskItem } from "@magentra/protocol";
+import { definePrompt, promptText, type CoreEvent, type TaskItem } from "@magentra/protocol";
 import type { ToolResultPart } from "@magentra/providers";
 import type { Settings } from "../config/settings.js";
 import type { CrewAgent } from "../crew/team.js";
@@ -138,12 +138,47 @@ export interface ToolDefinition<I = unknown> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyToolDefinition = ToolDefinition<any>;
 
+/**
+ * Publishes a tool's description to the prompt registry so it can be tuned like
+ * any other prompt. Descriptions are sent with every request and are what the
+ * model reads to decide WHICH tool to reach for and how many calls to batch, so
+ * they belong in the same editor as the system prompt.
+ *
+ * Tolerant by design: a registry is built per session, and re-registering the
+ * same tool must never be able to break one.
+ */
+export function registerToolPrompt(name: string, description: string): string {
+  const id = `tool.${name}`;
+  try {
+    return definePrompt({
+      id,
+      group: "7 · Tool descriptions",
+      label: name,
+      channel: "tool",
+      where: `What the model reads to decide when to reach for ${name} and how to call it. The \`description\` field of the ${name} tool definition, sent on every request in which ${name} is available.`,
+      text: description,
+    });
+  } catch {
+    return id;
+  }
+}
+
+/** The description in force for a registered tool. */
+export function toolDescriptionText(name: string, fallback: string): string {
+  try {
+    return promptText(`tool.${name}`);
+  } catch {
+    return fallback;
+  }
+}
+
 export class ToolRegistry {
   private readonly tools = new Map<string, AnyToolDefinition>();
 
   register(tool: AnyToolDefinition): void {
     if (this.tools.has(tool.name)) throw new Error(`duplicate tool: ${tool.name}`);
     this.tools.set(tool.name, tool);
+    registerToolPrompt(tool.name, tool.description);
   }
 
   get(name: string): AnyToolDefinition | undefined {

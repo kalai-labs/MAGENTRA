@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { definePrompt, promptText, renderPrompt } from "@magentra/protocol";
 
 /** Path (relative to the workspace cwd) of the whole-design map the agent maintains. */
 export const ATLAS_FILENAME = ".magentra/ATLAS.md";
@@ -119,47 +120,86 @@ export interface AtlasArea {
 }
 
 /** The role for an area agent: the reply IS the deliverable, and it must stay small. */
-export const ATLAS_AREA_ROLE =
-  "You are a codebase cartographer mapping ONE area of a project. You are read-only: you have no Write or Edit tool and must never attempt one — the harness captures your reply text itself, so replying IS delivering. You are given the area's structure as established facts; do not re-derive them. Read source only to learn what the code is FOR. Answer with one compact Markdown section and nothing else.";
+export const ATLAS_AREA_ROLE = definePrompt({
+  id: "atlas.area-role",
+  group: "5 · Background inference calls",
+  label: "Atlas — area cartographer role",
+  channel: "subagent",
+  where:
+    "System role of each parallel subagent that maps ONE area of the workspace during /atlas. Read-only; its reply text IS the atlas section.",
+  text: "You are a codebase cartographer mapping ONE area of a project. You are read-only: you have no Write or Edit tool and must never attempt one — the harness captures your reply text itself, so replying IS delivering. You are given the area's structure as established facts; do not re-derive them. Read source only to learn what the code is FOR. Answer with one compact Markdown section and nothing else.",
+});
 
 /**
  * The task for one area agent. The facts block carries everything the import
  * graph and symbol index already know, so the agent spends its rounds on intent
  * rather than on rediscovering structure.
  */
-export function atlasAreaPrompt(area: AtlasArea, facts: string): string {
-  return `Map the area **${area.name}** of this codebase.
+const ATLAS_AREA_TASK = definePrompt({
+  id: "atlas.area-task",
+  group: "5 · Background inference calls",
+  label: "Atlas — area task",
+  channel: "side-call-user",
+  where:
+    "The task message handed to each area cartographer. `{{facts}}` is what the import graph and symbol index already know, so the agent spends its rounds on intent rather than structure.",
+  placeholders: ["area", "facts", "maxChars"],
+  text: `Map the area **{{area}}** of this codebase.
 
 These facts are already established — trust them, do not verify them:
 
-${facts}
+{{facts}}
 
 Read a few of the listed files (Read/Grep) only to answer what the facts cannot: what this area is FOR, what its responsibility is, and where its boundary lies.
 
 Reply with EXACTLY one Markdown section and nothing else — no preamble, no closing remarks:
 
-## ${area.name}
+## {{area}}
 <one or two sentences: what this area is for, and its responsibility>
 - **Entry points:** <the file(s) a reader should open first, and why>
 - **Key pieces:** <2-4 bullets, each a name and a one-line purpose>
 - **Depends on:** <which other areas / external packages, and what for>
 
-Hard limit: ${ATLAS_SECTION_MAX_CHARS} characters. Be dense. Describe responsibilities, not file listings.`;
+Hard limit: {{maxChars}} characters. Be dense. Describe responsibilities, not file listings.`,
+});
+
+export function atlasAreaPrompt(area: AtlasArea, facts: string): string {
+  return renderPrompt(ATLAS_AREA_TASK, {
+    area: area.name,
+    facts,
+    maxChars: ATLAS_SECTION_MAX_CHARS,
+  });
 }
 
 /** The synthesis step: one cheap, tool-free call that opens the document. */
-export const ATLAS_OVERVIEW_SYSTEM =
-  "You write the opening of a codebase atlas. Given per-area summaries, state what the project IS and how its pieces fit together. Reply with the overview paragraph only — no heading, no bullet list, no preamble.";
+export const ATLAS_OVERVIEW_SYSTEM = definePrompt({
+  id: "atlas.overview-system",
+  group: "5 · Background inference calls",
+  label: "Atlas — overview writer",
+  channel: "side-call",
+  where:
+    "The single tool-free call that writes the opening paragraph of .magentra/ATLAS.md from the finished area sections.",
+  text: "You write the opening of a codebase atlas. Given per-area summaries, state what the project IS and how its pieces fit together. Reply with the overview paragraph only — no heading, no bullet list, no preamble.",
+});
 
-export function atlasOverviewPrompt(project: string, sections: string[], stats: string): string {
-  return `Project: ${project}
-${stats}
+const ATLAS_OVERVIEW_TASK = definePrompt({
+  id: "atlas.overview-task",
+  group: "5 · Background inference calls",
+  label: "Atlas — overview task",
+  channel: "side-call-user",
+  where: "The task message for the atlas overview call, carrying the project stats and every finished area section.",
+  placeholders: ["project", "stats", "sections"],
+  text: `Project: {{project}}
+{{stats}}
 
 Area summaries:
 
-${sections.join("\n\n")}
+{{sections}}
 
-Write ONE paragraph (3-5 sentences) that a new contributor reads first: what this project is, its architecture in a sentence, and the direction its dependencies flow. No heading, no bullets, no preamble.`;
+Write ONE paragraph (3-5 sentences) that a new contributor reads first: what this project is, its architecture in a sentence, and the direction its dependencies flow. No heading, no bullets, no preamble.`,
+});
+
+export function atlasOverviewPrompt(project: string, sections: string[], stats: string): string {
+  return renderPrompt(ATLAS_OVERVIEW_TASK, { project, stats, sections: sections.join("\n\n") });
 }
 
 /** Stitches the finished document: title, overview, then one section per area. */
