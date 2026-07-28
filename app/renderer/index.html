@@ -116,6 +116,14 @@
       </div>
       <button id="revealWorkspaceBtn" class="topbar-tool hidden" title="Show the workspace folder in your file manager" aria-label="Show the workspace folder in your file manager">📁</button>
       <button id="inspectorToggle" class="topbar-tool hidden" title="Toggle inspector" aria-label="Toggle inspector">◫</button>
+      <!-- Stand-in for the native title bar, which full screen takes away
+           (on Windows the controls overlay goes with it). Shown only while
+           full screen — otherwise the real window buttons are there. -->
+      <div id="windowControls" class="hidden">
+        <button id="winMinimizeBtn" class="topbar-tool" title="Minimize" aria-label="Minimize">─</button>
+        <button id="winFullScreenBtn" class="topbar-tool" title="Exit full screen (F11)" aria-label="Exit full screen">⤡</button>
+        <button id="winCloseBtn" class="topbar-tool" title="Close window" aria-label="Close window">✕</button>
+      </div>
     </div>
   </header>
 
@@ -533,6 +541,7 @@
         <dt>Y / N</dt><dd>allow · deny in the approval dialog</dd>
         <dt>Tab</dt><dd>reach tool rows, diffs, and skill toggles; Enter/Space activates</dd>
         <dt>/</dt><dd>command palette in the composer</dd>
+        <dt>F11</dt><dd>enter · leave full screen</dd>
         <dt>?</dt><dd>this sheet</dd>
       </dl>
       <div class="modal-actions">

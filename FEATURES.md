@@ -174,6 +174,7 @@ A modifier of OVERDRIVE, not a third stance (composer pill, `/careful on`, or th
 
 - [ ] **Boots** — window opens, renderer loads, no crash. (`npm run smoke` already does this — grow it.) `ui`
 - [ ] **Engine lifecycle** — the child engine spawns on workspace open, restarts on model change, and is killed on quit. `ui` + `proc`
+- [x] **Full screen can always be left** — every launch opens full screen, which removes the native title bar; on Windows the overlaid minimize/restore/close buttons go with it, and packaged builds have no menu, so the window had no visible way out. Three ways out now, none of them native chrome: F11 (handled in main, not by a menu accelerator), VIEW → Toggle Full Screen, and the app's own minimize / exit-full-screen / close buttons in the top strip, shown only while full screen. `ui`
 - [ ] **Permission prompt** — a `permission_request` surfaces a dialog, and the decision reaches the engine. `ui` + `llm`
 - [ ] **Clear** — the CLEAR button / Ctrl+L clears the chat *and* the engine's context (a fresh session), and is refused mid-turn. `ui`
 - [ ] **Session meter** — the hint line shows the true context size and running cost. `ui`

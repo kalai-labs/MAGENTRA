@@ -1084,6 +1084,29 @@ function applyOpeningPosture(win) {
   });
 }
 
+/** Full screen hides the native title bar on every platform — and on Windows
+ * the controls overlay goes with it, which left a packaged build with no
+ * minimize/restore/close button and no menu (Menu.setApplicationMenu(null)) to
+ * leave full screen from: the window was stuck. So every window gets two ways
+ * out that do not depend on native chrome:
+ *  - F11 toggles full screen, handled here rather than through a menu
+ *    accelerator (packaged non-mac builds have no menu at all).
+ *  - the renderer is told the current posture and draws its own window buttons
+ *    in the top strip while the native ones are gone. */
+function wireWindowChrome(win) {
+  const push = () => sendToRenderer("window:fullscreen", win.isFullScreen(), win);
+  win.on("enter-full-screen", push);
+  win.on("leave-full-screen", push);
+  // The opening posture is applied before the page loads, so the first state
+  // the renderer ever hears about has to be sent when it is ready to listen.
+  win.webContents.on("did-finish-load", push);
+  win.webContents.on("before-input-event", (_evt, input) => {
+    if (input.type !== "keyDown" || input.key !== "F11") return;
+    if (win.isDestroyed()) return;
+    win.setFullScreen(!win.isFullScreen());
+  });
+}
+
 function createWindow() {
   // Last session's theme, so the very first frame is already the right shade.
   const chrome = themeChrome(currentConfig.theme);
@@ -1141,6 +1164,7 @@ function createWindow() {
   // screen mid-session restores the saved bounds; the next launch starts full
   // screen again.
   applyOpeningPosture(mainWindow);
+  wireWindowChrome(mainWindow);
   mainWindow.on("resize", rememberWindowState);
   mainWindow.on("move", rememberWindowState);
   mainWindow.on("maximize", rememberWindowState);
@@ -1233,6 +1257,7 @@ function createExtraWindow() {
       devTools: !app.isPackaged,
     },
   });
+  wireWindowChrome(win);
   win.on("closed", () => closeTabsForWindow(win));
   win.webContents.once("did-finish-load", () => {
     sendToRenderer("workspace:recent", currentConfig.recentWorkspaces || [], win);
@@ -1866,6 +1891,17 @@ ipcMain.on("tab:focus", (_evt, tabId) => {
 
 ipcMain.on("tab:close", (_evt, tabId) => {
   if (typeof tabId === "string") closeTab(tabId);
+});
+
+// The window buttons the renderer draws while full screen hides the native
+// title bar — the same three actions that bar offers. Acts on the calling
+// window, so a secondary window closes itself and not the main one.
+ipcMain.on("window:control", (evt, action) => {
+  const win = winOf(evt);
+  if (!win || win.isDestroyed()) return;
+  if (action === "minimize") win.minimize();
+  else if (action === "close") win.close();
+  else if (action === "toggleFullScreen") win.setFullScreen(!win.isFullScreen());
 });
 
 // Open a workspace in a SEPARATE window ("open in new window"). The same-folder

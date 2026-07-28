@@ -708,6 +708,12 @@ body.review-open #topbar { right: var(--review-w); }
 .topbar-tool { width: 30px; height: 30px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-dim); }
 .topbar-tool:hover, .topbar-tool.active { color: var(--text-hi); background: var(--hover); }
 
+/* The renderer's own window buttons, visible only in full screen (main.js
+   toggles this cluster). Grouped tight and pushed to the far right so they read
+   as window chrome, not as app tools. */
+#windowControls { display: flex; align-items: center; gap: 2px; margin-left: 6px; }
+#winCloseBtn:hover { color: #fff; background: var(--red); }
+
 #agentMeter, #ctxMeter { display: flex; align-items: center; gap: 5px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-dim); font-size: max(10px, 0.72rem); font-variant-numeric: tabular-nums; }
 .meter-glyph { color: var(--accent); }
 .meter-label, .meter-dot { color: var(--text-faint); }

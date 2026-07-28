@@ -56,6 +56,15 @@ contextBridge.exposeInMainWorld("magentra", {
   openLogs: () => ipcRenderer.invoke("app:openLogs"),
   connectionInfo: () => ipcRenderer.invoke("connection:info"),
   setTitleBarTheme: (theme) => ipcRenderer.send("app:titleBarTheme", theme),
+  // Full screen hides the native title bar (and its controls), so the renderer
+  // draws its own minimize / exit-full-screen / close buttons and drives them
+  // through here. "minimize" | "toggleFullScreen" | "close".
+  windowControl: (action) => ipcRenderer.send("window:control", action),
+  onFullScreen: (cb) => {
+    const listener = (_evt, fullScreen) => cb(fullScreen);
+    ipcRenderer.on("window:fullscreen", listener);
+    return () => ipcRenderer.removeListener("window:fullscreen", listener);
+  },
   // Whole-interface scale. Page zoom rather than a font-size multiplier: the
   // layout tokens (--sidebar-w, --topbar-h, radii, borders) are hard pixels,
   // so only zoom moves the chrome along with the text.

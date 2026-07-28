@@ -86,7 +86,7 @@ function wireTestIpc() {
   ipcMain.on("test:frame", (_event, frame) => frames.push(frame));
   ipcMain.on("test:modes", (_event, active) => modes.push(active));
   ipcMain.on("test:permission", (_event, value) => permissions.push(value));
-  for (const name of ["interrupt", "restart", "reloadTeam", "external", "titlebar"]) {
+  for (const name of ["interrupt", "restart", "reloadTeam", "external", "titlebar", "window-control"]) {
     ipcMain.on(`test:${name}`, (_event, value) => signals.push({ name, value }));
   }
 }
@@ -1446,6 +1446,48 @@ async function run() {
     await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
     await pause();
     assert.equal(await evaluate(`document.querySelector('#sessionModal').classList.contains('hidden')`), true, "Esc should close the modal");
+  });
+
+  // Full screen removes the native title bar (on Windows the controls overlay
+  // with it), which once left no visible way out of full screen at all.
+  await test("full screen reveals in-app window controls that minimize, restore, and close", async () => {
+    assert.equal(
+      await evaluate(`document.querySelector('#windowControls').classList.contains('hidden')`),
+      true,
+      "windowed: the native title bar is there, so the app draws none",
+    );
+    windowRef.webContents.send("test:fullscreen", true);
+    await pause(60);
+    assert.equal(
+      await evaluate(`document.querySelector('#windowControls').classList.contains('hidden')`),
+      false,
+      "full screen: the app's own window buttons stand in",
+    );
+    const before = signals.length;
+    await evaluate(`(() => {
+      document.querySelector('#winMinimizeBtn').click();
+      document.querySelector('#winFullScreenBtn').click();
+      document.querySelector('#winCloseBtn').click();
+    })()`);
+    await pause(60);
+    assert.deepEqual(
+      signals.slice(before).map((s) => s.value),
+      ["minimize", "toggleFullScreen", "close"],
+      "each button drives its own window action",
+    );
+    // The menu item is the second way out — it must fire the same action.
+    await evaluate(`document.querySelector('#menuBar .menu-root').click()`);
+    await pause(60);
+    await evaluate(`[...document.querySelectorAll('.menu-item')].find((b) => b.textContent.startsWith('Toggle Full Screen')).click()`);
+    await pause(60);
+    assert.equal(signals[signals.length - 1].value, "toggleFullScreen", "VIEW → Toggle Full Screen leaves full screen");
+    windowRef.webContents.send("test:fullscreen", false);
+    await pause(60);
+    assert.equal(
+      await evaluate(`document.querySelector('#windowControls').classList.contains('hidden')`),
+      true,
+      "back in a window, the native buttons are back — hide ours",
+    );
   });
 
   await test("responsive workbench collapses navigation and overlays inspector", async () => {

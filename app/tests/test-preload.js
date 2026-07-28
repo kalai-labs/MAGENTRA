@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld("magentra", {
   openLogs: () => api("openLogs"),
   connectionInfo: () => api("connectionInfo"),
   setTitleBarTheme: (theme) => ipcRenderer.send("test:titlebar", theme),
+  windowControl: (action) => ipcRenderer.send("test:window-control", action),
+  onFullScreen: (callback) => listen("test:fullscreen", callback),
   // The real zoom, not a stub — the suite asserts the layout actually scales.
   setZoom: (factor) => {
     try {

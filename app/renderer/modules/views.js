@@ -72,6 +72,8 @@ const MENU_BAR = [
       { label: "Changes", hint: "Ctrl+5", needsWorkspace: true, action: () => showView("changes") },
       { label: "Settings", hint: "Ctrl+6", action: () => { showView("settings"); void loadConnectionCard(); } },
       { label: "Skills", hint: "Ctrl+7", needsWorkspace: true, action: () => showView("skills") },
+      { sep: true },
+      { label: "Toggle Full Screen", hint: "F11", action: () => toggleFullScreen() },
     ],
   },
   {
@@ -154,6 +156,26 @@ menuRootBtn.addEventListener("click", (event) => {
 });
 menuBarEl.appendChild(menuRootBtn);
 document.addEventListener("click", () => closeOpenMenu());
+
+// ---------------------------------------------------------------------------
+// Window controls. Full screen removes the native title bar — and on Windows
+// the overlaid minimize/restore/close buttons with it — which left no visible
+// way to leave full screen at all. These stand in for that bar while it is
+// gone, and hide again the moment the real one comes back.
+// ---------------------------------------------------------------------------
+
+function toggleFullScreen() {
+  window.magentra.windowControl("toggleFullScreen");
+}
+
+if (windowControlsEl) {
+  winMinimizeBtnEl.addEventListener("click", () => window.magentra.windowControl("minimize"));
+  winFullScreenBtnEl.addEventListener("click", toggleFullScreen);
+  winCloseBtnEl.addEventListener("click", () => window.magentra.windowControl("close"));
+  window.magentra.onFullScreen((fullScreen) => {
+    windowControlsEl.classList.toggle("hidden", !fullScreen);
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Modal accessibility: focus the first control on open, trap Tab inside the
