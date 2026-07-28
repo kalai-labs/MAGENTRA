@@ -29,6 +29,23 @@
 import type { Question } from "@magentra/protocol";
 
 /**
+ * CAREFUL MODE is a BETA FEATURE and is currently switched off everywhere.
+ *
+ * The mode as it stands proposes too weakly to be worth the round trips it
+ * costs, so it is withdrawn rather than shipped half-convincing. Nothing is
+ * deleted: the orchestration in Session.runTurn, the enforcement in
+ * PermissionEngine and the prose below all stay intact, so re-enabling is this
+ * one constant plus its renderer twin (CAREFUL_MODE_ENABLED in state.js).
+ *
+ * While it is false, two gates hold:
+ *   - Engine.applyCareful refuses to arm the mode, from any request, command or
+ *     restored transcript — so nothing reaches the protocol surface;
+ *   - Session.isCarefulActive refuses to run a careful turn even if something
+ *     armed it anyway.
+ */
+export const CAREFUL_MODE_ENABLED = false;
+
+/**
  * The only tools a Scout Phase may call. Everything absent from this set is
  * refused by the permission hold with a teaching message.
  *

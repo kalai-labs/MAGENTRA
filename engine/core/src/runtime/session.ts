@@ -50,6 +50,7 @@ import type { ModeEngine } from "../ma/modes.js";
 import { PermissionEngine, type PermissionRequestPayload, protectedEditPath } from "./permissions.js";
 import {
   CAREFUL_CANCELLED_TEXT,
+  CAREFUL_MODE_ENABLED,
   CAREFUL_PREDICTOR_SYSTEM,
   CAREFUL_SCOUT_WARN_AFTER_ROUNDS,
   CAREFUL_SCOUT_WARN_TEXT,
@@ -661,12 +662,18 @@ export class Session {
     this.provider = provider;
   }
 
-  /** True when a careful turn is actually possible: the modifier is armed, the
-   *  stance it modifies is engaged, and there is a human at the other end. A
-   *  subagent reports to its parent and an unattended mission has nobody to
-   *  approve anything, so neither ever briefs. */
+  /** True when a careful turn is actually possible: the mode is shipped, the
+   *  modifier is armed, the stance it modifies is engaged, and there is a human
+   *  at the other end. A subagent reports to its parent and an unattended
+   *  mission has nobody to approve anything, so neither ever briefs.
+   *
+   *  CAREFUL_MODE_ENABLED is false while the mode is a withdrawn beta. Engine
+   *  already refuses to arm it; this is the behavioural backstop, so a Session
+   *  driven directly (tests, embedders) cannot start a careful turn either. */
   private isCarefulActive(): boolean {
-    return this.careful && this.overdrive && !this.opts.child && !this.unattended;
+    return (
+      CAREFUL_MODE_ENABLED && this.careful && this.overdrive && !this.opts.child && !this.unattended
+    );
   }
 
   /** Mid-run steering: queue user text for injection at the running turn's

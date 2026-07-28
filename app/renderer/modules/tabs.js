@@ -593,12 +593,16 @@ function paneFor(id, ts) {
     // while THIS pane's OVERDRIVE is engaged (syncTabOverdrive hides it), since
     // the mode modifies that stance. Tiling hides the shared composer, so
     // without this button CAREFUL could not be reached at all in this layout.
-    const cfBtn = document.createElement("button");
-    cfBtn.className = "pane-cf-btn hidden";
-    cfBtn.textContent = "◉";
-    cfBtn.setAttribute("aria-pressed", "false");
-    cfBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleTabCareful(id); });
-    head.appendChild(cfBtn);
+    // Not built at all while the mode is a withdrawn beta — see
+    // CAREFUL_MODE_ENABLED in state.js; syncTabOverdrive then finds no button.
+    if (CAREFUL_MODE_ENABLED) {
+      const cfBtn = document.createElement("button");
+      cfBtn.className = "pane-cf-btn hidden";
+      cfBtn.textContent = "◉";
+      cfBtn.setAttribute("aria-pressed", "false");
+      cfBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleTabCareful(id); });
+      head.appendChild(cfBtn);
+    }
     // Per-screen "open the folder": tiled panes each show a different workspace,
     // so the button carries its own tab id rather than relying on which pane is
     // focused. Same action as the topbar button in the single-console view.
