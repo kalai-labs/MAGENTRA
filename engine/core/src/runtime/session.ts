@@ -74,7 +74,6 @@ import {
   circularEvidenceText,
   codeFilesAmong,
   looksLikeTestDouble,
-  readabilityPassText,
   runtimeEvidenceText,
   selfVerifyText,
 } from "./finishing.js";
@@ -402,14 +401,6 @@ export class Session {
    * dropping it. Persisted in the meta snapshot so /resume restores it.
    */
   private careful = false;
-  /**
-   * READABILITY: the optional finishing pass. When armed, a turn that changed
-   * code gets exactly one extra round at the very end — a quick read over the
-   * diff for cleanliness and for anything the user still has to be told. Off by
-   * default, independent of OVERDRIVE (it is a delivery step, not a stance), and
-   * persisted in the meta snapshot so /resume restores it.
-   */
-  private readability = false;
   /** Auto-compact at this many context tokens; 0 = off (nothing auto-compacts).
    *  Its ONLY source is the UI's set_compact_limit frame — no settings key, no
    *  /settings path — so the value can never disagree with what the UI shows. */
@@ -466,7 +457,6 @@ export class Session {
   /** Finishing rungs fire at most once per turn each (reset at turn start). */
   private evidenceNudgeFired = false;
   private circularNudgeFired = false;
-  private readabilityPassFired = false;
   /** A2: mutable crew roster (hot-reloadable); consumed by buildSystemPrompt and services.team. */
   private teamAgents: CrewAgent[];
   /** Hirable crew: the experience manager (lessons + service record). Main session with a team only. */
@@ -679,19 +669,6 @@ export class Session {
 
   isCareful(): boolean {
     return this.careful;
-  }
-
-  /** READABILITY toggle. Its own frame, because unlike CAREFUL it modifies
-   *  nothing about OVERDRIVE: the pass is a delivery step and runs in either
-   *  stance. Arming it costs nothing until a turn actually changes code. */
-  setReadability(enabled: boolean): void {
-    if (this.readability === enabled) return;
-    this.readability = enabled;
-    this.emit({ type: "readability_changed", enabled });
-  }
-
-  isReadability(): boolean {
-    return this.readability;
   }
 
   /**
@@ -1784,13 +1761,12 @@ export class Session {
     // debug.ma: at most one "rerun the repro" verify nudge per turn.
     this.debugVerifyNudgeFired = false;
     // Finishing rungs: both the evidence they judge and their once-per-turn
-    // fuses are about THIS turn's work, so all four reset together.
+    // fuses are about THIS turn's work, so they all reset together.
     this.filesChangedThisTurn.clear();
     this.doubleFilesThisTurn.clear();
     this.ranCommandThisTurn = false;
     this.evidenceNudgeFired = false;
     this.circularNudgeFired = false;
-    this.readabilityPassFired = false;
 
     const turnId = `t_${++this.turnCounter}`;
     this.abortController = new AbortController();
@@ -2255,19 +2231,6 @@ export class Session {
             }
           }
 
-          // READABILITY PASS: opt-in, one round, at the end and nowhere else.
-          // Costs nothing on a turn that changed no code, and never fires twice —
-          // a second pass is how a tidy-up becomes a refactor.
-          if (stopReason === "end_turn" && this.readability && !this.readabilityPassFired) {
-            const changed = [...this.filesChangedThisTurn];
-            if (changed.length > 0) {
-              this.readabilityPassFired = true;
-              this.emit({ type: "command_output", text: "✎ readability: one pass over the change" });
-              this.pushMessage({ role: "user", content: [{ type: "text", text: readabilityPassText(changed) }] });
-              continue;
-            }
-          }
-
           // Self-verify rung: the first time the turn tries to end cleanly,
           // make the model check the outcome against the original query
           // (completeness + economy) before the break is allowed. Runs after
@@ -2463,7 +2426,6 @@ export class Session {
             model: this.settings.model,
             overdrive: this.overdrive,
             careful: this.careful,
-            readability: this.readability,
             ...(this.label !== undefined ? { label: this.label } : {}),
           },
         });

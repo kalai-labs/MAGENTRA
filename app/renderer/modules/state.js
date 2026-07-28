@@ -138,11 +138,6 @@ const DEFAULT_UI_SETTINGS = {
   // independently of `overdrive`, so disengaging and re-engaging OVERDRIVE
   // restores the choice instead of quietly dropping it.
   careful: false,
-  // READABILITY: the optional finishing pass — after a turn that changed code,
-  // one last read over the diff for cleanliness and for anything the user still
-  // has to be told. Off by default, and unlike CAREFUL it is nobody's modifier:
-  // it applies in either stance, so nothing hides or inerts it.
-  readability: false,
 };
 
 /**
@@ -318,7 +313,7 @@ function syncUiControlsFromSettings() {
 
 // Safety toggles reach the engine as frames; only send what actually changed
 // (a fresh session gets a forced full send since it boots with defaults).
-const lastSentSafety = { deletions: null, overdrive: null, careful: null, readability: null, compactLimit: null };
+const lastSentSafety = { deletions: null, overdrive: null, careful: null, compactLimit: null };
 function applySafetySettings(force) {
   if (window.magentra && window.magentra.send) {
     if (force || uiSettings.deletions !== lastSentSafety.deletions) {
@@ -342,12 +337,6 @@ function applySafetySettings(force) {
       });
       lastSentSafety.overdrive = uiSettings.overdrive;
       lastSentSafety.careful = uiSettings.careful;
-    }
-    // READABILITY gets its own frame, not a seat on set_overdrive: it modifies
-    // no stance, so there is no second value it has to stay in step with.
-    if (force || uiSettings.readability !== lastSentSafety.readability) {
-      window.magentra.send({ type: "set_readability", enabled: uiSettings.readability === true });
-      lastSentSafety.readability = uiSettings.readability;
     }
     // Auto-compact limit: same pattern. A fresh session's engine starts at 0
     // (off) until this asserts the user's chosen limit on link.

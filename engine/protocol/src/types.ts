@@ -94,13 +94,6 @@ export type CoreEvent =
        * it restores the user's choice. Absent on engines that predate it.
        */
       careful?: boolean;
-      /**
-       * Whether the READABILITY finishing pass is armed. Unlike `careful` it is
-       * not a modifier of anything: it adds one quick read over the diff at the
-       * very end of a turn that changed code, in either stance. Absent on
-       * engines that predate it.
-       */
-      readability?: boolean;
       /** The engine's slash-command registry, so the palette can never drift. */
       commands: SlashCommandInfo[];
       /**
@@ -211,12 +204,6 @@ export type CoreEvent =
    * Absent means "unchanged/unknown", not "off".
    */
   | { type: "overdrive_changed"; enabled: boolean; careful?: boolean }
-  /**
-   * The READABILITY finishing pass was toggled. Its own frame, unlike `careful`:
-   * the pass modifies no stance, so there is no second state it must stay in
-   * step with, and pairing it onto overdrive_changed would only invent one.
-   */
-  | { type: "readability_changed"; enabled: boolean }
   | { type: "command_output"; text: string }
   /**
    * The live token meters, pushed whenever either figure moves: mid-stream as
@@ -449,13 +436,6 @@ export type FrontendRequest =
    * nothing about CAREFUL cannot switch it off by accident.
    */
   | { type: "set_overdrive"; enabled: boolean; careful?: boolean }
-  /**
-   * Toggles the READABILITY finishing pass: one extra round at the end of a turn
-   * that changed code, spent reading the diff for cleanliness and for anything
-   * the user still has to be told. Independent of OVERDRIVE, so it gets its own
-   * frame instead of riding set_overdrive.
-   */
-  | { type: "set_readability"; enabled: boolean }
   /** Auto-compact the conversation at this many context tokens (0 = off). The
    *  ONLY way to set it — no settings key or /settings path — so it stays
    *  consistent with the UI control that owns it. */

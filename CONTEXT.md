@@ -138,9 +138,9 @@ to go back to the repository.
 ## Finishing Rungs
 
 The checks a turn must climb after the agent has stopped talking and before the
-work counts as delivered. There are two, and both rank above the self-check:
-the self-check ends the turn where it stands when it passes, so a rung below it
-would never run on the turns that go well.
+work counts as delivered. They all rank above the self-check: the self-check
+ends the turn where it stands when it passes, so a rung below it would never run
+on the turns that go well.
 
 They judge the turn by what it DID, not by what it says it did — which files it
 actually changed, and whether it ever executed anything.
@@ -212,23 +212,6 @@ So both shapes of the [[Runtime Evidence Floor]] say it outright: an honest gap
 is a correct answer, and it outranks a green result that had to be manufactured.
 Nothing in MAGENTRA asks a turn to end with a passing check. It asks the turn to
 know, and to say, what it actually observed.
-
-## Readability Pass
-
-The optional last look a turn takes at its own diff. A user-thrown switch, off
-unless asked for, and the only finishing rung that is.
-
-It asks two questions and no others: is this clean enough to hand over, and is
-anything still owed to the user. The first is about the code — names, dead code,
-duplication, leftovers. The second is about the handover — an assumption made
-for them, scope left out, a limitation, a step they must take themselves.
-
-It runs once, at the end, and never in the middle. Small fixes it makes; anything
-larger it names in the wrap-up and leaves alone. A second pass is how a tidy-up
-becomes a refactor, so there is no second pass.
-
-Its whole value is that it costs one round trip. A pass that grows past that has
-already failed, whatever it found.
 
 ## Grounding Floor
 

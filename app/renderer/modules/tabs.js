@@ -603,17 +603,6 @@ function paneFor(id, ts) {
       cfBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleTabCareful(id); });
       head.appendChild(cfBtn);
     }
-    // Per-screen READABILITY. Always built and always visible, unlike the
-    // CAREFUL button above it: the pass modifies no stance, so there is no
-    // state that could make it inert. Tiling hides the shared composer, so
-    // without this button the setting could not be reached in this layout.
-    const rdBtn = document.createElement("button");
-    rdBtn.className = "pane-rd-btn";
-    rdBtn.textContent = "✎";
-    rdBtn.setAttribute("aria-pressed", "false");
-    rdBtn.title = "READABILITY — one last pass over a code change, this workspace only";
-    rdBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleTabReadability(id); });
-    head.appendChild(rdBtn);
     // Per-screen "open the folder": tiled panes each show a different workspace,
     // so the button carries its own tab id rather than relying on which pane is
     // focused. Same action as the topbar button in the single-console view.
@@ -661,7 +650,6 @@ function paneFor(id, ts) {
     ts.paneEl = pane;
     paintTabBubbles(ts); // restore this tab's task bubbles into the fresh header
     syncTabOverdrive(ts); // restore this tab's overdrive state into the fresh header
-    syncTabReadability(ts); // and its readability state, on the same rebuild
   } else if (ts.streamEl && ts.streamEl.parentNode !== ts.paneEl) {
     // Re-seat a rebuilt stream directly after the header, ahead of the chip rows
     // and composer, so the pane order stays head → stream → chips → composer.
@@ -846,13 +834,6 @@ function syncChromeSafetyFromFocusedTab() {
     uiSettings.careful = focTab.careful;
     if (typeof lastSentSafety !== "undefined") lastSentSafety.careful = uiSettings.careful;
   }
-  // READABILITY on the same rule: adopted only from a tab that has actually
-  // reported one, so focusing a fresh pane never clears the user's setting.
-  if (typeof focTab.readability === "boolean") {
-    uiSettings.readability = focTab.readability;
-    if (typeof lastSentSafety !== "undefined") lastSentSafety.readability = uiSettings.readability;
-    if (typeof applyReadabilityShell === "function") applyReadabilityShell();
-  }
   if (typeof applyOverdriveShell === "function") applyOverdriveShell();
 }
 
@@ -924,45 +905,6 @@ function toggleTabOverdrive(tabId) {
   if (next && ts.paneEl && typeof playOverdriveCinematic === "function") {
     playOverdriveCinematic(ts.paneEl);
   }
-}
-
-/** Reflect a tab's READABILITY on its pane button. Separate from
- * syncTabOverdrive because the setting is independent of that stance — nothing
- * about it hides, tints, or inerts with OVERDRIVE. */
-function syncTabReadability(ts) {
-  if (!ts || !ts.paneEl) return;
-  const btn = ts.paneEl.querySelector(".pane-rd-btn");
-  if (!btn) return;
-  const on = ts.readability === true;
-  btn.classList.toggle("on", on);
-  btn.setAttribute("aria-pressed", on ? "true" : "false");
-  btn.title = on
-    ? "READABILITY on for this workspace — one last pass over a code change. Click to turn off."
-    : "READABILITY — one last pass over a code change, this workspace only";
-}
-
-/** Set a tab's READABILITY (optionally telling its engine) and repaint its pane. */
-function setTabReadability(tabId, enabled, sendToEngine) {
-  const ts = tabs.get(tabId);
-  if (!ts) return;
-  ts.readability = enabled === true;
-  if (sendToEngine && window.magentra && window.magentra.send) {
-    window.magentra.send({ type: "set_readability", enabled: ts.readability }, tabId);
-  }
-  syncTabReadability(ts);
-}
-
-/** Pane button click: flip this workspace's READABILITY. */
-function toggleTabReadability(tabId) {
-  const ts = tabs.get(tabId);
-  if (!ts) return;
-  setTabReadability(tabId, !(ts.readability === true), true);
-  if (tabId === focusedTabId) syncChromeSafetyFromFocusedTab();
-  announce(
-    ts.readability
-      ? "Readability pass on for this workspace — Magentra will tidy its own change and report what is left before ending a turn."
-      : "Readability pass off for this workspace.",
-  );
 }
 
 /** Pane button click: flip this workspace's CAREFUL. Rides the set_overdrive

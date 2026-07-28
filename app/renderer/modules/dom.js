@@ -268,5 +268,3 @@ const overdriveCancelBtnEl = document.getElementById("overdriveCancelBtn");
 const overdriveCinematicEl = document.getElementById("overdriveCinematic");
 // CAREFUL MODE: the modifier toggle that sits beside OVERDRIVE.
 const carefulBtnEl = document.getElementById("carefulBtn");
-// READABILITY: the optional finishing pass, in the composer slot CAREFUL left.
-const readabilityBtnEl = document.getElementById("readabilityBtn");

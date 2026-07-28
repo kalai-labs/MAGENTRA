@@ -409,49 +409,6 @@ async function run() {
     await pause();
   });
 
-  await test("READABILITY toggles on its own frame and is nobody's modifier", async () => {
-    // The pass took the composer slot CAREFUL left, but it is not CAREFUL's
-    // replacement: it modifies no stance, so it is always reachable and always
-    // means the same thing. The failure this guards against is it inheriting
-    // CAREFUL's hide-with-OVERDRIVE rule and becoming unreachable by default.
-    assert.equal(await evaluate(`document.querySelector('#readabilityBtn').classList.contains('hidden')`), false);
-    assert.equal(await evaluate(`uiSettings.readability === true`), false);
-    assert.equal(await evaluate(`document.documentElement.dataset.readability`), "off");
-
-    // Arming it sends set_readability — its OWN frame, never a seat on
-    // set_overdrive, so a stance change can never carry it along by accident.
-    frames.length = 0;
-    await evaluate(`document.querySelector('#readabilityBtn').click()`);
-    await pause();
-    assert.deepEqual(
-      frames.filter((frame) => frame.type === "set_readability"),
-      [{ type: "set_readability", enabled: true }],
-      "arming READABILITY sends exactly one set_readability frame",
-    );
-    assert.equal(frames.some((frame) => frame.type === "set_overdrive"), false);
-    assert.equal(await evaluate(`document.querySelector('#readabilityBtn').classList.contains('on')`), true);
-    assert.equal(await evaluate(`document.documentElement.dataset.readability`), "on");
-
-    // It survives a reload: the setting is persisted like the safety toggles.
-    assert.equal(
-      await evaluate(`JSON.parse(localStorage.getItem(UI_SETTINGS_KEY)).readability === true`),
-      true,
-    );
-
-    // The engine's own answer (the /readability command, or a resumed session)
-    // repaints the pill without echoing a frame back.
-    frames.length = 0;
-    await emit({ type: "readability_changed", enabled: false });
-    assert.equal(await evaluate(`document.querySelector('#readabilityBtn').classList.contains('on')`), false);
-    assert.equal(await evaluate(`document.documentElement.dataset.readability`), "off");
-    assert.equal(await evaluate(`uiSettings.readability === true`), false);
-    assert.equal(
-      frames.filter((frame) => frame.type === "set_readability").length,
-      0,
-      "adopting the engine's state must not send it straight back",
-    );
-  });
-
   await test("streaming, operation expansion, agent activity, queueing, and stop work", async () => {
     await emit({ type: "turn_started" });
     await emit({ type: "thinking_delta", text: "Inspecting the renderer" });
@@ -1645,7 +1602,6 @@ async function run() {
         aNoCinematic: !a.querySelector(':scope > .overdrive-cinematic'),
         inputClass: b.querySelector('.pane-input').classList.value,
         cfAbsent: !b.querySelector('.pane-cf-btn') && !a.querySelector('.pane-cf-btn'),
-        rdPresent: Boolean(b.querySelector('.pane-rd-btn')) && Boolean(a.querySelector('.pane-rd-btn')),
       };
     })()`);
     assert.ok(od.bOn, "the pane button engages OVERDRIVE for its own workspace");
@@ -1676,22 +1632,6 @@ async function run() {
     // composer), and engaging a pane's OVERDRIVE must no longer surface it.
     assert.ok(od.cfAbsent, "no CAREFUL button exists on any pane while the mode is withdrawn");
     assert.equal(await evaluate(`tabs.get('tB').careful === true`), false);
-    // READABILITY took that slot but not that rule: it modifies no stance, so
-    // every pane carries it whether or not the pane is in OVERDRIVE, and it
-    // reaches only its own workspace's engine.
-    assert.ok(od.rdPresent, "every pane carries its own READABILITY button");
-    const rdBefore = frames.filter((f) => f.type === "set_readability").length;
-    await evaluate(`tabs.get('tA').paneEl.querySelector('.pane-rd-btn').click()`);
-    await pause(40);
-    const rdFrames = frames.filter((f) => f.type === "set_readability");
-    assert.equal(rdFrames.length - rdBefore, 1, "the pane button sends one set_readability frame");
-    assert.equal(rdFrames.pop().enabled, true);
-    assert.equal(await evaluate(`tabs.get('tA').readability === true`), true);
-    assert.equal(await evaluate(`tabs.get('tB').readability === true`), false, "it never spreads to another screen");
-    assert.equal(
-      await evaluate(`tabs.get('tA').paneEl.querySelector('.pane-rd-btn').classList.contains('on')`),
-      true,
-    );
     // Open a 3rd tab → 3-pane layout; the big (bottom) pane defaults to the last.
     tabEvt("test:tab-opened", { tabId: "tC", workspace: "/tmp/ws-c" });
     await emit({ type: "workspace_changed", workspace: "/tmp/ws-c", tabId: "tC" });

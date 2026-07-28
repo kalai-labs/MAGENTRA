@@ -559,7 +559,7 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
 .console-pane.focused .console-pane-head { color: var(--text-hi); }
 /* Per-screen OVERDRIVE toggle + scoped glow (never full-screen in the tiled view),
    and the per-screen "reveal this workspace folder" button beside it. */
-.pane-od-btn, .pane-reveal-btn, .pane-cf-btn, .pane-rd-btn {
+.pane-od-btn, .pane-reveal-btn, .pane-cf-btn {
   flex: none; padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px;
   background: transparent; color: var(--amber); font-size: max(9px, 0.7rem); line-height: 1.4; cursor: pointer;
 }
@@ -572,11 +572,6 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
 .pane-cf-btn { color: var(--text-dim); }
 .pane-cf-btn:hover { border-color: var(--accent); color: var(--text); }
 .pane-cf-btn.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hi); }
-/* Per-screen READABILITY — the cool accent again, and always shown: it is a
-   finishing step rather than a modifier, so no stance can make it inert. */
-.pane-rd-btn { color: var(--text-dim); }
-.pane-rd-btn:hover { border-color: var(--accent); color: var(--text); }
-.pane-rd-btn.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hi); }
 /* Per-tab task-progress dots, pushed to the right edge of the pane header. */
 .pane-task-bubbles { flex: none; display: flex; align-items: center; gap: 3px; margin-left: auto; }
 .pane-bubble {
@@ -992,14 +987,6 @@ select.composer-select { color-scheme: var(--color-scheme); }
 .careful-btn .cf-btn-glyph { color: var(--text-dim); }
 .careful-btn.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hi); }
 .careful-btn.on .cf-btn-glyph { color: var(--accent); }
-
-/* READABILITY composer toggle — the finishing pass. Shares CAREFUL's cooler
-   accent (it is care, not throttle) but never hides: it modifies no stance, so
-   it means the same thing whether OVERDRIVE is engaged or not. */
-.readability-btn { display: flex; align-items: center; gap: 5px; padding: 0 10px; font-weight: 700; letter-spacing: 0.03em; }
-.readability-btn .rd-btn-glyph { color: var(--text-dim); }
-.readability-btn.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hi); }
-.readability-btn.on .rd-btn-glyph { color: var(--accent); }
 
 /* Shell identity while active: key surfaces shift to the hot hue, cleanly
    reverting when the attribute flips back to off/absent. */

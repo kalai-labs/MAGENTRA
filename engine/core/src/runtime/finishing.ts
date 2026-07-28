@@ -1,7 +1,7 @@
-// FINISHING RUNGS — the two end-of-turn checks that stand between "the model
-// stopped talking" and "the work is delivered".
+// FINISHING RUNGS — the end-of-turn checks that stand between "the model stopped
+// talking" and "the work is delivered".
 //
-// Both live at the bottom of the same ladder in Session.runTurn, ahead of the
+// They live at the bottom of the same ladder in Session.runTurn, ahead of the
 // self-verify rung, because a self-verify that answers DONE breaks the loop and
 // nothing placed after it would ever run.
 //
@@ -10,11 +10,9 @@
 //                       working. Fires once, names the files, and asks for a real
 //                       run. A reminder, never a block — the same shape as the
 //                       Grounding Floor, for the same reason: the failure it
-//                       catches looks like success.
-//   readability       → optional, off by default, user-thrown. One quick pass
-//                       over the diff for cleanliness and for anything the user
-//                       still has to be told. Fires at most once per turn: it is
-//                       a tidy-up, not a second implementation phase.
+//                       catches looks like success. It has a second shape for the
+//                       turn that DID run something, where what it ran was a
+//                       stand-in it wrote itself.
 //
 // Everything here is prose and pure functions. It deliberately imports nothing
 // from the session or the permission engine, so it can be checked in isolation.
@@ -137,22 +135,6 @@ Before this turn ends, for every real thing you replaced:
 3. If the confirmed contract differs from what your stand-in does, your code is wrong and your check was agreeing with the bug. Fix both, and say so.
 
 If the contract genuinely cannot be confirmed here, say that plainly and name exactly which behaviours remain unverified. An honest gap is a good outcome. A green check built on your own assumption is not a good outcome — it is the same unverified guess wearing the costume of proof.</system-reminder>`;
-}
-
-/**
- * The readability rung, sent only when the user has armed the feature. One pass,
- * two questions, and a hard instruction to keep it small: the whole value of the
- * feature is that it costs a single round trip at the very end, so a pass that
- * turns into a refactor has defeated it.
- */
-export function readabilityPassText(files: string[]): string {
-  return `<system-reminder>Readability pass — one quick read over what you changed (${fileList(files)}) before the turn ends. This is a tidy-up, not a new phase of work: no refactors, no new features, no fresh investigation, and no second pass after this one.
-
-Ask two questions:
-1. Is this code clean enough to hand over? Names that say what they hold, no leftover debug output or commented-out attempts, no dead code or unused imports your change orphaned, nothing duplicating something that already existed, and the same idiom as the code around it.
-2. Is anything still owed to the user? An assumption you made for them, scope you deliberately left out, a limitation you know about, or a manual step they must take themselves (a migration, an install, an env var, a restart).
-
-Fix what is a small fix, right now. Anything bigger than that is NOT for this pass — put it in your wrap-up as an open item instead. If the code is already clean and nothing is owed, change nothing and simply finish; saying so in one clause is enough.</system-reminder>`;
 }
 
 /**
