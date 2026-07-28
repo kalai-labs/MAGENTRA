@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { definePrompt, promptText } from "@magentra/protocol";
 import { join } from "node:path";
 import type { CrewAgent } from "../../crew/team.js";
 import { buildBm25 } from "./bm25.js";
@@ -32,10 +33,24 @@ const NOTE_MAX_TOKENS = 500;
 const BRIEF_MAX_TOKENS = 1000;
 const BRIEF_NOTE_CAP = 24_000;
 
-const NOTE_SYSTEM =
-  "Extract the atomic knowledge from this passage as terse notes: definitions, theorems/rules with their conditions, formulas, key facts. Plain lines, no commentary.";
-const BRIEF_SYSTEM =
-  "Distill these notes into a ~600-word working brief a specialist keeps in mind: core concepts, key rules with conditions, main techniques.";
+const NOTE_SYSTEM = definePrompt({
+  id: "backpack.note",
+  group: "5 · Background inference calls",
+  label: "Backpack note extraction",
+  channel: "side-call",
+  where:
+    "Runs once per document chunk while building a crew specialist's knowledge backpack (/build-crew). Its output is the note stored beside the chunk and searched by BackpackSearch.",
+  text: "Extract the atomic knowledge from this passage as terse notes: definitions, theorems/rules with their conditions, formulas, key facts. Plain lines, no commentary.",
+});
+const BRIEF_SYSTEM = definePrompt({
+  id: "backpack.brief",
+  group: "5 · Background inference calls",
+  label: "Backpack brief distillation",
+  channel: "side-call",
+  where:
+    "Runs after note extraction to distill all of a specialist's notes into the standing brief that is injected into that specialist's own system prompt.",
+  text: "Distill these notes into a ~600-word working brief a specialist keeps in mind: core concepts, key rules with conditions, main techniques.",
+});
 
 const PHASE_RANK: Record<DocPhase, number> = { raw: 0, noted: 1, embedded: 2 };
 
@@ -180,7 +195,7 @@ export async function buildBackpack(opts: BuildBackpackOptions): Promise<BuildRe
       NOTE_CONCURRENCY,
       async ({ chunk }) => {
         try {
-          const note = await runInference({ system: NOTE_SYSTEM, user: chunk.text, maxTokens: NOTE_MAX_TOKENS });
+          const note = await runInference({ system: promptText(NOTE_SYSTEM), user: chunk.text, maxTokens: NOTE_MAX_TOKENS });
           chunk.note = note.trim();
         } catch (err) {
           // The chunk stays searchable via raw text and is re-noted on the next build.
@@ -266,16 +281,16 @@ async function distill(
   runInference: (o: { system: string; user: string; maxTokens: number }) => Promise<string>,
 ): Promise<string> {
   if (notes.length <= BRIEF_NOTE_CAP) {
-    return (await runInference({ system: BRIEF_SYSTEM, user: notes, maxTokens: BRIEF_MAX_TOKENS })).trim();
+    return (await runInference({ system: promptText(BRIEF_SYSTEM), user: notes, maxTokens: BRIEF_MAX_TOKENS })).trim();
   }
   const mid = Math.floor(notes.length / 2);
   const split = notes.indexOf("\n", mid);
   const cut = split === -1 ? mid : split;
   const [first, second] = await Promise.all([
-    runInference({ system: BRIEF_SYSTEM, user: notes.slice(0, cut), maxTokens: BRIEF_MAX_TOKENS }),
-    runInference({ system: BRIEF_SYSTEM, user: notes.slice(cut), maxTokens: BRIEF_MAX_TOKENS }),
+    runInference({ system: promptText(BRIEF_SYSTEM), user: notes.slice(0, cut), maxTokens: BRIEF_MAX_TOKENS }),
+    runInference({ system: promptText(BRIEF_SYSTEM), user: notes.slice(cut), maxTokens: BRIEF_MAX_TOKENS }),
   ]);
   return (
-    await runInference({ system: BRIEF_SYSTEM, user: `${first.trim()}\n${second.trim()}`, maxTokens: BRIEF_MAX_TOKENS })
+    await runInference({ system: promptText(BRIEF_SYSTEM), user: `${first.trim()}\n${second.trim()}`, maxTokens: BRIEF_MAX_TOKENS })
   ).trim();
 }

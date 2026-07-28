@@ -1,0 +1,1126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Magentra · Prompt Lab</title>
+<style>
+:root {
+  --ui: "Inter", ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", "SFMono-Regular", Consolas, ui-monospace, monospace;
+
+  --accent: #38d9d2;
+  --accent-hi: #8ceee9;
+  --accent-ink: #04211f;
+  --accent-rgb: 56, 217, 210;
+  --accent-soft: rgba(var(--accent-rgb), 0.12);
+  --green: #40d183;
+  --green-soft: rgba(64, 209, 131, 0.13);
+  --amber: #f4a83a;
+  --amber-soft: rgba(244, 168, 58, 0.13);
+  --red: #f16a78;
+  --red-soft: rgba(241, 106, 120, 0.13);
+  --violet: #b088f9;
+  --violet-soft: rgba(176, 136, 249, 0.13);
+
+  --bg: #0b0e11;
+  --sidebar: #0e1114;
+  --panel: #12161a;
+  --raised: #1a1f25;
+  --well: #07090c;
+  --hover: #1f262d;
+  --border: #242b32;
+  --border-hi: #364049;
+
+  --text: #ced6dd;
+  --text-hi: #f2f6f8;
+  --text-dim: #8f9aa5;
+  --text-faint: #606b76;
+
+  --rail-w: 296px;
+  --radius: 10px;
+  --radius-sm: 7px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.55 var(--ui);
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(var(--accent-rgb), 0.3); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #2c343d; border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #404c57; background-clip: content-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: none; }
+a { color: var(--accent); }
+
+/* ── shell ────────────────────────────────────────────────────────────── */
+#app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+
+.topbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 18px; height: 56px;
+  background: var(--sidebar);
+  border-bottom: 1px solid var(--border);
+  position: relative; z-index: 5;
+}
+.brand { display: flex; align-items: baseline; gap: 9px; flex: none; }
+.brand b { color: var(--text-hi); font-size: 15px; font-weight: 620; letter-spacing: -0.01em; }
+.brand span { color: var(--text-faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; }
+.brand-dot {
+  width: 9px; height: 9px; border-radius: 50%; align-self: center;
+  background: var(--accent); box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.7);
+}
+
+.search { flex: 1; max-width: 420px; position: relative; }
+.search input {
+  width: 100%; height: 34px; padding: 0 34px 0 12px;
+  background: var(--well); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); outline: none;
+}
+.search input:focus { border-color: var(--border-hi); }
+.search input::placeholder { color: var(--text-faint); }
+.search kbd {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font: 10px/1 var(--mono); color: var(--text-faint);
+  border: 1px solid var(--border); border-radius: 4px; padding: 3px 5px;
+}
+
+.budget { display: flex; gap: 18px; margin-left: auto; flex: none; }
+.budget-item { text-align: right; line-height: 1.25; }
+.budget-item b { display: block; color: var(--text-hi); font-size: 14px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.budget-item span { font-size: 10.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.07em; }
+
+.status {
+  flex: none; display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--text-dim); min-width: 92px;
+}
+.status i {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint);
+  transition: background 0.2s;
+}
+.status.saving i { background: var(--amber); }
+.status.saved i { background: var(--green); }
+.status.error i { background: var(--red); }
+
+.tbtn {
+  flex: none; height: 32px; padding: 0 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); color: var(--text-dim); font-size: 12.5px;
+}
+.tbtn:hover { background: var(--hover); color: var(--text-hi); border-color: var(--border-hi); }
+
+/* ── body ─────────────────────────────────────────────────────────────── */
+.body { display: grid; grid-template-columns: var(--rail-w) 1fr; min-height: 0; }
+
+.rail {
+  background: var(--sidebar); border-right: 1px solid var(--border);
+  overflow-y: auto; padding: 12px 10px 40px;
+}
+.rail-head {
+  padding: 8px 10px 6px; font-size: 10.5px; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--text-faint);
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  color: var(--text-dim); text-align: left; font-size: 13px;
+}
+.nav-item:hover { background: var(--hover); color: var(--text-hi); }
+.nav-item.on { background: var(--accent-soft); color: var(--accent-hi); }
+.nav-item .n {
+  margin-left: auto; font: 11px/1 var(--mono); color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.nav-item.on .n { color: var(--accent); }
+.nav-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); flex: none; }
+
+.rail-sep { height: 1px; background: var(--border); margin: 12px 10px; }
+
+.plist { display: flex; flex-direction: column; gap: 1px; }
+.pitem {
+  display: block; width: 100%; text-align: left;
+  padding: 7px 10px; border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
+}
+.pitem:hover { background: var(--hover); }
+.pitem.on { background: var(--raised); border-left-color: var(--accent); }
+.pitem .row { display: flex; align-items: center; gap: 8px; }
+.pitem .label { color: var(--text); font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pitem.on .label { color: var(--text-hi); }
+.pitem .id { font: 10.5px/1.4 var(--mono); color: var(--text-faint); display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pitem .mark { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); flex: none; }
+
+.main { overflow-y: auto; min-width: 0; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 26px 32px 80px; }
+
+/* ── map ──────────────────────────────────────────────────────────────── */
+.page-head { margin-bottom: 26px; }
+.page-head h1 { margin: 0 0 6px; font-size: 21px; font-weight: 640; color: var(--text-hi); letter-spacing: -0.015em; }
+.page-head p { margin: 0; color: var(--text-dim); max-width: 76ch; }
+
+.stage { margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); overflow: hidden; }
+.stage-head { display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--border); }
+.stage-num {
+  flex: none; width: 24px; height: 24px; border-radius: 6px;
+  display: grid; place-items: center;
+  font: 600 11px/1 var(--mono); color: var(--accent-ink); background: var(--accent);
+}
+.stage-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-hi); }
+.stage-head .sub { color: var(--text-faint); font-size: 12px; }
+.stage-head .cost { margin-left: auto; font: 11px/1 var(--mono); color: var(--text-dim); }
+.stage-body { padding: 14px 16px; }
+.stage-note { color: var(--text-dim); font-size: 12.5px; margin: 0 0 12px; max-width: 78ch; }
+
+.chain { display: flex; flex-direction: column; gap: 5px; }
+.chip {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 8px 11px; border-radius: var(--radius-sm);
+  background: var(--raised); border: 1px solid transparent;
+}
+.chip:hover { border-color: var(--border-hi); background: var(--hover); }
+.chip .ord { font: 10px/1 var(--mono); color: var(--text-faint); width: 16px; flex: none; }
+.chip .name { color: var(--text-hi); font-size: 13px; flex: none; }
+.chip .desc { color: var(--text-faint); font-size: 12px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip .tok { font: 11px/1 var(--mono); color: var(--text-dim); flex: none; font-variant-numeric: tabular-nums; }
+.chip .mark { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); flex: none; }
+.chip.cond { background: transparent; border: 1px dashed var(--border-hi); }
+
+.grid-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 5px; }
+.grid-chips .chip { padding: 7px 10px; }
+.grid-chips .name { font-size: 12.5px; }
+
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 11.5px; color: var(--text-faint); }
+.legend span { display: flex; align-items: center; gap: 6px; }
+.legend i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.legend .dash { width: 14px; height: 0; border-top: 1px dashed var(--border-hi); border-radius: 0; }
+
+/* ── editor ───────────────────────────────────────────────────────────── */
+.crumbs { font-size: 12px; color: var(--text-faint); margin-bottom: 8px; }
+.crumbs b { color: var(--text-dim); font-weight: 500; }
+.ed-head { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 14px; }
+.ed-head h1 { margin: 0 0 4px; font-size: 19px; font-weight: 640; color: var(--text-hi); letter-spacing: -0.015em; }
+.ed-head .idline { font: 11.5px/1 var(--mono); color: var(--text-faint); }
+.ed-actions { margin-left: auto; display: flex; gap: 8px; flex: none; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 550;
+  letter-spacing: 0.02em; white-space: nowrap;
+}
+.badge.system { background: var(--accent-soft); color: var(--accent-hi); }
+.badge.cond { background: var(--violet-soft); color: var(--violet); }
+.badge.reminder { background: var(--amber-soft); color: var(--amber); }
+.badge.tool { background: var(--green-soft); color: var(--green); }
+.badge.side { background: rgba(143, 154, 165, 0.14); color: var(--text-dim); }
+.badge.sub { background: var(--red-soft); color: var(--red); }
+.badge.over { background: var(--amber-soft); color: var(--amber); }
+
+.callout {
+  display: flex; gap: 12px; padding: 12px 14px; margin-bottom: 14px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-left: 2px solid var(--accent); border-radius: var(--radius);
+}
+.callout .k { flex: none; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); padding-top: 2px; width: 82px; }
+.callout .v { color: var(--text); font-size: 13px; max-width: 82ch; }
+.callout code { font: 12px var(--mono); background: var(--well); padding: 1px 5px; border-radius: 4px; color: var(--accent-hi); }
+
+.slots { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.slots .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
+.slot { font: 11.5px var(--mono); background: var(--violet-soft); color: var(--violet); padding: 3px 8px; border-radius: 5px; }
+
+.ed-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; background: var(--panel);
+  border: 1px solid var(--border); border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.ed-bar .grow { flex: 1; }
+.ed-bar .meta { font: 11.5px/1 var(--mono); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.ed-bar .meta b { color: var(--text-dim); font-weight: 500; }
+.ed-bar .delta.up { color: var(--red); }
+.ed-bar .delta.down { color: var(--green); }
+.sbtn {
+  height: 26px; padding: 0 10px; border-radius: 6px; font-size: 12px;
+  color: var(--text-dim); border: 1px solid var(--border);
+}
+.sbtn:hover { background: var(--hover); color: var(--text-hi); border-color: var(--border-hi); }
+.sbtn.on { background: var(--accent-soft); color: var(--accent-hi); border-color: rgba(var(--accent-rgb), 0.35); }
+.sbtn:disabled { opacity: 0.4; cursor: default; }
+.sbtn:disabled:hover { background: none; color: var(--text-dim); border-color: var(--border); }
+
+.ed-panes { display: grid; gap: 0; grid-template-columns: 1fr; }
+.ed-panes.split { grid-template-columns: 1fr 1fr; }
+.pane { display: flex; flex-direction: column; min-width: 0; }
+.pane + .pane { border-left: 1px solid var(--border); }
+.pane-tag {
+  padding: 6px 12px; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-faint);
+  background: var(--well); border: 1px solid var(--border); border-bottom: none; border-top: none;
+}
+.pane + .pane .pane-tag { border-left: none; }
+textarea.editor, pre.editor {
+  margin: 0; width: 100%; min-height: 46vh; resize: vertical;
+  padding: 16px 18px; background: var(--well);
+  border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius);
+  font: 13px/1.7 var(--mono); color: var(--text-hi);
+  outline: none; white-space: pre-wrap; word-break: break-word; overflow-y: auto;
+}
+.ed-panes.split .pane:first-child textarea.editor { border-radius: 0 0 0 var(--radius); }
+.ed-panes.split .pane + .pane pre.editor { border-left: none; border-radius: 0 0 var(--radius) 0; }
+textarea.editor:focus { border-color: var(--border-hi); }
+pre.editor { color: var(--text-dim); }
+pre.editor ins { background: rgba(64, 209, 131, 0.16); color: #93eab2; text-decoration: none; }
+pre.editor del { background: rgba(241, 106, 120, 0.16); color: #ffa2ab; text-decoration: none; }
+
+.hint { margin-top: 12px; font-size: 12px; color: var(--text-faint); }
+.hint code { font: 11.5px var(--mono); background: var(--panel); padding: 1px 5px; border-radius: 4px; }
+
+.empty { padding: 60px 0; text-align: center; color: var(--text-faint); }
+
+/* ── preview modal ────────────────────────────────────────────────────── */
+.veil {
+  position: fixed; inset: 0; background: rgba(4, 6, 8, 0.72);
+  display: grid; place-items: center; padding: 40px; z-index: 20;
+}
+.modal {
+  background: var(--panel); border: 1px solid var(--border-hi);
+  border-radius: 12px; width: min(940px, 100%); max-height: 100%;
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+.modal header { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.modal header h2 { margin: 0; font-size: 14px; color: var(--text-hi); font-weight: 600; }
+.modal header .cost { font: 11.5px var(--mono); color: var(--text-dim); }
+.modal header button { margin-left: auto; color: var(--text-dim); font-size: 18px; line-height: 1; padding: 4px 8px; border-radius: 6px; }
+.modal header button:hover { background: var(--hover); color: var(--text-hi); }
+.modal pre { margin: 0; padding: 20px 22px; overflow: auto; font: 12.5px/1.65 var(--mono); color: var(--text); white-space: pre-wrap; word-break: break-word; }
+
+
+/* ── review notes ─────────────────────────────────────────────────────── */
+.sev { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.sev.must { background: var(--red); }
+.sev.improve { background: var(--amber); }
+.sev.ok { background: var(--green); }
+
+.note-card {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); margin-bottom: 16px; overflow: hidden;
+}
+.note-card.must { border-left: 2px solid var(--red); }
+.note-card.improve { border-left: 2px solid var(--amber); }
+.note-card.ok { border-left: 2px solid var(--green); }
+.note-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; border-bottom: 1px solid var(--border);
+}
+.note-head h3 { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--text-hi); }
+.note-head .lvl {
+  font-size: 10px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 999px; flex: none;
+}
+.note-head .lvl.must { background: var(--red-soft); color: var(--red); }
+.note-head .lvl.improve { background: var(--amber-soft); color: var(--amber); }
+.note-head .lvl.ok { background: var(--green-soft); color: var(--green); }
+.note-head button.fold { margin-left: auto; color: var(--text-faint); font-size: 12px; padding: 3px 8px; border-radius: 5px; }
+.note-head button.fold:hover { background: var(--hover); color: var(--text-hi); }
+.note-body { padding: 13px 15px; }
+.note-body.hidden { display: none; }
+.note-body p { margin: 0 0 9px; color: var(--text); font-size: 13px; line-height: 1.6; max-width: 84ch; }
+.note-body p:last-child { margin-bottom: 0; }
+.note-sub {
+  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-faint); margin: 15px 0 6px;
+}
+.note-sub:first-child { margin-top: 0; }
+.note-body ul { margin: 0 0 4px; padding-left: 17px; }
+.note-body li { color: var(--text-dim); font-size: 12px; line-height: 1.55; margin-bottom: 3px; }
+.note-body li code { font: 11.5px var(--mono); color: var(--accent-hi); background: var(--well); padding: 1px 4px; border-radius: 3px; }
+.note-body code { font: 12px var(--mono); color: var(--accent-hi); background: var(--well); padding: 1px 4px; border-radius: 3px; }
+
+.ref {
+  background: var(--well); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 11px 13px; margin-top: 4px;
+}
+.ref .who {
+  font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--violet); margin-bottom: 5px;
+}
+.ref .why { font-size: 12px; color: var(--text-dim); margin: 0 0 8px; line-height: 1.5; }
+.ref pre {
+  margin: 0; font: 12px/1.62 var(--mono); color: var(--text);
+  white-space: pre-wrap; word-break: break-word;
+}
+.dir { background: var(--accent-soft); border-radius: var(--radius-sm); padding: 11px 13px; margin-top: 4px; }
+.dir p { color: var(--text-hi) !important; font-size: 12.5px !important; margin: 0 !important; }
+
+.save-state { font: 11.5px/1 var(--mono); color: var(--text-faint); }
+.save-state.dirty { color: var(--amber); }
+.sbtn.save { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.sbtn.save:hover { background: var(--accent-hi); border-color: var(--accent-hi); color: var(--accent-ink); }
+.sbtn.save:disabled { background: none; color: var(--text-faint); border-color: var(--border); font-weight: 400; }
+.sbtn.save:disabled:hover { background: none; color: var(--text-faint); border-color: var(--border); }
+
+.legend .sq { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+@media (max-width: 1000px) {
+  .body { grid-template-columns: 1fr; }
+  .rail { display: none; }
+  .ed-panes.split { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar">
+    <div class="brand"><i class="brand-dot"></i><b>Prompt Lab</b><span>Magentra</span></div>
+    <div class="search">
+      <input id="q" type="search" placeholder="Search prompts, ids, and prompt text…" autocomplete="off" spellcheck="false" />
+      <kbd>/</kbd>
+    </div>
+    <div class="budget">
+      <div class="budget-item"><b id="b-sys">–</b><span>system prompt</span></div>
+      <div class="budget-item"><b id="b-tools">–</b><span>tool descs</span></div>
+      <div class="budget-item"><b id="b-fixed">–</b><span>every request</span></div>
+    </div>
+    <button class="tbtn" id="btn-preview">Preview system prompt</button>
+    <button class="tbtn" id="btn-export">Export</button>
+    <button class="tbtn" id="btn-import">Import</button>
+    <div class="status" id="status"><i></i><span>Ready</span></div>
+  </div>
+
+  <div class="body">
+    <nav class="rail">
+      <div class="rail-head">View</div>
+      <button class="nav-item on" data-view="map">◈ Injection map<span class="n" id="n-all">0</span></button>
+      <button class="nav-item" data-view="notes">◆ Review notes<span class="n" id="n-notes">0</span></button>
+      <button class="nav-item" data-view="over">◆ Modified only<span class="n" id="n-over">0</span></button>
+      <div class="rail-sep"></div>
+      <div class="rail-head">Groups</div>
+      <div id="groups"></div>
+      <div class="rail-sep"></div>
+      <div class="rail-head" id="list-head">Prompts</div>
+      <div class="plist" id="plist"></div>
+    </nav>
+    <main class="main" id="main"></main>
+  </div>
+</div>
+
+<input type="file" id="file" accept="application/json" hidden />
+
+<script>
+const CHARS_PER_TOKEN = 3.5;
+const tok = (s) => Math.ceil(Math.max(0, s.length) / CHARS_PER_TOKEN);
+const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "") + "k" : String(n));
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+
+const CHANNEL = {
+  system:              { cls: "system",   text: "system prompt" },
+  "system-conditional":{ cls: "cond",     text: "conditional section" },
+  reminder:            { cls: "reminder", text: "in-turn reminder" },
+  tool:                { cls: "tool",     text: "tool description" },
+  "side-call":         { cls: "side",     text: "background call · system" },
+  "side-call-user":    { cls: "side",     text: "background call · user" },
+  subagent:            { cls: "sub",      text: "subagent role" },
+};
+
+/**
+ * The injection map: one turn, in the order the model actually meets each
+ * prompt. Ids listed here are pinned to a position; anything registered but
+ * unpinned still appears, under its own group, in the trailing stage.
+ */
+const MAP = [
+  {
+    title: "Before the turn starts",
+    sub: "pre-layer · optional",
+    note: "Runs as its own inference call on the incoming message before any work begins. Every round here is latency the user feels before the first tool call.",
+    rows: [{ id: "clarify.system", cond: true }],
+  },
+  {
+    title: "The system prompt",
+    sub: "every request · concatenated in this order",
+    note: "Assembled once per request and sent ahead of the whole conversation. Sections join with a blank line between them; the dashed ones only appear when their condition holds.",
+    rows: [
+      { id: "system.identity" }, { id: "system.harness" }, { id: "system.communication" },
+      { id: "system.action-care" }, { id: "system.git" }, { id: "system.code-style" },
+      { id: "system.tasks" }, { id: "system.working-method" }, { id: "system.autonomy" },
+      { id: "system.environment" },
+      { id: "system.project-memory-header", cond: true },
+      { id: "system.skills-block", cond: true },
+      { id: "system.atlas-header", cond: true },
+      { id: "system.standards-header", cond: true },
+      { id: "crew.orchestrator-section", cond: true },
+      { id: "system.overdrive", cond: true },
+    ],
+  },
+  {
+    title: "Tool descriptions",
+    sub: "every request · alongside the system prompt",
+    note: "Sent as the tool definitions for the request. This is what the model reads to decide which tool to reach for and how many calls to batch into one turn — the parallel-call behaviour lives as much here as in the system prompt.",
+    channel: "tool",
+    grid: true,
+  },
+  {
+    title: "During the turn",
+    sub: "injected as user-role messages",
+    note: "Each of these is appended to the conversation mid-turn when its trigger fires. Every injection costs at least one extra inference round, so they are the main lever on how long a turn takes.",
+    rows: [
+      { id: "reminder.plan-first" }, { id: "reminder.no-atlas" },
+      { id: "reminder.error-batch" }, { id: "reminder.recovery-nudge" },
+      { id: "reminder.stall-pivot" }, { id: "reminder.stall-ask" },
+      { id: "reminder.length-continuation" }, { id: "reminder.tool-cutoff" },
+      { id: "compaction.wrapper" },
+    ],
+  },
+  {
+    title: "End of the turn",
+    sub: "the finishing ladder, top to bottom",
+    note: "Checked in this order after the model stops calling tools. The self-verify rung fires on EVERY work turn — it is the one fixed extra round per turn, and the first place to look when turns feel slow.",
+    rows: [
+      { id: "finishing.runtime-evidence" }, { id: "finishing.circular-evidence" },
+      { id: "reminder.wrapup-nudge" },
+      { id: "finishing.self-verify" },
+      { id: "finishing.self-verify.closing-code", indent: true },
+      { id: "finishing.self-verify.closing-plain", indent: true },
+    ],
+  },
+  {
+    title: "Subagents",
+    sub: "Agent tool · fresh context per subagent",
+    note: "A subagent gets the same core system prompt, plus its type's role and the output contract. It never sees this conversation.",
+    channel: "subagent",
+    extraIds: ["subagent.result-contract"],
+    grid: true,
+  },
+  {
+    title: "Background calls",
+    sub: "never seen by the main agent",
+    note: "Separate inference calls the engine makes on its own — naming a session, compacting history, mapping the codebase, building a crew backpack. They run on settings.smallModel when one is configured.",
+    channels: ["side-call", "side-call-user"],
+    grid: true,
+  },
+];
+
+const state = {
+  prompts: [], byId: new Map(), groups: [], review: { findings: {} },
+  view: "map", group: null, selected: null, query: "",
+  split: false, preview: null,
+  /** Unsaved editor text per prompt id. Presence here means "dirty". */
+  draft: new Map(),
+};
+
+/** Which prompt the editor is currently built for; guards against rebuilding
+ *  the textarea underneath someone who is typing in it. */
+let renderedId = null;
+
+const isDirty = (id) => state.draft.has(id);
+const anyDirty = () => state.draft.size > 0;
+const textOf = (p) => state.draft.get(p.id) ?? p.currentText;
+
+const $ = (s) => document.querySelector(s);
+const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+
+// ── data ────────────────────────────────────────────────────────────────
+async function load() {
+  const res = await fetch("/api/catalog");
+  const data = await res.json();
+  state.prompts = data.prompts;
+  state.byId = new Map(data.prompts.map((p) => [p.id, p]));
+  state.groups = [...new Set(data.prompts.map((p) => p.group))].sort();
+  state.preview = data.preview;
+  state.review = data.review ?? { findings: {} };
+  state.dir = data.dir;
+  render();
+}
+
+const noteFor = (id) => state.review.findings?.[id];
+const SEV_RANK = { must: 0, improve: 1, ok: 2 };
+
+function setStatus(kind, text) {
+  const n = $("#status");
+  n.className = "status " + kind;
+  n.lastElementChild.textContent = text;
+}
+
+/**
+ * Typing only records a draft. Nothing is written and nothing is re-rendered,
+ * so the textarea keeps focus and the caret stays put — an earlier build saved
+ * on every keystroke and rebuilt the editor from the response, which made the
+ * box impossible to type in.
+ */
+function markDirty(id, text) {
+  const p = state.byId.get(id);
+  if (text === p.currentText) state.draft.delete(id);
+  else state.draft.set(id, text);
+  paintMeta();
+  paintSaveState();
+}
+
+/** Writes one prompt's draft to disk. Returns true when something was written. */
+async function save(id) {
+  const text = state.draft.get(id);
+  if (text === undefined) return false;
+  const p = state.byId.get(id);
+  setStatus("saving", "Saving…");
+  try {
+    const res = await fetch("/api/prompt/" + encodeURIComponent(id), { method: "PUT", body: text });
+    const out = await res.json();
+    state.draft.delete(id);
+    p.currentText = text;
+    p.currentTokens = out.currentTokens ?? tok(text);
+    p.overridden = out.overridden;
+    setStatus("saved", "Saved to disk");
+    paintRail();
+    paintMeta();
+    paintSaveState();
+    paintDiff();
+    refreshBudget();
+    return true;
+  } catch {
+    setStatus("error", "Write failed");
+    return false;
+  }
+}
+
+async function refreshBudget() {
+  const res = await fetch("/api/catalog");
+  const data = await res.json();
+  state.preview = data.preview;
+  for (const p of data.prompts) {
+    const cur = state.byId.get(p.id);
+    if (cur) { cur.overridden = p.overridden; cur.file = p.file; }
+  }
+  paintBudget();
+}
+
+async function resetPrompt(id) {
+  const p = state.byId.get(id);
+  await fetch("/api/prompt/" + encodeURIComponent(id), { method: "DELETE" });
+  p.currentText = p.defaultText;
+  p.currentTokens = p.defaultTokens;
+  p.overridden = false;
+  state.draft.delete(id);
+  setStatus("saved", "Reset to default");
+  renderedId = null; // force a rebuild so the textarea shows the default again
+  render();
+  refreshBudget();
+}
+
+/** Saves any pending edit, then moves the selection. */
+async function select(id) {
+  if (state.selected && isDirty(state.selected) && state.selected !== id) {
+    await save(state.selected);
+  }
+  state.selected = id;
+  render();
+}
+
+// ── rail ────────────────────────────────────────────────────────────────
+function matches(p, q) {
+  if (!q) return true;
+  const s = q.toLowerCase();
+  return p.id.toLowerCase().includes(s) || p.label.toLowerCase().includes(s)
+    || p.group.toLowerCase().includes(s) || p.currentText.toLowerCase().includes(s)
+    || p.where.toLowerCase().includes(s);
+}
+
+function visiblePrompts() {
+  let list = state.prompts.filter((p) => matches(p, state.query));
+  if (state.view === "over") list = list.filter((p) => p.overridden);
+  else if (state.view === "notes") {
+    list = list.filter((p) => noteFor(p.id));
+    list.sort((a, b) => SEV_RANK[noteFor(a.id).severity] - SEV_RANK[noteFor(b.id).severity]);
+  } else if (state.group) list = list.filter((p) => p.group === state.group);
+  return list;
+}
+
+function paintRail() {
+  const overCount = state.prompts.filter((p) => p.overridden).length;
+  $("#n-all").textContent = state.prompts.length;
+  $("#n-over").textContent = overCount;
+  const noteEl = $("#n-notes");
+  if (noteEl) {
+    const must = state.prompts.filter((p) => noteFor(p.id)?.severity === "must").length;
+    const all = state.prompts.filter((p) => noteFor(p.id)).length;
+    noteEl.textContent = must > 0 ? `${must}!/${all}` : String(all);
+  }
+
+  for (const b of document.querySelectorAll(".nav-item[data-view]")) {
+    b.classList.toggle("on", !state.group && state.view === b.dataset.view);
+  }
+
+  const gbox = $("#groups");
+  gbox.textContent = "";
+  for (const g of state.groups) {
+    const items = state.prompts.filter((p) => p.group === g);
+    const b = el("button", "nav-item" + (state.group === g ? " on" : ""));
+    b.append(el("span", null, g.replace(/^\d+ · /, "")));
+    if (items.some((p) => p.overridden)) b.append(el("i", "dot"));
+    b.append(el("span", "n", String(items.length)));
+    b.onclick = () => { state.group = g; state.view = "group"; state.selected = null; renderedId = null; render(); };
+    gbox.append(b);
+  }
+
+  const list = visiblePrompts();
+  $("#list-head").textContent = state.query ? `Matches (${list.length})`
+    : state.group ? state.group.replace(/^\d+ · /, "")
+    : state.view === "over" ? `Modified (${list.length})`
+    : state.view === "notes" ? `Reviewed (${list.length})`
+    : `All prompts (${list.length})`;
+
+  const box = $("#plist");
+  box.textContent = "";
+  for (const p of list) {
+    const b = el("button", "pitem" + (state.selected === p.id ? " on" : ""));
+    const row = el("div", "row");
+    const note = noteFor(p.id);
+    if (note) row.append(el("i", "sev " + note.severity));
+    row.append(el("span", "label", p.label));
+    if (isDirty(p.id)) row.append(el("i", "mark", ""));
+    else if (p.overridden) row.append(el("i", "mark"));
+    b.append(row, el("span", "id", p.id));
+    b.onclick = () => select(p.id);
+    box.append(b);
+  }
+}
+
+function paintBudget() {
+  if (!state.preview) return;
+  const sys = state.preview.systemTokens;
+  const tools = state.preview.toolTokens;
+  $("#b-sys").textContent = "~" + fmt(sys);
+  $("#b-tools").textContent = "~" + fmt(tools);
+  $("#b-fixed").textContent = "~" + fmt(sys + tools);
+}
+
+// ── views ───────────────────────────────────────────────────────────────
+function chipFor(p, opts = {}) {
+  const b = el("button", "chip" + (opts.cond ? " cond" : ""));
+  if (opts.indent) b.style.marginLeft = "22px";
+  if (opts.ord != null) b.append(el("span", "ord", String(opts.ord)));
+  const note = noteFor(p.id);
+  if (note) b.append(el("i", "sev " + note.severity));
+  b.append(el("span", "name", p.label));
+  if (!opts.grid) b.append(el("span", "desc", p.where.split(/(?<=\.)\s/)[0]));
+  if (p.overridden) b.append(el("i", "mark"));
+  b.append(el("span", "tok", "~" + fmt(p.currentTokens)));
+  b.onclick = () => select(p.id);
+  return b;
+}
+
+function renderMap() {
+  const main = $("#main");
+  const wrap = el("div", "wrap");
+
+  const head = el("div", "page-head");
+  head.append(el("h1", null, "Where every prompt is injected"));
+  head.append(el("p", null,
+    `${state.prompts.length} prompts across one turn, in the order the model meets them. Click any block to edit it — edits write a .txt file under ${state.dir} and the engine picks them up on the next turn.`));
+  wrap.append(head);
+
+  let ord = 0;
+  for (const [i, stage] of MAP.entries()) {
+    const items = stage.rows
+      ? stage.rows.map((r) => ({ p: state.byId.get(r.id), opts: r })).filter((x) => x.p)
+      : state.prompts
+          .filter((p) => (stage.channels ?? [stage.channel]).includes(p.channel)
+            || (stage.extraIds ?? []).includes(p.id))
+          .map((p) => ({ p, opts: {} }));
+    if (items.length === 0) continue;
+
+    const card = el("div", "stage");
+    const sh = el("div", "stage-head");
+    sh.append(el("i", "stage-num", String(i + 1)));
+    const t = el("div");
+    t.append(el("h2", null, stage.title));
+    t.append(el("div", "sub", stage.sub));
+    sh.append(t);
+    const cost = items.reduce((n, x) => n + x.p.currentTokens, 0);
+    sh.append(el("div", "cost", `${items.length} prompt${items.length === 1 ? "" : "s"} · ~${fmt(cost)} tok`));
+    card.append(sh);
+
+    const body = el("div", "stage-body");
+    body.append(el("p", "stage-note", stage.note));
+    const chain = el("div", stage.grid ? "grid-chips" : "chain");
+    for (const { p, opts } of items) {
+      chain.append(chipFor(p, { ...opts, grid: stage.grid, ord: stage.grid ? null : ++ord }));
+    }
+    body.append(chain);
+    card.append(body);
+    wrap.append(card);
+  }
+
+  const legend = el("div", "legend");
+  const mk = (style, text) => { const s = el("span"); const i = el("i", style); s.append(i, document.createTextNode(text)); return s; };
+  legend.append(mk("dash", "conditional — only sent when its trigger fires"));
+  const m = el("span"); const mi = el("i"); mi.style.background = "var(--amber)"; m.append(mi, document.createTextNode("modified from the shipped default"));
+  legend.append(m);
+  wrap.append(legend);
+
+  main.textContent = "";
+  main.append(wrap);
+}
+
+function renderList() {
+  const main = $("#main");
+  const wrap = el("div", "wrap");
+  const list = visiblePrompts();
+  const head = el("div", "page-head");
+  head.append(el("h1", null, state.query ? `“${state.query}”` : state.view === "over" ? "Modified prompts" : state.group));
+  head.append(el("p", null, list.length === 0
+    ? "Nothing here yet."
+    : `${list.length} prompt${list.length === 1 ? "" : "s"}. Click one to edit it.`));
+  wrap.append(head);
+
+  const card = el("div", "stage");
+  const body = el("div", "stage-body");
+  const chain = el("div", "chain");
+  for (const p of list) chain.append(chipFor(p, {}));
+  body.append(chain);
+  card.append(body);
+  if (list.length) wrap.append(card);
+
+  main.textContent = "";
+  main.append(wrap);
+}
+
+/** Word-level diff, rendered inside the reference pane. */
+function diffHtml(a, b) {
+  const A = a.split(/(\s+)/), B = b.split(/(\s+)/);
+  const n = A.length, m = B.length;
+  let start = 0;
+  while (start < n && start < m && A[start] === B[start]) start++;
+  let endA = n - 1, endB = m - 1;
+  while (endA >= start && endB >= start && A[endA] === B[endB]) { endA--; endB--; }
+  const pre = esc(A.slice(0, start).join(""));
+  const post = esc(A.slice(endA + 1).join(""));
+  const del = A.slice(start, endA + 1).join("");
+  const ins = B.slice(start, endB + 1).join("");
+  return pre
+    + (del ? `<del>${esc(del)}</del>` : "")
+    + (ins ? `<ins>${esc(ins)}</ins>` : "")
+    + post;
+}
+
+/** Inline markdown: `code` spans and newlines. Everything else stays literal. */
+function rich(text) {
+  return esc(text).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\n/g, "<br>");
+}
+
+/** The review note attached to a prompt: what is wrong, the evidence, how a
+ *  mature reference harness words the same thing, and a suggested direction. */
+function noteCard(note) {
+  const card = el("div", "note-card " + note.severity);
+
+  const head = el("div", "note-head");
+  head.append(el("span", "lvl " + note.severity,
+    note.severity === "must" ? "must fix" : note.severity === "improve" ? "could improve" : "checked · ok"));
+  head.append(el("h3", null, note.title));
+  const fold = el("button", "fold", "hide");
+  head.append(fold);
+  card.append(head);
+
+  const body = el("div", "note-body");
+  fold.onclick = () => {
+    const hidden = body.classList.toggle("hidden");
+    fold.textContent = hidden ? "show" : "hide";
+  };
+
+  for (const para of note.problem.split("\n\n")) {
+    const el_ = el("p");
+    el_.innerHTML = rich(para);
+    body.append(el_);
+  }
+
+  if (note.evidence?.length) {
+    body.append(el("div", "note-sub", "Evidence"));
+    const ul = el("ul");
+    for (const e of note.evidence) {
+      const li = el("li");
+      li.innerHTML = rich(e);
+      ul.append(li);
+    }
+    body.append(ul);
+  }
+
+  if (note.reference) {
+    body.append(el("div", "note-sub", "How a reference harness words this"));
+    const ref = el("div", "ref");
+    ref.append(el("div", "who", note.reference.label ?? "Reference harness"));
+    if (note.reference.note) {
+      const why = el("p", "why");
+      why.innerHTML = rich(note.reference.note);
+      ref.append(why);
+    }
+    ref.append(el("pre", null, note.reference.text));
+    body.append(ref);
+  }
+
+  if (note.direction) {
+    body.append(el("div", "note-sub", "Suggested direction"));
+    const dir = el("div", "dir");
+    const dp = el("p");
+    dp.innerHTML = rich(note.direction);
+    dir.append(dp);
+    body.append(dir);
+  }
+
+  card.append(body);
+  return card;
+}
+
+function renderEditor() {
+  const p = state.byId.get(state.selected);
+  const main = $("#main");
+  const wrap = el("div", "wrap");
+
+  const crumbs = el("div", "crumbs");
+  crumbs.innerHTML = `<b>${esc(p.group)}</b> &nbsp;/&nbsp; ${esc(p.label)}`;
+  wrap.append(crumbs);
+
+  const head = el("div", "ed-head");
+  const title = el("div");
+  title.append(el("h1", null, p.label));
+  title.append(el("div", "idline", p.id + ".txt"));
+  head.append(title);
+  const acts = el("div", "ed-actions");
+  const ch = CHANNEL[p.channel];
+  acts.append(el("span", "badge " + ch.cls, ch.text));
+  if (p.overridden) acts.append(el("span", "badge over", "modified"));
+  head.append(acts);
+  wrap.append(head);
+
+  const callout = el("div", "callout");
+  callout.append(el("div", "k", "Injected"));
+  const v = el("div", "v");
+  v.innerHTML = esc(p.where).replace(/`([^`]+)`/g, "<code>$1</code>");
+  callout.append(v);
+  wrap.append(callout);
+
+  const note = noteFor(p.id);
+  if (note) wrap.append(noteCard(note));
+
+  if (p.placeholders?.length) {
+    const slots = el("div", "slots");
+    slots.append(el("span", "k", "Slots the engine fills"));
+    for (const s of p.placeholders) slots.append(el("span", "slot", "{{" + s + "}}"));
+    slots.append(el("span", "k", "— keep them, or the value is dropped"));
+    wrap.append(slots);
+  }
+
+  const bar = el("div", "ed-bar");
+  bar.append(el("div", "meta"));
+  bar.append(el("div", "grow"));
+  bar.append(el("div", "save-state"));
+
+  const splitBtn = el("button", "sbtn" + (state.split ? " on" : ""), "Compare with default");
+  splitBtn.onclick = () => { state.split = !state.split; renderedId = null; render(); };
+  bar.append(splitBtn);
+
+  const revertBtn = el("button", "sbtn revert", "Reset to default");
+  revertBtn.disabled = !p.overridden;
+  revertBtn.onclick = () => resetPrompt(p.id);
+  bar.append(revertBtn);
+
+  const saveBtn = el("button", "sbtn save", "Save");
+  saveBtn.onclick = () => save(p.id);
+  bar.append(saveBtn);
+  wrap.append(bar);
+
+  const panes = el("div", "ed-panes" + (state.split ? " split" : ""));
+  const left = el("div", "pane");
+  if (state.split) left.append(el("div", "pane-tag", "in force — editing"));
+  const ta = el("textarea", "editor");
+  ta.value = textOf(p);
+  ta.spellcheck = false;
+  ta.oninput = () => markDirty(p.id, ta.value);
+  ta.onkeydown = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(p.id); }
+  };
+  left.append(ta);
+  panes.append(left);
+
+  if (state.split) {
+    const right = el("div", "pane");
+    const tag = el("div", "pane-tag");
+    tag.innerHTML = 'shipped default &nbsp;·&nbsp; <span style="color:#ffa2ab">red = removed</span> &nbsp; <span style="color:#93eab2">green = your text</span>';
+    right.append(tag);
+    const pre = el("pre", "editor");
+    pre.innerHTML = diffHtml(p.defaultText, textOf(p));
+    right.append(pre);
+    panes.append(right);
+  }
+  wrap.append(panes);
+
+  const hint = el("div", "hint");
+  hint.innerHTML = `Saved live to <code>${esc(p.file)}</code>. Clearing the box, or typing the default back, deletes the file and restores the shipped text.`;
+  wrap.append(hint);
+
+  main.textContent = "";
+  main.append(wrap);
+  paintMeta();
+  paintSaveState();
+}
+
+function paintMeta() {
+  const box = document.querySelector(".ed-bar .meta");
+  if (!box) return;
+  const p = state.byId.get(state.selected);
+  const text = textOf(p);
+  const t = tok(text);
+  const d = t - p.defaultTokens;
+  box.innerHTML = `<b>${text.length}</b> chars · <b>~${t}</b> tokens`
+    + (d === 0 ? "" : ` · <span class="delta ${d > 0 ? "up" : "down"}">${d > 0 ? "+" : ""}${d} vs default</span>`);
+}
+
+function paintSaveState() {
+  const box = document.querySelector(".ed-bar .save-state");
+  if (!box) return;
+  const p = state.byId.get(state.selected);
+  const dirty = isDirty(p.id);
+  box.className = "save-state" + (dirty ? " dirty" : "");
+  box.textContent = dirty ? "unsaved" : p.overridden ? "saved · modified" : "saved · default";
+  const btn = document.querySelector(".ed-bar .sbtn.save");
+  if (btn) {
+    btn.disabled = !dirty;
+    btn.textContent = dirty ? "Save  ⌘S" : "Saved";
+  }
+  const revert = document.querySelector(".ed-bar .sbtn.revert");
+  if (revert) revert.disabled = !p.overridden && !dirty;
+}
+
+/** Refreshes the comparison pane after a save, without touching the textarea. */
+function paintDiff() {
+  const pre = document.querySelector(".ed-panes.split pre.editor");
+  if (!pre) return;
+  const p = state.byId.get(state.selected);
+  pre.innerHTML = diffHtml(p.defaultText, textOf(p));
+}
+
+function render() {
+  paintRail();
+  paintBudget();
+  if (state.selected && state.byId.has(state.selected)) {
+    // Rebuild only when the selection actually changed. Re-rendering the editor
+    // for the prompt already on screen would replace the textarea node and take
+    // focus and caret with it.
+    if (renderedId !== state.selected) {
+      renderEditor();
+      renderedId = state.selected;
+    } else {
+      paintMeta();
+      paintSaveState();
+    }
+    return;
+  }
+  renderedId = null;
+  if (state.view === "map" && !state.query && !state.group) renderMap();
+  else renderList();
+}
+
+// ── chrome ──────────────────────────────────────────────────────────────
+$("#q").addEventListener("input", (e) => {
+  state.query = e.target.value.trim();
+  state.selected = null;
+  renderedId = null;
+  if (state.query) { state.group = null; state.view = "search"; }
+  else state.view = "map";
+  render();
+});
+
+for (const b of document.querySelectorAll(".nav-item[data-view]")) {
+  b.onclick = async () => {
+    if (state.selected && isDirty(state.selected)) await save(state.selected);
+    state.view = b.dataset.view; state.group = null; state.selected = null;
+    state.query = ""; $("#q").value = ""; renderedId = null;
+    render();
+  };
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "/" && document.activeElement?.tagName !== "TEXTAREA" && document.activeElement?.tagName !== "INPUT") {
+    e.preventDefault(); $("#q").focus();
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    if (state.selected) save(state.selected);
+  }
+  if (e.key === "Escape") { const veil = $(".veil"); if (veil) veil.remove(); }
+});
+
+window.addEventListener("beforeunload", (e) => {
+  if (!anyDirty()) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
+
+$("#btn-preview").onclick = () => {
+  const veil = el("div", "veil");
+  veil.onclick = (e) => { if (e.target === veil) veil.remove(); };
+  const modal = el("div", "modal");
+  const header = el("header");
+  header.append(el("h2", null, "Assembled system prompt"));
+  header.append(el("div", "cost", `~${fmt(state.preview.systemTokens)} tokens · sent on every request`));
+  const x = el("button", null, "×");
+  x.onclick = () => veil.remove();
+  header.append(x);
+  modal.append(header);
+  const pre = el("pre", null, state.preview.system);
+  modal.append(pre);
+  veil.append(modal);
+  document.body.append(veil);
+};
+
+$("#btn-export").onclick = () => {
+  const out = {};
+  for (const p of state.prompts) if (p.overridden || isDirty(p.id)) out[p.id] = textOf(p);
+  const blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "magentra-prompts.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+$("#btn-import").onclick = () => $("#file").click();
+$("#file").onchange = async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  await fetch("/api/import", { method: "POST", body: await file.text() });
+  e.target.value = "";
+  state.draft.clear();
+  renderedId = null;
+  setStatus("saved", "Imported");
+  await load();
+};
+
+// External edits (another editor, or a reset) refresh the view, but never
+// yank text out from under someone who is typing.
+const es = new EventSource("/api/events");
+es.onmessage = async (ev) => {
+  const msg = JSON.parse(ev.data);
+  // Anything unsaved outranks an external change: reloading would silently
+  // discard the user's work. The server already suppresses echoes of our own
+  // writes, so whatever arrives here is genuinely someone else's edit.
+  if (anyDirty()) {
+    setStatus("error", "changed on disk — save or reset to reload");
+    return;
+  }
+  const keep = state.selected;
+  await load();
+  state.selected = keep;
+  renderedId = null;
+  render();
+};
+
+load();
+</script>
+</body>
+</html>

@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { AGENT_TYPES, type ToolDefinition } from "@magentra/core";
+import { AGENT_TYPES, agentDescriptionText, type ToolDefinition } from "@magentra/core";
 
 const agentTypeList = Object.values(AGENT_TYPES)
-  .map((t) => `- ${t.name}: ${t.description}`)
+  .map((t) => `- ${t.name}: ${agentDescriptionText(t)}`)
   .join("\n");
 
 const inputSchema = z.object({

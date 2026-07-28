@@ -6,10 +6,13 @@ import { loadBackpackIndex } from "../knowledge/backpack/index.js";
 import {
   STATE_DIR_NAME,
   addUsage,
+  definePrompt,
   emptyUsage,
   estimateTokens,
   formatTokens,
   inputTokensOf,
+  promptText,
+  renderPrompt,
   type CoreEvent,
   type PermissionDecision,
   type TaskItem,
@@ -18,7 +21,13 @@ import {
 import type { ContentBlock, Msg, Provider, StopReason, ToolSchema } from "@magentra/providers";
 import { friendlyProviderError } from "@magentra/providers";
 import { zodToJsonSchema } from "../util/zodToJsonSchema.js";
-import { AGENT_TYPES, SUBAGENT_RESULT_SECTION, agentToolNames, resolveAgentType } from "../agent/agents.js";
+import {
+  AGENT_TYPES,
+  SUBAGENT_RESULT_ID,
+  agentRoleText,
+  agentToolNames,
+  resolveAgentType,
+} from "../agent/agents.js";
 import {
   ATLAS_AREA_MAX_ITERATIONS,
   ATLAS_AREA_ROLE,
@@ -89,6 +98,7 @@ import { CrewExperience } from "../crew/experience.js";
 import { recordCrewRun } from "../crew/ledger.js";
 import type { Skill } from "../agent/skills.js";
 import { TaskStore } from "../state/taskStore.js";
+import { toolDescriptionText } from "../agent/tool.js";
 import type {
   SessionServices,
   SpawnAgentOptions,
@@ -105,10 +115,27 @@ const DEFAULT_OUTPUT_LIMIT = 40_000;
  * there isn't enough said yet to summarize meaningfully. */
 const AUTO_NAME_MIN_TOKENS = 2_000;
 
-const AUTO_NAME_ROLE = "You name chat sessions for a coding assistant's sidebar.";
-const AUTO_NAME_INSTRUCTION =
-  "Read the conversation excerpt below and reply with ONLY a short title (3–6 words) " +
-  "naming what it is about. No quotes, no trailing punctuation, no prefix like 'Title:' — just the title itself.";
+const AUTO_NAME_ROLE = definePrompt({
+  id: "session.auto-name.role",
+  group: "5 · Background inference calls",
+  label: "Session auto-name — role",
+  channel: "side-call",
+  where:
+    "System prompt of the small background call that names a chat session in the sidebar. Runs once per session, after ~2000 tokens of conversation. Never seen by the main agent.",
+
+  text: "You name chat sessions for a coding assistant's sidebar.",
+});
+const AUTO_NAME_INSTRUCTION = definePrompt({
+  id: "session.auto-name.instruction",
+  group: "5 · Background inference calls",
+  label: "Session auto-name — instruction",
+  channel: "side-call-user",
+  where:
+    "User-role instruction of the same session-naming call, sent above the conversation excerpt.",
+
+  text: "Read the conversation excerpt below and reply with ONLY a short title (3–6 words) " +
+  "naming what it is about. No quotes, no trailing punctuation, no prefix like 'Title:' — just the title itself.",
+});
 
 /** Normalizes a model-authored title into a clean sidebar label: first line only,
  * quotes/markdown/trailing punctuation stripped, whitespace collapsed, capped to a
@@ -127,47 +154,112 @@ function cleanSessionTitle(raw: string): string {
 /** Per-turn cap on auto-recovery / length-continuation nudges (see runTurn). */
 const MAX_AUTO_NUDGES = 3;
 
-const ERROR_BATCH_REMINDER =
-  "One or more tool calls above failed. Diagnose the cause and continue working — fix and retry rather than ending the turn. Only stop if the task is complete or genuinely blocked, and if blocked, explain why.";
+const ERROR_BATCH_REMINDER = definePrompt({
+  id: "reminder.error-batch",
+  group: "3 · In-turn reminders",
+  label: "Tool batch failed",
+  channel: "reminder",
+  where:
+    "Appended to the tool-result block whenever one or more tool calls in that batch failed, so the agent fixes and continues instead of ending the turn.",
 
-const RECOVERY_NUDGE_TEXT =
-  "<system-reminder>The last tool call in this turn failed and the turn is ending. Either fix the failure and re-verify, or state explicitly why this failure does not block success. Do not end with a failing command unaccounted for.</system-reminder>";
+  text: "One or more tool calls above failed. Diagnose the cause and continue working — fix and retry rather than ending the turn. Only stop if the task is complete or genuinely blocked, and if blocked, explain why.",
+});
 
-const WRAPUP_NUDGE_TEXT =
-  "<system-reminder>You finished working but did not summarize. Give the user a short wrap-up: what was built/changed, how to use it, what you verified and the outcome, and any open issues.</system-reminder>";
+const RECOVERY_NUDGE_TEXT = definePrompt({
+  id: "reminder.recovery-nudge",
+  group: "3 · In-turn reminders",
+  label: "Turn ended on a failed call",
+  channel: "reminder",
+  where:
+    "Injected when the turn is about to end and the LAST tool call failed. Capped at 3 auto-nudges per turn.",
 
-const LENGTH_CONTINUATION_TEXT =
-  "<system-reminder>Your previous response was cut off mid-output by the token limit. Resume from the exact character where it stopped. Do not repeat or rephrase anything already written. Do not restart, re-introduce, or summarize. No preamble — output only the continuation, as if the text had never been interrupted.</system-reminder>";
+  text: "<system-reminder>The last tool call in this turn failed and the turn is ending. Either fix the failure and re-verify, or state explicitly why this failure does not block success. Do not end with a failing command unaccounted for.</system-reminder>",
+});
+
+const WRAPUP_NUDGE_TEXT = definePrompt({
+  id: "reminder.wrapup-nudge",
+  group: "3 · In-turn reminders",
+  label: "Missing wrap-up",
+  channel: "reminder",
+  where:
+    "Injected when the agent stops working without writing a summary. Costs one extra round trip each time it fires.",
+
+  text: "<system-reminder>You finished working but did not summarize. Give the user a short wrap-up: what was built/changed, how to use it, what you verified and the outcome, and any open issues.</system-reminder>",
+});
+
+const LENGTH_CONTINUATION_TEXT = definePrompt({
+  id: "reminder.length-continuation",
+  group: "3 · In-turn reminders",
+  label: "Output cut off mid-text",
+  channel: "reminder",
+  where:
+    "Injected when the provider stopped the response at the max-output-token wall. Asks for a seamless continuation rather than a restart.",
+
+  text: "<system-reminder>Your previous response was cut off mid-output by the token limit. Resume from the exact character where it stopped. Do not repeat or rephrase anything already written. Do not restart, re-introduce, or summarize. No preamble — output only the continuation, as if the text had never been interrupted.</system-reminder>",
+});
 
 // The tool-call analogue of LENGTH_CONTINUATION_TEXT: a cutoff that lands
 // mid-tool-call leaves the tool's JSON truncated. Sent as that call's result so
 // the model knows it was cut off (not that it sent bad input) and reissues the
 // call in full — never assuming the truncated call ran.
-const TOOL_CUTOFF_TEXT =
-  "This tool call was cut off by the output-token limit before it finished, so it was NOT executed. Reissue the complete call — do not assume it ran or had any effect.";
+const TOOL_CUTOFF_TEXT = definePrompt({
+  id: "reminder.tool-cutoff",
+  group: "3 · In-turn reminders",
+  label: "Output cut off mid tool call",
+  channel: "reminder",
+  where:
+    "Returned as the RESULT of a tool call whose JSON arguments were truncated by the output-token wall, so the agent reissues it instead of assuming it ran.",
+
+  text: "This tool call was cut off by the output-token limit before it finished, so it was NOT executed. Reissue the complete call — do not assume it ran or had any effect.",
+});
 
 // Stall handling: with the interactive numeric caps lifted, the brake is
 // noticing that rounds have stopped producing anything new. Three consecutive
 // identical rounds (same tool calls, same results) = a stall; the first two
 // stalls force a strategy pivot, the third forces one concrete question to the
 // user — never a silent surrender, never an infinite burn.
-const STALL_PIVOT_TEXT =
-  "<system-reminder>Stall: your last rounds repeated the same actions with the same results. This approach is not working — abandon it entirely and try a genuinely different strategy (different tool, different angle, different decomposition). Do not re-issue the failing action.</system-reminder>";
+const STALL_PIVOT_TEXT = definePrompt({
+  id: "reminder.stall-pivot",
+  group: "3 · In-turn reminders",
+  label: "Stall — force a pivot",
+  channel: "reminder",
+  where:
+    "Injected after three consecutive identical rounds (same calls, same results). Fires for the first two stalls of a turn.",
 
-const STALL_ASK_TEXT =
-  "<system-reminder>Stall: strategy pivots have not produced progress either. Stop attempting now. Ask the user ONE concrete question with AskUserQuestion: state what you are trying to achieve, what keeps failing and why you think so, and offer the options you see (with your recommendation). If asking is unavailable (you are a subagent), end the turn instead with a clear report of the blocker.</system-reminder>";
+  text: "<system-reminder>Stall: your last rounds repeated the same actions with the same results. This approach is not working — abandon it entirely and try a genuinely different strategy (different tool, different angle, different decomposition). Do not re-issue the failing action.</system-reminder>",
+});
+
+const STALL_ASK_TEXT = definePrompt({
+  id: "reminder.stall-ask",
+  group: "3 · In-turn reminders",
+  label: "Stall — force a question",
+  channel: "reminder",
+  where:
+    "Injected on the third stall of a turn: stop attempting and ask the user one concrete question with AskUserQuestion.",
+
+  text: "<system-reminder>Stall: strategy pivots have not produced progress either. Stop attempting now. Ask the user ONE concrete question with AskUserQuestion: state what you are trying to achieve, what keeps failing and why you think so, and offer the options you see (with your recommendation). If asking is unavailable (you are a subagent), end the turn instead with a clear report of the blocker.</system-reminder>",
+});
 
 // The OVERDRIVE system-prompt section. The autonomy contract: plan first,
 // think in consequences, evidence stays query-shaped, ask only rubric-worthy
 // questions, clean up after yourself, do not stop until the query is handled.
-const OVERDRIVE_PROMPT_SECTION = `# OVERDRIVE — fully-autonomous mode
+const OVERDRIVE_PROMPT_SECTION = definePrompt({
+  id: "system.overdrive",
+  group: "2 · Conditional system sections",
+  label: "OVERDRIVE mode section",
+  channel: "system-conditional",
+  where:
+    "Appended to the system prompt only while OVERDRIVE is on. Removes every confirmation step and tells the agent not to stop until the whole query is handled.",
+
+  text: `# OVERDRIVE — fully-autonomous mode
 You own this query end to end: plan, act, verify, deliver — without stopping for routine approval.
 - Plan first: for any multi-step request, lay out the task plan with TaskCreate — one task per step, the last a verification task stating the expected end state — before making changes. Trivial requests: just do them.
 - Think ahead: before each consequential action, weigh its consequences. Prefer the smallest change that truly serves the query; optimize your path and skip ceremony the query does not need.
 - Evidence is query-shaped: verify in whatever way the query itself calls for, and no further. A question is answered; a code change is SEEN WORKING — run the path you changed rather than re-reading it. What the query does not need (a full suite, a lint sweep, a benchmark) is ceremony, and you skip it.
 - Ask the user ONLY when the answer changes the design, is irreversible, or reaches outside the workspace — the test: would a reasonable user be upset if you guessed wrong? Everything else you decide yourself and note in your wrap-up.
 - NOTHING asks. Every call runs the moment you make it: deletions at any path, edits to \`.magentra\` state and \`.env\` files, writes outside the workspace. There is no confirmation step and no safety net but your own judgement — read a file before you overwrite it, look before you delete, and prefer the reversible move. The only thing that can still stop a call is a deny rule the user wrote themselves.
-- Do not stop early: the turn ends only when every part of the query is handled and your self-check passes.`;
+- Do not stop early: the turn ends only when every part of the query is handled and your self-check passes.`,
+});
 
 /**
  * Whether a self-verify round answered with the "nothing left to do" sentinel.
@@ -205,7 +297,15 @@ export function isSelfVerifyDone(text: string): boolean {
 // choices wrong would force a redo — and only then asks the user up to three
 // concrete multiple-choice questions. Strictly fail-open: any inference
 // error, malformed verdict, or interrupt proceeds without clarifying.
-const CLARIFY_SYSTEM = `You are the clarify pre-layer of an autonomous coding agent. You see ONE incoming user request (plus a snippet of the previous exchange for context) and decide: should the agent ask clarifying questions BEFORE starting, or just start?
+const CLARIFY_SYSTEM = definePrompt({
+  id: "clarify.system",
+  group: "5 · Background inference calls",
+  label: "Clarify pre-layer",
+  channel: "side-call",
+  where:
+    "System prompt of the background call that runs BEFORE an open-ended request and decides whether to ask the user clarifying questions. Adds one inference round at the start of a turn; fails open on any error.",
+
+  text: `You are the clarify pre-layer of an autonomous coding agent. You see ONE incoming user request (plus a snippet of the previous exchange for context) and decide: should the agent ask clarifying questions BEFORE starting, or just start?
 
 You may also be given a "Codebase overview" — a quick, cursory read of the workspace (its design atlas, an import-graph skeleton, or a short peek at README/manifests). It is CONTEXT, not something to confirm with the user. Use it to SHARPEN questions, NOT to silence them:
 - Ground your questions in the project's actual stack, structure, and conventions, so you ask about real, specific choices instead of generic ones — name the concrete options THIS codebase invites.
@@ -223,7 +323,8 @@ Set clarify=true ONLY when BOTH hold:
 
 Set clarify=false for everything else: concrete tasks naming a target, questions or explanations, conversational messages, follow-ups whose context already fixes the shape, and anything where a sensible default exists and adjusting later is cheap. When unsure, prefer false — asking needlessly is friction.
 
-Questions: at most 3, each one decision-changing (never a detail that could be adjusted later), 2-4 mutually distinct options with a one-line description each; put your recommended option first with " (Recommended)" appended to its label. multiSelect true only when choices genuinely combine.`;
+Questions: at most 3, each one decision-changing (never a detail that could be adjusted later), 2-4 mutually distinct options with a one-line description each; put your recommended option first with " (Recommended)" appended to its label. multiSelect true only when choices genuinely combine.`,
+});
 
 // Caps that keep the clarify skim a cursory glance, not a context dump: the
 // whole overview injected into the clarify prompt, and the per-fallback read of
@@ -264,17 +365,74 @@ function graphSkeleton(g: GraphData, project: string): string | undefined {
   ].join("\n");
 }
 
-const PLAN_FIRST_REMINDER =
-  "Nothing is on the task board yet. When a request will take several moves to finish, lay it out first with TaskCreate — one entry per move, closing with a check task that names the end state you'll confirm — before you touch any files. A quick one-off needs no board; just handle it.";
+const PLAN_FIRST_REMINDER = definePrompt({
+  id: "reminder.plan-first",
+  group: "3 · In-turn reminders",
+  label: "Nothing on the task board",
+  channel: "reminder",
+  where:
+    "Injected at turn start when the task list is empty, nudging the agent to decompose multi-move work with TaskCreate first.",
 
-const NO_ATLAS_REMINDER =
-  "No design atlas exists for this workspace. Suggest the user run /atlas to generate one — a mapped atlas speeds up every future session. For non-trivial multi-module work you may instead create .magentra/ATLAS.md yourself: each module, one-line purpose, public interface, key dependencies — modules and boundaries, not a file listing, compact (fits in 12KB).";
+  text: "Nothing is on the task board yet. When a request will take several moves to finish, lay it out first with TaskCreate — one entry per move, closing with a check task that names the end state you'll confirm — before you touch any files. A quick one-off needs no board; just handle it.",
+});
 
-const ATLAS_SECTION_HEADER =
-  "# Codebase atlas (.magentra/ATLAS.md)\nThe whole-design map of this workspace. Consult it before planning or editing; it is the big picture.\n\n";
+const NO_ATLAS_REMINDER = definePrompt({
+  id: "reminder.no-atlas",
+  group: "3 · In-turn reminders",
+  label: "No design atlas",
+  channel: "reminder",
+  where:
+    "Injected when the workspace has no .magentra/ATLAS.md, suggesting /atlas or writing one inline.",
 
-const STANDARDS_SECTION_HEADER =
-  "# Coding standards (user-provided — binding)\nThe user supplied these standards. They are RULES, not suggestions: where they conflict with any default guidance about code style, the standards win. A change that violates them is a failed change regardless of whether it works.\n\n";
+  text: "No design atlas exists for this workspace. Suggest the user run /atlas to generate one — a mapped atlas speeds up every future session. For non-trivial multi-module work you may instead create .magentra/ATLAS.md yourself: each module, one-line purpose, public interface, key dependencies — modules and boundaries, not a file listing, compact (fits in 12KB).",
+});
+
+const ATLAS_SECTION_HEADER = definePrompt({
+  id: "system.atlas-header",
+  group: "2 · Conditional system sections",
+  label: "Atlas section header",
+  channel: "system-conditional",
+  where:
+    "Prefixes the contents of .magentra/ATLAS.md when it is injected into the system prompt. Only the header is editable; the atlas file follows it verbatim.",
+
+  text: "# Codebase atlas (.magentra/ATLAS.md)\nThe whole-design map of this workspace. Consult it before planning or editing; it is the big picture.\n\n",
+});
+
+const STANDARDS_SECTION_HEADER = definePrompt({
+  id: "system.standards-header",
+  group: "2 · Conditional system sections",
+  label: "Coding standards header",
+  channel: "system-conditional",
+  where:
+    "Prefixes the contents of the workspace STANDARDS.md when one exists, declaring it binding over the default code-style guidance.",
+
+  text: "# Coding standards (user-provided — binding)\nThe user supplied these standards. They are RULES, not suggestions: where they conflict with any default guidance about code style, the standards win. A change that violates them is a failed change regardless of whether it works.\n\n",
+});
+
+const COMPACTION_SYSTEM = definePrompt({
+  id: "compaction.system",
+  group: "5 · Background inference calls",
+  label: "History compaction summarizer",
+  channel: "side-call",
+  where:
+    "System prompt of the background call that summarizes older history when the context fills up (auto-compaction or /compact). Runs on settings.smallModel when set. Its output becomes the agent's only memory of the compacted span.",
+  text: "Summarize this coding-agent conversation so work can continue seamlessly in a fresh context. Structure the summary as: 1) task state and goal, 2) decisions made and why, 3) files read or modified (with paths), 4) open items and next steps. Be specific; keep every detail a continuation would need.",
+});
+
+const COMPACTION_WRAPPER = definePrompt({
+  id: "compaction.wrapper",
+  group: "3 · In-turn reminders",
+  label: "Compaction summary wrapper",
+  channel: "reminder",
+  where:
+    "Replaces the compacted messages in the conversation. `{{summary}}` is the summarizer's output; the wrapper text around it is what stops the agent treating compaction as a signal to wrap up.",
+  placeholders: ["summary"],
+  text: `<system-reminder>Earlier conversation was compacted. Summary of the compacted span:
+
+{{summary}}
+
+Continue the work; do not wrap up early on account of the compaction.</system-reminder>`,
+});
 
 export interface SessionOptions {
   cwd: string;
@@ -654,7 +812,7 @@ export class Session {
     if (this.overdrive === enabled) return;
     this.overdrive = enabled;
     this.permissions.setOverdrive(enabled);
-    this.setPromptSection("overdrive", enabled ? OVERDRIVE_PROMPT_SECTION : undefined);
+    this.setPromptSection("overdrive", enabled ? promptText(OVERDRIVE_PROMPT_SECTION) : undefined);
     this.emit({ type: "overdrive_changed", enabled, careful: this.careful });
   }
 
@@ -920,9 +1078,9 @@ export class Session {
             crew.rolePrompt,
             ...(backpackSection ? [backpackSection] : []),
             ...(opts.crew?.lessons ? [opts.crew.lessons] : []),
-            SUBAGENT_RESULT_SECTION,
+            promptText(SUBAGENT_RESULT_ID),
           ]
-        : [opts.roleOverride ?? def.role, SUBAGENT_RESULT_SECTION],
+        : [opts.roleOverride ?? agentRoleText(def), promptText(SUBAGENT_RESULT_ID)],
     });
     const child = new Session({
       cwd: this.cwd,
@@ -1051,7 +1209,7 @@ export class Session {
   toolSchemas(): ToolSchema[] {
     return this.registry.list().map((t) => ({
       name: t.name,
-      description: t.description,
+      description: toolDescriptionText(t.name, t.description),
       inputSchema: t.rawInputSchema ?? zodToJsonSchema(t.inputSchema),
     }));
   }
@@ -1074,8 +1232,8 @@ export class Session {
         ...this.dynamicSections.values(),
         ...(this.opts.modeEngine?.promptSections() ?? []),
         ...(this.teamAgents.length > 0 ? [crewSection(this.teamAgents)] : []),
-        ...(atlas ? [ATLAS_SECTION_HEADER + atlas] : []),
-        ...(standards ? [STANDARDS_SECTION_HEADER + standards] : []),
+        ...(atlas ? [promptText(ATLAS_SECTION_HEADER) + atlas] : []),
+        ...(standards ? [promptText(STANDARDS_SECTION_HEADER) + standards] : []),
       ],
     });
   }
@@ -1167,7 +1325,7 @@ export class Session {
 
       // ── 3. Synthesize. One cheap, tool-free call opens the document. ────────
       const overview = await this.runInference({
-        system: ATLAS_OVERVIEW_SYSTEM,
+        system: promptText(ATLAS_OVERVIEW_SYSTEM),
         user: atlasOverviewPrompt(project, sections, graphSummary(graph, areas)),
         maxTokens: 400,
       });
@@ -1209,7 +1367,7 @@ export class Session {
         prompt: atlasAreaPrompt(area, areaFacts(area, areas, graph, symbols)),
         // The explore role ("return concise conclusions — file paths with line
         // numbers") is the wrong persona for authoring a section.
-        roleOverride: ATLAS_AREA_ROLE,
+        roleOverride: promptText(ATLAS_AREA_ROLE),
         maxIterations: ATLAS_AREA_MAX_ITERATIONS,
       });
       const text = section.trim();
@@ -1316,7 +1474,7 @@ export class Session {
     let raw: string;
     try {
       raw = await this.runInference({
-        system: CLARIFY_SYSTEM,
+        system: promptText(CLARIFY_SYSTEM),
         user: `${this.recentExchange()}${skim ? `Codebase overview:\n${skim}\n\n` : ""}Incoming request:\n${userText}`,
         // Three questions with four described options each does not fit in 600
         // either — the same undersized budget as CAREFUL's round, and the same
@@ -1739,7 +1897,7 @@ export class Session {
 
     if (this.tasks.list().length === 0) {
       if (!this.planReminderFired) {
-        this.remind(PLAN_FIRST_REMINDER);
+        this.remind(promptText(PLAN_FIRST_REMINDER));
         this.planReminderFired = true;
       }
     } else {
@@ -1843,7 +2001,7 @@ export class Session {
     // Fallback: no atlas on disk — nudge the model to suggest /atlas (or map the
     // design itself for non-trivial work), once per session.
     if (!this.atlasReminderFired && loadAtlas(this.cwd) === undefined && workspaceLooksNonTrivial(this.cwd)) {
-      this.remind(NO_ATLAS_REMINDER);
+      this.remind(promptText(NO_ATLAS_REMINDER));
       this.atlasReminderFired = true;
     }
 
@@ -2133,7 +2291,7 @@ export class Session {
           if (stopReason === "max_tokens") {
             nudgeCount++;
             this.emit({ type: "command_output", text: "↻ continuing after output-length cutoff" });
-            this.pushMessage({ role: "user", content: [{ type: "text", text: LENGTH_CONTINUATION_TEXT }] });
+            this.pushMessage({ role: "user", content: [{ type: "text", text: promptText(LENGTH_CONTINUATION_TEXT) }] });
             continue;
           }
 
@@ -2167,7 +2325,7 @@ export class Session {
               type: "command_output",
               text: "↻ auto-recovery: nudging the agent to continue after a failed tool call",
             });
-            this.pushMessage({ role: "user", content: [{ type: "text", text: RECOVERY_NUDGE_TEXT }] });
+            this.pushMessage({ role: "user", content: [{ type: "text", text: promptText(RECOVERY_NUDGE_TEXT) }] });
             continue;
           }
 
@@ -2312,7 +2470,7 @@ export class Session {
         const results = await this.executeToolCalls(toolCalls, signal);
         lastBatchHadError = results.some((r) => r.type === "tool_result" && r.isError === true);
         if (lastBatchHadError) {
-          this.remind(ERROR_BATCH_REMINDER);
+          this.remind(promptText(ERROR_BATCH_REMINDER));
           for (const text of this.opts.modeEngine?.afterErrorInjections() ?? []) this.remind(text);
         }
         // Stall detector: a round that exactly repeats the previous one (same
@@ -2328,10 +2486,10 @@ export class Session {
             if (pivotCount < 2) {
               pivotCount++;
               this.emit({ type: "command_output", text: `⚡ stall detected — forcing strategy pivot ${pivotCount}/2` });
-              this.remind(STALL_PIVOT_TEXT);
+              this.remind(promptText(STALL_PIVOT_TEXT));
             } else {
               this.emit({ type: "command_output", text: "⚡ still stalled after pivots — asking the user" });
-              this.remind(STALL_ASK_TEXT);
+              this.remind(promptText(STALL_ASK_TEXT));
             }
           }
         }
@@ -2600,7 +2758,7 @@ export class Session {
         planned.push({
           call,
           parallel: true,
-          run: async () => ({ content: TOOL_CUTOFF_TEXT, isError: true }),
+          run: async () => ({ content: promptText(TOOL_CUTOFF_TEXT), isError: true }),
         });
         continue;
       }
@@ -2997,8 +3155,8 @@ export class Session {
     this.autoNameDone = true; // claim before the await so two settling turns can't both fire
     try {
       const raw = await this.runInference({
-        system: AUTO_NAME_ROLE,
-        user: `${AUTO_NAME_INSTRUCTION}\n\n---\n${this.conversationDigest(4000)}\n---`,
+        system: promptText(AUTO_NAME_ROLE),
+        user: `${promptText(AUTO_NAME_INSTRUCTION)}\n\n---\n${this.conversationDigest(4000)}\n---`,
         maxTokens: 24,
       });
       const label = cleanSessionTitle(raw);
@@ -3089,8 +3247,7 @@ export class Session {
     const before = this.stats.contextTokens;
     const summaryText = await this.summarizeForCompaction(head);
 
-    const summaryMessage =
-      `<system-reminder>Earlier conversation was compacted. Summary of the compacted span:\n\n${summaryText}\n\nContinue the work; do not wrap up early on account of the compaction.</system-reminder>`;
+    const summaryMessage = renderPrompt(COMPACTION_WRAPPER, { summary: summaryText });
     this.messages = [{ role: "user", content: [{ type: "text", text: summaryMessage }] }, ...tail];
     this.transcript.append({ kind: "compaction", replacedCount: head.length, summary: summaryMessage });
     // Reset the measured size to a fresh ESTIMATE of the compacted window
@@ -3166,8 +3323,7 @@ export class Session {
     let summaryText = "";
     const stream = this.provider.stream({
       model: this.settings.smallModel ?? this.settings.model,
-      system:
-        "Summarize this coding-agent conversation so work can continue seamlessly in a fresh context. Structure the summary as: 1) task state and goal, 2) decisions made and why, 3) files read or modified (with paths), 4) open items and next steps. Be specific; keep every detail a continuation would need.",
+      system: promptText(COMPACTION_SYSTEM),
       messages: [{ role: "user", content: [{ type: "text", text }] }],
       tools: [],
       maxTokens: 2000,
@@ -3334,19 +3490,44 @@ function assistantTextLength(msg: Msg): number {
 }
 
 /** Builds the incomplete-task nudge text listing each pending/in-progress task. */
+const INCOMPLETE_TASKS_NUDGE = definePrompt({
+  id: "reminder.incomplete-tasks",
+  group: "3 · In-turn reminders",
+  label: "Tasks still open",
+  channel: "reminder",
+  where:
+    "Fires at the end of any clean turn while ANY task is still pending or in_progress. Unlike its sibling rungs it has no once-per-turn fuse and no nudge budget, so it can fire repeatedly within one turn — each firing costs a full round trip.",
+  placeholders: ["tasks"],
+  text: `<system-reminder>The turn is ending but these tasks are not completed:
+{{tasks}}
+Finish them (marking each completed via TaskUpdate only when actually done), or explicitly state why they cannot be completed.</system-reminder>`,
+});
+
 function incompleteTasksNudgeText(tasks: TaskItem[]): string {
-  const lines = tasks.map((t) => `- #${t.id} ${t.subject} (${t.status})`).join("\n");
-  return `<system-reminder>The turn is ending but these tasks are not completed:\n${lines}\nFinish them (marking each completed via TaskUpdate only when actually done), or explicitly state why they cannot be completed.</system-reminder>`;
+  return renderPrompt(INCOMPLETE_TASKS_NUDGE, {
+    tasks: tasks.map((t) => `- #${t.id} ${t.subject} (${t.status})`).join("\n"),
+  });
 }
 
 /** debug.ma: the verify nudge fired when the repro failed but was never seen passing again this turn. */
+const DEBUG_VERIFY_NUDGE = definePrompt({
+  id: "reminder.debug-verify",
+  group: "3 · In-turn reminders",
+  label: "Repro not seen passing",
+  channel: "reminder",
+  where:
+    "Fires when a discipline skill enforces the repro-failed oracle and the repro script failed but was never observed passing again this turn.",
+  placeholders: ["reproPath"],
+  text: `<system-reminder>The repro script has not been observed passing since it failed. Rerun {{reproPath}} now and report the result — or state plainly that the fix is UNVERIFIED.</system-reminder>`,
+});
+
 function debugVerifyNudgeText(reproPath: string): string {
-  return `<system-reminder>The repro script has not been observed passing since it failed. Rerun ${reproPath} now and report the result — or state plainly that the fix is UNVERIFIED.</system-reminder>`;
+  return renderPrompt(DEBUG_VERIFY_NUDGE, { reproPath });
 }
 
 /** Folds an active mode's wrap-up checklist and the atlas/standards nudges into the wrap-up nudge. */
 function wrapupNudgeText(checklist: string, mentionAtlas = false, mentionStandards = false): string {
-  let text = WRAPUP_NUDGE_TEXT;
+  let text = promptText(WRAPUP_NUDGE_TEXT);
   if (checklist) {
     text = text.replace("</system-reminder>", `\nAlso check:\n${checklist}</system-reminder>`);
   }

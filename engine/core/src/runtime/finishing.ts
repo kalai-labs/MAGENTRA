@@ -18,6 +18,9 @@
 // from the session or the permission engine, so it can be checked in isolation.
 
 import { extname } from "node:path";
+import { definePrompt, promptText, renderPrompt } from "@magentra/protocol";
+
+const GROUP = "4 · End-of-turn rungs";
 
 /**
  * File suffixes whose contents are executable behaviour, so a change to one can
@@ -98,8 +101,15 @@ function fileList(files: string[]): string {
  * not run this, here is what stays unverified" as a FULLY correct ending is what
  * keeps the rung from manufacturing the very failure it exists to catch.
  */
-export function runtimeEvidenceText(files: string[]): string {
-  return `<system-reminder>You changed code this turn (${fileList(files)}) and did not run a single command, so nothing you wrote has been observed working. Settle that now, then finish.
+const RUNTIME_EVIDENCE = definePrompt({
+  id: "finishing.runtime-evidence",
+  group: GROUP,
+  label: "Runtime evidence rung",
+  channel: "reminder",
+  where:
+    "Fires once at the end of a turn that edited source files but never ran a command. Injected as a user-role reminder, which costs at least one extra round trip — shorten or blank it to make turns finish faster.",
+  placeholders: ["files"],
+  text: `<system-reminder>You changed code this turn ({{files}}) and did not run a single command, so nothing you wrote has been observed working. Settle that now, then finish.
 
 Work down this list and stop as soon as the change is settled:
 1. Fast gate first — the project's own build/typecheck/lint if it has one. It catches the cheap failures, but passing it is NOT evidence: it proves the code parses, not that it behaves.
@@ -110,7 +120,11 @@ Work down this list and stop as soon as the change is settled:
 
 If this change genuinely cannot be executed on this machine — it needs a console, a display, a device, a credential or a service you do not have — then STOP HERE AND SAY SO. Name the closest thing you did run, name what stays unverified, and move on. That is a complete and correct answer to this reminder, and it is worth more than a green result you had to manufacture. Nothing here asks you to end with a passing check; it asks you to know, and to say, what you actually observed.
 
-Where you cannot run a thing, you can still usually confirm its CONTRACT: import it and print its signature or docstring, check the type of what it returns, read the source you are calling. A function that needs a console still tells you what it gives back. That costs one command and is real evidence; guessing the contract and then encoding the guess into a stand-in is not.</system-reminder>`;
+Where you cannot run a thing, you can still usually confirm its CONTRACT: import it and print its signature or docstring, check the type of what it returns, read the source you are calling. A function that needs a console still tells you what it gives back. That costs one command and is real evidence; guessing the contract and then encoding the guess into a stand-in is not.</system-reminder>`,
+});
+
+export function runtimeEvidenceText(files: string[]): string {
+  return renderPrompt(RUNTIME_EVIDENCE, { files: fileList(files) });
 }
 
 /**
@@ -124,8 +138,15 @@ Where you cannot run a thing, you can still usually confirm its CONTRACT: import
  * rung is a reminder, so it never blocks; what it asks for is either the real
  * contract or an honest statement of what remains unverified.
  */
-export function circularEvidenceText(files: string[], doubleFiles: string[]): string {
-  return `<system-reminder>You changed code this turn (${fileList(files)}) and the checking you ran leans on stand-ins you wrote yourself (${fileList(doubleFiles)}). Read that sentence again before you finish.
+const CIRCULAR_EVIDENCE = definePrompt({
+  id: "finishing.circular-evidence",
+  group: GROUP,
+  label: "Circular evidence rung",
+  channel: "reminder",
+  where:
+    "Fires at the end of a turn that edited code and verified it only against mocks/fakes the agent wrote itself. Injected as a user-role reminder, so it also costs a round trip.",
+  placeholders: ["files", "doubleFiles"],
+  text: `<system-reminder>You changed code this turn ({{files}}) and the checking you ran leans on stand-ins you wrote yourself ({{doubleFiles}}). Read that sentence again before you finish.
 
 A mock, fake, stub or patch is a MODEL of the thing it replaces, and you are its author. It agrees with whatever you believed when you wrote it. So a passing check against your own stand-in tells you your code is self-consistent; it tells you nothing at all about the real dependency, and it will agree with you just as confidently when you are wrong.
 
@@ -134,7 +155,14 @@ Before this turn ends, for every real thing you replaced:
 2. Confirm it from the dependency itself — import it and print its signature or docstring, check the type of what a real call returns, or read the source you are calling. This usually costs one command and does not need the dependency to be fully usable: a function that needs a console, a device or a credential still tells you its return type, its exception type, its units, and whether it hands back bytes or text.
 3. If the confirmed contract differs from what your stand-in does, your code is wrong and your check was agreeing with the bug. Fix both, and say so.
 
-If the contract genuinely cannot be confirmed here, say that plainly and name exactly which behaviours remain unverified. An honest gap is a good outcome. A green check built on your own assumption is not a good outcome — it is the same unverified guess wearing the costume of proof.</system-reminder>`;
+If the contract genuinely cannot be confirmed here, say that plainly and name exactly which behaviours remain unverified. An honest gap is a good outcome. A green check built on your own assumption is not a good outcome — it is the same unverified guess wearing the costume of proof.</system-reminder>`,
+});
+
+export function circularEvidenceText(files: string[], doubleFiles: string[]): string {
+  return renderPrompt(CIRCULAR_EVIDENCE, {
+    files: fileList(files),
+    doubleFiles: fileList(doubleFiles),
+  });
 }
 
 /**
@@ -148,15 +176,45 @@ If the contract genuinely cannot be confirmed here, say that plainly and name ex
  * opposite failure is the likely one, so the closing clause flips to demand the
  * evidence instead of warning against it.
  */
-export function selfVerifyText(changedCode: string[]): string {
-  const closing = changedCode.length > 0
-    ? `You changed code this turn (${fileList(changedCode)}). "Fully handled" includes SETTLED: either the change was observed doing what it was supposed to do — executed against the real thing, not merely compiled, re-read, reasoned about, or agreed with by a stand-in you wrote yourself — or you told the user plainly which parts you could not run and what stays unverified. Either of those is done. Reporting a verification you did not actually perform is not.`
-    : "Judge only against the query itself — never invent verification rituals (builds, tests) it did not ask for.";
-  return `<system-reminder>Internal self-check — this is NOT a new user message and the user is NOT waiting for another reply. Your entire output for this step must be either the single word DONE or continued work. Nothing else. Do not greet, do not re-answer, do not summarize, do not introduce yourself.
+const SELF_VERIFY = definePrompt({
+  id: "finishing.self-verify",
+  group: GROUP,
+  label: "Self-verify rung",
+  channel: "reminder",
+  where:
+    "Fires at the end of EVERY work turn. The agent answers DONE (never shown to the user) or keeps working, so this reminder costs one extra inference round on every single turn — the single biggest fixed cost per turn. `{{closing}}` is one of the two clauses below it.",
+  placeholders: ["closing"],
+  text: `<system-reminder>Internal self-check — this is NOT a new user message and the user is NOT waiting for another reply. Your entire output for this step must be either the single word DONE or continued work. Nothing else. Do not greet, do not re-answer, do not summarize, do not introduce yourself.
 
 Decide silently: is every part of the user's original query already fully handled (a conversational message with nothing to do counts as handled), and did this turn leave nothing unnecessary behind (scratch files, duplicated helpers, abandoned attempts)?
 - If YES → output exactly this literal ASCII word and nothing else, never translated or localized even when the conversation is in another language: DONE
 - If NO → do the remaining work now (call tools / write the fix / clean up). Whatever you write in this case IS shown to the user; the DONE token never is.
 
-${closing}</system-reminder>`;
+{{closing}}</system-reminder>`,
+});
+
+const SELF_VERIFY_CLOSING_CODE = definePrompt({
+  id: "finishing.self-verify.closing-code",
+  group: GROUP,
+  label: "Self-verify closing — code changed",
+  channel: "reminder",
+  where: "Substituted into `{{closing}}` of the self-verify rung when the turn edited source files.",
+  placeholders: ["files"],
+  text: `You changed code this turn ({{files}}). "Fully handled" includes SETTLED: either the change was observed doing what it was supposed to do — executed against the real thing, not merely compiled, re-read, reasoned about, or agreed with by a stand-in you wrote yourself — or you told the user plainly which parts you could not run and what stays unverified. Either of those is done. Reporting a verification you did not actually perform is not.`,
+});
+
+const SELF_VERIFY_CLOSING_PLAIN = definePrompt({
+  id: "finishing.self-verify.closing-plain",
+  group: GROUP,
+  label: "Self-verify closing — no code changed",
+  channel: "reminder",
+  where: "Substituted into `{{closing}}` of the self-verify rung on a turn that changed no source files.",
+  text: "Judge only against the query itself — never invent verification rituals (builds, tests) it did not ask for.",
+});
+
+export function selfVerifyText(changedCode: string[]): string {
+  const closing = changedCode.length > 0
+    ? renderPrompt(SELF_VERIFY_CLOSING_CODE, { files: fileList(changedCode) })
+    : promptText(SELF_VERIFY_CLOSING_PLAIN);
+  return renderPrompt(SELF_VERIFY, { closing });
 }

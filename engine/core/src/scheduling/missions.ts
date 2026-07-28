@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join } from "node:path";
 import type { MissionDraft } from "@magentra/protocol";
 import { scanFrontmatter } from "../crew/team.js";
+import { definePrompt, promptText } from "@magentra/protocol";
 
 /**
  * The MISSION system: research-lab missions a user sends their agent crew on.
@@ -146,7 +147,14 @@ function splitList(value: string | undefined): string[] {
  * above if you change it. The worked example after the "written exactly like
  * this:" marker line is extracted verbatim by the tests — keep the marker.
  */
-export const MISSION_FILE_FORMAT = `Each mission is ONE markdown file at .magentra/missions/<id>.md. The file name without the .md is the mission id: lowercase letters, digits, hyphen or underscore only (e.g. lit-scan.md, market_watch.md).
+export const MISSION_FILE_FORMAT_ID = definePrompt({
+  id: "missions.file-format",
+  group: "8 · Crew & missions",
+  label: "Mission file format",
+  channel: "side-call-user",
+  where:
+    "The strict .magentra/missions/<id>.md format, quoted to the user when /mission scaffold writes a new mission and used as the reference the agent follows when authoring one.",
+  text: `Each mission is ONE markdown file at .magentra/missions/<id>.md. The file name without the .md is the mission id: lowercase letters, digits, hyphen or underscore only (e.g. lit-scan.md, market_watch.md).
 
 The file is EXACTLY: a "---" fence alone on the first line, then "key: value" frontmatter lines, then a closing "---" fence alone on its own line, then the mission charter as the plain markdown body. Do NOT wrap the file in code fences or backticks.
 
@@ -173,7 +181,11 @@ deliverable: research/weekly-scan.md
 Track new papers, posts, and benchmark releases on agent memory systems and
 tool-use evaluation. For each notable find, capture the source URL, a two-line
 summary, and why it matters to our work. Done means: every keyword swept, each
-claim backed by a source URL, and the report updated with this week's findings.`;
+claim backed by a source URL, and the report updated with this week's findings.`,
+});
+
+/** The shipped default text. */
+export const MISSION_FILE_FORMAT = promptText(MISSION_FILE_FORMAT_ID);
 
 /**
  * Builds the turn prompt that launches a mission — the full brief handed to the

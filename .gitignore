@@ -18,3 +18,8 @@ app/tests/.tmp/
 
 .DS_Store
 *.log
+
+.magentra/*
+.claude/*
+*.zip
+*.exe

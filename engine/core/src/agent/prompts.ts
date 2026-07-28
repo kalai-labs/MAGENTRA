@@ -1,16 +1,27 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  definePrompt,
   PRODUCT_NAME,
   PRODUCT_REPO_URL,
   PROJECT_GUIDE_FALLBACK,
   PROJECT_GUIDE_FILE,
+  promptText,
+  renderPrompt,
 } from "@magentra/protocol";
 
 /**
  * Behavior sections are exported individually so an embedding frontend (e.g.
  * an IDE) can swap or drop any of them. All prose here is original.
+ *
+ * Each section is also registered with the prompt registry, so the constants
+ * below are the DEFAULTS and `behaviorCore` reads whatever is in force.
  */
+
+const GROUP = "1 · Core system prompt";
+/** Trailing clause every core section shares; the distinguishing sentence comes
+ *  first so a one-line summary of a section actually says something. */
+const EVERY_REQUEST = "Part of the main system prompt, sent on every request of every session.";
 
 export const SECTION_IDENTITY = `You are ${PRODUCT_NAME}, an agentic coding assistant that operates inside the user's repository through tools. Everything you print outside of tool calls is rendered to the user as markdown in a desktop workbench.
 
@@ -94,18 +105,102 @@ export const SECTION_AUTONOMY = `Working autonomously:
 - Before ending a turn, reread your final paragraph. If it promises work ("I'll…", "next I would…"), do that work now instead. End the turn only when the task is done or blocked on the user.
 - Long context is not a reason to wrap up early; the harness compacts history automatically and work continues across the boundary.`;
 
+/** Section id ↔ default text ↔ what an editor should say about it. */
+const CORE_SECTIONS = [
+  {
+    id: definePrompt({
+      id: "system.identity",
+      group: GROUP,
+      label: "Identity & safety",
+      channel: "system",
+      where: `Opens the prompt: who the agent is, that ${PRODUCT_NAME} is the identity while the model is a swappable engine, and the security boundary. ${EVERY_REQUEST}`,
+      text: SECTION_IDENTITY,
+    }),
+  },
+  {
+    id: definePrompt({
+      id: "system.harness",
+      group: GROUP,
+      label: "How the harness works",
+      channel: "system",
+      where: `Explains permissions, system-reminders, which tools to prefer, and parallel tool calls. The parallel-calls line is the main lever on how fast a turn feels. ${EVERY_REQUEST}`,
+      text: SECTION_HARNESS,
+    }),
+  },
+  {
+    id: definePrompt({
+      id: "system.communication",
+      group: GROUP,
+      label: "Communicating",
+      channel: "system",
+      where: `Controls narration between tool calls, what the final message must contain, reply length, and markdown table syntax. Tune this to make replies shorter. ${EVERY_REQUEST}`,
+      text: SECTION_COMMUNICATION,
+    }),
+  },
+  {
+    id: definePrompt({
+      id: "system.action-care",
+      group: GROUP,
+      label: "Acting with care",
+      channel: "system",
+      where: `Reversibility and blast radius, what needs confirmation, and investigating obstacles instead of deleting them. ${EVERY_REQUEST}`,
+      text: SECTION_ACTION_CARE,
+    }),
+  },
+  {
+    id: definePrompt({
+      id: "system.git",
+      group: GROUP,
+      label: "Git",
+      channel: "system",
+      where: `When to commit, how to commit, and the forbidden git flags. ${EVERY_REQUEST}`,
+      text: SECTION_GIT,
+    }),
+  },
+  {
+    id: definePrompt({
+      id: "system.code-style",
+      group: GROUP,
+      label: "Writing code",
+      channel: "system",
+      where: `Reuse before writing, replace-in-place, proving code is dead, comment policy, and "build exactly what was asked". The main lever on how much code gets written. ${EVERY_REQUEST}`,
+      text: SECTION_CODE_STYLE,
+    }),
+  },
+  {
+    id: definePrompt({
+      id: "system.tasks",
+      group: GROUP,
+      label: "Task list",
+      channel: "system",
+      where: `When to use TaskCreate/TaskUpdate and when to skip the board entirely. ${EVERY_REQUEST}`,
+      text: SECTION_TASKS,
+    }),
+  },
+  {
+    id: definePrompt({
+      id: "system.working-method",
+      group: GROUP,
+      label: "Working method",
+      channel: "system",
+      where: `The longest section: decomposition, the act-verify loop, confirming contracts instead of guessing them, the atlas, and the wrap-up. The main lever on how many rounds a task takes. ${EVERY_REQUEST}`,
+      text: SECTION_WORKING_METHOD,
+    }),
+  },
+  {
+    id: definePrompt({
+      id: "system.autonomy",
+      group: GROUP,
+      label: "Working autonomously",
+      channel: "system",
+      where: `When to act without asking, when to stop for the user, and not ending a turn on a promise. ${EVERY_REQUEST}`,
+      text: SECTION_AUTONOMY,
+    }),
+  },
+] as const;
+
 export function behaviorCore(): string {
-  return [
-    SECTION_IDENTITY,
-    SECTION_HARNESS,
-    SECTION_COMMUNICATION,
-    SECTION_ACTION_CARE,
-    SECTION_GIT,
-    SECTION_CODE_STYLE,
-    SECTION_TASKS,
-    SECTION_WORKING_METHOD,
-    SECTION_AUTONOMY,
-  ].join("\n\n");
+  return CORE_SECTIONS.map((s) => promptText(s.id)).join("\n\n");
 }
 
 export interface PromptEnvironment {
@@ -116,23 +211,49 @@ export interface PromptEnvironment {
   date: string;
 }
 
+const ENVIRONMENT_BLOCK = definePrompt({
+  id: "system.environment",
+  group: GROUP,
+  label: "Environment block",
+  channel: "system",
+  where: `Appended after the behavior sections. The only place the agent learns the cwd, platform, model name and today's date. ${EVERY_REQUEST}`,
+  placeholders: ["cwd", "isGitRepo", "platform", "model", "date"],
+  text: `Environment:
+- Working directory: {{cwd}}
+- Git repository: {{isGitRepo}}
+- Platform: {{platform}}
+- Model: {{model}}
+- Today's date: {{date}}`,
+});
+
 export function environmentBlock(env: PromptEnvironment): string {
-  return `Environment:
-- Working directory: ${env.cwd}
-- Git repository: ${env.isGitRepo ? "yes" : "no"}
-- Platform: ${env.platform}
-- Model: ${env.model}
-- Today's date: ${env.date}`;
+  return renderPrompt(ENVIRONMENT_BLOCK, {
+    cwd: env.cwd,
+    isGitRepo: env.isGitRepo ? "yes" : "no",
+    platform: env.platform,
+    model: env.model,
+    date: env.date,
+  });
 }
+
+const PROJECT_MEMORY_HEADER = definePrompt({
+  id: "system.project-memory-header",
+  group: GROUP,
+  label: "Project instructions header",
+  channel: "system",
+  where: `Wraps the workspace's ${PROJECT_GUIDE_FILE} (or ${PROJECT_GUIDE_FALLBACK}) when one exists. Only the header is editable; the file's contents follow it verbatim.`,
+  placeholders: ["file", "content"],
+  text: `Project instructions from {{file}} (provided by the project, follow them):
+
+{{content}}`,
+});
 
 export function projectMemoryBlock(cwd: string): string | undefined {
   for (const name of [PROJECT_GUIDE_FILE, PROJECT_GUIDE_FALLBACK]) {
     const path = join(cwd, name);
     if (existsSync(path)) {
       const content = readFileSync(path, "utf8").trim();
-      if (content) {
-        return `Project instructions from ${name} (provided by the project, follow them):\n\n${content}`;
-      }
+      if (content) return renderPrompt(PROJECT_MEMORY_HEADER, { file: name, content });
     }
   }
   return undefined;
@@ -143,10 +264,20 @@ export interface SkillSummary {
   description: string;
 }
 
+const SKILLS_BLOCK = definePrompt({
+  id: "system.skills-block",
+  group: GROUP,
+  label: "Available skills header",
+  channel: "system",
+  where: "Appended when the workspace has at least one on-demand skill. `{{list}}` is the generated `- name: description` roster.",
+  placeholders: ["list"],
+  text: `Available skills (invoke with the Skill tool; never invent names not in this list):
+{{list}}`,
+});
+
 export function skillsBlock(skills: SkillSummary[]): string | undefined {
   if (skills.length === 0) return undefined;
-  const lines = skills.map((s) => `- ${s.name}: ${s.description}`);
-  return `Available skills (invoke with the Skill tool; never invent names not in this list):\n${lines.join("\n")}`;
+  return renderPrompt(SKILLS_BLOCK, { list: skills.map((s) => `- ${s.name}: ${s.description}`).join("\n") });
 }
 
 export function buildSystemPrompt(opts: {

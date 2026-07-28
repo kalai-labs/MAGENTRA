@@ -4,6 +4,8 @@ import { basename, dirname, join } from "node:path";
 import {
   PROTOCOL_VERSION,
   STATE_DIR_NAME,
+  definePrompt,
+  promptText,
   type ConnectionSpec,
   type CoreEvent,
   type FrontendRequest,
@@ -547,7 +549,7 @@ export class Engine {
       // is one focused call, on the chosen model (defaulting to the session's
       // main model — skill authoring wants the capable model, not smallModel).
       const raw = await this.session.runInference({
-        system: SKILL_AUTHOR_ROLE,
+        system: promptText(SKILL_AUTHOR_ROLE),
         user: buildSkillPrompt(description, kind, takenIds, opts) + feedback,
         maxTokens: 4096,
         model: authorModel,
@@ -2770,10 +2772,18 @@ function renderCrewBuildResult(agents: CrewAgent[], warnings: string[]): string 
 // ── Create-skill wizard: authoring prompt ────────────────────────────────────
 
 /** The subagent persona for generate_skill: it writes exactly one file, no commentary. */
-const SKILL_AUTHOR_ROLE = `You are a skill author for the MAGENTRA agent workbench. Your entire final
+const SKILL_AUTHOR_ROLE = definePrompt({
+  id: "skill-author.role",
+  group: "5 · Background inference calls",
+  label: "Skill author role",
+  channel: "subagent",
+  where:
+    "Role of the subagent behind the create-skill wizard (generate_skill). Its entire reply is written straight to a .md file, so any commentary corrupts the output.",
+  text: `You are a skill author for the MAGENTRA agent workbench. Your entire final
 response must be EXACTLY the content of one skill .md file — no code fences, no
 commentary before or after it. You may read a few workspace files first if the
-skill should reference real project conventions, but keep it brief.`;
+skill should reference real project conventions, but keep it brief.`,
+});
 
 /** Optional knobs the wizard passes into skill authoring. */
 type SkillGenOptions = {
