@@ -7,6 +7,40 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.10.0.0 — 2026-07-28
+
+### Features
+
+- new overdrive mode ([aecc68b](https://github.com/kalai-labs/MAGENTRA/commit/aecc68b39304826f68f8b8eabf1d29d494b47032))
+- **core:** add CAREFUL MODE plan-and-approve gate for OVERDRIVE ([b2cfab7](https://github.com/kalai-labs/MAGENTRA/commit/b2cfab707826762f2090e1176c0b5c6375687235))
+
+### Bug fixes
+
+- **tools:** skip the .magentra state dir in Glob unless asked ([493f21d](https://github.com/kalai-labs/MAGENTRA/commit/493f21dab2bf0a68bf766e45b8543eaea840a726))
+- fix and improvements on careful mode ([d363293](https://github.com/kalai-labs/MAGENTRA/commit/d363293be36ce12e07e5feb3f976930aff65d1ef))
+- new section to careful mode ([b26c506](https://github.com/kalai-labs/MAGENTRA/commit/b26c5061a2873be0d447a0dced4eb79c7c63ee9a))
+- fixed the connection issues ([2dee9ff](https://github.com/kalai-labs/MAGENTRA/commit/2dee9fffe1f6b30abd0ef2062677fb46d4eb85c5))
+- token counting fix ([8b0a0e7](https://github.com/kalai-labs/MAGENTRA/commit/8b0a0e7184d047630a19ed12d66b736d8b5381b5))
+- fix on the careful mode ([072e8d8](https://github.com/kalai-labs/MAGENTRA/commit/072e8d8dd69ca1c7a427a151278fe250825ab641))
+- bugfixes ([43c6da2](https://github.com/kalai-labs/MAGENTRA/commit/43c6da247add306ce459e855ffff3e177bc38bbc))
+- fix at careful mode ([04dc4cd](https://github.com/kalai-labs/MAGENTRA/commit/04dc4cd5f0ba26f026dc859e8143da11376fcb82))
+
+### Documentation
+
+- record CAREFUL MODE status and the open issues ([7cc3e6a](https://github.com/kalai-labs/MAGENTRA/commit/7cc3e6a2a3e4d729187f536b49983f820d4331ad))
+
+### Refactoring
+
+- removed brandings ([344999c](https://github.com/kalai-labs/MAGENTRA/commit/344999c4283e1e23742498d04f5bdbf6c48dde6e))
+- brand removals ([282a4e4](https://github.com/kalai-labs/MAGENTRA/commit/282a4e4ec5e0366fe5f34c432eefe2748fdcdc85))
+- improvements on careful mode ([f0fe125](https://github.com/kalai-labs/MAGENTRA/commit/f0fe125fcca4c22b6d7e6165059d9a5e3a809b30))
+
+### Chores
+
+- track the bigboycoding skill alongside its checks ([7ddf5bd](https://github.com/kalai-labs/MAGENTRA/commit/7ddf5bd721bbb8adcedb8bcc52febd50e7b28ad1))
+
+[Compare with v0.9.0.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.9.0.0...v0.10.0.0)
+
 ## 0.9.0.0 — 2026-07-25
 
 ### Features
