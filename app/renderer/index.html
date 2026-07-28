@@ -177,6 +177,12 @@
             <button id="carefulBtn" class="composer-select careful-btn hidden" aria-pressed="false" title="CAREFUL — propose a direction and wait for approval before acting">
               <span class="cf-btn-glyph">◉</span><span class="cf-btn-label">CAREFUL</span>
             </button>
+            <!-- READABILITY takes the composer slot CAREFUL left behind, but it
+                 is not a second CAREFUL: it modifies no stance, so it is always
+                 visible and works whether OVERDRIVE is on or off. -->
+            <button id="readabilityBtn" class="composer-select readability-btn" aria-pressed="false" title="READABILITY — after a code change, one last pass to clean it up and tell you what's left">
+              <span class="rd-btn-glyph">✎</span><span class="rd-btn-label">READABILITY</span>
+            </button>
             <select id="modelSelect" class="composer-select" title="Model">
               <option value="openai/gpt-oss-120b">GPT-OSS 120B</option>
               <option value="deepseek-ai/DeepSeek-V4-Flash" selected>DeepSeek V4 Flash</option>
@@ -791,6 +797,7 @@
   <script src="modules/missions.js"></script>
   <script src="modules/skills.js"></script>
   <script src="modules/overdrive.js"></script>
+  <script src="modules/readability.js"></script>
   <script src="modules/tour.js"></script>
   <script src="modules/stream.js"></script>
   <script src="modules/crew.js"></script>

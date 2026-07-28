@@ -1,0 +1,122 @@
+GROUND RULES (read first)
+
+You are on a Windows machine with NO internet access. Nothing can be downloaded
+and nothing can be installed: no pip install, no conda install, no package
+manager, no git clone, no fetching anything. Python 3 is installed and a large
+set of libraries is already present. You may use any library that is ALREADY
+installed — check first, and if you rely on one, name it and show how you
+confirmed it was there. There is no Node.js on this machine.
+
+Everything you deliver must actually run. A claim that something works is worth
+nothing here; the run is the proof. Show the exact commands you executed and the
+exact output you saw. If something fails, report it as failed with its output.
+
+Write files with explicit UTF-8 encoding and explicit "\n" newlines, so output is
+not silently changed by the platform.
+
+Do not leave scratch files, half-finished attempts or dead code behind.
+
+Work in the current directory. It is empty and it is yours.
+
+================================================================================
+STEP 0 — create the starting codebase, byte for byte
+================================================================================
+
+Create the two files below EXACTLY as written. This is inherited code, not your
+work. Do not fix, improve or reformat anything while transcribing it.
+
+--------------------------------- rle.py -------------------------------------
+"""Run-length codec for short strings.
+
+encode() collapses a run of the same character into <count><char>, and leaves a
+run of one as the bare character, because that is shorter.
+decode() reverses it.
+"""
+
+DIGITS = "0123456789"
+
+
+def encode(text):
+    out = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        run = 1
+        while i + run < len(text) and text[i + run] == ch:
+            run += 1
+        out.append(ch if run == 1 else str(run) + ch)
+        i += run
+    return "".join(out)
+
+
+def decode(text):
+    out = []
+    i = 0
+    while i < len(text):
+        digits = ""
+        while i < len(text) and text[i] in DIGITS:
+            digits += text[i]
+            i += 1
+        ch = text[i]
+        i += 1
+        out.append(ch if digits == "" else ch * int(digits))
+    return "".join(out)
+------------------------------------------------------------------------------
+
+-------------------------------- check.py ------------------------------------
+from rle import encode, decode
+
+CASES = ["", "a", "aaa", "abc", "aaabbbccc", "aabbaa", "zzzzzzzzzzzz"]
+
+failed = 0
+for s in CASES:
+    enc = encode(s)
+    round_trip = decode(enc)
+    ok = round_trip == s
+    if not ok:
+        failed += 1
+    print(f"{'ok  ' if ok else 'FAIL'} {s!r} -> {enc!r} -> {round_trip!r}")
+
+print("all cases passed" if failed == 0 else f"{failed} case(s) failed")
+------------------------------------------------------------------------------
+
+================================================================================
+STEP 1 — the actual task
+================================================================================
+
+Run `python check.py`. Every case passes.
+
+The codec is still wrong. There are inputs for which `decode(encode(s))` does not
+return `s`, and the seven cases above contain none of them.
+
+Your job, in this order:
+
+  1. FIND a failing input yourself. Do not ask me for one. Decide HOW you are
+     going to search for it and say so before you run the search — a method you
+     can defend, not a lucky guess.
+  2. PROVE it fails. Show the input, what encode produced, what decode returned,
+     and how that differs from the original. There is more than one kind of
+     failure here; find them all and say how many kinds you found.
+  3. Explain the ROOT CAUSE in at most three sentences. Not "decode is wrong" —
+     name the property of the ENCODING FORMAT that makes the original string
+     unrecoverable.
+  4. FIX it. The format may change. `encode` and `decode` must stay importable
+     from `rle.py` with the same names and signatures.
+  5. PROVE the fix, against every failing input you found AND against a search
+     wide enough that you would be embarrassed to have missed another case.
+     State how many inputs that search covered and what alphabet it drew from.
+     If your search alphabet contains no digits, you have not understood the bug.
+  6. Keep the seven original cases in `check.py` passing, and keep the
+     compression useful: for a long run of one character the encoded form must
+     still be shorter than the input. Show that it is.
+
+WHAT DONE MEANS
+
+  - You report the failing inputs you found, before and after the fix.
+  - You state the size of your verification search as a number, and its result.
+  - You state in one sentence what the format guarantees now that it did not
+    guarantee before.
+  - `python check.py` still runs and still reports every case passing.
+
+Delete any throwaway search harness once you have reported its result. Do not
+leave a permanent test suite in this project.

@@ -135,6 +135,55 @@ round trip to review a draft that had not been written yet. It reads nothing
 new: anything the agent does not know at that point is an Unclear, not a reason
 to go back to the repository.
 
+## Finishing Rungs
+
+The checks a turn must climb after the agent has stopped talking and before the
+work counts as delivered. There are two, and both rank above the self-check:
+the self-check ends the turn where it stands when it passes, so a rung below it
+would never run on the turns that go well.
+
+They judge the turn by what it DID, not by what it says it did — which files it
+actually changed, and whether it ever executed anything.
+
+## Runtime Evidence Floor
+
+The deterministic check that a turn which rewrote runnable source has run
+something. What it catches is a turn that reads as finished: the code is
+written, the explanation is confident, and not one line of it has been observed
+behaving.
+
+It asks for behaviour and not for ceremony. Compiling is not evidence, and
+neither is reading the file back. What counts is a real result the agent can
+read — an exit code, a line of output, a value returned, a file the code wrote.
+
+The proof is meant to be thrown away. A one-off run, or a harness written
+outside the repository and deleted in the same turn; a permanent test only where
+the project already keeps a suite this change belongs in. Growing a test suite
+by one file per edit is its own kind of mess.
+
+Editing documentation is not a behaviour change, so it is not asked to prove
+anything.
+
+A reminder, never a block, and asked once — the same shape, and for the same
+reason, as the [[Grounding Floor]].
+
+## Readability Pass
+
+The optional last look a turn takes at its own diff. A user-thrown switch, off
+unless asked for, and the only finishing rung that is.
+
+It asks two questions and no others: is this clean enough to hand over, and is
+anything still owed to the user. The first is about the code — names, dead code,
+duplication, leftovers. The second is about the handover — an assumption made
+for them, scope left out, a limitation, a step they must take themselves.
+
+It runs once, at the end, and never in the middle. Small fixes it makes; anything
+larger it names in the wrap-up and leaves alone. A second pass is how a tidy-up
+becomes a refactor, so there is no second pass.
+
+Its whole value is that it costs one round trip. A pass that grows past that has
+already failed, whatever it found.
+
 ## Grounding Floor
 
 The deterministic check that an agent has opened at least one of the source

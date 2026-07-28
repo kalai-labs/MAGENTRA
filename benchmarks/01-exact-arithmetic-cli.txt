@@ -1,0 +1,118 @@
+GROUND RULES (read first)
+
+You are on a Windows machine with NO internet access. Nothing can be downloaded
+and nothing can be installed: no pip install, no conda install, no package
+manager, no git clone, no fetching anything. Python 3 is installed and a large
+set of libraries is already present. You may use any library that is ALREADY
+installed — check first, and if you rely on one, name it and show how you
+confirmed it was there. There is no Node.js on this machine.
+
+Everything you deliver must actually run. A claim that something works is worth
+nothing here; the run is the proof. Show the exact commands you executed and the
+exact output you saw. If something fails, report it as failed with its output.
+
+Write files with explicit UTF-8 encoding and explicit "\n" newlines, so output is
+not silently changed by the platform.
+
+Do not leave scratch files, half-finished attempts or dead code behind.
+
+Work in the current directory. It is empty and it is yours.
+
+================================================================================
+TASK — an exact-arithmetic expression calculator
+================================================================================
+
+Build a command-line calculator that evaluates arithmetic expressions with EXACT
+decimal arithmetic. Binary floating point is forbidden anywhere in the evaluation
+path: if 0.1 + 0.2 does not print exactly 0.3, the program is wrong.
+
+INTERFACE
+
+The program reads expressions from standard input, one per line, and writes one
+line of output per input line. An empty input line produces an empty output line.
+It must be runnable as a single command I can pipe into. Tell me that exact
+command.
+
+GRAMMAR
+
+  expression : term (('+' | '-') term)*
+  term       : factor (('*' | '/') factor)*
+  factor     : ('-' | '+')* primary
+  primary    : NUMBER | '(' expression ')'
+  NUMBER     : digits, optionally followed by '.' and more digits
+
+Whitespace between tokens is insignificant. Integers may be arbitrarily long —
+there is no upper bound on the number of digits.
+
+SEMANTICS
+
+  - Addition, subtraction and multiplication are EXACT. No rounding, ever, at any
+    intermediate step.
+  - Division is computed to 6 decimal places, rounded HALF AWAY FROM ZERO.
+  - Every result prints in its shortest exact form: no trailing zeros after the
+    decimal point, no bare trailing '.'. Negative zero prints as 0.
+
+  Read those three rules against each other before you choose a representation.
+  A single global precision setting satisfies the division rule and breaks the
+  multiplication rule, and the default rounding mode of the obvious library is
+  not the one asked for here.
+
+ERRORS
+
+On a bad line, print exactly one line to standard output in this form and then
+continue with the next line (do not exit, do not raise):
+
+  error: <reason> at column <n>
+
+Columns are 1-based and count every character of the input line, whitespace
+included. The three reasons, and the column each reports:
+
+  division by zero          — the first character of the divisor
+  unexpected token '<t>'    — the first character of the offending token
+  unexpected end of input   — one past the last character of the line
+
+THE CONTRACT I WILL RUN
+
+These exact input lines must produce these exact output lines:
+
+  input                            output
+  -----------------------------    -----------------------------
+  0.1 + 0.2                        0.3
+  1 / 3                            0.333333
+  2 / 3                            0.666667
+  -2 / 3                           -0.666667
+  0.0000005 / 1                    0.000001
+  -0.0000005 / 1                   -0.000001
+  1 / 4                            0.25
+  4 / 2                            2
+  2 * (3 + 4.5)                    15
+  10 - 3 - 2                       5
+  100 / 8 / 5                      2.5
+  --5                              5
+  -(3 * -2)                        6
+  0.000001 * 0.000001              0.000000000001
+  999999999999999999999 + 1        1000000000000000000000
+  12345678901234567890 * 98765     1219320976680432097655850
+  1 / 0                            error: division by zero at column 5
+  1 + * 2                          error: unexpected token '*' at column 5
+  1 +                              error: unexpected end of input at column 4
+  (1 + 2                           error: unexpected end of input at column 7
+  1 + 2)                           error: unexpected token ')' at column 6
+
+Read that table carefully. Several rows are there because the obvious
+implementation gets them wrong.
+
+WHAT DONE MEANS
+
+  1. The program exists and runs.
+  2. You have fed it every line of the table above IN ONE RUN and compared the
+     real output against the expected output, line by line. Show me that
+     comparison and state plainly how many lines matched out of 21.
+  3. You have decided for yourself what else could break it, tried those inputs
+     too, and told me what you found.
+  4. You tell me, in one or two sentences, how you kept the arithmetic exact and
+     how you handled the conflict between the exactness rule and the 6-decimal
+     division rule.
+
+Do not build a test framework and do not leave a test suite in the project. A
+throwaway check that you run and then delete is exactly right.

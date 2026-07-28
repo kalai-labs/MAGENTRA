@@ -70,6 +70,7 @@ import {
   parseCarefulVerdict,
   salvageQuestionObjects,
 } from "./careful.js";
+import { codeFilesAmong, readabilityPassText, runtimeEvidenceText, selfVerifyText } from "./finishing.js";
 import { buildSystemPrompt, skillsBlock } from "../agent/prompts.js";
 import { DEBUG_DIR, commandRunsRepro, reproScriptRelPath } from "../ma/debug.js";
 import { SearchLog, evaluateReuseGate, type ReuseGateResult } from "../knowledge/reuseGate.js";
@@ -150,9 +151,6 @@ const STALL_PIVOT_TEXT =
 const STALL_ASK_TEXT =
   "<system-reminder>Stall: strategy pivots have not produced progress either. Stop attempting now. Ask the user ONE concrete question with AskUserQuestion: state what you are trying to achieve, what keeps failing and why you think so, and offer the options you see (with your recommendation). If asking is unavailable (you are a subagent), end the turn instead with a clear report of the blocker.</system-reminder>";
 
-// The end-of-turn self check. Deliberately generic: it judges only against the
-// user's query — it must never assume builds, tests, or any other ritual, and
-// the model decides what evidence the query itself calls for.
 // The OVERDRIVE system-prompt section. The autonomy contract: plan first,
 // think in consequences, evidence stays query-shaped, ask only rubric-worthy
 // questions, clean up after yourself, do not stop until the query is handled.
@@ -160,13 +158,10 @@ const OVERDRIVE_PROMPT_SECTION = `# OVERDRIVE — fully-autonomous mode
 You own this query end to end: plan, act, verify, deliver — without stopping for routine approval.
 - Plan first: for any multi-step request, lay out the task plan with TaskCreate — one task per step, the last a verification task stating the expected end state — before making changes. Trivial requests: just do them.
 - Think ahead: before each consequential action, weigh its consequences. Prefer the smallest change that truly serves the query; optimize your path and skip ceremony the query does not need.
-- Evidence is query-shaped: verify in whatever way the query itself calls for. Never invent verification rituals (builds, tests, linters) for work that does not ask for them.
+- Evidence is query-shaped: verify in whatever way the query itself calls for, and no further. A question is answered; a code change is SEEN WORKING — run the path you changed rather than re-reading it. What the query does not need (a full suite, a lint sweep, a benchmark) is ceremony, and you skip it.
 - Ask the user ONLY when the answer changes the design, is irreversible, or reaches outside the workspace — the test: would a reasonable user be upset if you guessed wrong? Everything else you decide yourself and note in your wrap-up.
 - NOTHING asks. Every call runs the moment you make it: deletions at any path, edits to \`.magentra\` state and \`.env\` files, writes outside the workspace. There is no confirmation step and no safety net but your own judgement — read a file before you overwrite it, look before you delete, and prefer the reversible move. The only thing that can still stop a call is a deny rule the user wrote themselves.
 - Do not stop early: the turn ends only when every part of the query is handled and your self-check passes.`;
-
-const SELF_VERIFY_TEXT =
-  "<system-reminder>Internal self-check — this is NOT a new user message and the user is NOT waiting for another reply. Your entire output for this step must be either the single word DONE or continued work. Nothing else. Do not greet, do not re-answer, do not summarize, do not introduce yourself.\n\nDecide silently: is every part of the user's original query already fully handled (a conversational message with nothing to do counts as handled), and did this turn leave nothing unnecessary behind (scratch files, duplicated helpers, abandoned attempts)?\n- If YES → output exactly this literal ASCII word and nothing else, never translated or localized even when the conversation is in another language: DONE\n- If NO → do the remaining work now (call tools / write the fix / clean up). Whatever you write in this case IS shown to the user; the DONE token never is.\n\nJudge only against the query itself — never invent verification rituals (builds, tests) it did not ask for.</system-reminder>";
 
 /**
  * Whether a self-verify round answered with the "nothing left to do" sentinel.
@@ -400,6 +395,14 @@ export class Session {
    * dropping it. Persisted in the meta snapshot so /resume restores it.
    */
   private careful = false;
+  /**
+   * READABILITY: the optional finishing pass. When armed, a turn that changed
+   * code gets exactly one extra round at the very end — a quick read over the
+   * diff for cleanliness and for anything the user still has to be told. Off by
+   * default, independent of OVERDRIVE (it is a delivery step, not a stance), and
+   * persisted in the meta snapshot so /resume restores it.
+   */
+  private readability = false;
   /** Auto-compact at this many context tokens; 0 = off (nothing auto-compacts).
    *  Its ONLY source is the UI's set_compact_limit frame — no settings key, no
    *  /settings path — so the value can never disagree with what the UI shows. */
@@ -433,6 +436,21 @@ export class Session {
   private reproPassedObserved = false;
   /** debug.ma: true once this turn's "rerun the repro" verify nudge has fired (reset at each turn start, so one nudge per turn). */
   private debugVerifyNudgeFired = false;
+  /**
+   * Finishing rungs: what this turn actually did, as observed rather than as
+   * claimed. Workspace-relative paths of every file a successful Write/Edit
+   * touched, and whether any command was executed at all. Both reset at turn
+   * start — the question the rungs ask is about THIS turn's work.
+   *
+   * Only successful calls count. A refused Write or a Bash that never ran left
+   * nothing behind to verify, and crediting it would let a turn buy its way past
+   * the evidence rung with calls that did nothing.
+   */
+  private readonly filesChangedThisTurn = new Set<string>();
+  private ranCommandThisTurn = false;
+  /** Finishing rungs fire at most once per turn each (reset at turn start). */
+  private evidenceNudgeFired = false;
+  private readabilityPassFired = false;
   /** A2: mutable crew roster (hot-reloadable); consumed by buildSystemPrompt and services.team. */
   private teamAgents: CrewAgent[];
   /** Hirable crew: the experience manager (lessons + service record). Main session with a team only. */
@@ -645,6 +663,19 @@ export class Session {
 
   isCareful(): boolean {
     return this.careful;
+  }
+
+  /** READABILITY toggle. Its own frame, because unlike CAREFUL it modifies
+   *  nothing about OVERDRIVE: the pass is a delivery step and runs in either
+   *  stance. Arming it costs nothing until a turn actually changes code. */
+  setReadability(enabled: boolean): void {
+    if (this.readability === enabled) return;
+    this.readability = enabled;
+    this.emit({ type: "readability_changed", enabled });
+  }
+
+  isReadability(): boolean {
+    return this.readability;
   }
 
   /**
@@ -1736,6 +1767,12 @@ export class Session {
 
     // debug.ma: at most one "rerun the repro" verify nudge per turn.
     this.debugVerifyNudgeFired = false;
+    // Finishing rungs: both the evidence they judge and their once-per-turn
+    // fuses are about THIS turn's work, so all four reset together.
+    this.filesChangedThisTurn.clear();
+    this.ranCommandThisTurn = false;
+    this.evidenceNudgeFired = false;
+    this.readabilityPassFired = false;
 
     const turnId = `t_${++this.turnCounter}`;
     this.abortController = new AbortController();
@@ -1882,7 +1919,6 @@ export class Session {
     let identicalRounds = 0;
     let pivotCount = 0;
     let totalToolCallsThisTurn = 0;
-    let wroteOrEditedThisTurn = false;
     // Mid-run steering drain: injects queued user guidance at a message
     // boundary. New guidance re-arms the self-verify rung and refunds spent
     // pivots — the user changed the game, so the old stall evidence is void.
@@ -2155,6 +2191,38 @@ export class Session {
             }
           }
 
+          // RUNTIME EVIDENCE FLOOR: the turn rewrote source files and never ran
+          // a single command, so every claim it is about to make about that code
+          // is an inference. Deterministic, fires once, and only reminds — the
+          // same shape as CAREFUL's grounding floor, because it catches the same
+          // kind of quiet failure: a turn that looks finished and is not.
+          //
+          // Placed ahead of the self-verify rung deliberately. A self-verify
+          // that answers DONE breaks the loop where it stands, so anything
+          // ranked below it on a clean turn would never run at all.
+          if (stopReason === "end_turn" && !this.evidenceNudgeFired && !this.ranCommandThisTurn) {
+            const changedCode = codeFilesAmong(this.filesChangedThisTurn);
+            if (changedCode.length > 0) {
+              this.evidenceNudgeFired = true;
+              this.emit({ type: "command_output", text: "↻ nothing was run — verifying the change for real" });
+              this.pushMessage({ role: "user", content: [{ type: "text", text: runtimeEvidenceText(changedCode) }] });
+              continue;
+            }
+          }
+
+          // READABILITY PASS: opt-in, one round, at the end and nowhere else.
+          // Costs nothing on a turn that changed no code, and never fires twice —
+          // a second pass is how a tidy-up becomes a refactor.
+          if (stopReason === "end_turn" && this.readability && !this.readabilityPassFired) {
+            const changed = [...this.filesChangedThisTurn];
+            if (changed.length > 0) {
+              this.readabilityPassFired = true;
+              this.emit({ type: "command_output", text: "✎ readability: one pass over the change" });
+              this.pushMessage({ role: "user", content: [{ type: "text", text: readabilityPassText(changed) }] });
+              continue;
+            }
+          }
+
           // Self-verify rung: the first time the turn tries to end cleanly,
           // make the model check the outcome against the original query
           // (completeness + economy) before the break is allowed. Runs after
@@ -2175,7 +2243,10 @@ export class Session {
             verifyBuffered = true;
             this.suppressAssistantText = true; // the verify answer streams silently
             this.emit({ type: "command_output", text: "⚡ overdrive: self-verifying against the original query" });
-            this.pushMessage({ role: "user", content: [{ type: "text", text: SELF_VERIFY_TEXT }] });
+            this.pushMessage({
+              role: "user",
+              content: [{ type: "text", text: selfVerifyText(codeFilesAmong(this.filesChangedThisTurn)) }],
+            });
             continue;
           }
 
@@ -2193,8 +2264,13 @@ export class Session {
             nudgeCount++;
             this.emit({ type: "command_output", text: "↻ requesting a work summary" });
             const checklist = this.opts.modeEngine?.wrapupChecklist() ?? "";
-            const mentionAtlas = wroteOrEditedThisTurn && loadAtlas(this.cwd) !== undefined;
-            const mentionStandards = wroteOrEditedThisTurn && loadStandards(this.cwd) !== undefined;
+            // Whether anything was actually written, from the same observation
+            // the finishing rungs use: a Write that was refused or that failed
+            // its freshness check changed no module, so it must not pull in the
+            // atlas and standards reminders.
+            const wroteOrEdited = this.filesChangedThisTurn.size > 0;
+            const mentionAtlas = wroteOrEdited && loadAtlas(this.cwd) !== undefined;
+            const mentionStandards = wroteOrEdited && loadStandards(this.cwd) !== undefined;
             this.pushMessage({
               role: "user",
               content: [{ type: "text", text: wrapupNudgeText(checklist, mentionAtlas, mentionStandards) }],
@@ -2225,7 +2301,6 @@ export class Session {
             this.remind(CAREFUL_SCOUT_WARN_TEXT);
           }
         }
-        if (toolCalls.some((c) => c.name === "Write" || c.name === "Edit")) wroteOrEditedThisTurn = true;
         const results = await this.executeToolCalls(toolCalls, signal);
         lastBatchHadError = results.some((r) => r.type === "tool_result" && r.isError === true);
         if (lastBatchHadError) {
@@ -2343,6 +2418,7 @@ export class Session {
             model: this.settings.model,
             overdrive: this.overdrive,
             careful: this.careful,
+            readability: this.readability,
             ...(this.label !== undefined ? { label: this.label } : {}),
           },
         });
@@ -2642,6 +2718,7 @@ export class Session {
           try {
             const result = await tool.execute(input, { ...this.toolContext(), callId: call.id }, signal);
             this.observeReproRun(tool.name, input, result.isError === true);
+            this.observeTurnWork(tool.name, input, result.isError === true);
             const truncated = truncateResult(result, tool.outputByteLimit ?? DEFAULT_OUTPUT_LIMIT);
             if (this.hooks?.has("PostToolUse")) {
               const summary = this.hooks.summarize(
@@ -2722,6 +2799,36 @@ export class Session {
     if (typeof command !== "string" || !commandRunsRepro(command)) return;
     if (isError) this.reproFailedObserved = true;
     else if (this.reproFailedObserved) this.reproPassedObserved = true;
+  }
+
+  /**
+   * Finishing rungs: what this turn did, watched at the one place a tool has
+   * actually finished running. A Write or an Edit records the file it changed;
+   * any Bash call records that something was executed at all.
+   *
+   * Only executed calls reach here — a refused or hook-blocked call returns
+   * before this point — so a Bash call counts whatever it exited with. The rung
+   * asks whether anything was OBSERVED, and a nonzero exit is an observation;
+   * whether the result was good belongs to the error-recovery and self-verify
+   * rungs, not to this one. A failed Write/Edit is different: it changed no
+   * bytes, so there is nothing there to verify.
+   */
+  private observeTurnWork(toolName: string, input: unknown, isError: boolean): void {
+    if (toolName === "Bash") {
+      this.ranCommandThisTurn = true;
+      return;
+    }
+    if (isError) return;
+    if (toolName !== "Write" && toolName !== "Edit") return;
+    if (typeof input !== "object" || input === null) return;
+    const filePath = (input as Record<string, unknown>).file_path;
+    if (typeof filePath !== "string" || filePath === "") return;
+    const absolute = resolve(this.cwd, filePath);
+    const rel = relative(this.cwd, absolute);
+    // A path outside the workspace has no useful relative form ("../../etc/..."),
+    // so it is named in full — the rung reads better with a path the user can
+    // recognize than with a walk back up the tree.
+    this.filesChangedThisTurn.add(rel === "" || rel.startsWith("..") ? absolute : rel);
   }
 
   /**

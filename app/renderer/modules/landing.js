@@ -1107,6 +1107,9 @@ function handleEngineEvent(event) {
     case "overdrive_changed":
       onOverdriveChanged(event);
       break;
+    case "readability_changed":
+      onReadabilityChanged(event);
+      break;
     case "modes_updated":
       onModesUpdated(event);
       break;

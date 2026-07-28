@@ -1,0 +1,239 @@
+GROUND RULES (read first)
+
+You are on a Windows machine with NO internet access. Nothing can be downloaded
+and nothing can be installed: no pip install, no conda install, no package
+manager, no git clone, no fetching anything. Python 3 is installed and a large
+set of libraries is already present. You may use any library that is ALREADY
+installed — check first, and if you rely on one, name it and show how you
+confirmed it was there. There is no Node.js on this machine.
+
+Everything you deliver must actually run. A claim that something works is worth
+nothing here; the run is the proof. Show the exact commands you executed and the
+exact output you saw. If something fails, report it as failed with its output.
+
+Write files with explicit UTF-8 encoding and explicit "\n" newlines, so output is
+not silently changed by the platform.
+
+Do not leave scratch files, half-finished attempts or dead code behind.
+
+Work in the current directory. It is empty and it is yours.
+
+================================================================================
+STEP 0 — create the starting codebase, byte for byte
+================================================================================
+
+Before anything else, create the five files below EXACTLY as written. This is the
+inherited codebase, not your work. Do not fix, improve, reformat or rename
+anything while transcribing it. Transcribe, then verify what you wrote matches
+what is here, then stop and read Step 1.
+
+--------------------------- report_lib/util.py -------------------------------
+def pad(value, width):
+    s = str(value)
+    return s if len(s) >= width else " " * (width - len(s)) + s
+------------------------------------------------------------------------------
+
+------------------------ report_lib/csv_report.py ----------------------------
+import re
+
+from .util import pad
+
+DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def csv_report(rows):
+    clean = []
+    for r in rows:
+        name = r.get("name")
+        cents = r.get("cents")
+        day = r.get("day")
+        if not isinstance(name, str) or name.strip() == "":
+            continue
+        if not isinstance(cents, int) or isinstance(cents, bool):
+            continue
+        if not isinstance(day, str) or not DAY_RE.match(day):
+            continue
+        clean.append({"name": name.strip(), "cents": cents, "day": day})
+    clean.sort(key=lambda r: (r["day"], r["name"]))
+    lines = ["name,day,amount"]
+    total = 0
+    for r in clean:
+        total += r["cents"]
+        sign = "-" if r["cents"] < 0 else ""
+        magnitude = abs(r["cents"])
+        money = sign + str(magnitude // 100) + "." + pad(magnitude % 100, 2).replace(" ", "0")
+        y, m, d = r["day"].split("-")
+        day = d + "/" + m + "/" + y
+        name = '"' + r["name"].replace('"', '""') + '"' if ('"' in r["name"] or "," in r["name"]) else r["name"]
+        lines.append(name + "," + day + "," + money)
+    tsign = "-" if total < 0 else ""
+    tmag = abs(total)
+    lines.append("TOTAL,," + tsign + str(tmag // 100) + "." + pad(tmag % 100, 2).replace(" ", "0"))
+    return "\n".join(lines)
+------------------------------------------------------------------------------
+
+------------------------ report_lib/tsv_report.py ----------------------------
+import re
+
+from .util import pad
+
+DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def tsv_report(rows):
+    clean = []
+    for r in rows:
+        name = r.get("name")
+        cents = r.get("cents")
+        day = r.get("day")
+        if not isinstance(name, str) or name.strip() == "":
+            continue
+        if not isinstance(cents, int) or isinstance(cents, bool):
+            continue
+        if not isinstance(day, str) or not DAY_RE.match(day):
+            continue
+        clean.append({"name": name.strip(), "cents": cents, "day": day})
+    clean.sort(key=lambda r: (r["day"], r["name"]))
+    lines = ["name\tday\tamount"]
+    total = 0
+    for r in clean:
+        total += r["cents"]
+        sign = "-" if r["cents"] < 0 else ""
+        magnitude = abs(r["cents"])
+        money = sign + str(magnitude // 100) + "." + pad(magnitude % 100, 2).replace(" ", "0")
+        y, m, d = r["day"].split("-")
+        day = d + "/" + m + "/" + y
+        name = r["name"].replace("\t", " ")
+        lines.append(name + "\t" + day + "\t" + money)
+    tsign = "-" if total < 0 else ""
+    tmag = abs(total)
+    lines.append("TOTAL\t\t" + tsign + str(tmag // 100) + "." + pad(tmag % 100, 2).replace(" ", "0"))
+    return "\n".join(lines)
+------------------------------------------------------------------------------
+
+----------------------- report_lib/pipe_report.py ----------------------------
+import re
+
+from .util import pad
+
+DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def pipe_report(rows):
+    clean = []
+    for r in rows:
+        name = r.get("name")
+        cents = r.get("cents")
+        day = r.get("day")
+        if not isinstance(name, str) or name.strip() == "":
+            continue
+        if not isinstance(cents, int) or isinstance(cents, bool):
+            continue
+        if not isinstance(day, str) or not DAY_RE.match(day):
+            continue
+        clean.append({"name": name.strip(), "cents": cents, "day": day})
+    clean.sort(key=lambda r: (r["day"], r["name"]))
+    lines = ["name|day|amount"]
+    total = 0
+    for r in clean:
+        total += r["cents"]
+        sign = "-" if r["cents"] < 0 else ""
+        magnitude = abs(r["cents"])
+        money = sign + str(magnitude // 100) + "." + pad(magnitude % 100, 2).replace(" ", "0")
+        y, m, d = r["day"].split("-")
+        day = d + "/" + m + "/" + y
+        name = r["name"].replace("|", "/")
+        lines.append(pad(name, 18) + "|" + day + "|" + pad(money, 10))
+    tsign = "-" if total < 0 else ""
+    tmag = abs(total)
+    lines.append(pad("TOTAL", 18) + "||" + pad(tsign + str(tmag // 100) + "." + pad(tmag % 100, 2).replace(" ", "0"), 10))
+    return "\n".join(lines)
+------------------------------------------------------------------------------
+
+--------------------------------- main.py ------------------------------------
+import sys
+
+from report_lib.csv_report import csv_report
+from report_lib.tsv_report import tsv_report
+from report_lib.pipe_report import pipe_report
+
+ROWS = [
+    {"name": "Ada Lovelace", "cents": 125000, "day": "2026-03-14"},
+    {"name": " Grace Hopper ", "cents": -4250, "day": "2026-01-02"},
+    {"name": 'Kurt "Bit" Godel', "cents": 7, "day": "2026-01-02"},
+    {"name": "Alan\tTuring", "cents": 999, "day": "2026-03-14"},
+    {"name": "Rear|Admiral", "cents": 100000, "day": "2025-12-31"},
+    {"name": "", "cents": 500, "day": "2026-01-01"},
+    {"name": "Bad Day", "cents": 500, "day": "2026-1-1"},
+    {"name": "Bad Money", "cents": 5.5, "day": "2026-01-01"},
+    {"name": "Zoe Zulu", "cents": 0, "day": "2026-03-14"},
+    {"name": "Truthy Flag", "cents": True, "day": "2026-01-05"},
+]
+
+
+def main(argv):
+    fmt = argv[1] if len(argv) > 1 else None
+    if fmt == "csv":
+        sys.stdout.write(csv_report(ROWS) + "\n")
+    elif fmt == "tsv":
+        sys.stdout.write(tsv_report(ROWS) + "\n")
+    elif fmt == "pipe":
+        sys.stdout.write(pipe_report(ROWS) + "\n")
+    else:
+        sys.stderr.write("usage: python main.py csv|tsv|pipe\n")
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
+------------------------------------------------------------------------------
+
+There is deliberately no `report_lib/__init__.py`. Add one if your Python needs
+it; if you do, say so.
+
+================================================================================
+STEP 1 — the actual task
+================================================================================
+
+This codebase has three exporters that are almost the same program written three
+times. Consolidate it so that each piece of logic exists exactly once, while the
+program's OBSERVABLE BEHAVIOUR stays byte-for-byte identical.
+
+Behaviour that must not change, for all three formats:
+
+  - which rows survive validation, and what they are trimmed to
+  - the sort order
+  - the header line, the body lines, the TOTAL line
+  - the exact bytes on standard output, including padding
+  - the usage message on standard error and the exit code 2 for an unknown
+    format, and exit code 0 for a good one
+
+The public entry point must stay `python main.py csv|tsv|pipe`.
+
+Constraints:
+
+  - No new dependency. Standard library only, whatever else is on the machine.
+  - `main.py` keeps its ROWS list exactly as given. It is the fixture.
+  - You choose the resulting file layout. Fewer, clearer modules is the point;
+    one 300-line file is not.
+  - Every file that ends up unused must be deleted, not left behind.
+
+WHAT DONE MEANS
+
+  1. You captured the ORIGINAL standard output of all three formats BEFORE
+     changing anything, and kept it where you can compare against it afterwards.
+  2. After the refactor you produced the output again and proved it identical
+     with a real byte comparison, not by reading it. Show the command and its
+     result for each of the three formats. Also show that the exit codes and the
+     usage message are unchanged.
+  3. You state what is now written once that used to be written three times, and
+     what you deleted.
+  4. You say plainly whether any behaviour changed. If something did, say what
+     and why; do not hide it.
+
+Note: the three exporters are NOT identical. Read them closely enough to know
+exactly where they genuinely differ before you choose a shape. Collapsing a real
+difference into a shared path is a failure, not a simplification. One of the
+fixture rows exists specifically to catch a validation rule that looks redundant
+and is not.
