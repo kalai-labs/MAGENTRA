@@ -31,10 +31,12 @@ function applyOverdriveShell() {
  * is worse than no toggle at all. The setting itself survives being hidden. */
 function applyCarefulShell() {
   const overdriveOn = uiSettings.overdrive === true;
-  const on = uiSettings.careful === true;
+  // Withdrawn beta: the pill stays hidden and the shell stays "off" whatever the
+  // stored setting says. See CAREFUL_MODE_ENABLED in state.js.
+  const on = CAREFUL_MODE_ENABLED && uiSettings.careful === true;
   document.documentElement.dataset.careful = overdriveOn && on ? "on" : "off";
   if (!carefulBtnEl) return;
-  carefulBtnEl.classList.toggle("hidden", !overdriveOn);
+  carefulBtnEl.classList.toggle("hidden", !overdriveOn || !CAREFUL_MODE_ENABLED);
   carefulBtnEl.classList.toggle("on", on);
   carefulBtnEl.setAttribute("aria-pressed", on ? "true" : "false");
   carefulBtnEl.title = on
@@ -185,8 +187,10 @@ function onOverdriveToggleClick() {
 function onOverdriveChanged(event) {
   const enabled = Boolean(event && event.enabled);
   // CAREFUL rides this frame. Absent means "unchanged" (an engine that predates
-  // the field), so only adopt it when the field is actually present.
-  const carefulSent = event && typeof event.careful === "boolean";
+  // the field), so only adopt it when the field is actually present — and never
+  // while the mode is a withdrawn beta, so an older engine or a transcript that
+  // still carries the flag cannot re-arm it behind the hidden pill.
+  const carefulSent = CAREFUL_MODE_ENABLED && event && typeof event.careful === "boolean";
   // Reflect on the pane that owns this event — overdrive is per-engine, so each
   // tiled screen keeps its own state and glow.
   const tabId =
@@ -210,7 +214,9 @@ function onOverdriveChanged(event) {
 }
 
 if (overdriveBtnEl) overdriveBtnEl.addEventListener("click", onOverdriveToggleClick);
-if (carefulBtnEl) carefulBtnEl.addEventListener("click", onCarefulToggleClick);
+// No listener while CAREFUL is a withdrawn beta — the pill is hidden, and an
+// unhidden one must still do nothing. See CAREFUL_MODE_ENABLED in state.js.
+if (carefulBtnEl && CAREFUL_MODE_ENABLED) carefulBtnEl.addEventListener("click", onCarefulToggleClick);
 if (overdriveEngageBtnEl) overdriveEngageBtnEl.addEventListener("click", confirmOverdriveDialog);
 if (overdriveCancelBtnEl) overdriveCancelBtnEl.addEventListener("click", closeOverdriveDialog);
 

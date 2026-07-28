@@ -60,7 +60,9 @@ When ON (composer toggle, `/overdrive on`, or `set_overdrive`), nothing asks: th
 - [ ] **Pre-turn snapshot** — a `git stash create` ref is parked before each root turn and reported as `overdriveSnapshot` on `turn_finished` (tracked files only; absent on a clean tree). `fs`
 - [ ] **Prompt contract** — the OVERDRIVE system-prompt section (plan-first, consequence-thinking, query-shaped evidence, ask-rubric, cleanup license) is present exactly while ON. `pure`
 
-## CAREFUL MODE — the OVERDRIVE modifier
+## CAREFUL MODE — the OVERDRIVE modifier · WITHDRAWN BETA
+
+**Off in shipped builds and unreachable from both the UI and the protocol** — no composer pill, no per-pane button, `/careful` off the command registry, and every arming request refused by the engine. The code is intact; re-enabling is the two `CAREFUL_MODE_ENABLED` flags (`engine/core/src/runtime/careful.ts` and `app/renderer/modules/state.js`). Everything below describes the mode as built, and is what the flags switch back on. See [`docs/CAREFUL-MODE.md`](docs/CAREFUL-MODE.md).
 
 A modifier of OVERDRIVE, not a third stance (composer pill, `/careful on`, or the `careful` field on `set_overdrive`). OVERDRIVE removes approval from every *action*; CAREFUL adds it back at exactly one *decision* — which direction to take. What the user approves is a **proposal of direction, never a plan** (ADR 0003), and the approved proposal then becomes the brief the work runs on. Armed independently of OVERDRIVE and inert while it is off; session-scoped, and `/resume` restores it from the transcript meta.
 

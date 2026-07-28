@@ -1,9 +1,17 @@
 # CAREFUL MODE
 
-> **Status: redesigned and working.** The mechanism is built, enforced and
-> tested. The slowness that made the first version unusable was a design fault,
-> not a tuning problem — see [What changed](#what-changed-and-why).
-> Last worked on 2026-07-27.
+> **Status: WITHDRAWN BETA — off in shipped builds.** The mechanism is built,
+> enforced and tested, but the mode proposes too weakly to earn the round trips
+> it costs, so it is switched off rather than shipped half-convincing. Nothing
+> is deleted; everything described below is still in the tree.
+>
+> It is unreachable from the UI and from the protocol: no composer pill, no
+> per-pane button, `/careful` is off the command registry, and the engine
+> refuses to arm the mode from any frame, command or resumed transcript.
+> To work on it, flip **both** flags together and rebuild:
+> `CAREFUL_MODE_ENABLED` in `engine/core/src/runtime/careful.ts`, and its twin in
+> `app/renderer/modules/state.js`.
+> Withdrawn 2026-07-28; last worked on 2026-07-27.
 
 A modifier of OVERDRIVE, not a third stance. OVERDRIVE removes approval from
 every *action*; CAREFUL adds it back at exactly one *decision* — which direction
@@ -134,6 +142,11 @@ Four things about the design that are easy to undo by accident:
   spent a whole phase reading. ADR 0008.
 
 ## What is verified
+
+The whole-turn check needs the mode switched on: while it is withdrawn the check
+skips itself with a note rather than failing 41 times over. Everything else here
+drives its layer directly and still runs — including the UI scenario that holds
+the mode unreachable.
 
 ```bash
 npm run build                                                  # tsc -b, engine only

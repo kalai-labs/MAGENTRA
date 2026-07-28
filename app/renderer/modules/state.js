@@ -140,6 +140,17 @@ const DEFAULT_UI_SETTINGS = {
   careful: false,
 };
 
+/**
+ * CAREFUL MODE is a WITHDRAWN BETA — the renderer twin of CAREFUL_MODE_ENABLED
+ * in engine/core/src/runtime/careful.ts, and it must be flipped with it.
+ *
+ * While false, neither CAREFUL toggle is built or shown (the composer pill and
+ * the per-pane button), the setting is forced off on load, and the engine
+ * refuses to arm the mode regardless of what any frame asks for. The paint and
+ * toggle code itself is left whole so re-enabling is these two constants.
+ */
+const CAREFUL_MODE_ENABLED = false;
+
 function loadUiSettings() {
   let saved = {};
   try {
@@ -182,6 +193,9 @@ function loadUiSettings() {
   settings.zoom = clampZoom(settings.zoom);
   settings.rainOpacity = clampUnit(settings.rainOpacity, DEFAULT_UI_SETTINGS.rainOpacity);
   settings.compactLimit = clampCompactLimit(settings.compactLimit);
+  // A withdrawn beta must not come back from an old localStorage entry: an
+  // install that armed CAREFUL before it was pulled loads with it off.
+  if (!CAREFUL_MODE_ENABLED) settings.careful = false;
   return settings;
 }
 

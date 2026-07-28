@@ -362,8 +362,12 @@ async function run() {
     await evaluate(`document.querySelector('#promptInput').value = ''`);
   });
 
-  await test("CAREFUL rides the OVERDRIVE frame, shows only in OVERDRIVE, and is remembered", async () => {
-    // CAREFUL modifies OVERDRIVE, so it has no affordance while OVERDRIVE is off.
+  await test("CAREFUL is withdrawn: no affordance, and nothing can arm it", async () => {
+    // The mode is a withdrawn beta (CAREFUL_MODE_ENABLED in state.js). The pill
+    // and its per-pane twin must stay unreachable, and the state must stay off
+    // however the shell is driven — otherwise OVERDRIVE would silently gain a
+    // checkpoint the user cannot see or remove.
+    assert.equal(await evaluate(`CAREFUL_MODE_ENABLED`), false);
     assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('hidden')`), true);
 
     // Engage OVERDRIVE. The first-ever enable routes through the teaching dialog.
@@ -374,49 +378,33 @@ async function run() {
       if (dialog && !dialog.classList.contains('hidden')) document.querySelector('#overdriveEngageBtn').click();
     })()`);
     await pause();
-    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('hidden')`), false);
-    assert.equal(await evaluate(`document.querySelector('#carefulBtn').getAttribute('aria-pressed')`), "false");
+    // OVERDRIVE is the stance CAREFUL used to modify: engaging it is exactly
+    // when the pill used to appear, so this is where its absence matters.
+    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('hidden')`), true);
+    assert.equal(await evaluate(`document.documentElement.dataset.careful`), "off");
 
-    // Toggling CAREFUL rides the existing set_overdrive frame — it has none of
-    // its own, so the two states can never reach the engine out of step.
+    // The element still exists (kept for the beta's return) but carries no click
+    // listener, so even a synthetic click cannot arm the mode or reach the engine.
     frames.length = 0;
     await evaluate(`document.querySelector('#carefulBtn').click()`);
     await pause();
-    const armed = frames.filter((frame) => frame.type === "set_overdrive").pop();
-    assert.ok(armed, "toggling CAREFUL must send a set_overdrive frame");
-    assert.equal(armed.careful, true);
-    assert.equal(armed.enabled, true);
-    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('on')`), true);
-    assert.equal(await evaluate(`document.documentElement.dataset.careful`), "on");
-
-    // An engine-driven change (the /careful slash command) syncs the pill back.
-    await emit({ type: "overdrive_changed", enabled: true, careful: false });
+    assert.equal(
+      frames.filter((frame) => frame.type === "set_overdrive" && frame.careful === true).length,
+      0,
+      "clicking the withdrawn CAREFUL pill must never arm it on the engine",
+    );
+    assert.equal(await evaluate(`uiSettings.careful === true`), false);
     assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('on')`), false);
     assert.equal(await evaluate(`document.documentElement.dataset.careful`), "off");
 
-    // An engine that predates the field omits it — that must read as
-    // "unchanged", never as "off", or an old engine would disarm the mode.
-    await evaluate(`document.querySelector('#carefulBtn').click()`);
-    await pause();
-    assert.equal(await evaluate(`uiSettings.careful === true`), true);
-    await emit({ type: "overdrive_changed", enabled: true });
-    assert.equal(await evaluate(`uiSettings.careful === true`), true);
-    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('on')`), true);
-
-    // Disengaging OVERDRIVE hides the pill but keeps the choice, so re-engaging
-    // restores it rather than silently dropping it.
-    await evaluate(`document.querySelector('#overdriveBtn').click()`);
-    await pause();
+    // An engine that still announces CAREFUL (an older build, or a resumed
+    // transcript that carried the flag) must not light the shell back up.
+    await emit({ type: "overdrive_changed", enabled: true, careful: true });
     assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('hidden')`), true);
+    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('on')`), false);
     assert.equal(await evaluate(`document.documentElement.dataset.careful`), "off");
-    assert.equal(await evaluate(`uiSettings.careful === true`), true);
-    await evaluate(`document.querySelector('#overdriveBtn').click()`);
-    await pause();
-    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('hidden')`), false);
-    assert.equal(await evaluate(`document.querySelector('#carefulBtn').classList.contains('on')`), true);
 
     // Leave the shell as the rest of the suite expects it.
-    await evaluate(`document.querySelector('#carefulBtn').click()`);
     await evaluate(`document.querySelector('#overdriveBtn').click()`);
     await pause();
   });
@@ -1613,8 +1601,7 @@ async function run() {
         cinematicScoped: Boolean(cin) && cin.parentElement === b,
         aNoCinematic: !a.querySelector(':scope > .overdrive-cinematic'),
         inputClass: b.querySelector('.pane-input').classList.value,
-        cfShown: !b.querySelector('.pane-cf-btn').classList.contains('hidden'),
-        aCfHidden: a.querySelector('.pane-cf-btn').classList.contains('hidden'),
+        cfAbsent: !b.querySelector('.pane-cf-btn') && !a.querySelector('.pane-cf-btn'),
       };
     })()`);
     assert.ok(od.bOn, "the pane button engages OVERDRIVE for its own workspace");
@@ -1640,20 +1627,10 @@ async function run() {
     const odFrame = frames.filter((f) => f.type === "set_overdrive").pop();
     assert.equal(frames.filter((f) => f.type === "set_overdrive").length - odFramesBefore, 1);
     assert.equal(odFrame.enabled, true);
-    // CAREFUL is reachable in this layout — tiling hides the shared composer, so
-    // without the pane pill the mode could not be turned on or off at all.
-    assert.ok(od.cfShown, "CAREFUL appears on the screen whose OVERDRIVE is engaged");
-    assert.ok(od.aCfHidden, "and stays hidden on a screen that is not in OVERDRIVE");
-    const cfClick = `tabs.get('tB').paneEl.querySelector('.pane-cf-btn').click()`;
-    await evaluate(cfClick);
-    await pause(40);
-    const cfOn = frames.filter((f) => f.type === "set_overdrive").pop();
-    assert.equal(cfOn.careful, true, "the pane's CAREFUL rides its own set_overdrive frame");
-    assert.equal(cfOn.enabled, true, "toggling CAREFUL leaves that screen's OVERDRIVE alone");
-    assert.equal(await evaluate(`tabs.get('tB').paneEl.querySelector('.pane-cf-btn').classList.contains('on')`), true);
-    await evaluate(cfClick);
-    await pause(40);
-    assert.equal(frames.filter((f) => f.type === "set_overdrive").pop().careful, false, "and turns back off");
+    // CAREFUL is a withdrawn beta, so the pane pill is not built at all — this
+    // layout was its last reachable affordance (tiling hides the shared
+    // composer), and engaging a pane's OVERDRIVE must no longer surface it.
+    assert.ok(od.cfAbsent, "no CAREFUL button exists on any pane while the mode is withdrawn");
     assert.equal(await evaluate(`tabs.get('tB').careful === true`), false);
     // Open a 3rd tab → 3-pane layout; the big (bottom) pane defaults to the last.
     tabEvt("test:tab-opened", { tabId: "tC", workspace: "/tmp/ws-c" });

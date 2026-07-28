@@ -170,7 +170,10 @@
               <span class="od-btn-glyph">⚡</span><span class="od-btn-label">OVERDRIVE</span>
             </button>
             <!-- CAREFUL rides beside OVERDRIVE and is hidden while OVERDRIVE is
-                 off: it is a modifier of that stance, not a mode of its own. -->
+                 off: it is a modifier of that stance, not a mode of its own.
+                 WITHDRAWN BETA: while CAREFUL_MODE_ENABLED (state.js) is false
+                 this stays hidden and carries no click listener. The markup is
+                 kept so restoring the mode is the flag alone. -->
             <button id="carefulBtn" class="composer-select careful-btn hidden" aria-pressed="false" title="CAREFUL — propose a direction and wait for approval before acting">
               <span class="cf-btn-glyph">◉</span><span class="cf-btn-label">CAREFUL</span>
             </button>
