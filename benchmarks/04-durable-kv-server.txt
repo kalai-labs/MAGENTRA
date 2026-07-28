@@ -1,0 +1,121 @@
+GROUND RULES (read first)
+
+You are on a Windows machine with NO internet access. Nothing can be downloaded
+and nothing can be installed: no pip install, no conda install, no package
+manager, no git clone, no fetching anything. Python 3 is installed and a large
+set of libraries is already present. You may use any library that is ALREADY
+installed — check first, and if you rely on one, name it and show how you
+confirmed it was there. There is no Node.js on this machine.
+
+Everything you deliver must actually run. A claim that something works is worth
+nothing here; the run is the proof. Show the exact commands you executed and the
+exact output you saw. If something fails, report it as failed with its output.
+
+Write files with explicit UTF-8 encoding and explicit "\n" newlines. Build paths
+with pathlib or os.path, never by gluing strings with "/".
+
+Do not leave scratch files, half-finished attempts or dead code behind.
+
+Work in the current directory. It is empty and it is yours.
+
+================================================================================
+TASK — a durable key-value server that survives being killed
+================================================================================
+
+Build a small key-value store: a server process holding the data, a command-line
+client that talks to it over a local TCP socket, and an append-only log on disk
+so that killing the server loses nothing that was acknowledged.
+
+No database engine. No web framework. Standard library is enough; if you reach
+for an installed third-party library, justify it in one line.
+
+THE SERVER
+
+  Started as:   python server.py <port> <datadir>
+
+  It listens on 127.0.0.1:<port>, speaks HTTP/1.1, and keeps its state under
+  <datadir>. It prints exactly one line to standard output once it is actually
+  accepting connections, and nothing else while it is healthy. A client must be
+  able to wait for that line instead of sleeping a fixed number of seconds.
+
+  PUT    /kv/<key>       request body is the value  -> 204, empty body
+  GET    /kv/<key>                                  -> 200, value as the body,
+                                                       or 404 if absent
+  DELETE /kv/<key>                                  -> 204, or 404 if absent
+  GET    /stats                                     -> 200, a JSON object with
+                                                       exactly the integer keys
+                                                       keys, writes, deletes,
+                                                       reads
+  POST   /admin/shutdown                            -> 204, then the process
+                                                       shuts down cleanly and
+                                                       exits 0 within 2 seconds
+
+  Keys are 1..128 characters from [A-Za-z0-9_.-]; anything else is 400. Values
+  are arbitrary bytes up to 65536; larger is 413. Any other path or method
+  answers 404 or 405 — you choose, but be consistent and tell me which.
+
+  `reads` counts every GET /kv/ request including misses. `writes` counts every
+  accepted PUT. `deletes` counts every accepted DELETE. `keys` is how many keys
+  are present right now.
+
+DURABILITY
+
+  Every accepted PUT and DELETE is appended to a log file under <datadir> and
+  forced to disk BEFORE its response is sent. Once the client has seen the 204,
+  the write must survive the process dying one instruction later. On start, the
+  server rebuilds its state by replaying that log.
+
+  When the log passes 5000 entries the server compacts it: writes a fresh log
+  holding one entry per live key, then puts it in place. The replacement must be
+  atomic on Windows — a process killed in the middle of compaction must come back
+  to either the complete old log or the complete new one, never to a torn file.
+  Be careful here: the obvious rename call is NOT atomic on Windows when the
+  destination already exists.
+
+THE CLIENT
+
+  python client.py <port> get <key>
+  python client.py <port> set <key> <value>
+  python client.py <port> del <key>
+  python client.py <port> stats
+
+  `get` writes the value to standard output and exits 0; on a miss it writes
+  nothing to standard output, one line to standard error, and exits 1. `set` and
+  `del` write nothing and exit 0. Any transport failure exits 2 with the reason
+  on standard error.
+
+================================================================================
+WHAT DONE MEANS — you must actually perform all five of these
+================================================================================
+
+  1. CONCURRENCY. Start the server. Write 1000 distinct keys using at least 8
+     writers running AT THE SAME TIME, not one after another. Then read all 1000
+     back and confirm every value is exactly what was written. Report how many
+     matched, out of 1000. (Note what the standard library's default HTTP server
+     does with concurrent connections before you trust this step.)
+
+  2. CRASH RECOVERY. Kill the server the hard way — TerminateProcess, i.e.
+     `Popen.kill()` or `taskkill /F`, NOT the clean shutdown endpoint. Start it
+     again on the same datadir. Read all 1000 keys back and confirm nothing was
+     lost. Report the number again.
+
+  3. COMPACTION. Drive the log past its threshold. Show the log's size or entry
+     count before and after, so I can see compaction actually happened. Then read
+     the data back, restart the server on the compacted log, and read it back
+     again. Both must be correct.
+
+  4. THE EDGES. Exercise each of these and show the real response: a missing key,
+     a key with an illegal character, a key that is 129 characters long, an
+     oversized value, a deleted key read back, and a key written twice. Then show
+     that /stats reports numbers matching what you actually did.
+
+  5. NO LEFTOVERS. Stop everything, including via /admin/shutdown at least once
+     to prove that path works. Then prove no server process from this task is
+     still running and no port is still held. Show the command you used and its
+     output.
+
+Do not fake any of this. If step 2 loses data, say so and show it — an honest
+failure report is worth more here than a passing claim I cannot reproduce.
+
+Finish by telling me in a few lines: how to start the server, how to use the
+client, where the data lives, and anything you know is still weak.

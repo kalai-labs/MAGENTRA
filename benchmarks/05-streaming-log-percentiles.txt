@@ -1,0 +1,121 @@
+GROUND RULES (read first)
+
+You are on a Windows machine with NO internet access. Nothing can be downloaded
+and nothing can be installed: no pip install, no conda install, no package
+manager, no git clone, no fetching anything. Python 3 is installed and a large
+set of libraries is already present. You may use any library that is ALREADY
+installed — check first, and if you rely on one, name it and show how you
+confirmed it was there. There is no Node.js on this machine.
+
+Everything you deliver must actually run. A claim that something works is worth
+nothing here; the run is the proof. Show the exact commands you executed and the
+exact output you saw. If something fails, report it as failed with its output.
+
+Write files with explicit UTF-8 encoding and explicit "\n" newlines — on Windows
+the default text mode writes "\r\n" and would change every byte count below.
+
+Do not leave scratch files, half-finished attempts or dead code behind.
+
+Work in the current directory. It is empty and it is yours.
+
+================================================================================
+STEP 1 — generate the dataset (deterministic; no randomness of your own)
+================================================================================
+
+Write a generator that produces `access.log` with exactly 2,000,000 lines.
+
+Every number comes from this generator and nothing else, so that the file is
+byte-identical on any machine:
+
+  state starts at   20260728
+  next():  state = (48271 * state) % 2147483647 ; return state
+
+Do not use `random`, `numpy.random`, or any other random source.
+
+For each line i, from 0 to 1999999, draw three values IN THIS ORDER:
+
+  a = next()   ->  service = SERVICES[a % 12]
+  b = next()   ->  status  = STATUSES[b % 6]
+  c = next()   ->  latency = c % 5000
+
+  SERVICES = [auth-api, billing-api, cart-api, checkout-api, catalog-api,
+              image-cdn, inventory-api, notify-api, payments-api, search-api,
+              session-api, shipping-api]        (exactly this order)
+
+  STATUSES = [200, 201, 204, 400, 500, 503]     (exactly this order)
+
+The line is those four fields separated by single spaces, then "\n":
+
+  <i> <service> <status> <latency>
+
+So line 0 starts with `0 `, and the file ends with a newline.
+
+Report the file's size in bytes and its first three lines, so I can confirm we
+generated the same data. If your byte count is not 55610458 you have deviated
+somewhere — find out where before continuing.
+
+================================================================================
+STEP 2 — the analyser
+================================================================================
+
+Write `analyse.py`, which reads `access.log` and prints exactly five lines to
+standard output and nothing else:
+
+  <service> count=<n> errors=<n> p50=<n> p95=<n> p99=<n>
+
+One line per service, for the FIVE services with the highest p99 latency, in
+descending p99 order. Ties on p99 break by service name ascending.
+
+  count   — lines for that service
+  errors  — lines for that service whose status is 500 or 503
+  p50/p95/p99 — latency percentiles by NEAREST RANK:
+
+      sort that service's latencies ascending into a 0-based array of length n;
+      the p-th percentile is the element at index  ceil(p / 100 * n) - 1
+
+    For n = 200 that puts p50 at index 99 and p99 at index 197. Use exactly this
+    rule. Other percentile definitions — including the default of every stats
+    library on this machine — give different numbers, and I will be comparing
+    numbers.
+
+BUDGETS — these are part of the task, not advice
+
+  - The analyser must finish in under 6 seconds of wall clock time on this
+    machine. MEASURE it; do not estimate it.
+  - Its peak resident memory must stay under 256 MB. Measure that too, with a
+    real tool, and name the tool you used. Loading the whole file, or holding
+    every latency, will not fit — check the arithmetic before you write code.
+
+  Generation time does not count. Only the analysis run.
+
+================================================================================
+STEP 3 — prove the numbers are right
+================================================================================
+
+A fast program that prints wrong numbers is worth nothing, and you have nothing
+to check it against unless you build it.
+
+Write a second, deliberately naive reference implementation. It may be as slow
+and as memory-hungry as it likes: collect every latency per service and sort them
+outright. It is not part of the delivered tool and you will delete it at the end.
+
+Run both. The five output lines must be BYTE-IDENTICAL. Show the comparison
+command and its result. If they disagree, assume the fast one is wrong until you
+have proved otherwise, and tell me which one was lying.
+
+================================================================================
+WHAT DONE MEANS
+================================================================================
+
+  1. `access.log` exists; you report its byte size and first three lines.
+  2. The analyser's five output lines, in full.
+  3. The measured wall clock time and the measured peak memory, as real numbers
+     from a real measurement, with the command that produced them.
+  4. The byte comparison against the naive reference, and its result.
+  5. One or two sentences on why your approach fits the memory budget: what you
+     keep per service, and why its size does not grow with the number of lines.
+  6. The reference implementation and every scratch file deleted. `access.log`
+     may stay.
+
+If you cannot meet a budget, say which one and by how much, and show the
+measurement. Do not quietly relax it, and do not shrink the dataset.

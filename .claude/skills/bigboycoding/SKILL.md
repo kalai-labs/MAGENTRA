@@ -123,6 +123,13 @@ invariants directly:
 npm run build && node .claude/skills/bigboycoding/permission-check.mjs
 ```
 
+`finishing-check.mjs` is the same pattern one level up: it drives whole turns
+through a real `Engine` with a scripted provider and asserts the end-of-turn
+ladder — which rung fired, in what order, how many times, and how many provider
+calls the turn cost. Reach for it whenever you touch `Session.runTurn`'s
+end-of-turn rungs; a rung's cost and its position are both easy to break
+silently.
+
 ## Gotchas
 
 - **`engine/protocol/src/types.ts` has 55 transitive importers and one direct

@@ -60,6 +60,16 @@ When ON (composer toggle, `/overdrive on`, or `set_overdrive`), nothing asks: th
 - [ ] **Pre-turn snapshot** — a `git stash create` ref is parked before each root turn and reported as `overdriveSnapshot` on `turn_finished` (tracked files only; absent on a clean tree). `fs`
 - [ ] **Prompt contract** — the OVERDRIVE system-prompt section (plan-first, consequence-thinking, query-shaped evidence, ask-rubric, cleanup license) is present exactly while ON. `pure`
 
+## Finishing rungs — what stands between "stopped talking" and "delivered"
+
+Two end-of-turn checks, both ranked ABOVE the self-verify rung: a self-verify that
+answers `DONE` breaks the loop where it stands, so anything below it would never run
+on a clean turn.
+
+- [ ] **Runtime evidence floor** — a turn that wrote runnable source (by file suffix; documentation and config do not count) and executed no command at all gets exactly one reminder to prove the change by running it: fast gate first, then the changed path and the callers it reaches, a throwaway harness in the system temp dir deleted in the same turn, judged on exit codes/stdout/logs rather than on a screenshot it cannot see. Deterministic, once per turn, and a reminder rather than a block — the same shape as CAREFUL's grounding floor. A command that ran and exited nonzero still counts as an observation. `pure`
+- [ ] **Self-check sharpening** — the self-verify text flips its closing clause once the turn changed code: instead of warning off invented rituals it demands the evidence, names the changed files, and refuses "compiled" or "re-read" as proof. `pure`
+- [ ] **Readability pass** — OPTIONAL, off by default (composer pill, per-pane button, `/readability on`, or `set_readability`). After a turn that changed files, one extra round reading the diff for cleanliness (naming, dead code, duplication, leftover debug output, orphaned imports) and for anything the user is still owed (assumptions, omitted scope, limitations, manual steps). Fires at most once — a second pass is how a tidy-up becomes a refactor — costs nothing on a turn that changed nothing, and never touches the middle of the work. Session-scoped, independent of OVERDRIVE, restored by `/resume` from the transcript meta. `pure`
+
 ## CAREFUL MODE — the OVERDRIVE modifier · WITHDRAWN BETA
 
 **Off in shipped builds and unreachable from both the UI and the protocol** — no composer pill, no per-pane button, `/careful` off the command registry, and every arming request refused by the engine. The code is intact; re-enabling is the two `CAREFUL_MODE_ENABLED` flags (`engine/core/src/runtime/careful.ts` and `app/renderer/modules/state.js`). Everything below describes the mode as built, and is what the flags switch back on. See [`docs/CAREFUL-MODE.md`](docs/CAREFUL-MODE.md).

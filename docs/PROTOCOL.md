@@ -100,6 +100,7 @@ Emitted once when a session begins (on `start()`, after `/clear`, and after a re
 | `model` | string | Configured model id. |
 | `overdrive` | boolean | Whether OVERDRIVE (the fully-autonomous stance) is active for the session. |
 | `careful` | boolean? | Whether CAREFUL MODE is armed — the OVERDRIVE modifier that makes a substantial request present a proposal for approval before acting. Only has an effect while `overdrive` is true, and remembered independently of it. **Always `false` in current builds: the mode is a withdrawn beta (see `set_overdrive`).** |
+| `readability` | boolean? | Whether the READABILITY finishing pass is armed (see `set_readability`). Not a modifier of anything: it applies in either stance. |
 | `commands` | `SlashCommandInfo[]` | The engine's slash-command registry, so the frontend palette can never drift. |
 | `rateCard` | `Record<string, { input, output, cacheRead?, cacheWrite?, contextWindow }>` | Per-model $/1M rates + context windows — the built-in table with user `pricing` overrides applied. The frontend's single source for model hints; it must keep no pricing copy of its own. |
 
@@ -625,6 +626,31 @@ can never drift apart in a frontend.
 ```json
 {"type":"set_overdrive","enabled":true,"careful":true}
 ```
+
+### `set_readability`
+
+Toggles the READABILITY finishing pass: after a turn that changed files, the agent
+spends one extra round reading its own diff — for cleanliness (naming, dead code,
+duplication, leftover debug output) and for anything the user still has to be told
+(assumptions, omitted scope, manual steps). Off by default, at most once per turn,
+and free on a turn that changed nothing.
+
+Unlike `careful` it is **not** a modifier of OVERDRIVE, so it gets its own frame and
+its own event: it applies in either stance and there is no second state it must stay
+in step with. Session-scoped, restored by `/resume` from the transcript meta, and also
+reachable as `/readability on|off`.
+
+| Field | Type |
+| --- | --- |
+| `type` | `"set_readability"` |
+| `enabled` | boolean |
+
+```json
+{"type":"set_readability","enabled":true}
+```
+
+The engine answers with `readability_changed`, and reports the live state on
+`session_started.readability`.
 
 ### `slash_command`
 

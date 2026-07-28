@@ -198,6 +198,8 @@ export class Engine {
   /** Same memory, for the CAREFUL MODE modifier — a /clear-created session must
    *  inherit the user's armed choice, not silently drop back to unguarded. */
   private carefulEnabled = false;
+  /** Same memory again, for the READABILITY finishing pass. */
+  private readabilityEnabled = false;
   private team: CrewAgent[];
   private teamWarnings: string[];
   /** Agent ids with a backpack build currently in flight (dedupes launches). */
@@ -283,6 +285,7 @@ export class Engine {
     session.services.cron = this.scheduler;
     if (this.overdriveEnabled) session.setOverdrive(true);
     if (this.carefulEnabled) session.setCareful(true);
+    if (this.readabilityEnabled) session.setReadability(true);
     return session;
   }
 
@@ -374,6 +377,7 @@ export class Engine {
       model: this.opts.settings.model,
       overdrive: this.session.isOverdrive(),
       careful: this.session.isCareful(),
+      readability: this.session.isReadability(),
       skills: (this.opts.skills ?? []).map((s) => ({ name: s.name, description: s.description })),
     });
     this.emit({ type: "task_list_updated", tasks: this.session.tasks.list() });
@@ -806,6 +810,10 @@ export class Engine {
         // switch CAREFUL off just by toggling OVERDRIVE.
         if (typeof request.careful === "boolean") this.applyCareful(request.careful);
         break;
+      case "set_readability":
+        this.readabilityEnabled = request.enabled;
+        this.session.setReadability(request.enabled);
+        break;
       case "set_model":
         this.handleSetModel(request.model);
         break;
@@ -1196,6 +1204,28 @@ export class Engine {
           });
         } else {
           this.emit({ type: "command_output", text: "Usage: /careful on|off" });
+        }
+        break;
+      }
+      case "readability": {
+        const arg = args?.trim();
+        if (arg === "on" || arg === "off") {
+          const enabled = arg === "on";
+          this.readabilityEnabled = enabled;
+          this.session.setReadability(enabled);
+          this.emit({
+            type: "command_output",
+            text: enabled
+              ? "✎ READABILITY on — after a turn that changed code, one last pass over the diff for cleanliness and for anything you still need told."
+              : "READABILITY off — turns end as soon as the work is verified.",
+          });
+        } else if (!arg) {
+          this.emit({
+            type: "command_output",
+            text: `READABILITY is ${this.session.isReadability() ? "ON" : "OFF"}. Usage: /readability on|off`,
+          });
+        } else {
+          this.emit({ type: "command_output", text: "Usage: /readability on|off" });
         }
         break;
       }
@@ -2459,6 +2489,10 @@ export class Engine {
         this.session.setOverdrive(meta.overdrive);
       }
       if (typeof meta?.careful === "boolean") this.applyCareful(meta.careful);
+      if (typeof meta?.readability === "boolean") {
+        this.readabilityEnabled = meta.readability;
+        this.session.setReadability(meta.readability);
+      }
       this.announceSession();
       // Repaint the conversation in the UI. Replaces the old text-only note:
       // the frontend rebuilds the chat from this render-ready snapshot.
@@ -2601,6 +2635,7 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
     ],
   },
   { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous stance: nothing asks, self-verified completion" },
+  { cmd: "/readability", args: "[on|off]", desc: "one last pass over a code change: clean it up, and say what you still owe the user" },
   // /careful is deliberately absent: CAREFUL MODE is a withdrawn beta
   // (CAREFUL_MODE_ENABLED in runtime/careful.ts). Restore this line when it returns.
   { cmd: "/styles", args: "[on|off <id>]", desc: "deprecated alias for /skills" },
