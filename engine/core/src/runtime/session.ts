@@ -70,7 +70,14 @@ import {
   parseCarefulVerdict,
   salvageQuestionObjects,
 } from "./careful.js";
-import { codeFilesAmong, readabilityPassText, runtimeEvidenceText, selfVerifyText } from "./finishing.js";
+import {
+  circularEvidenceText,
+  codeFilesAmong,
+  looksLikeTestDouble,
+  readabilityPassText,
+  runtimeEvidenceText,
+  selfVerifyText,
+} from "./finishing.js";
 import { buildSystemPrompt, skillsBlock } from "../agent/prompts.js";
 import { DEBUG_DIR, commandRunsRepro, reproScriptRelPath } from "../ma/debug.js";
 import { SearchLog, evaluateReuseGate, type ReuseGateResult } from "../knowledge/reuseGate.js";
@@ -448,8 +455,17 @@ export class Session {
    */
   private readonly filesChangedThisTurn = new Set<string>();
   private ranCommandThisTurn = false;
+  /**
+   * The subset of those files whose written text stands something in for a real
+   * dependency — a mock, fake, stub or patch. Tracked separately because a check
+   * that leans on one of these is not evidence about the dependency it replaced:
+   * the double was authored by the same understanding as the code, so the two
+   * agree by construction and a green result proves only self-consistency.
+   */
+  private readonly doubleFilesThisTurn = new Set<string>();
   /** Finishing rungs fire at most once per turn each (reset at turn start). */
   private evidenceNudgeFired = false;
+  private circularNudgeFired = false;
   private readabilityPassFired = false;
   /** A2: mutable crew roster (hot-reloadable); consumed by buildSystemPrompt and services.team. */
   private teamAgents: CrewAgent[];
@@ -1770,8 +1786,10 @@ export class Session {
     // Finishing rungs: both the evidence they judge and their once-per-turn
     // fuses are about THIS turn's work, so all four reset together.
     this.filesChangedThisTurn.clear();
+    this.doubleFilesThisTurn.clear();
     this.ranCommandThisTurn = false;
     this.evidenceNudgeFired = false;
+    this.circularNudgeFired = false;
     this.readabilityPassFired = false;
 
     const turnId = `t_${++this.turnCounter}`;
@@ -2200,12 +2218,39 @@ export class Session {
           // Placed ahead of the self-verify rung deliberately. A self-verify
           // that answers DONE breaks the loop where it stands, so anything
           // ranked below it on a clean turn would never run at all.
-          if (stopReason === "end_turn" && !this.evidenceNudgeFired && !this.ranCommandThisTurn) {
+          //
+          // The floor has two shapes, and they ask the same question of two
+          // different turns: is the evidence about the REAL thing?
+          //
+          //   nothing ran        — the change was reasoned about, never observed
+          //   only doubles ran   — something was observed, but it was a stand-in
+          //                        this turn wrote, which agrees with whatever
+          //                        the author believed and so cannot disprove it
+          //
+          // The second shape exists because the first one, alone, pushes toward
+          // the very failure it is meant to catch: told "you ran nothing" about
+          // a dependency this machine cannot execute, the cheapest way to go
+          // quiet is to mock it and watch the mock pass. Both texts therefore
+          // name an honest "I could not run this" as a complete answer.
+          //
+          // Only one can fire at a given stop (they disagree on ranCommand), so
+          // a turn pays at most one extra round for each, and only ever when it
+          // has no real evidence to show.
+          if (stopReason === "end_turn" && codeFilesAmong(this.filesChangedThisTurn).length > 0) {
             const changedCode = codeFilesAmong(this.filesChangedThisTurn);
-            if (changedCode.length > 0) {
+            if (!this.ranCommandThisTurn && !this.evidenceNudgeFired) {
               this.evidenceNudgeFired = true;
               this.emit({ type: "command_output", text: "↻ nothing was run — verifying the change for real" });
               this.pushMessage({ role: "user", content: [{ type: "text", text: runtimeEvidenceText(changedCode) }] });
+              continue;
+            }
+            if (this.ranCommandThisTurn && this.doubleFilesThisTurn.size > 0 && !this.circularNudgeFired) {
+              this.circularNudgeFired = true;
+              this.emit({ type: "command_output", text: "↻ checked against your own stand-in — confirm the real contract" });
+              this.pushMessage({
+                role: "user",
+                content: [{ type: "text", text: circularEvidenceText(changedCode, [...this.doubleFilesThisTurn]) }],
+              });
               continue;
             }
           }
@@ -2828,7 +2873,13 @@ export class Session {
     // A path outside the workspace has no useful relative form ("../../etc/..."),
     // so it is named in full — the rung reads better with a path the user can
     // recognize than with a walk back up the tree.
-    this.filesChangedThisTurn.add(rel === "" || rel.startsWith("..") ? absolute : rel);
+    const named = rel === "" || rel.startsWith("..") ? absolute : rel;
+    this.filesChangedThisTurn.add(named);
+    // Only the text this turn actually wrote is judged, never the file on disk:
+    // the question is what THIS turn stood in for, and a file that already
+    // contained mocks before the turn started is not this turn's assumption.
+    const written = (input as Record<string, unknown>)[toolName === "Write" ? "content" : "new_string"];
+    if (typeof written === "string" && looksLikeTestDouble(written)) this.doubleFilesThisTurn.add(named);
   }
 
   /**
