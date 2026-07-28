@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.12.0.0 — 2026-07-28
+
+### Features
+
+- removed readability mode ([018a194](https://github.com/kalai-labs/MAGENTRA/commit/018a194d72fb6659ca35667c43b638c2c4b27739))
+
+[Compare with v0.11.1.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.11.1.0...v0.12.0.0)
+
 ## 0.11.1.0 — 2026-07-28
 
 ### Bug fixes
