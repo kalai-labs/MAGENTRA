@@ -591,6 +591,16 @@ function paneFor(id, ts) {
     odBtn.title = "OVERDRIVE — fully autonomous for this workspace";
     odBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleTabOverdrive(id); });
     head.appendChild(odBtn);
+    // Per-screen "open the folder": tiled panes each show a different workspace,
+    // so the button carries its own tab id rather than relying on which pane is
+    // focused. Same action as the topbar button in the single-console view.
+    const revealBtn = document.createElement("button");
+    revealBtn.className = "pane-reveal-btn";
+    revealBtn.textContent = "📁";
+    revealBtn.title = "Show this workspace folder in your file manager";
+    revealBtn.setAttribute("aria-label", "Show this workspace folder in your file manager");
+    revealBtn.addEventListener("click", (e) => { e.stopPropagation(); void revealWorkspaceFolder(id); });
+    head.appendChild(revealBtn);
     head.addEventListener("contextmenu", (e) => openPaneCtxMenu(e, id));
     pane.appendChild(head);
     pane.appendChild(ts.streamEl);

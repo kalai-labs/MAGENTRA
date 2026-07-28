@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld("magentra", {
   chooseWorkspace: () => ipcRenderer.invoke("workspace:choose"),
   openWorkspace: (workspace) => ipcRenderer.invoke("workspace:open", workspace),
   openWorkspaceFile: (relPath) => ipcRenderer.invoke("workspace:openFile", relPath),
+  // Show a workspace folder in the OS file manager. Names a tab, never a path —
+  // main resolves the folder, so each pane reveals its own workspace.
+  revealWorkspace: (tabId) => ipcRenderer.invoke("workspace:reveal", tabId),
   // Attach-context picker: opens a file dialog and returns read/extracted text
   // for each chosen file (≤2 MB each). The renderer folds it into the message.
   pickContextFiles: (opts) => ipcRenderer.invoke("context:pickFiles", opts),

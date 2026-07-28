@@ -791,6 +791,20 @@ function onEngineGone() {
 
 const RECOMMENDED_SUFFIX = "(Recommended)";
 
+/** What an answered question leaves behind in the transcript. The card itself is
+ * spent the moment it is answered — keeping it on screen invites a second look
+ * at options that can no longer be chosen — so it collapses into the same quiet
+ * system-note voice the rest of the inline info lines use, carrying the question
+ * and what was picked so the decision stays readable later in the scrollback. */
+function questionAnsweredNote(q, values) {
+  const el = document.createElement("div");
+  el.className = "sys-note question-answered";
+  const label = (q.header && q.header.trim()) || "QUESTION";
+  const chosen = values.length > 0 ? values.map((v) => `“${v}”`).join(", ") : "(no answer)";
+  el.textContent = `User answered Magentra's question · ${label} — “${q.question}” → ${chosen}`;
+  return el;
+}
+
 function onQuestionRequest(event) {
   if (!streamEl) return;
 
@@ -831,11 +845,14 @@ function onQuestionRequest(event) {
   function noteAnswered(qIdx) {
     answered.add(qIdx);
     if (!progressEl) return;
-    const done = answered.size === questions.length;
-    progressEl.textContent = done
-      ? `${questions.length} of ${questions.length} answered`
-      : `${answered.size} of ${questions.length} answered — answer all to continue`;
-    progressEl.classList.toggle("complete", done);
+    if (answered.size === questions.length) {
+      // The last card just retired: the counter tracked cards that are no longer
+      // on screen, so it goes with them and the round leaves only its notes.
+      progressEl.remove();
+      progressEl = null;
+      return;
+    }
+    progressEl.textContent = `${answered.size} of ${questions.length} answered — answer all to continue`;
   }
 
   questions.forEach((q, qIdx) => {
@@ -866,10 +883,10 @@ function onQuestionRequest(event) {
     optionsEl.className = "question-options";
     cardEl.appendChild(optionsEl);
 
-    // Sends the final answer array and locks the card. One element for single
+    // Sends the final answer array and retires the card. One element for single
     // select; every chosen label for multi-select.
     function submitAnswers(values) {
-      if (answered.has(qIdx)) return; // a locked card must not re-answer
+      if (answered.has(qIdx)) return; // a spent card must not re-answer
       window.magentra.send(
         {
           type: "question_response",
@@ -879,7 +896,11 @@ function onQuestionRequest(event) {
         },
         ownerTabId,
       );
-      cardEl.classList.add("answered");
+      // Swap the CARD NODE for its note rather than appending to `streamEl`:
+      // this click runs long after routeEngineEvent restored the globals to the
+      // focused tab, but the node still sits in its own tab's transcript — so
+      // the card closes where it was asked, single console or tiled screens.
+      cardEl.replaceWith(questionAnsweredNote(q, values));
       noteAnswered(qIdx);
     }
 

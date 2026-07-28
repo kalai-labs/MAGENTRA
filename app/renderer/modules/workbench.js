@@ -17,6 +17,19 @@ function setWorkbenchTitle(title, meta) {
   if (workTitleMetaEl) workTitleMetaEl.textContent = meta || "Magentra agent workbench";
 }
 
+/** Show a workspace folder in the desktop's file manager (Explorer, Finder, or
+ * the Linux default). The single place this leaves the renderer — the topbar
+ * button and each tiled pane's own button both call it. Passing the tab, not a
+ * path, is what makes a background pane reveal ITS workspace: main resolves the
+ * folder from the tab it owns. Omit `tabId` for the focused console. */
+async function revealWorkspaceFolder(tabId) {
+  if (!window.magentra.revealWorkspace) return;
+  const result = await window.magentra.revealWorkspace(tabId || null);
+  if (!result || result.ok !== true) {
+    appendSysError(`couldn't open the workspace folder: ${(result && result.error) || "unknown error"}`);
+  }
+}
+
 function syncWorkbenchContext() {
   const workspaceName = activeWorkspace ? pathLeaf(activeWorkspace) : "—";
   if (inspectorWorkspaceEl) {
@@ -555,6 +568,9 @@ if (inspectorToggleEl) inspectorToggleEl.addEventListener("click", () => {
   if (document.body.classList.contains("inspector-open")) closeInspector();
   else openInspector();
 });
+// No tabId: the topbar belongs to the focused console, which is exactly the tab
+// main falls back to.
+if (revealWorkspaceBtnEl) revealWorkspaceBtnEl.addEventListener("click", () => void revealWorkspaceFolder());
 if (taskCollapseEl) taskCollapseEl.addEventListener("click", closeInspector);
 if (taskTabEl) taskTabEl.addEventListener("click", () => openInspector());
 if (reviewAllBtnEl) reviewAllBtnEl.addEventListener("click", () => openReviewDrawer());

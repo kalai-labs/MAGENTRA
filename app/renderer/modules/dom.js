@@ -26,6 +26,7 @@ const sidebarVersionEl = document.getElementById("sidebarVersion");
 const workTitleTextEl = document.getElementById("workTitleText");
 const workTitleMetaEl = document.getElementById("workTitleMeta");
 const inspectorToggleEl = document.getElementById("inspectorToggle");
+const revealWorkspaceBtnEl = document.getElementById("revealWorkspaceBtn");
 const pickFolderBtnEl = document.getElementById("pickFolderBtn");
 const agentMeterEl = document.getElementById("agentMeter");
 const agentCountEl = document.getElementById("agentCount");

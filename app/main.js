@@ -23,7 +23,7 @@ const {
   readGlobalSettings,
   readEffectiveWorkspaceSettings,
   updateWorkspaceSettings,
-  shouldStartMaximized,
+  shouldStartFullScreen,
 } = require("./main/config.js");
 const { logEvent, setLogWorkspace, flushLog, initFallbackLog, activeLogsDir } = require("./main/logging.js");
 const { resolveWorkspaceFile, undoWorkspaceDiffs } = require("./main/changes.js");
@@ -1026,6 +1026,7 @@ function savedWindowBounds() {
 }
 
 /** Persist bounds + maximize state (debounced — resize fires continuously). */
+// Full screen is not persisted: every launch starts full screen regardless.
 let windowStateTimer = null;
 function rememberWindowState() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -1034,9 +1035,11 @@ function rememberWindowState() {
     windowStateTimer = null;
     if (!mainWindow || mainWindow.isDestroyed()) return;
     const maximized = mainWindow.isMaximized();
-    // getBounds() while maximized reports the maximized rect; keep the
-    // last restored bounds so un-maximizing after a restart looks right.
-    const bounds = maximized ? (currentConfig.window || mainWindow.getNormalBounds()) : mainWindow.getBounds();
+    // getBounds() while maximized or full screen reports that covering rect;
+    // keep the last restored bounds so leaving either state after a restart
+    // looks right.
+    const covering = maximized || mainWindow.isFullScreen();
+    const bounds = covering ? (currentConfig.window || mainWindow.getNormalBounds()) : mainWindow.getBounds();
     currentConfig = {
       ...currentConfig,
       window: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, maximized },
@@ -1057,6 +1060,30 @@ const THEME_CHROME = {
 };
 const themeChrome = (name) => THEME_CHROME[name] || THEME_CHROME[DEFAULT_THEME];
 
+/** Hold the window to its opening posture — filling the screen.
+ *
+ * The `fullscreen: true` constructor option is the preferred route (no visible
+ * windowed-then-resize flash), but it is a REQUEST: several Linux WMs drop a
+ * state asked for before the window is mapped, and the window then simply keeps
+ * the saved bounds — which is how a launch ended up as a small window in a
+ * corner. So re-assert once the window is on screen, and if full screen is still
+ * refused a moment later, maximize instead. Filling the work area is the point;
+ * full screen is only the preferred way to get there. */
+function applyOpeningPosture(win) {
+  if (!shouldStartFullScreen()) return;
+  win.once("ready-to-show", () => {
+    if (win.isDestroyed()) return;
+    if (!win.isFullScreen()) win.setFullScreen(true);
+    setTimeout(() => {
+      if (win.isDestroyed()) return;
+      if (!win.isFullScreen() && !win.isMaximized()) win.maximize();
+      // Which posture the desktop actually granted — the one fact that separates
+      // "the WM refused full screen" from "the app never asked".
+      logEvent("sys", { ev: "window-posture", fullScreen: win.isFullScreen(), maximized: win.isMaximized() });
+    }, 400);
+  });
+}
+
 function createWindow() {
   // Last session's theme, so the very first frame is already the right shade.
   const chrome = themeChrome(currentConfig.theme);
@@ -1064,6 +1091,11 @@ function createWindow() {
     width: 1240,
     height: 820,
     ...savedWindowBounds(),
+    // Full screen from the first paint. Setting it as a constructor option
+    // rather than calling setFullScreen() after creation avoids the visible
+    // windowed-then-resize flash, and avoids WMs that drop a state change
+    // sent before the window is mapped.
+    ...(shouldStartFullScreen() ? { fullscreen: true } : {}),
     // Title bar per platform:
     //  - macOS: hidden with inset traffic lights (the dock reserves their room).
     //  - Windows: hidden with the native controls overlaid top-right — the
@@ -1105,14 +1137,16 @@ function createWindow() {
     },
   });
 
-  // Every launch opens like a professional IDE: maximized, with native window
-  // controls still available. Un-maximizing mid-session restores the saved
-  // bounds; the next launch starts maximized again.
-  if (shouldStartMaximized()) mainWindow.maximize();
+  // Every launch opens like a professional IDE: full screen. Leaving full
+  // screen mid-session restores the saved bounds; the next launch starts full
+  // screen again.
+  applyOpeningPosture(mainWindow);
   mainWindow.on("resize", rememberWindowState);
   mainWindow.on("move", rememberWindowState);
   mainWindow.on("maximize", rememberWindowState);
   mainWindow.on("unmaximize", rememberWindowState);
+  mainWindow.on("enter-full-screen", rememberWindowState);
+  mainWindow.on("leave-full-screen", rememberWindowState);
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   // will-navigate is governed centrally by the app-level "web-contents-created"
@@ -1681,6 +1715,22 @@ ipcMain.handle("workspace:openFile", async (_evt, relPath) => {
   const target = resolveWorkspaceFile(currentConfig.workspace, relPath, true);
   if (!target) return { ok: false, error: "invalid workspace file" };
   const error = await shell.openPath(target);
+  return error ? { ok: false, error } : { ok: true };
+});
+
+// Reveal a workspace ROOT in the desktop's file manager — Explorer on Windows,
+// Finder on macOS, whatever xdg-open resolves to on Linux; shell.openPath is the
+// one call that covers all three. Deliberately NOT routed through
+// workspace:openFile: that helper resolves a path the renderer names and refuses
+// the root by design, so relaxing it would widen a security boundary for an
+// unrelated case. Here the renderer names only a TAB — main looks the folder up
+// itself, so a background pane's button reveals its own workspace and no
+// arbitrary path can ever reach the shell.
+ipcMain.handle("workspace:reveal", async (evt, tabId) => {
+  const tab = (typeof tabId === "string" && engineTabs.get(tabId)) || activeTab(winOf(evt));
+  const dir = (tab && tab.workspace) || currentConfig.workspace;
+  if (!dir || !fs.existsSync(dir)) return { ok: false, error: "no workspace open" };
+  const error = await shell.openPath(dir);
   return error ? { ok: false, error } : { ok: true };
 });
 

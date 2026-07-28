@@ -557,11 +557,14 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
 }
 .console-pane-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .console-pane.focused .console-pane-head { color: var(--text-hi); }
-/* Per-screen OVERDRIVE toggle + scoped glow (never full-screen in the tiled view). */
-.pane-od-btn {
+/* Per-screen OVERDRIVE toggle + scoped glow (never full-screen in the tiled view),
+   and the per-screen "reveal this workspace folder" button beside it. */
+.pane-od-btn, .pane-reveal-btn {
   flex: none; padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px;
   background: transparent; color: var(--amber); font-size: max(9px, 0.7rem); line-height: 1.4; cursor: pointer;
 }
+.pane-reveal-btn { color: var(--text-dim); }
+.pane-reveal-btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .pane-od-btn:hover { border-color: var(--od-accent); }
 .pane-od-btn.on { border-color: var(--od-accent); background: var(--od-accent-soft); color: var(--od-accent-hi); }
 .console-pane.overdrive { border-color: rgba(var(--od-accent-rgb), 0.7); box-shadow: 0 0 0 1px rgba(var(--od-accent-rgb), 0.45); }
@@ -890,11 +893,13 @@ h1.md-h { font-size: 1.3rem; } h2.md-h { font-size: 1.16rem; } h3.md-h { font-si
 .add { color: var(--green); } .del { color: var(--red); }
 
 .question-card { max-width: 720px; margin: 10px 0; padding: 13px 14px; border-left: 3px solid var(--accent); }
-.question-card.answered { opacity: 0.65; }
+/* An answered card is replaced by this note — a system note that keeps the
+   card's accent edge, so the decision still reads as its own transcript entry. */
+.sys-note.question-answered { max-width: 720px; margin: 10px 3px; padding-left: 8px; border-left: 2px solid var(--accent); }
 /* Multi-question rounds stay open until every card is answered — this counter
-   is what tells the user the agent is still waiting rather than stuck. */
+   is what tells the user the agent is still waiting rather than stuck. It is
+   removed with the last card. */
 .question-progress { max-width: 720px; margin: 12px 0 0; padding: 5px 2px; color: var(--amber); font-size: max(10px, 0.71rem); font-weight: 650; }
-.question-progress.complete { color: var(--green); }
 .question-head { margin-bottom: 5px; color: var(--accent-hi); font-size: max(10px, 0.68rem); font-weight: 750; letter-spacing: 0.08em; }
 .question-text { margin-bottom: 9px; color: var(--text-hi); }
 .question-options { display: flex; flex-direction: column; gap: 5px; }

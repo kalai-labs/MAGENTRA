@@ -55,6 +55,7 @@ function enterActiveState(workspace) {
   sidebarSessionsRefreshEl.classList.remove("hidden");
   sidebarMissionNewEl.classList.remove("hidden");
   inspectorToggleEl.classList.remove("hidden");
+  if (revealWorkspaceBtnEl) revealWorkspaceBtnEl.classList.remove("hidden");
   void loadConnectionCard();
   sendBtnEl.disabled = false;
   clearBtnEl.disabled = false;

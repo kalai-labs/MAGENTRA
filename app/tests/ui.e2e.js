@@ -167,6 +167,14 @@ async function run() {
       };
     })()`);
     assert.deepEqual(homeRow, { sameRow: true, visible: true, hasSvgIcon: true, sameTop: true });
+
+    // The topbar's "open the workspace folder" button appears with the workspace
+    // and asks main to reveal it — no path leaves the renderer, so main opens the
+    // folder of the tab it owns (Explorer / Finder / the Linux file manager).
+    assert.equal(await evaluate(`document.querySelector('#revealWorkspaceBtn').classList.contains('hidden')`), false);
+    await evaluate(`document.querySelector('#revealWorkspaceBtn').click()`);
+    await pause();
+    assert.ok(calls.some((c) => c.name === "revealWorkspace" && c.args[0] === null));
   });
 
   await test("saved sessions render persistently and management controls send engine frames", async () => {
@@ -929,9 +937,16 @@ async function run() {
       options: [{ label: "Workbench (Recommended)", description: "Use Concept A" }, { label: "Legacy", description: "Keep old shell" }],
     }] });
     assert.equal(await evaluate(`document.querySelectorAll('.question-card').length > 0`), true);
-    await evaluate(`document.querySelector('.question-card .q-opt').click()`);
+    await evaluate(`[...document.querySelectorAll('.question-card')].pop().querySelector('.q-opt').click()`);
     await pause();
     assert.ok(frames.some((frame) => frame.type === "question_response"));
+    // Answering closes the card: it is replaced in place by a note recording
+    // the question and the choice, so spent options can't be clicked again.
+    assert.equal(await evaluate(`document.querySelectorAll('.question-card').length`), 0);
+    const answeredNote = await evaluate(`[...document.querySelectorAll('.question-answered')].pop().textContent`);
+    assert.match(answeredNote, /User answered Magentra's question/);
+    assert.match(answeredNote, /Which surface\?/);
+    assert.match(answeredNote, /Workbench/);
   });
 
   await test("a multi-question round answers every card, and tables render", async () => {
@@ -947,25 +962,30 @@ async function run() {
     // say how many remain instead of looking hung after the first answer.
     assert.match(await evaluate(`document.querySelector('.question-progress').textContent`), /0 of 3/);
 
-    const answerCard = (n) =>
-      evaluate(`[...document.querySelectorAll('.question-card')].slice(-3)[${n}].querySelector('.q-opt').click()`);
+    // Each answer retires its card, so the round's open cards are always the
+    // tail of the transcript — answer the first of however many are left.
+    const answerNextCard = (remaining) =>
+      evaluate(`[...document.querySelectorAll('.question-card')].slice(-${remaining})[0].querySelector('.q-opt').click()`);
     const responsesBefore = frames.filter((f) => f.type === "question_response").length;
-    await answerCard(0);
+    await answerNextCard(3);
     await pause();
     assert.match(await evaluate(`document.querySelector('.question-progress').textContent`), /1 of 3/);
-    await answerCard(1);
-    await answerCard(2);
+    await answerNextCard(2);
+    await answerNextCard(1);
     await pause();
-    assert.match(await evaluate(`document.querySelector('.question-progress').textContent`), /3 of 3/);
     // One response per question, each keyed by its own position.
     const responses = frames.filter((f) => f.type === "question_response").slice(responsesBefore);
     assert.equal(responses.length, 3);
     assert.deepEqual(responses.map((r) => Object.keys(r.answers)[0]).sort(), ["q:0", "q:1", "q:2"]);
 
-    // A locked card must not be answerable twice.
-    await answerCard(0);
-    await pause();
-    assert.equal(frames.filter((f) => f.type === "question_response").length - responsesBefore, 3);
+    // The whole round's UI is gone once it is answered — every card replaced by
+    // its note, and the counter (which tracked those cards) removed with them.
+    assert.equal(await evaluate(`document.querySelectorAll('.question-card').length`), questionCountBefore);
+    assert.equal(await evaluate(`document.querySelector('.question-progress') === null`), true);
+    const notes = await evaluate(`[...document.querySelectorAll('.question-answered')].slice(-3).map(e => e.textContent)`);
+    assert.equal(notes.length, 3);
+    assert.match(notes[0], /User answered Magentra's question · One — “First\?” → “1a”/);
+    assert.match(notes[2], /Three — “Third\?” → “3a”/);
 
     // GFM tables render as real tables once the turn finalizes.
     await emit({ type: "text_delta", text: "Results:\n\n| Setting | Default |\n|---|---:|\n| theme | workbench |\n| deletions | ask |\n" });
@@ -1522,6 +1542,12 @@ async function run() {
     assert.equal(foc.focused, "tA");
     assert.ok(foc.aFocused, "clicking/focusing a pane rings it");
     assert.ok(foc.bNotFocused, "only the focused pane is ringed");
+    // Each pane header carries its own "open the workspace folder" button, and it
+    // names ITS tab — a background pane must reveal its own workspace, not the
+    // focused one's.
+    await evaluate(`tabs.get('tB').paneEl.querySelector('.pane-reveal-btn').click()`);
+    await pause();
+    assert.ok(calls.some((c) => c.name === "revealWorkspace" && c.args[0] === "tB"));
     // Open a 3rd tab → 3-pane layout; the big (bottom) pane defaults to the last.
     tabEvt("test:tab-opened", { tabId: "tC", workspace: "/tmp/ws-c" });
     await emit({ type: "workspace_changed", workspace: "/tmp/ws-c", tabId: "tC" });

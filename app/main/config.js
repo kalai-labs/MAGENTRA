@@ -159,10 +159,10 @@ function updateWorkspaceSettings(workspace, mutate) {
 
 const MAX_RECENT_WORKSPACES = 10;
 
-/** Every launch opens maximized — the full-screen workbench is the product's
+/** Every launch opens full screen — the full-screen workbench is the product's
  * default posture. Saved bounds still matter: they are what the window
- * restores to when the user un-maximizes during the session. */
-function shouldStartMaximized() {
+ * restores to when the user leaves full screen during the session. */
+function shouldStartFullScreen() {
   return true;
 }
 
@@ -284,5 +284,5 @@ module.exports = {
   readGlobalSettings,
   readEffectiveWorkspaceSettings,
   updateWorkspaceSettings,
-  shouldStartMaximized,
+  shouldStartFullScreen,
 };
