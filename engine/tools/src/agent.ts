@@ -1,9 +1,26 @@
 import { z } from "zod";
+import { isPromptDisabled } from "@magentra/protocol";
 import { AGENT_TYPES, agentDescriptionText, type ToolDefinition } from "@magentra/core";
 
-const agentTypeList = Object.values(AGENT_TYPES)
-  .map((t) => `- ${t.name}: ${agentDescriptionText(t)}`)
-  .join("\n");
+/** The types a subagent can actually be spawned as: those whose blurb is not empty. */
+function offeredAgentTypes(): typeof AGENT_TYPES[keyof typeof AGENT_TYPES][] {
+  return Object.values(AGENT_TYPES).filter((t) => !isPromptDisabled(t.description));
+}
+
+/**
+ * The picker list, built on every read rather than captured in a module constant.
+ *
+ * A constant would freeze the blurbs at import: an edit in the registry would
+ * never reach the model, and emptying one would leave a dangling `- name:` line
+ * advertising a type with nothing said about it. Reading here also lets a
+ * disabled blurb drop its type from the list entirely, which is what switching a
+ * prompt off means everywhere else.
+ */
+function agentTypeList(): string {
+  return offeredAgentTypes()
+    .map((t) => `- ${t.name}: ${agentDescriptionText(t)}`)
+    .join("\n");
+}
 
 const inputSchema = z.object({
   description: z.string().describe("A short (3-5 word) description of the task"),
@@ -15,7 +32,9 @@ const inputSchema = z.object({
   subagent_type: z
     .string()
     .optional()
-    .describe(`The type of subagent to use (default general-purpose). One of: ${Object.keys(AGENT_TYPES).join(", ")}.`),
+    // Deliberately not a second copy of the type list: this string is built at
+    // module load and would go stale, while `{{agentTypes}}` below is read live.
+    .describe("The type of subagent to use, named exactly as listed in this tool's description (default general-purpose)."),
   run_in_background: z
     .boolean()
     .optional()
@@ -36,7 +55,13 @@ The subagent's report is never shown to the user, so relay what matters. Subagen
 
 Available subagent types:
 {{agentTypes}}`,
-  descriptionVars: { agentTypes: agentTypeList },
+  // A getter, so the list is resolved when the description is rendered rather
+  // than when this module is imported.
+  descriptionVars: {
+    get agentTypes() {
+      return agentTypeList();
+    },
+  },
   permissionClass: "read",
   parallelSafe: true,
   describeInput: (input) => `Agent (${input.subagent_type ?? "general-purpose"}): ${input.description}`,

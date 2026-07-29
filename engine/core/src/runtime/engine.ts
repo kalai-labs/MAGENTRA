@@ -5,7 +5,7 @@ import {
   PROTOCOL_VERSION,
   STATE_DIR_NAME,
   definePrompt,
-  promptText,
+  promptTextIfEnabled,
   type ConnectionSpec,
   type CoreEvent,
   type FrontendRequest,
@@ -26,9 +26,9 @@ import { loadAtlas } from "../knowledge/atlas.js";
 import { buildCrewPrompt, loadTeam, type CrewAgent } from "../crew/team.js";
 import { LAB_FILE_NAME, compileLab, findLabFile, parseLabFile, snapshotLab } from "../lab.js";
 import {
-  MISSION_FILE_FORMAT,
   buildMissionFile,
   buildMissionPrompt,
+  missionFormatExample,
   loadContinuousState,
   loadMissions,
   missionDeliverablePath,
@@ -549,8 +549,12 @@ export class Engine {
       // workspace files and still return prose instead of a file. runInference
       // is one focused call, on the chosen model (defaulting to the session's
       // main model — skill authoring wants the capable model, not smallModel).
+      const authorRole = promptTextIfEnabled(SKILL_AUTHOR_ROLE);
+      if (authorRole === undefined) {
+        return { ok: false, error: "Skill authoring is switched off — skill-author.role is empty in the prompt registry." };
+      }
       const raw = await this.session.runInference({
-        system: promptText(SKILL_AUTHOR_ROLE),
+        system: authorRole,
         user: buildSkillPrompt(description, kind, takenIds, opts) + feedback,
         maxTokens: 4096,
         model: authorModel,
@@ -2096,7 +2100,7 @@ export class Engine {
       }
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, missionTemplate(id));
-      say([`🧪 mission scaffold written → ${path}`, "Edit its keywords and charter, then launch it with /mission run " + id + ".", "", "Format reference:", MISSION_FILE_FORMAT.split("\n\n")[2] ?? ""].join("\n"));
+      say([`🧪 mission scaffold written → ${path}`, "Edit its keywords and charter, then launch it with /mission run " + id + ".", "", "Format reference:", missionFormatExample()].join("\n"));
       this.emitMissionsUpdated();
       return;
     }

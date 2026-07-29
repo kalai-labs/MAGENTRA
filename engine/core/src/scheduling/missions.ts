@@ -184,8 +184,15 @@ summary, and why it matters to our work. Done means: every keyword swept, each
 claim backed by a source URL, and the report updated with this week's findings.`,
 });
 
-/** The shipped default text. */
-export const MISSION_FILE_FORMAT = promptText(MISSION_FILE_FORMAT_ID);
+/**
+ * The worked example from the format prompt, for quoting back to the user.
+ *
+ * Read at call time, never captured in a module constant: a constant would pin
+ * the text at import and never see an edit or a disable made in the registry.
+ */
+export function missionFormatExample(): string {
+  return promptText(MISSION_FILE_FORMAT_ID).split("\n\n")[2] ?? "";
+}
 
 /**
  * Builds the turn prompt that launches a mission — the full brief handed to the

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { definePrompt, promptText, renderPrompt } from "@magentra/protocol";
+import { definePrompt, isPromptDisabled, renderPrompt } from "@magentra/protocol";
 
 /** Path (relative to the workspace cwd) of the whole-design map the agent maintains. */
 export const ATLAS_FILENAME = ".magentra/ATLAS.md";
@@ -200,6 +200,18 @@ Write ONE paragraph (3-5 sentences) that a new contributor reads first: what thi
 
 export function atlasOverviewPrompt(project: string, sections: string[], stats: string): string {
   return renderPrompt(ATLAS_OVERVIEW_TASK, { project, stats, sections: sections.join("\n\n") });
+}
+
+/**
+ * Whether the atlas build is switched off, i.e. any prompt it needs is empty.
+ *
+ * Declared here because this is the only file that knows the full set; a caller
+ * listing the four ids itself would silently stop covering a fifth. A build with
+ * one of them missing still costs one model call per area and produces a
+ * document that reads as authoritative, so it must not start at all.
+ */
+export function atlasPromptsDisabled(): boolean {
+  return [ATLAS_AREA_ROLE, ATLAS_AREA_TASK, ATLAS_OVERVIEW_SYSTEM, ATLAS_OVERVIEW_TASK].some(isPromptDisabled);
 }
 
 /** Stitches the finished document: title, overview, then one section per area. */
