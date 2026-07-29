@@ -671,7 +671,7 @@
     }
   },
   "workOrder": {
-    "about": "Ordered so that nothing is emptied before its replacement exists. Every merge edits the RECEIVING prompt first, then clears the source — do it the other way round and the rule is gone from the prompt set for as long as the gap lasts. A step goes green when every prompt it touches has changed. A step turns green only when its own test passes — the specific edit landed, or the source prompt is empty — not merely because the prompt was touched at some point.",
+    "about": "Ordered so that nothing is emptied before its replacement exists. Every merge edits the RECEIVING prompt first, then clears the source — do it the other way round and the rule is gone from the prompt set for as long as the gap lasts. A step turns green only when its own test passes — the specific edit landed, or the source prompt is empty — not merely because the prompt was touched at some point. A step whose test can never pass, because you decided against the edit or withdrew the step, can be marked done by hand: it then counts as done but stays amber, never green, so the board still shows which steps were proven and which were asserted.",
     "phases": [
       {
         "phase": "1 · Close the completion loop",
@@ -903,6 +903,154 @@
           }
         ]
       }
-    ]
+    ],
+    "manualDone": {
+      "12": {
+        "at": "2026-07-29"
+      }
+    }
+  },
+  "manualAddressed": {
+    "reminder.no-atlas": {
+      "at": "2026-07-29"
+    },
+    "system.environment": {
+      "at": "2026-07-29"
+    },
+    "system.project-memory-header": {
+      "at": "2026-07-29"
+    },
+    "system.skills-block": {
+      "at": "2026-07-29"
+    },
+    "subagent.result-contract": {
+      "at": "2026-07-29"
+    },
+    "subagent.role.general-purpose": {
+      "at": "2026-07-29"
+    },
+    "subagent.description.general-purpose": {
+      "at": "2026-07-29"
+    },
+    "subagent.role.explore": {
+      "at": "2026-07-29"
+    },
+    "subagent.description.explore": {
+      "at": "2026-07-29"
+    },
+    "subagent.role.plan": {
+      "at": "2026-07-29"
+    },
+    "subagent.description.plan": {
+      "at": "2026-07-29"
+    },
+    "finishing.self-verify": {
+      "at": "2026-07-29"
+    },
+    "finishing.self-verify.closing-code": {
+      "at": "2026-07-29"
+    },
+    "finishing.self-verify.closing-plain": {
+      "at": "2026-07-29"
+    },
+    "reminder.error-batch": {
+      "at": "2026-07-29"
+    },
+    "reminder.recovery-nudge": {
+      "at": "2026-07-29"
+    },
+    "reminder.length-continuation": {
+      "at": "2026-07-29"
+    },
+    "reminder.tool-cutoff": {
+      "at": "2026-07-29"
+    },
+    "reminder.stall-pivot": {
+      "at": "2026-07-29"
+    },
+    "reminder.stall-ask": {
+      "at": "2026-07-29"
+    },
+    "system.standards-header": {
+      "at": "2026-07-29"
+    },
+    "compaction.system": {
+      "at": "2026-07-29"
+    },
+    "compaction.wrapper": {
+      "at": "2026-07-29"
+    },
+    "tool.Write": {
+      "at": "2026-07-29"
+    },
+    "tool.Edit": {
+      "at": "2026-07-29"
+    },
+    "tool.Glob": {
+      "at": "2026-07-29"
+    },
+    "tool.Grep": {
+      "at": "2026-07-29"
+    },
+    "tool.TaskList": {
+      "at": "2026-07-29"
+    },
+    "tool.TaskGet": {
+      "at": "2026-07-29"
+    },
+    "tool.AskUserQuestion": {
+      "at": "2026-07-29"
+    },
+    "tool.TaskStop": {
+      "at": "2026-07-29"
+    },
+    "tool.TaskOutput": {
+      "at": "2026-07-29"
+    },
+    "tool.WebFetch": {
+      "at": "2026-07-29"
+    },
+    "tool.WebSearch": {
+      "at": "2026-07-29"
+    },
+    "tool.Monitor": {
+      "at": "2026-07-29"
+    },
+    "tool.EnterWorktree": {
+      "at": "2026-07-29"
+    },
+    "tool.ExitWorktree": {
+      "at": "2026-07-29"
+    },
+    "tool.PushNotification": {
+      "at": "2026-07-29"
+    },
+    "tool.CronCreate": {
+      "at": "2026-07-29"
+    },
+    "tool.CronDelete": {
+      "at": "2026-07-29"
+    },
+    "tool.CronList": {
+      "at": "2026-07-29"
+    },
+    "tool.ScheduleWakeup": {
+      "at": "2026-07-29"
+    },
+    "tool.Skill": {
+      "at": "2026-07-29"
+    },
+    "atlas.area-role": {
+      "at": "2026-07-29"
+    },
+    "tool.GraphQuery": {
+      "at": "2026-07-29"
+    },
+    "reminder.wrapup-nudge": {
+      "at": "2026-07-29"
+    },
+    "system.atlas-header": {
+      "at": "2026-07-29"
+    }
   }
 }

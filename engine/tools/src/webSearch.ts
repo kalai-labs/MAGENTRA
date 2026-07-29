@@ -146,9 +146,7 @@ const inputSchema = z.object({
 
 export const webSearchTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "WebSearch",
-  description: `Searches the web and returns titles, URLs, and snippets. Use it to find current information, docs, or pages to follow up on with WebFetch. Restrict or exclude sources with allowed_domains / blocked_domains.
-
-Works out of the box via DuckDuckGo (free, no API key). Optionally set settings.search.provider to "brave" or "tavily" with settings.search.apiKeyEnv naming the env var that holds the API key. Web search can be turned off entirely with settings.search.enabled = false.`,
+  description: `Searches the web and returns titles, URLs, and snippets. Use it to find current information, docs, or pages to follow up on with WebFetch. Restrict or exclude sources with allowed_domains / blocked_domains. Works out of the box via DuckDuckGo.`,
   permissionClass: "network",
   permissionSubject: (input) => input.query,
   describeInput: (input) => `WebSearch ${input.query}`,

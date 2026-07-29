@@ -189,9 +189,10 @@ export function promptCatalog(): PromptEntry[] {
  * original" and "never edited" are one state rather than two that drift.
  *
  * Blank text is NOT that case: it is stored, and it disables the prompt. A
- * disabled section is dropped from the system prompt and a disabled reminder is
- * never injected, so emptying the box is how a prompt is switched off without
- * touching the code that would otherwise still emit it.
+ * disabled section is dropped from the system prompt, a disabled reminder is
+ * never injected, and a disabled tool description withholds the tool itself —
+ * so emptying the box is how a prompt is switched off without touching the code
+ * that would otherwise still emit it.
  */
 export function writePromptOverride(id: string, text: string): void {
   const meta = registry.get(id);

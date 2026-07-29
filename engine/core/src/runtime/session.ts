@@ -97,7 +97,7 @@ import { CrewExperience } from "../crew/experience.js";
 import { recordCrewRun } from "../crew/ledger.js";
 import type { Skill } from "../agent/skills.js";
 import { TaskStore } from "../state/taskStore.js";
-import { toolDescriptionText } from "../agent/tool.js";
+import { isToolDisabled, toolDescriptionText } from "../agent/tool.js";
 import type {
   SessionServices,
   SpawnAgentOptions,
@@ -130,7 +130,7 @@ const AUTO_NAME_INSTRUCTION = definePrompt({
   channel: "side-call-user",
   where:
     "User-role instruction of the same session-naming call, sent above the conversation excerpt.",
-  text: `Read the conversation excerpt below and reply with ONLY a short title (3–6 words) naming what it is about. No quotes, no trailing punctuation, no prefix like 'Title:' — just the title itself.`,
+  text: `You name chat sessions for a coding assistant's sidebar. Read the conversation excerpt below and reply with ONLY a short title (3–6 words) naming what it is about. No quotes, no trailing punctuation, no prefix like 'Title:' — just the title itself.`,
 });
 
 /** Normalizes a model-authored title into a clean sidebar label: first line only,
@@ -240,13 +240,11 @@ const OVERDRIVE_PROMPT_SECTION = definePrompt({
   where:
     "Appended to the system prompt only while OVERDRIVE is on. Removes every confirmation step and tells the agent not to stop until the whole query is handled.",
   text: `# OVERDRIVE — fully-autonomous mode
-You own this query end to end: plan, act, verify, deliver — without stopping for routine approval.
-- Plan first: for any multi-step request, lay out the task plan with TaskCreate — one task per step, the last a verification task stating the expected end state — before making changes. Trivial requests: just do them.
-- Think ahead: before each consequential action, weigh its consequences. Prefer the smallest change that truly serves the query; optimize your path and skip ceremony the query does not need.
-- Evidence is query-shaped: verify in whatever way the query itself calls for, and no further. A question is answered; a code change is SEEN WORKING — run the path you changed rather than re-reading it. What the query does not need (a full suite, a lint sweep, a benchmark) is ceremony, and you skip it.
-- Ask the user ONLY when the answer changes the design, is irreversible, or reaches outside the workspace — the test: would a reasonable user be upset if you guessed wrong? Everything else you decide yourself and note in your wrap-up.
-- NOTHING asks. Every call runs the moment you make it: deletions at any path, edits to \`.magentra\` state and \`.env\` files, writes outside the workspace. There is no confirmation step and no safety net but your own judgement — read a file before you overwrite it, look before you delete, and prefer the reversible move. The only thing that can still stop a call is a deny rule the user wrote themselves.
-- Do not stop early: the turn ends only when every part of the query is handled and your self-check passes.`,
+You are operating autonomously.
+
+- The user is not watching in real time and cannot answer questions mid-task, so asking 'Want me to…?' or 'Shall I…?' will block the work.
+- For reversible actions that follow from the original request, proceed without asking. 
+- NOTHING asks. Every call runs the moment you make it: deletions at any path, edits to \`.magentra\` state and \`.env\` files, writes outside the workspace. There is no confirmation step and no safety net but your own judgement — read a file before you overwrite it, look before you delete, and prefer the reversible move. The only thing that can still stop a call is a deny rule the user wrote themselves.`,
 });
 
 /**
@@ -1196,7 +1194,7 @@ export class Session {
   }
 
   toolSchemas(): ToolSchema[] {
-    return this.registry.list().map((t) => ({
+    return this.registry.enabled().map((t) => ({
       name: t.name,
       description: toolDescriptionText(t.name, t.description, t.descriptionVars),
       inputSchema: t.rawInputSchema ?? zodToJsonSchema(t.inputSchema),
@@ -2412,15 +2410,19 @@ export class Session {
           // user saw no checkpoint along the way. An attended turn already has
           // one — the user reads the reply — and does not need to pay a round
           // trip per turn for a second opinion.
-          if (stopReason === "end_turn" && !selfVerifyFired && totalToolCallsThisTurn > 0 && this.overdrive) {
+          // undefined means the rung is switched off in the prompt registry. Skip
+          // the round entirely then — pushing a blank message would still spend
+          // the inference round the operator emptied the prompt to avoid.
+          const verify =
+            stopReason === "end_turn" && !selfVerifyFired && totalToolCallsThisTurn > 0 && this.overdrive
+              ? selfVerifyText(codeFilesAmong(this.filesChangedThisTurn))
+              : undefined;
+          if (verify !== undefined) {
             selfVerifyFired = true;
             verifyBuffered = true;
             this.suppressAssistantText = true; // the verify answer streams silently
             this.emit({ type: "command_output", text: "⚡ overdrive: self-verifying against the original query" });
-            this.pushMessage({
-              role: "user",
-              content: [{ type: "text", text: selfVerifyText(codeFilesAmong(this.filesChangedThisTurn)) }],
-            });
+            this.pushMessage({ role: "user", content: [{ type: "text", text: verify }] });
             continue;
           }
 
@@ -2745,13 +2747,28 @@ export class Session {
 
     const planned: Planned[] = [];
     for (const call of calls) {
+      // A tool whose description was emptied is withheld from the schema list,
+      // but the model can still name one it saw earlier in the transcript. Refuse
+      // it here too, or "switched off" would only hold until it was mentioned.
+      if (isToolDisabled(call.name)) {
+        planned.push({
+          call,
+          parallel: true,
+          run: async () => ({
+            content: `The ${call.name} tool is switched off in this workspace and cannot be called. Reach the goal another way, and do not retry it this turn.`,
+            isError: true,
+          }),
+        });
+        continue;
+      }
+
       const tool = this.registry.get(call.name);
       if (!tool) {
         planned.push({
           call,
           parallel: true,
           run: async () => ({
-            content: `Unknown tool "${call.name}". Available tools: ${this.registry.list().map((t) => t.name).join(", ")}`,
+            content: `Unknown tool "${call.name}". Available tools: ${this.registry.enabled().map((t) => t.name).join(", ")}`,
             isError: true,
           }),
         });

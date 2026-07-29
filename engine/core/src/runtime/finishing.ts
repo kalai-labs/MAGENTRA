@@ -210,7 +210,7 @@ const SELF_VERIFY = definePrompt({
   label: "Self-verify rung",
   channel: "reminder",
   where:
-    "Fires at the end of EVERY work turn. The agent answers DONE (never shown to the user) or keeps working, so this reminder costs one extra inference round on every single turn — the single biggest fixed cost per turn. `{{closing}}` is one of the two clauses below it.",
+    "Fires at the end of an OVERDRIVE turn that made at least one tool call — never in normal mode, never on a turn with no tool calls, and at most once per turn. The agent answers DONE (never shown to the user) or keeps working, so it costs one extra inference round on the turns it does fire, and nothing on the rest. `{{closing}}` is one of the two clauses below it. Empty this prompt to switch the round off.",
   placeholders: ["closing"],
   text: `<system-reminder>Internal self-check — this is NOT a new user message and the user is NOT waiting for another reply. Your entire output for this step must be either the single word DONE or continued work. Nothing else. Do not greet, do not re-answer, do not summarize, do not introduce yourself.
 
@@ -240,9 +240,17 @@ const SELF_VERIFY_CLOSING_PLAIN = definePrompt({
   text: "Judge only against the query itself — never invent verification rituals (builds, tests) it did not ask for.",
 });
 
-export function selfVerifyText(changedCode: string[]): string {
+/**
+ * The rung's text, or undefined when it has been switched off.
+ *
+ * Emptying the prompt has to cancel the whole round, not send a blank message:
+ * the caller pays a full inference round either way, and that round is the cost
+ * the operator was trying to remove.
+ */
+export function selfVerifyText(changedCode: string[]): string | undefined {
   const closing = changedCode.length > 0
     ? renderPrompt(SELF_VERIFY_CLOSING_CODE, { files: fileList(changedCode) })
     : promptText(SELF_VERIFY_CLOSING_PLAIN);
-  return renderPrompt(SELF_VERIFY, { closing });
+  const text = renderPrompt(SELF_VERIFY, { closing });
+  return text.trim() === "" ? undefined : text;
 }
