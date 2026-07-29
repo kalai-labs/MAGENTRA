@@ -7,6 +7,20 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.12.1.0 — 2026-07-29
+
+### Bug fixes
+
+- fixes at prompt lab and prompts ([8bebf70](https://github.com/kalai-labs/MAGENTRA/commit/8bebf7099aa74b6232e13f250240235808cef05e))
+
+### Refactoring
+
+- fix ([76b6363](https://github.com/kalai-labs/MAGENTRA/commit/76b6363817013b0870de3f23e89e5115c93e326a))
+- big refactors on prompt engineering ([6dbf65c](https://github.com/kalai-labs/MAGENTRA/commit/6dbf65c35f1f2951d2cc5cd37934ef3010aff9a8))
+- refactor ([be42fed](https://github.com/kalai-labs/MAGENTRA/commit/be42fed19ccec3ae7dd9880bb6b0d292a95bc257))
+
+[Compare with v0.12.0.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.12.0.0...v0.12.1.0)
+
 ## 0.12.0.0 — 2026-07-28
 
 ### Features
