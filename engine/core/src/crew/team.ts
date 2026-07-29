@@ -244,13 +244,10 @@ Report concrete findings as "path:line — problem — suggested fix", most seve
 first. Do not rewrite the code yourself; your job is the review.`,
 });
 
-/** The shipped default text. */
-export const TEAM_FILE_FORMAT = promptText(TEAM_FILE_FORMAT_ID);
-
 /**
  * The self-contained task handed to the /build-crew general-purpose subagent. It
- * embeds {@link TEAM_FILE_FORMAT} (single source of truth) and the workspace's own
- * valid tool names, so a weak model gets a concrete, format-explicit, few-shot brief.
+ * embeds {@link TEAM_FILE_FORMAT_ID} (single source of truth) and the workspace's
+ * own valid tool names, so a weak model gets a concrete, format-explicit brief.
  */
 export function buildCrewPrompt(opts: { toolNames: string[]; atlas?: string }): string {
   const context = opts.atlas

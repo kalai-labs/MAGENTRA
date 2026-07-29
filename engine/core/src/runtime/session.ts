@@ -9,9 +9,11 @@ import {
   definePrompt,
   emptyUsage,
   estimateTokens,
+  isPromptDisabled,
   formatTokens,
   inputTokensOf,
   promptText,
+  promptTextIfEnabled,
   renderPrompt,
   type CoreEvent,
   type PermissionDecision,
@@ -36,6 +38,7 @@ import {
   assembleAtlas,
   atlasAreaPrompt,
   atlasOverviewPrompt,
+  atlasPromptsDisabled,
   normalizeAtlasSection,
   type AtlasArea,
   atlasIsStale,
@@ -360,16 +363,6 @@ const PLAN_FIRST_REMINDER = definePrompt({
   text: "Nothing is on the task board yet. When a request will take several moves to finish, lay it out first with TaskCreate — one entry per move, closing with a check task that names the end state you'll confirm — before you touch any files. A quick one-off needs no board; just handle it.",
 });
 
-const NO_ATLAS_REMINDER = definePrompt({
-  id: "reminder.no-atlas",
-  group: "3 · In-turn reminders",
-  label: "No design atlas",
-  channel: "reminder",
-  where:
-    "Injected when the workspace has no .magentra/ATLAS.md, suggesting /atlas or writing one inline. Empty this prompt to switch the reminder off.",
-  text: `No design atlas exists for this workspace. Suggest the user run /atlas to generate one — a mapped atlas speeds up every future session. For non-trivial multi-module work you may instead create .magentra/ATLAS.md yourself: each module, one-line purpose, public interface, key dependencies — modules and boundaries, not a file listing, compact (fits in 12KB).`,
-});
-
 const ATLAS_SECTION_HEADER = definePrompt({
   id: "system.atlas-header",
   group: "2 · Conditional system sections",
@@ -560,8 +553,6 @@ export class Session {
   private autoNameDone = false;
   /** True once the empty-task-list plan-first reminder has fired and the list has stayed empty since. */
   private planReminderFired = false;
-  /** True once the missing-atlas reminder has fired for this session. */
-  private atlasReminderFired = false;
   /** True once the first-turn `/atlas` hint has fired (once per session, never for subagents). */
   private atlasHintFired = false;
   private readonly hooks: HookRunner | undefined;
@@ -1219,18 +1210,35 @@ export class Session {
         ...this.dynamicSections.values(),
         ...(this.opts.modeEngine?.promptSections() ?? []),
         ...(this.teamAgents.length > 0 ? [crewSection(this.teamAgents)] : []),
-        ...(atlas ? [`${promptText(ATLAS_SECTION_HEADER)}\n\n${atlas}`] : []),
-        ...(standards ? [`${promptText(STANDARDS_SECTION_HEADER)}\n\n${standards}`] : []),
+        // A disabled header drops the whole section, body and all. Injecting the
+        // file's contents with no header would hand the model an unlabelled wall
+        // of text — worse than not sending it, and not what emptying a section
+        // means anywhere else in the registry.
+        ...(atlas ? Session.section(ATLAS_SECTION_HEADER, atlas) : []),
+        ...(standards ? Session.section(STANDARDS_SECTION_HEADER, standards) : []),
       ],
     });
+  }
+
+  /**
+   * A file-backed system section — its header plus the file's contents — or
+   * nothing at all when the header prompt is switched off.
+   */
+  private static section(headerId: string, body: string): string[] {
+    const header = promptTextIfEnabled(headerId);
+    return header === undefined ? [] : [`${header}\n\n${body}`];
   }
 
   /** CREW Phase B: the knowledge-brief prompt section for a specialist, or undefined. */
   private backpackPromptSection(agentId: string, briefOverride?: string): string | undefined {
     const index = loadBackpackIndex(this.cwd, agentId);
     const brief = briefOverride ?? index?.brief;
-    if (brief) return `# Your knowledge brief\n${brief}\n(Use BackpackSearch for exact passages.)`;
-    if (index && index.chunks.length > 0) {
+    // Never point the specialist at a tool it was not given: BackpackSearch is
+    // withheld when its description is emptied, and an instruction to call a
+    // tool that is not in the schema list only earns a failed call.
+    const search = isToolDisabled("BackpackSearch") ? "" : "\n(Use BackpackSearch for exact passages.)";
+    if (brief) return `# Your knowledge brief\n${brief}${search}`;
+    if (index && index.chunks.length > 0 && search !== "") {
       return "(backpack still indexing — BackpackSearch over raw text is available)";
     }
     return undefined;
@@ -1272,6 +1280,18 @@ export class Session {
     // auto-explore: it would recurse via spawnAgent, and a child cannot own the
     // workspace atlas anyway.
     if (this.opts.systemPromptOverride !== undefined) return;
+
+    // Emptying any of the four prompts this build depends on switches the whole
+    // feature off. Say so and stop: a build that runs one fan-out agent per area
+    // with no role, or synthesizes with no system prompt, spends real money to
+    // write a document nobody should trust.
+    if (atlasPromptsDisabled()) {
+      this.emit({
+        type: "command_output",
+        text: "🗺 atlas is switched off — its prompts are empty in the prompt registry. Nothing was built.",
+      });
+      return;
+    }
 
     // A stop from a previous build must not kill this one before it starts.
     this.atlasCancelled = false;
@@ -1453,6 +1473,12 @@ export class Session {
    * Strictly fail-open — a broken verdict must never cost the user the turn.
    */
   private async maybeClarify(userText: string): Promise<string | undefined> {
+    // Emptying the prompt switches the whole pre-layer off. It has to be checked
+    // HERE and not just at the call site's `settings.clarify`: this layer is a
+    // full main-model round trip before any work starts, and running it with no
+    // system prompt would charge the user that latency to ask nothing.
+    const system = promptTextIfEnabled(CLARIFY_SYSTEM);
+    if (system === undefined) return undefined;
     // Ground the verdict in a cursory look at the code, so the questions are
     // about real, specific choices — and so nothing the code already answers
     // gets asked. Deterministic (file/graph reads, no model call): it rides
@@ -1461,7 +1487,7 @@ export class Session {
     let raw: string;
     try {
       raw = await this.runInference({
-        system: promptText(CLARIFY_SYSTEM),
+        system,
         user: `${this.recentExchange()}${skim ? `Codebase overview:\n${skim}\n\n` : ""}Incoming request:\n${userText}`,
         // Three questions with four described options each does not fit in 600
         // either — the same undersized budget as CAREFUL's round, and the same
@@ -1984,13 +2010,6 @@ export class Session {
     // for subagents, and is cheap (one file read + at most one git call) — it
     // must not throw, so any failure is swallowed.
     this.maybeHintAtlas();
-
-    // Fallback: no atlas on disk — nudge the model to suggest /atlas (or map the
-    // design itself for non-trivial work), once per session.
-    if (!this.atlasReminderFired && loadAtlas(this.cwd) === undefined && workspaceLooksNonTrivial(this.cwd)) {
-      this.remind(promptText(NO_ATLAS_REMINDER));
-      this.atlasReminderFired = true;
-    }
 
     this.pushMessage({
       role: "user",
@@ -3177,11 +3196,22 @@ export class Session {
   async maybeAutoName(): Promise<string | undefined> {
     if (this.autoNameDone || this.label) return undefined;
     if (this.conversationTokens() < AUTO_NAME_MIN_TOKENS) return undefined;
+    // The instruction is what actually names the session, so emptying it
+    // switches the feature off. The role is not guarded: it only adds framing
+    // the instruction already carries, and both providers drop an empty system
+    // block rather than sending one. Claim `autoNameDone` before returning, or
+    // the catch below — which exists to retry a TRANSIENT failure — would make
+    // a switched-off feature re-check on every settling turn.
+    const instruction = promptTextIfEnabled(AUTO_NAME_INSTRUCTION);
+    if (instruction === undefined) {
+      this.autoNameDone = true;
+      return undefined;
+    }
     this.autoNameDone = true; // claim before the await so two settling turns can't both fire
     try {
       const raw = await this.runInference({
         system: promptText(AUTO_NAME_ROLE),
-        user: `${promptText(AUTO_NAME_INSTRUCTION)}\n\n---\n${this.conversationDigest(4000)}\n---`,
+        user: `${instruction}\n\n---\n${this.conversationDigest(4000)}\n---`,
         maxTokens: 24,
       });
       const label = cleanSessionTitle(raw);
@@ -3253,6 +3283,18 @@ export class Session {
   async maybeCompact(force = false): Promise<boolean> {
     if (!force) {
       if (this.autoCompactLimit <= 0 || this.stats.contextTokens < this.autoCompactLimit) return false;
+    }
+
+    // Compaction REPLACES history with the summary, so this is the one place
+    // where running the call is worse than not running it: with no system prompt
+    // the real conversation would be swapped for whatever a model returns when
+    // asked nothing. Decline and keep the history intact.
+    if (isPromptDisabled(COMPACTION_SYSTEM)) {
+      this.emit({
+        type: "command_output",
+        text: "⚠ compaction is switched off (compaction.system is empty) — history kept as is.",
+      });
+      return false;
     }
 
     // Keep the most recent messages (a shorter tail under /compact force, so a
@@ -3348,7 +3390,7 @@ export class Session {
     let summaryText = "";
     const stream = this.provider.stream({
       model: this.settings.smallModel ?? this.settings.model,
-      system: promptText(COMPACTION_SYSTEM),
+      system: promptText(COMPACTION_SYSTEM), // guarded by maybeCompact
       messages: [{ role: "user", content: [{ type: "text", text }] }],
       tools: [],
       maxTokens: 2000,

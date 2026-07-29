@@ -162,9 +162,22 @@ export function renderPrompt(id: string, vars: Record<string, string | number>):
   });
 }
 
+/**
+ * The text in force for `id`, or undefined when the prompt is switched off.
+ *
+ * Use this for anything that drives a MODEL CALL. A blank system or instruction
+ * string is not a cheaper version of the call — it is the same call with the
+ * instructions removed, so it costs full latency and returns something nobody
+ * asked for. A feature whose prompt is empty must not run at all.
+ */
+export function promptTextIfEnabled(id: string): string | undefined {
+  const text = promptText(id);
+  return text.trim() === "" ? undefined : text;
+}
+
 /** Whether a prompt is switched off — its override exists and is blank. */
 export function isPromptDisabled(id: string): boolean {
-  return promptText(id).trim() === "";
+  return promptTextIfEnabled(id) === undefined;
 }
 
 /** Every declared prompt, with its default, its current text, and its file. */

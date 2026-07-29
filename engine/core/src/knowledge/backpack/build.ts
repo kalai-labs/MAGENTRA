@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { definePrompt, promptText } from "@magentra/protocol";
+import { definePrompt, isPromptDisabled, promptText } from "@magentra/protocol";
 import { join } from "node:path";
 import type { CrewAgent } from "../../crew/team.js";
 import { buildBm25 } from "./bm25.js";
@@ -151,6 +151,16 @@ async function mapConcurrent<T>(
 export async function buildBackpack(opts: BuildBackpackOptions): Promise<BuildResult> {
   const { cwd, agent, runInference, embedder, onProgress, signal } = opts;
   const warnings: string[] = [];
+
+  // Both phases below are model calls driven entirely by their prompt. Emptying
+  // either switches the feature off, and building anyway would run one call per
+  // chunk with no instructions and store the results as though they were notes.
+  if (isPromptDisabled(NOTE_SYSTEM) || isPromptDisabled(BRIEF_SYSTEM)) {
+    return {
+      index: loadBackpackIndex(cwd, agent.id) ?? emptyBackpackIndex(),
+      warnings: ["backpack: switched off — backpack.note/backpack.brief are empty in the prompt registry."],
+    };
+  }
   const existing = loadBackpackIndex(cwd, agent.id);
   const prior = existing ? explode(existing) : new Map<string, DocWork>();
 
