@@ -45,6 +45,16 @@ export const settingsSchema = z
     model: z.string().default("deepseek-ai/DeepSeek-V4-Flash"),
     /** Cheap model for WebFetch digestion and compaction summaries. */
     smallModel: z.string().optional(),
+    /**
+     * Whether the configured model can actually SEE images.
+     *
+     * Off by default, because most models cannot and a wrong "yes" is the
+     * expensive direction: the agent captures a screenshot, receives content it
+     * cannot interpret, and reports on a picture it never saw. With this off the
+     * Read tool refuses image files outright and the evidence rung tells the
+     * agent so, rather than leaving it to guess.
+     */
+    vision: z.boolean().default(false),
     baseUrl: z.string().optional(),
     /** Name of the env var holding the API key. */
     apiKeyEnv: z.string().optional(),
@@ -221,6 +231,7 @@ const ENV_OVERRIDES: ReadonlyArray<{ env: string; path: string; numeric?: boolea
   { env: "MAGENTRA_PROVIDER", path: "provider" },
   { env: "MAGENTRA_MODEL", path: "model" },
   { env: "MAGENTRA_SMALL_MODEL", path: "smallModel" },
+  { env: "MAGENTRA_VISION", path: "vision" },
   { env: "MAGENTRA_BASE_URL", path: "baseUrl" },
   { env: "MAGENTRA_API_KEY_ENV", path: "apiKeyEnv" },
   { env: "MAGENTRA_MAX_ITERATIONS", path: "maxIterationsPerTurn", numeric: true },

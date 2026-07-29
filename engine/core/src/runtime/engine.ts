@@ -101,6 +101,7 @@ export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTi
   provider: "session",
   model: "nextTurn",
   smallModel: "nextTurn",
+  vision: "nextTurn",
   baseUrl: "session",
   apiKeyEnv: "session",
   apiKey: "session",

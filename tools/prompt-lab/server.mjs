@@ -9,11 +9,16 @@
 //   npm run prompt-lab            → http://127.0.0.1:4319
 //   npm run prompt-lab -- --port 5000 --dir ./experiments/short-prompts
 
+import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { watch } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+
+const run = promisify(execFile);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -31,6 +36,59 @@ if (dirOverride) process.env.MAGENTRA_PROMPTS_DIR = dirOverride;
 const PORT = Number(arg("port", 4319));
 const HOST = arg("host", "127.0.0.1");
 
+
+/** Newest mtime under `dir` for files matching `ext`, or 0 when there are none. */
+async function newestMtime(dir, ext) {
+  const { readdir, stat } = await import("node:fs/promises");
+  let newest = 0;
+  async function walk(d) {
+    let entries;
+    try {
+      entries = await readdir(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name === "node_modules") continue;
+      const full = join(d, e.name);
+      if (e.isDirectory()) {
+        if (e.name === "dist" && ext === ".ts") continue;
+        await walk(full);
+      } else if (e.name.endsWith(ext)) {
+        try {
+          newest = Math.max(newest, (await stat(full)).mtimeMs);
+        } catch {}
+      }
+    }
+  }
+  await walk(dir);
+  return newest;
+}
+
+/** Compiles the engine when the sources are ahead of the build. */
+async function ensureBuilt() {
+  const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const engine = join(repo, "engine");
+  const [src, out] = await Promise.all([newestMtime(engine, ".ts"), newestMtime(engine, ".js")]);
+  if (out >= src) return;
+  process.stdout.write("  sources changed since the last build — compiling…\n");
+  try {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    await promisify(execFile)("npx", ["tsc", "-b"], { cwd: repo, timeout: 300_000 });
+  } catch (err) {
+    const out2 = `${err?.stdout ?? ""}${err?.stderr ?? ""}`.trim();
+    process.stdout.write(`  BUILD FAILED — defaults may not match source:\n${out2.slice(0, 500)}\n`);
+  }
+}
+
+// The registry resolves every default from the COMPILED engine, while promote
+// writes to the TypeScript source. If dist is older than src the two disagree,
+// and the symptom is baffling: promote reports "no verbatim match" for a literal
+// that is plainly sitting in the file. Build first so the in-memory defaults are
+// the ones on disk.
+await ensureBuilt();
+
 // Importing these registers every prompt as a side effect of module load:
 // core brings the system prompt, reminders, rungs and background calls; the
 // tool registry brings all the tool descriptions.
@@ -42,6 +100,7 @@ tools.createDefaultRegistry();
 
 const {
   clearPromptOverride,
+  setPromptDefault,
   estimateTokens,
   orphanedPromptFiles,
   promptCatalog,
@@ -81,6 +140,64 @@ async function loadFindings() {
   }
 }
 
+/**
+ * Marks each review note addressed once its prompt no longer matches the text
+ * the note was written against. Without this a fixed prompt keeps showing the
+ * severity it had before the fix, and there is no way to see what is left.
+ *
+ * Disabling a prompt counts as addressed — switching a rung off is a decision
+ * about it, not an open question.
+ */
+function markAddressed(review, prompts) {
+  const byId = new Map(prompts.map((p) => [p.id, p]));
+  const out = {};
+  for (const [id, note] of Object.entries(review.findings ?? {})) {
+    const p = byId.get(id);
+    const hash = p ? createHash("sha1").update(p.currentText).digest("hex").slice(0, 12) : "";
+    out[id] = {
+      ...note,
+      addressed:
+        note.reviewedHash === "addressed" ||
+        (p?.disabled ?? false) ||
+        (note.reviewedHash !== undefined && note.reviewedHash !== hash),
+    };
+  }
+  const work = review.workOrder
+    ? {
+        ...review.workOrder,
+        phases: review.workOrder.phases.map((ph) => ({
+          ...ph,
+          steps: ph.steps.map((st) => ({ ...st, done: stepPasses(st, byId) })),
+        })),
+      }
+    : null;
+  return { ...review, findings: out, workOrder: work, meta: review.meta ?? {} };
+}
+
+/**
+ * Whether a work-order step has actually been carried out.
+ *
+ * Deliberately not "the prompt changed at some point" — that flag is true for
+ * any earlier edit and would mark a step done that nobody has started. Each
+ * step declares its own test: the receiving prompt now contains the rule, the
+ * source prompt is empty, or the prompt no longer exists at all.
+ */
+function stepPasses(step, byId) {
+  const t = step.test;
+  if (!t) return false;
+  const p = byId.get(t.prompt);
+  if (t.gone) return p === undefined;
+  // A prompt that was removed from the code outright satisfies any step that
+  // only asked for it to be switched off — deletion is the stronger form of the
+  // same intent, and a step should not stay red because the operator went
+  // further than the instruction asked.
+  if (t.disabled) return p === undefined || p.disabled === true;
+  if (!p) return false;
+  if (t.shorterThan !== undefined) return p.currentTokens < t.shorterThan;
+  if (t.matches) return new RegExp(t.matches, "i").test(p.currentText);
+  return false;
+}
+
 function catalog() {
   const prompts = promptCatalog().map((p) => ({
     ...p,
@@ -97,6 +214,163 @@ function catalog() {
     prompts,
     preview: { system, systemTokens: estimateTokens(system), toolTokens },
   };
+}
+
+
+// ── promote to source ───────────────────────────────────────────────────────
+// An override in ~/.magentra/prompts is local to one machine. Promoting writes
+// the text back into the .ts literal it came from, so the tuned prompt becomes
+// the shipped default: it lands in `git diff` as an ordinary source change and
+// reaches every machine.
+//
+// The literal is located by content rather than by recorded position, because a
+// prompt's default and its call site are not always in the same statement. That
+// costs one constraint: a default assembled from variables (`${PRODUCT_NAME}`)
+// never appears verbatim in the source, so it cannot be found and is reported
+// as not promotable rather than silently mangled.
+
+const REPO = join(HERE, "..", "..");
+
+/**
+ * Every engine source file with its contents, cached against the newest mtime
+ * in the tree.
+ *
+ * The cache has to be invalidated by the FILESYSTEM, not by this server's own
+ * writes. Source changes underneath a running lab — a git checkout, an editor,
+ * another session — and a stale copy makes every promote fail with "no verbatim
+ * match", because the text being searched for is the one this process loaded at
+ * startup rather than the one on disk.
+ */
+let sourceCache;
+async function sourceFiles() {
+  const paths = [];
+  async function walk(dir) {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name === "dist" || e.name === "node_modules") continue;
+      const full = join(dir, e.name);
+      if (e.isDirectory()) await walk(full);
+      else if (e.name.endsWith(".ts")) paths.push(full);
+    }
+  }
+  await walk(join(REPO, "engine"));
+
+  let newest = 0;
+  for (const f of paths) {
+    try {
+      newest = Math.max(newest, (await stat(f)).mtimeMs);
+    } catch {}
+  }
+  const sig = `${paths.length}:${newest}`;
+  if (sourceCache?.sig === sig) return sourceCache.files;
+
+  const files = [];
+  for (const f of paths) files.push([f, await readFile(f, "utf8")]);
+  sourceCache = { sig, files };
+  promotableCache = undefined; // promotability is derived from these contents
+  return files;
+}
+
+/** A string as it would be written inside a TS template literal. */
+function toTemplateLiteral(text) {
+  return text.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+}
+
+/**
+ * Locates a prompt's default literal. Returns the file and the exact source
+ * form to replace, or a reason it cannot be found.
+ */
+async function locateLiteral(defaultText) {
+  const needle = toTemplateLiteral(defaultText);
+  const hits = [];
+  for (const [file, body] of await sourceFiles()) {
+    let from = 0;
+    for (;;) {
+      const at = body.indexOf(needle, from);
+      if (at === -1) break;
+      from = at + 1;
+      // The match must reach the END of the source literal. A bare indexOf also
+      // matches a PREFIX of a longer one — which is exactly what happens when
+      // source has drifted ahead of this process's in-memory default — and
+      // replacing a prefix would leave the tail of the old text dangling after
+      // the new. Defaults are written as backtick, double- or single-quoted
+      // literals, so any closing quote ends the match.
+      if (!"`\"'".includes(body[at + needle.length] ?? "")) continue;
+      hits.push({ file, at });
+    }
+  }
+  if (hits.length === 0) {
+    return {
+      ok: false,
+      reason:
+        "no verbatim match in engine sources. Either this default is assembled from variables (use {{slots}} and descriptionVars " +
+        "instead, so the literal is findable), or the source changed since this lab process started — restart it with " +
+        "`npm run prompt-lab` and try again.",
+    };
+  }
+  if (hits.length > 1) {
+    return { ok: false, reason: `${hits.length} identical literals in source — too ambiguous to edit safely` };
+  }
+  return { ok: true, file: hits[0].file, needle };
+}
+
+/** ids whose default was located, computed once so the UI can enable the button. */
+let promotableCache;
+async function promotable() {
+  await sourceFiles(); // refreshes the cache and clears this one if source moved
+  if (promotableCache) return promotableCache;
+  promotableCache = {};
+  for (const p of promptCatalog()) {
+    const found = await locateLiteral(p.defaultText);
+    promotableCache[p.id] = found.ok
+      ? { ok: true, file: relative(REPO, found.file) }
+      : { ok: false, reason: found.reason };
+  }
+  return promotableCache;
+}
+
+/**
+ * Writes `text` into the prompt's source literal, then typechecks. A build
+ * failure restores the file — a prompt edit must never be able to leave the
+ * repository uncompilable.
+ */
+async function promote(id, text) {
+  const entry = promptCatalog().find((p) => p.id === id);
+  if (!entry) return { ok: false, reason: `unknown prompt id: ${id}` };
+  if (text.trim() === "") return { ok: false, reason: "refusing to promote empty text" };
+
+  const found = await locateLiteral(entry.defaultText);
+  if (!found.ok) return found;
+
+  // Override files carry a trailing newline; a source literal must not, or the
+  // section gains a blank line every time the prompt is assembled.
+  const clean = text.replace(/\r\n/g, "\n").replace(/\s+$/, "");
+  const before = await readFile(found.file, "utf8");
+  if (!before.includes(found.needle)) {
+    return { ok: false, reason: "the file changed on disk while this promote was being prepared — reload the lab and try again" };
+  }
+  const after = before.replace(found.needle, toTemplateLiteral(clean));
+  await writeFile(found.file, after, "utf8");
+
+  try {
+    await run("npx", ["tsc", "-b"], { cwd: REPO, timeout: 180_000 });
+  } catch (err) {
+    await writeFile(found.file, before, "utf8");
+    const out = `${err?.stdout ?? ""}${err?.stderr ?? ""}`.trim();
+    return { ok: false, reverted: true, reason: `typecheck failed, file restored\n${out.slice(0, 600)}` };
+  }
+
+  // The literal is now the shipped default, so the local override is redundant.
+  setPromptDefault(id, clean);
+  clearPromptOverride(id);
+  promotableCache = undefined;
+  sourceCache = undefined;
+  return { ok: true, file: relative(REPO, found.file) };
 }
 
 // ── live reload ─────────────────────────────────────────────────────────────
@@ -172,8 +446,15 @@ const server = createServer(async (req, res) => {
     }
 
     if (path === "/api/catalog") {
-      const review = await loadFindings();
-      return json(res, 200, { ...catalog(), review });
+      const [raw, source] = await Promise.all([loadFindings(), promotable()]);
+      const data = catalog();
+      return json(res, 200, { ...data, review: markAddressed(raw, data.prompts), source });
+    }
+
+    if (path.startsWith("/api/promote/") && req.method === "POST") {
+      const id = decodeURIComponent(path.slice("/api/promote/".length));
+      const result = await promote(id, await readBody(req));
+      return json(res, result.ok ? 200 : 409, result);
     }
 
     if (path === "/api/events") {

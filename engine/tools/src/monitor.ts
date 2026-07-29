@@ -36,8 +36,9 @@ export const monitorTool: ToolDefinition<z.infer<typeof inputSchema>> = {
 
 - Returns a task id immediately; stop it with TaskStop(task_id).
 - Lines arriving close together are batched into one notification. stderr is written to the task output file only (read it with TaskOutput).
-- If the command floods more than ${NOISE_LIMIT} lines within ${NOISE_WINDOW_MS / 1000}s it is auto-stopped for noise; narrow the command (grep/filter) and try again.
+- If the command floods more than {{noiseLimit}} lines within {{noiseWindowSec}}s it is auto-stopped for noise; narrow the command (grep/filter) and try again.
 - Unless persistent, it is killed after timeout_ms.`,
+  descriptionVars: { noiseWindowSec: NOISE_WINDOW_MS / 1000, noiseLimit: NOISE_LIMIT },
   permissionClass: "execute",
   permissionSubject: (input) => input.command,
   describeInput: (input) => input.description,
@@ -97,7 +98,7 @@ export const monitorTool: ToolDefinition<z.infer<typeof inputSchema>> = {
               payload: { reason: "noise" },
             });
             ctx.session.remind(
-              `<task-notification>Monitor ${info.id} was stopped automatically: more than ${NOISE_LIMIT} events within ${NOISE_WINDOW_MS / 1000}s (too noisy). Narrow the command and restart if you still need it.</task-notification>`,
+              `<task-notification>Monitor ${info.id} was stopped automatically: more than {{noiseLimit}} events within {{noiseWindowSec}}s (too noisy). Narrow the command and restart if you still need it.</task-notification>`,
             );
             ctx.session.background.stop(info.id);
           }

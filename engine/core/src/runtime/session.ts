@@ -80,7 +80,6 @@ import {
   salvageQuestionObjects,
 } from "./careful.js";
 import {
-  circularEvidenceText,
   codeFilesAmong,
   looksLikeTestDouble,
   runtimeEvidenceText,
@@ -122,7 +121,6 @@ const AUTO_NAME_ROLE = definePrompt({
   channel: "side-call",
   where:
     "System prompt of the small background call that names a chat session in the sidebar. Runs once per session, after ~2000 tokens of conversation. Never seen by the main agent.",
-
   text: "You name chat sessions for a coding assistant's sidebar.",
 });
 const AUTO_NAME_INSTRUCTION = definePrompt({
@@ -132,9 +130,7 @@ const AUTO_NAME_INSTRUCTION = definePrompt({
   channel: "side-call-user",
   where:
     "User-role instruction of the same session-naming call, sent above the conversation excerpt.",
-
-  text: "Read the conversation excerpt below and reply with ONLY a short title (3–6 words) " +
-  "naming what it is about. No quotes, no trailing punctuation, no prefix like 'Title:' — just the title itself.",
+  text: `Read the conversation excerpt below and reply with ONLY a short title (3–6 words) naming what it is about. No quotes, no trailing punctuation, no prefix like 'Title:' — just the title itself.`,
 });
 
 /** Normalizes a model-authored title into a clean sidebar label: first line only,
@@ -161,7 +157,6 @@ const ERROR_BATCH_REMINDER = definePrompt({
   channel: "reminder",
   where:
     "Appended to the tool-result block whenever one or more tool calls in that batch failed, so the agent fixes and continues instead of ending the turn.",
-
   text: "One or more tool calls above failed. Diagnose the cause and continue working — fix and retry rather than ending the turn. Only stop if the task is complete or genuinely blocked, and if blocked, explain why.",
 });
 
@@ -172,7 +167,6 @@ const RECOVERY_NUDGE_TEXT = definePrompt({
   channel: "reminder",
   where:
     "Injected when the turn is about to end and the LAST tool call failed. Capped at 3 auto-nudges per turn.",
-
   text: "<system-reminder>The last tool call in this turn failed and the turn is ending. Either fix the failure and re-verify, or state explicitly why this failure does not block success. Do not end with a failing command unaccounted for.</system-reminder>",
 });
 
@@ -183,7 +177,6 @@ const WRAPUP_NUDGE_TEXT = definePrompt({
   channel: "reminder",
   where:
     "Injected when the agent stops working without writing a summary. Costs one extra round trip each time it fires.",
-
   text: "<system-reminder>You finished working but did not summarize. Give the user a short wrap-up: what was built/changed, how to use it, what you verified and the outcome, and any open issues.</system-reminder>",
 });
 
@@ -194,7 +187,6 @@ const LENGTH_CONTINUATION_TEXT = definePrompt({
   channel: "reminder",
   where:
     "Injected when the provider stopped the response at the max-output-token wall. Asks for a seamless continuation rather than a restart.",
-
   text: "<system-reminder>Your previous response was cut off mid-output by the token limit. Resume from the exact character where it stopped. Do not repeat or rephrase anything already written. Do not restart, re-introduce, or summarize. No preamble — output only the continuation, as if the text had never been interrupted.</system-reminder>",
 });
 
@@ -209,7 +201,6 @@ const TOOL_CUTOFF_TEXT = definePrompt({
   channel: "reminder",
   where:
     "Returned as the RESULT of a tool call whose JSON arguments were truncated by the output-token wall, so the agent reissues it instead of assuming it ran.",
-
   text: "This tool call was cut off by the output-token limit before it finished, so it was NOT executed. Reissue the complete call — do not assume it ran or had any effect.",
 });
 
@@ -225,7 +216,6 @@ const STALL_PIVOT_TEXT = definePrompt({
   channel: "reminder",
   where:
     "Injected after three consecutive identical rounds (same calls, same results). Fires for the first two stalls of a turn.",
-
   text: "<system-reminder>Stall: your last rounds repeated the same actions with the same results. This approach is not working — abandon it entirely and try a genuinely different strategy (different tool, different angle, different decomposition). Do not re-issue the failing action.</system-reminder>",
 });
 
@@ -236,7 +226,6 @@ const STALL_ASK_TEXT = definePrompt({
   channel: "reminder",
   where:
     "Injected on the third stall of a turn: stop attempting and ask the user one concrete question with AskUserQuestion.",
-
   text: "<system-reminder>Stall: strategy pivots have not produced progress either. Stop attempting now. Ask the user ONE concrete question with AskUserQuestion: state what you are trying to achieve, what keeps failing and why you think so, and offer the options you see (with your recommendation). If asking is unavailable (you are a subagent), end the turn instead with a clear report of the blocker.</system-reminder>",
 });
 
@@ -250,7 +239,6 @@ const OVERDRIVE_PROMPT_SECTION = definePrompt({
   channel: "system-conditional",
   where:
     "Appended to the system prompt only while OVERDRIVE is on. Removes every confirmation step and tells the agent not to stop until the whole query is handled.",
-
   text: `# OVERDRIVE — fully-autonomous mode
 You own this query end to end: plan, act, verify, deliver — without stopping for routine approval.
 - Plan first: for any multi-step request, lay out the task plan with TaskCreate — one task per step, the last a verification task stating the expected end state — before making changes. Trivial requests: just do them.
@@ -304,7 +292,6 @@ const CLARIFY_SYSTEM = definePrompt({
   channel: "side-call",
   where:
     "System prompt of the background call that runs BEFORE an open-ended request and decides whether to ask the user clarifying questions. Adds one inference round at the start of a turn; fails open on any error.",
-
   text: `You are the clarify pre-layer of an autonomous coding agent. You see ONE incoming user request (plus a snippet of the previous exchange for context) and decide: should the agent ask clarifying questions BEFORE starting, or just start?
 
 You may also be given a "Codebase overview" — a quick, cursory read of the workspace (its design atlas, an import-graph skeleton, or a short peek at README/manifests). It is CONTEXT, not something to confirm with the user. Use it to SHARPEN questions, NOT to silence them:
@@ -372,7 +359,6 @@ const PLAN_FIRST_REMINDER = definePrompt({
   channel: "reminder",
   where:
     "Injected at turn start when the task list is empty, nudging the agent to decompose multi-move work with TaskCreate first.",
-
   text: "Nothing is on the task board yet. When a request will take several moves to finish, lay it out first with TaskCreate — one entry per move, closing with a check task that names the end state you'll confirm — before you touch any files. A quick one-off needs no board; just handle it.",
 });
 
@@ -382,9 +368,8 @@ const NO_ATLAS_REMINDER = definePrompt({
   label: "No design atlas",
   channel: "reminder",
   where:
-    "Injected when the workspace has no .magentra/ATLAS.md, suggesting /atlas or writing one inline.",
-
-  text: "No design atlas exists for this workspace. Suggest the user run /atlas to generate one — a mapped atlas speeds up every future session. For non-trivial multi-module work you may instead create .magentra/ATLAS.md yourself: each module, one-line purpose, public interface, key dependencies — modules and boundaries, not a file listing, compact (fits in 12KB).",
+    "Injected when the workspace has no .magentra/ATLAS.md, suggesting /atlas or writing one inline. Empty this prompt to switch the reminder off.",
+  text: `No design atlas exists for this workspace. Suggest the user run /atlas to generate one — a mapped atlas speeds up every future session. For non-trivial multi-module work you may instead create .magentra/ATLAS.md yourself: each module, one-line purpose, public interface, key dependencies — modules and boundaries, not a file listing, compact (fits in 12KB).`,
 });
 
 const ATLAS_SECTION_HEADER = definePrompt({
@@ -394,8 +379,8 @@ const ATLAS_SECTION_HEADER = definePrompt({
   channel: "system-conditional",
   where:
     "Prefixes the contents of .magentra/ATLAS.md when it is injected into the system prompt. Only the header is editable; the atlas file follows it verbatim.",
-
-  text: "# Codebase atlas (.magentra/ATLAS.md)\nThe whole-design map of this workspace. Consult it before planning or editing; it is the big picture.\n\n",
+  text: `# Codebase atlas (.magentra/ATLAS.md)
+The whole-design map of this workspace. Consult it before planning or editing; it is the big picture.`,
 });
 
 const STANDARDS_SECTION_HEADER = definePrompt({
@@ -405,8 +390,8 @@ const STANDARDS_SECTION_HEADER = definePrompt({
   channel: "system-conditional",
   where:
     "Prefixes the contents of the workspace STANDARDS.md when one exists, declaring it binding over the default code-style guidance.",
-
-  text: "# Coding standards (user-provided — binding)\nThe user supplied these standards. They are RULES, not suggestions: where they conflict with any default guidance about code style, the standards win. A change that violates them is a failed change regardless of whether it works.\n\n",
+  text: `# Coding standards (user-provided — binding)
+The user supplied these standards. They are RULES, not suggestions: where they conflict with any default guidance about code style, the standards win. A change that violates them is a failed change regardless of whether it works.`,
 });
 
 const COMPACTION_SYSTEM = definePrompt({
@@ -614,7 +599,7 @@ export class Session {
   private readonly doubleFilesThisTurn = new Set<string>();
   /** Finishing rungs fire at most once per turn each (reset at turn start). */
   private evidenceNudgeFired = false;
-  private circularNudgeFired = false;
+  private incompleteTasksNudgeFired = false;
   /** A2: mutable crew roster (hot-reloadable); consumed by buildSystemPrompt and services.team. */
   private teamAgents: CrewAgent[];
   /** Hirable crew: the experience manager (lessons + service record). Main session with a team only. */
@@ -769,6 +754,10 @@ export class Session {
   }
 
   remind(text: string): void {
+    // A prompt switched off in the registry resolves to "". Pushing it would
+    // inject an empty <system-reminder> and, for the rungs that `continue`
+    // afterwards, still cost the round trip the operator meant to remove.
+    if (text.trim() === "") return;
     this.reminders.push(text);
   }
 
@@ -1209,7 +1198,7 @@ export class Session {
   toolSchemas(): ToolSchema[] {
     return this.registry.list().map((t) => ({
       name: t.name,
-      description: toolDescriptionText(t.name, t.description),
+      description: toolDescriptionText(t.name, t.description, t.descriptionVars),
       inputSchema: t.rawInputSchema ?? zodToJsonSchema(t.inputSchema),
     }));
   }
@@ -1232,8 +1221,8 @@ export class Session {
         ...this.dynamicSections.values(),
         ...(this.opts.modeEngine?.promptSections() ?? []),
         ...(this.teamAgents.length > 0 ? [crewSection(this.teamAgents)] : []),
-        ...(atlas ? [promptText(ATLAS_SECTION_HEADER) + atlas] : []),
-        ...(standards ? [promptText(STANDARDS_SECTION_HEADER) + standards] : []),
+        ...(atlas ? [`${promptText(ATLAS_SECTION_HEADER)}\n\n${atlas}`] : []),
+        ...(standards ? [`${promptText(STANDARDS_SECTION_HEADER)}\n\n${standards}`] : []),
       ],
     });
   }
@@ -1924,7 +1913,7 @@ export class Session {
     this.doubleFilesThisTurn.clear();
     this.ranCommandThisTurn = false;
     this.evidenceNudgeFired = false;
-    this.circularNudgeFired = false;
+    this.incompleteTasksNudgeFired = false;
 
     const turnId = `t_${++this.turnCounter}`;
     this.abortController = new AbortController();
@@ -2333,10 +2322,24 @@ export class Session {
           // pending or in-progress work — nudge the model to finish or
           // explicitly justify leaving it open. Checked after error-recovery
           // (a failure takes priority) and before the wrap-up nudge.
-          if (stopReason === "end_turn" && !lastBatchHadError) {
+          //
+          // Fires ONCE per turn, like every other rung on this ladder. Without
+          // the fuse it re-fired on each attempt to end the turn for as long as
+          // anything stayed open, and each firing is a full-context round trip.
+          // A plan of six tasks could therefore charge six extra model calls for
+          // one turn's work, which made planning itself expensive and turned the
+          // task list into a latency multiplier. Saying it twice does not tell
+          // the model anything the first reminder did not; if it ends the turn
+          // again with work still open, that is an answer, and the wrap-up rung
+          // below is where the user hears about it.
+          //
+          // It also no longer touches nudgeCount. That counter is the wrap-up
+          // rung's budget and nothing else reads it, so incrementing here only
+          // starved the summary this rung's own reminder asks for.
+          if (stopReason === "end_turn" && !lastBatchHadError && !this.incompleteTasksNudgeFired) {
             const incomplete = this.tasks.list().filter((t) => t.status === "pending" || t.status === "in_progress");
             if (incomplete.length > 0) {
-              nudgeCount++;
+              this.incompleteTasksNudgeFired = true;
               this.emit({ type: "command_output", text: "↻ tasks incomplete — continuing" });
               this.pushMessage({ role: "user", content: [{ type: "text", text: incompleteTasksNudgeText(incomplete) }] });
               continue;
@@ -2367,23 +2370,28 @@ export class Session {
           // quiet is to mock it and watch the mock pass. Both texts therefore
           // name an honest "I could not run this" as a complete answer.
           //
-          // Only one can fire at a given stop (they disagree on ranCommand), so
-          // a turn pays at most one extra round for each, and only ever when it
-          // has no real evidence to show.
-          if (stopReason === "end_turn" && codeFilesAmong(this.filesChangedThisTurn).length > 0) {
+          // ONE rung, two shapes. They used to be two prompts firing on opposite
+          // halves of `ranCommandThisTurn`, which meant disabling either one
+          // silently uncovered its half — a turn that ran only its own mocks got
+          // no reminder at all, because a command HAD run. Folding the stand-in
+          // argument into the same text as a conditional clause keeps both cases
+          // covered by a single fuse and a single prompt an operator can find.
+          if (stopReason === "end_turn" && !this.evidenceNudgeFired) {
             const changedCode = codeFilesAmong(this.filesChangedThisTurn);
-            if (!this.ranCommandThisTurn && !this.evidenceNudgeFired) {
+            const doubles = [...this.doubleFilesThisTurn];
+            const nothingRan = !this.ranCommandThisTurn;
+            const onlyDoubles = this.ranCommandThisTurn && doubles.length > 0;
+            if (changedCode.length > 0 && (nothingRan || onlyDoubles)) {
               this.evidenceNudgeFired = true;
-              this.emit({ type: "command_output", text: "↻ nothing was run — verifying the change for real" });
-              this.pushMessage({ role: "user", content: [{ type: "text", text: runtimeEvidenceText(changedCode) }] });
-              continue;
-            }
-            if (this.ranCommandThisTurn && this.doubleFilesThisTurn.size > 0 && !this.circularNudgeFired) {
-              this.circularNudgeFired = true;
-              this.emit({ type: "command_output", text: "↻ checked against your own stand-in — confirm the real contract" });
+              this.emit({
+                type: "command_output",
+                text: nothingRan
+                  ? "↻ nothing was run — verifying the change for real"
+                  : "↻ checked against your own stand-in — confirm the real contract",
+              });
               this.pushMessage({
                 role: "user",
-                content: [{ type: "text", text: circularEvidenceText(changedCode, [...this.doubleFilesThisTurn]) }],
+                content: [{ type: "text", text: runtimeEvidenceText(changedCode, this.settings.vision, doubles) }],
               });
               continue;
             }
@@ -3496,7 +3504,7 @@ const INCOMPLETE_TASKS_NUDGE = definePrompt({
   label: "Tasks still open",
   channel: "reminder",
   where:
-    "Fires at the end of any clean turn while ANY task is still pending or in_progress. Unlike its sibling rungs it has no once-per-turn fuse and no nudge budget, so it can fire repeatedly within one turn — each firing costs a full round trip.",
+    "Fires at the end of a clean turn while ANY task is still pending or in_progress, and at most once per turn. Costs one full round trip when it fires, so the real lever on its cost is how many tasks get opened in the first place — see tool.TaskCreate.",
   placeholders: ["tasks"],
   text: `<system-reminder>The turn is ending but these tasks are not completed:
 {{tasks}}
