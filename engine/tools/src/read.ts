@@ -57,12 +57,13 @@ export const readTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   description: `Reads a file from the local filesystem.
 
 - file_path must be an absolute path.
-- Reads up to ${MAX_LINES_DEFAULT} lines by default; use offset/limit for larger files, and read only the part you need when you already know where it is.
+- Reads up to {{maxLines}} lines by default; use offset/limit for larger files, and read only the part you need when you already know where it is.
 - Output uses cat -n format: line number, a tab, then the line content, starting at line 1.
-- Image files (png/jpg/gif/webp) are returned visually.
+- Image files (png/jpg/gif/webp) are returned visually when vision is enabled for this workspace; when it is off, reading one is refused rather than returning content you cannot see.
 - Document files (PDF, DOCX, PPTX, XLSX, RTF, ODT, EPUB) are text-extracted (best-effort, for text-based documents); the output is line-numbered and prefixed with an extraction header. Scanned or encrypted documents are not supported and return an error.
 - Reading a directory, a missing file, or an empty file returns an explanatory error instead of content.
 - Do not re-read a file you just edited to verify the change — Edit/Write fail loudly when they cannot apply.`,
+  descriptionVars: { maxLines: MAX_LINES_DEFAULT },
   permissionClass: "read",
   permissionSubject: (input) => input.file_path,
   outputByteLimit: 250_000,
@@ -83,6 +84,17 @@ export const readTool: ToolDefinition<z.infer<typeof inputSchema>> = {
 
     const imageType = IMAGE_TYPES[extname(path).toLowerCase()];
     if (imageType) {
+      // Handing an image to a model that cannot see one is worse than refusing:
+      // it produces confident commentary on a picture that was never read.
+      if (!ctx.session.settings.vision) {
+        return {
+          content:
+            `${basename(path)} is an image, and vision is off for this workspace — you cannot see it. ` +
+            `Do not describe or draw conclusions from it. Verify this change some other way, or say plainly that it stays unverified. ` +
+            `(The user can enable it with /settings vision true if their model supports images.)`,
+          isError: true,
+        };
+      }
       const data = readFileSync(path).toString("base64");
       ctx.session.fileState.recordRead(path);
       return { content: [{ type: "image", data, mediaType: imageType }] };

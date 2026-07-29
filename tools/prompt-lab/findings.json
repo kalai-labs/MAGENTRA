@@ -1,288 +1,908 @@
 {
   "meta": {
-    "reviewed": "2026-07-28",
+    "reviewed": "2026-07-29",
     "build": "0.11.1.0",
-    "about": "Notes attached to individual prompts from a comparison against a mature reference harness. Reference excerpts are quoted for wording and structure only — they are prior art to synthesise from, not text to copy. Every claim carries the code reference it came from so it can be re-checked.",
-    "severities": {
-      "must": "Direct code evidence ties this prompt to an observed defect.",
-      "improve": "No proven defect, but the reference handles this materially better.",
-      "ok": "Checked and competitive. Left here so it is not re-litigated."
+    "about": "Every registered prompt, reviewed and given a verdict. Reference excerpts are verbatim quotes from the leaked system prompts of two frontier coding agents (the newest two available), machine-verified against those files — they are prior art to synthesise from, not text to copy. Every claim carries the code reference it came from so it can be re-checked.",
+    "verdicts": {
+      "core": "Load-bearing. Keep it. Any action here is a refinement, not a question about whether it should exist.",
+      "optional": "Works, costs little, and nothing breaks without it. Cut it if you want a leaner prompt; keep it if the feature it serves is live.",
+      "delete": "Should not exist. It duplicates something else, or serves a feature you have parked. Empty it here, or remove its call site for every machine.",
+      "merge": "The right content in the wrong place. Fold it into the named prompt, then empty this one."
+    },
+    "addressed": "A note turns green once the prompt no longer matches reviewedHash — the snapshot it was written against. Disabling also counts as addressed.",
+    "quoteAudit": "All reference excerpts were checked verbatim against the two source files on 2026-07-29: 12 chunks, 0 mismatches. Quotes that turned out to come from older revisions or from a bundled skill were removed rather than re-attributed.",
+    "principle": "Two rules govern every action in this review.\n\n1. ADD A LINE, NEVER A ROUND. If a rule is worth having, it belongs inside a prompt that is already being sent — a bullet in an existing section, a clause in a tool description. A new reminder or a new pre-layer buys the same words at the price of a full model call, every time it fires. Prompt text is nearly free; round trips are not.\n\n2. WE ARE NOT COPYING. The reference is prior art for wording and placement, not a target to converge on. Several things this engine does have no counterpart there and are better — they are marked OURS below and must survive any edit. Where a reference line and one of ours say the same thing, ours stays.",
+    "audit": "Checked on 2026-07-29 whether each reference rule was genuinely absent here. Six of nine were already present, several stated more strongly — those recommendations were withdrawn. Only three real gaps remain: scope fidelity, anti-rumination, and the task-continuation rule.",
+    "purpose": "Prompt Lab is where this agent gets designed, not where it gets compared. Every prompt the engine sends is listed here with what it is for, where it fires, and what it costs — so the whole behaviour of the product can be reasoned about in one place and changed in one place. The reference excerpts are research: evidence about what a mature harness found worth saying, and where it chose to say it. They are not a specification to converge on. Several things this engine does are already better, and those are marked OURS."
+  },
+  "findings": {
+    "system.identity": {
+      "verdict": "core",
+      "title": "Keep. Longer than the reference, for a real reason.",
+      "problem": "The reference states identity in two lines because it is first-party to its own model. You carry the harder problem: a fixed product identity over a swappable engine. That needs the extra prose.",
+      "action": "Keep as is. If prompt budget ever gets tight, this is compressible without losing the rule — it is currently argued at more length than it needs.",
+      "reviewedHash": "ecad353a211e",
+      "ours": "A fixed product identity over a swappable engine. The reference never has to solve this because it is first-party to its model."
+    },
+    "system.harness": {
+      "verdict": "core",
+      "title": "Keep. Your parallel-call line is stronger than theirs.",
+      "problem": "The reference states parallel tool calls in one clause. Yours argues it: 'the single biggest lever on how fast a turn feels: the moment you know you need three files, open all three in one round instead of three.' That is better teaching, and the earlier suggestion to replace it was wrong.\n\nThe only real observation left is placement — it sits seventh in a nine-item list, at the same visual weight as a note about markdown rendering.",
+      "action": "Move the existing bullet to the top of the section. Do not reword it. One line moved, zero tokens added.",
+      "reference": {
+        "label": "Reference harness",
+        "note": "One clause inside its harness section. Notably it does NOT argue the point at length — it states it and moves on, and the section is nine lines total.",
+        "text": "Prefer the dedicated file/search tools over shell commands when one fits. Independent tool calls can run in parallel in one response."
+      },
+      "reviewedHash": "33cf575c1208",
+      "ours": "The do-not-re-read-after-Edit rule, which saves a round trip every time it applies, and the read-the-seams-before-the-bodies rule. Neither appears in the reference."
+    },
+    "system.communication": {
+      "verdict": "core",
+      "title": "Keep. Add a corrections paragraph.",
+      "problem": "Nothing anywhere stops self-correction spirals: re-auditing earlier statements, apologising, narrating mistakes. That is pure output length with no reader value.",
+      "action": "ADD ONE BULLET, not a section: 'Correct an earlier statement only when the error changes the user's code or decisions. No apologies, no preambles, no recounting the mistake.' ~25 tokens in a prompt already sent.\n\nSkip the reference's follow-up-question paragraph — it is long, and the short bullet carries the behaviour.",
+      "reference": {
+        "label": "Reference harness",
+        "note": "A whole section with no counterpart in your registry. Quoted verbatim.",
+        "text": "## Corrections\nAvoid unnecessary or excessive self-correction. Only correct an earlier statement in your user-facing text when the error would change the user's code, conclusions, or decisions. State corrections plainly and concisely, and continue the task; combine multiple corrections rather than enumerating them all. For slips that change nothing for the user, simply make the correction and move on - no need to note it explicitly. Don't add apologies or preambles, don't be overly self-critical, and don't ruminate or give a detailed account of the mistake or tally past errors. Sometimes, other agents will report incorrect or misleading results - don't always take them at face value immediately. If other agents correct your statements and they are right, then simply update your approach without narrating too much about the correction to the user. This instruction does not apply to thinking blocks.\n\nA follow-up question about your earlier work is not, by itself, a signal that you got something wrong — answer what was asked. A statement that was accurate needs no correction: don't re-audit how you phrased it, how you verified it, or limits you already stated. When the user does point to a real error, correct it plainly as above."
+      },
+      "reviewedHash": "4773ae04cf11",
+      "ours": "The markdown table contract, with a worked example. The reference has nothing like it, and a malformed table is a visible defect in your workbench."
+    },
+    "system.action-care": {
+      "verdict": "merge",
+      "title": "Fold into Communicating.",
+      "problem": "340 tokens as its own section. The reference carries the same rules as one paragraph inside its communication section, because reversibility and honest reporting are both about what you owe the user.",
+      "action": "Merge into `system.communication`, then empty this one. Expect to save ~120 tokens in the overlap.",
+      "mergeInto": "system.communication",
+      "reference": {
+        "label": "Reference harness",
+        "note": "The whole of your section, compressed to one paragraph.",
+        "text": "For actions that are hard to reverse or outward-facing, confirm first unless durably authorized or explicitly told to proceed without asking; approval in one context doesn't extend to the next. Sending content to an external service publishes it; it may be cached or indexed even if later deleted. Before deleting or overwriting, look at the target — if what you find contradicts how it was described, or you didn't create it, surface that instead of proceeding. Report outcomes faithfully: if tests fail, say so with the output; if a step was skipped, say that; when something is done and verified, state it plainly without hedging."
+      },
+      "reviewedHash": "313eced46fa5"
+    },
+    "system.git": {
+      "verdict": "merge",
+      "title": "Fold into the Bash tool.",
+      "problem": "301 tokens sent on every request, including the ones with no repository in sight. Neither reference model keeps a Git section in the system prompt — both put git guidance inside the Bash tool description, where it is read while choosing to run a command.",
+      "action": "Move the commit procedure and the forbidden-flag list into `tool.Bash`, then empty this one.",
+      "mergeInto": "tool.Bash",
+      "reference": {
+        "label": "Reference harness",
+        "note": "Git lives in the Bash description, not the system prompt.",
+        "text": "### Git\n- Interactive flags (`-i`, e.g. `git rebase -i`, `git add -i`) are not supported in this environment.\n- Use the `gh` CLI for GitHub operations (PRs, issues, API).\n- Commit or push only when the user asks. If on the default branch, branch first."
+      },
+      "reviewedHash": "24c9af90fbdc"
+    },
+    "system.code-style": {
+      "verdict": "core",
+      "title": "Keep. Already ahead of the reference.",
+      "problem": "I previously flagged the match-the-surrounding-code rule as missing. It is not: bullet 1 already says 'Read enough of the surrounding code to match its idiom, naming, and formatting.' The recommendation is withdrawn.\n\nOn the other side, this section's reuse rule, its replace-in-place rule and its prove-it-is-dead rule have no reference equivalent at all. The reference spends two sentences on code style; you spend six, and the extra four are the valuable ones.",
+      "action": "No change. Do not import the reference's anti-abstraction block — the newer revisions cut it, and your 'build exactly what was asked' bullet already carries the idea in one line.",
+      "reference": {
+        "label": "Reference harness",
+        "note": "Two sentences, and that is the whole of it. The long anti-abstraction block existed in an older revision and was cut — worth knowing before you expand yours.",
+        "text": "Write code that reads like the surrounding code: match its comment density, naming, and idiom.\n\nOnly write a code comment to state a constraint the code itself can't show — never to say where it came from, what the next line does, or why your change is correct; that's you talking to the reviewer, not the next reader, and it's noise the moment the PR merges."
+      },
+      "reviewedHash": "1c3b4893c764",
+      "ours": "Reuse-before-writing, replace-in-place, and the rule that you must PROVE code is dead before deleting it — searching for dynamic lookup, string-keyed registries, route tables. The reference has none of these. This is your best section."
+    },
+    "system.tasks": {
+      "verdict": "merge",
+      "title": "Duplicate. Fold into TaskCreate.",
+      "problem": "117 tokens repeating what `tool.TaskCreate` now says properly, with a vaguer threshold. Two homes for one rule is how prompt sets drift.",
+      "action": "Empty this section. `tool.TaskCreate` already carries the 3-step threshold and the when-not-to list.",
+      "mergeInto": "tool.TaskCreate",
+      "reviewedHash": "722fef8683ea"
+    },
+    "system.working-method": {
+      "verdict": "core",
+      "title": "Rewritten. 1,404 → 558 tokens.",
+      "problem": "Was the largest section and the main over-planning driver. Now scoped to what must be true on every request; the planning procedure moved into the task tools.",
+      "action": "Done. Nothing further needed.",
+      "reviewedHash": "addressed",
+      "ours": "The un-searched-Write guard and the GraphQuery-before-reading rule. Both are engine capabilities the reference simply does not have."
+    },
+    "system.autonomy": {
+      "verdict": "core",
+      "title": "Keep. Add scope fidelity.",
+      "problem": "Handles the stopping question well. What is missing is what the deliverable IS: that the requested scope must not be quietly narrowed, and that a partly-blocked task still gets every other part finished.",
+      "action": "ADD ONE BULLET to the existing list — do not add a section. Something like: 'The requested scope is the deliverable. If part of it turns out to be blocked, finish every other part in full and say plainly what you left out and why; scaling the work down is the user's call.' That is ~35 tokens inside a prompt already sent, and it costs no extra round.\n\nDo not import the reference's uncertainty paragraph — your bullet 1 already says 'When you have what you need to act, act.'",
+      "reference": {
+        "label": "Reference harness",
+        "note": "Its 'Delivering work' section. Quoted verbatim.",
+        "text": "## Delivering work\nDo ordinary work as asked, acting on the actual request rather than on speculation about what lies behind it. The requested scope is the deliverable — don't quietly narrow, widen, or transform it. Interpret ambiguity the way a careful colleague would: make routine judgment calls yourself, and check in only when different readings would lead to materially different work. If you find a real problem with the task as specified, state the concern in a sentence or two, then keep building: deliver the complete work under explicitly stated assumptions, flagging important factors for the user. Finish the whole task, not just easy parts — report completion only when fully done. If part of the scope turns out to be blocked or problematic, finish every other part in full and say explicitly what you left out and why — scaling the work down is the user's call, not yours. Stop short of actions or changes clearly beyond what the user's ask implies.\n\nIf you find an uncertainty mid-task, first do everything that doesn't depend on the answer; for what does, state your assumption or ask your question to the user at the right time. Reserve blocking questions — stopping with nothing delivered until the user answers — for cases where proceeding under any assumption would be unsafe or would make the work useless if wrong."
+      },
+      "reviewedHash": "96d3811b4d50",
+      "ours": "'When you have what you need to act, act' plus the thinking-aloud exception — deliver an assessment and stop rather than fixing uninvited. The reference has the first; the exception is yours and it prevents a whole class of unwanted edits."
+    },
+    "system.environment": {
+      "verdict": "core",
+      "title": "Keep. 41 tokens.",
+      "problem": "The only place the agent learns cwd, platform, model and date.",
+      "action": "No change.",
+      "reviewedHash": "629ace13a503"
+    },
+    "system.project-memory-header": {
+      "verdict": "core",
+      "title": "Keep. 25 tokens.",
+      "problem": "Wraps the workspace guide file when one exists.",
+      "action": "No change.",
+      "reviewedHash": "db51a7577bac"
+    },
+    "system.skills-block": {
+      "verdict": "core",
+      "title": "Keep. 27 tokens.",
+      "problem": "The on-demand skill roster. Currently omitted entirely because no skills ship.",
+      "action": "No change to the text. The gap is that you ship zero skills — see the Optional group.",
+      "reviewedHash": "74e29202ba61"
+    },
+    "system.overdrive": {
+      "verdict": "optional",
+      "title": "Only sent while OVERDRIVE is on — check what it duplicates.",
+      "problem": "456 tokens, free on every normal turn. The risk is not cost, it is drift: this section restates plan-first, verify, and do-not-stop-early, which `system.autonomy` and the task tools also own. When two sections carry one rule, the mode version silently becomes the real one and normal mode quietly gets a weaker agent.\n\nThe reference keeps its autonomous variant to a single added idea — the user is not watching, so do not ask — and leaves completion to the always-on rules.",
+      "action": "Cut everything from this section that is not specifically about NOT ASKING and NOTHING BEING BLOCKED. Push plan-first, verification and do-not-stop-early down into `system.autonomy` and the task tools, where they apply in both modes.",
+      "reference": {
+        "label": "Reference harness",
+        "note": "The entire autonomous-mode addition, in one paragraph.",
+        "text": "You are operating autonomously. The user is not watching in real time and cannot answer questions mid-task, so asking 'Want me to…?' or 'Shall I…?' will block the work. For reversible actions that follow from the original request, proceed without asking. Stop only for destructive actions or genuine scope changes the user must decide. Offering follow-ups after the task is done is fine; asking permission before doing the work is not."
+      },
+      "reviewedHash": "2b8e3b2d9126"
+    },
+    "system.atlas-header": {
+      "verdict": "optional",
+      "title": "Atlas is deferred.",
+      "problem": "Conditional on the file existing, so it stays silent on its own while the feature is parked.",
+      "action": "Leave it. It cannot fire until an atlas exists.",
+      "reviewedHash": "a4645032ea50"
+    },
+    "system.standards-header": {
+      "verdict": "core",
+      "title": "Keep. Carries the binding declaration.",
+      "problem": "This is the only prompt declaring STANDARDS.md binding — the rule that was cut from working-method relies on it.",
+      "action": "No change.",
+      "reviewedHash": "fa01110370c7"
+    },
+    "reminder.error-batch": {
+      "verdict": "core",
+      "title": "Keep. 59 tokens.",
+      "problem": "Appended when a tool batch fails, so the agent fixes rather than ending the turn.",
+      "action": "No change.",
+      "reviewedHash": "97fa650ae56d"
+    },
+    "reminder.recovery-nudge": {
+      "verdict": "core",
+      "title": "Keep, but it shares a broken budget.",
+      "problem": "Fires when the turn ends on a failed call. It increments `nudgeCount`, which only the wrap-up rung reads — so failures silently eat the summary budget.",
+      "action": "Text is fine. The counter needs a code fix; see `reminder.wrapup-nudge`.",
+      "reviewedHash": "97fe99382c7d"
+    },
+    "reminder.wrapup-nudge": {
+      "verdict": "optional",
+      "title": "Its budget is spent by other rungs.",
+      "problem": "The only rung that reads `MAX_AUTO_NUDGES`, while two siblings increment it without reading. On a turn with a couple of failures this rung can be exhausted before it ever fires.",
+      "action": "Code fix: give it its own counter, or stop the other rungs incrementing. Low urgency — your system prompt already demands a wrap-up.",
+      "reviewedHash": "8e9d68ce37c6"
+    },
+    "reminder.length-continuation": {
+      "verdict": "core",
+      "title": "Keep. 96 tokens.",
+      "problem": "Fires when the provider stops at the output-token wall. Asks for a seamless continuation rather than a restart.",
+      "action": "No change.",
+      "reviewedHash": "f604575f5404"
+    },
+    "reminder.tool-cutoff": {
+      "verdict": "core",
+      "title": "Keep. 47 tokens.",
+      "problem": "Returned as the result of a tool call truncated by the token wall, so the agent reissues instead of assuming it ran.",
+      "action": "No change.",
+      "reviewedHash": "2aa42885e59e"
+    },
+    "reminder.stall-pivot": {
+      "verdict": "core",
+      "title": "Keep. 84 tokens.",
+      "problem": "Fires after three identical rounds. Your main backstop against a burn loop.",
+      "action": "No change.",
+      "reviewedHash": "1f0a9f0bae00",
+      "ours": "Stall detection with a forced strategy pivot. The reference has no equivalent — it relies on the model noticing. Yours is deterministic."
+    },
+    "reminder.stall-ask": {
+      "verdict": "core",
+      "title": "Keep. 118 tokens.",
+      "problem": "Third stall: stop and ask one concrete question. Ends the loop without silent surrender.",
+      "action": "No change.",
+      "reviewedHash": "76b3bd086539",
+      "ours": "The escalation after pivots fail: ask ONE concrete question rather than looping or surrendering silently."
+    },
+    "reminder.plan-first": {
+      "verdict": "delete",
+      "title": "Duplicate of TaskCreate, fires on the cheap case.",
+      "problem": "Injected at turn start when the board is empty — which is the normal state for a small request. It repeats what `tool.TaskCreate` now says, with a vaguer threshold, and costs a round trip to say it.",
+      "action": "Empty this prompt. `tool.TaskCreate` covers the decision, and it is read exactly when the decision is being made.",
+      "mergeInto": "tool.TaskCreate",
+      "reviewedHash": "e0ef4eec45f3"
+    },
+    "reminder.no-atlas": {
+      "verdict": "delete",
+      "title": "Atlas is deferred by decision.",
+      "problem": "Fires once per session whenever no atlas exists and the workspace looks non-trivial — now the normal state. It is the one prompt still promoting a parked feature.",
+      "action": "Already disabled here. To remove it on every machine, delete the call site in `session.ts` — emptying is machine-local.",
+      "reviewedHash": "da39a3ee5e6b"
+    },
+    "compaction.wrapper": {
+      "verdict": "core",
+      "title": "Keep. 53 tokens.",
+      "problem": "Replaces compacted messages. The wrapper is what stops the agent reading compaction as a signal to wrap up.",
+      "action": "No change.",
+      "reviewedHash": "796dd9d89b28"
+    },
+    "reminder.incomplete-tasks": {
+      "verdict": "core",
+      "title": "Fixed. Now fires once per turn.",
+      "problem": "Used to re-fire on every attempt to end the turn while anything stayed open, each firing a full round trip. Six open tasks could charge six extra model calls.\n\nFixed in code: it now carries the same once-per-turn fuse as its siblings and no longer spends the wrap-up rung's budget.",
+      "action": "No further change to the text. It is also the safety net for your completion goal: it is what catches a turn trying to end with work still on the board. Keep it — just make sure the task tools give the agent a way to close the loop honestly, or this rung becomes a nag it cannot satisfy.",
+      "reviewedHash": "addressed"
+    },
+    "reminder.debug-verify": {
+      "verdict": "optional",
+      "title": "Needs a skill you do not ship.",
+      "problem": "Only fires when a discipline skill enforces the repro-failed oracle. `BUILTIN_SKILL_FILES` is empty, so nothing can trigger it today.",
+      "action": "Leave it. Harmless and free until you ship the debug discipline.",
+      "reviewedHash": "e7bdafb845c1"
+    },
+    "finishing.runtime-evidence": {
+      "verdict": "core",
+      "title": "Keep — but it lies about the engine, and it is your largest reminder.",
+      "problem": "654 tokens. Three problems.\n\n1. Step 4 says 'You have no eyes here'. That is false: `read.ts:84` returns PNG as an image block and `ToolResultPart` carries `type: \"image\"`. A vision model can be shown a screenshot today. The agent reads this as 'visual verification is impossible', stops looking, falls back to type-checking, and reports success on UI work it never saw.\n\n2. The escape clause names 'a console, a display, a device' as a legitimate stopping point. In a desktop UI app that fires on nearly every frontend task.\n\n3. Step 1 tells the agent to run the build, then says the build is not evidence. It costs a command and settles nothing.",
+      "action": "Change step 4 to 'Never claim an observation you did not make.' — a rule about honesty, not about capability. Narrow the escape clause to credentials and external services; drop 'a display'. Cut step 1. Merge the two closing paragraphs. Target ~450 tokens.\n\nLonger term, follow the reference's placement: move visual verification into an on-demand skill so it costs nothing until a UI task needs it.",
+      "reference": {
+        "label": "Reference harness",
+        "note": "Checked both reference prompts: neither contains any UI or dev-server rule, and neither claims the agent cannot see. Verification of visual work is handled entirely by an on-demand skill, listed in the roster as one line. The lesson is placement, not wording — nothing about seeing belongs in an always-on rung.",
+        "text": "- run: Launch and drive this project's app to see a change working. Use when asked to run, start, or screenshot the app, or to confirm a change works in the real app (not just tests)."
+      },
+      "reviewedHash": "76dbbbf3f3d0",
+      "ours": "The circular-evidence idea: a check that leans on a stand-in you wrote yourself proves only self-consistency. The reference has no equivalent anywhere. Whatever you cut from this rung, keep that."
+    },
+    "finishing.self-verify": {
+      "verdict": "core",
+      "title": "Already gated. Not your latency problem.",
+      "problem": "An earlier review flagged this as firing every turn. The code disagrees: `session.ts` gates it on OVERDRIVE and on the turn having made a tool call. Left here so it is not re-flagged.",
+      "action": "No change. If turns feel slow in a normal session, this rung is not why.",
+      "reviewedHash": "77bb6f6cd635",
+      "ours": "Gating it on OVERDRIVE rather than running it every turn. The reference has no self-verify at all; yours buys the check exactly where an unverified finish is expensive."
+    },
+    "finishing.self-verify.closing-code": {
+      "verdict": "core",
+      "title": "Keep. 126 tokens.",
+      "problem": "Substituted into the self-verify rung when the turn edited source files.",
+      "action": "No change.",
+      "reviewedHash": "32921af447a8"
+    },
+    "finishing.self-verify.closing-plain": {
+      "verdict": "core",
+      "title": "Keep. 31 tokens.",
+      "problem": "Substituted when the turn changed no source files.",
+      "action": "No change.",
+      "reviewedHash": "7a989fb1f504"
+    },
+    "atlas.area-role": {
+      "verdict": "optional",
+      "title": "Atlas is deferred.",
+      "problem": "Runs only on an explicit /atlas command. Free until then.",
+      "action": "Leave it. Revisit when the atlas feature comes back.",
+      "reviewedHash": "9d1f06a15c3e"
+    },
+    "atlas.area-task": {
+      "verdict": "optional",
+      "title": "Atlas is deferred.",
+      "problem": "Runs only on an explicit /atlas command. Free until then.",
+      "action": "Leave it. Revisit when the atlas feature comes back.",
+      "reviewedHash": "51fe53e0b984"
+    },
+    "atlas.overview-system": {
+      "verdict": "optional",
+      "title": "Atlas is deferred.",
+      "problem": "Runs only on an explicit /atlas command. Free until then.",
+      "action": "Leave it. Revisit when the atlas feature comes back.",
+      "reviewedHash": "7bf489ea03f0"
+    },
+    "atlas.overview-task": {
+      "verdict": "optional",
+      "title": "Atlas is deferred.",
+      "problem": "Runs only on an explicit /atlas command. Free until then.",
+      "action": "Leave it. Revisit when the atlas feature comes back.",
+      "reviewedHash": "123d86f84aca"
+    },
+    "backpack.note": {
+      "verdict": "optional",
+      "title": "Crew feature. Runs only on /build-crew.",
+      "problem": "47 tokens, and never sent unless you build a specialist backpack.",
+      "action": "Leave it.",
+      "reviewedHash": "c34905492f6b"
+    },
+    "backpack.brief": {
+      "verdict": "optional",
+      "title": "Crew feature. Runs only on /build-crew.",
+      "problem": "40 tokens, same condition.",
+      "action": "Leave it.",
+      "reviewedHash": "4320766d0187"
+    },
+    "session.auto-name.role": {
+      "verdict": "merge",
+      "title": "Two prompts for one call.",
+      "problem": "16 tokens of role plus 55 of instruction, for a single background call that names a chat. Splitting it buys nothing and doubles what an operator has to find.",
+      "action": "Fold into `session.auto-name.instruction` and empty this one.",
+      "mergeInto": "session.auto-name.instruction",
+      "reviewedHash": "491602c9a02a"
+    },
+    "session.auto-name.instruction": {
+      "verdict": "core",
+      "title": "Keep. Absorb the role prompt.",
+      "problem": "The instruction half of the session-naming call.",
+      "action": "Take the role text in, then empty `session.auto-name.role`.",
+      "reviewedHash": "731ae0017d37"
+    },
+    "clarify.system": {
+      "verdict": "delete",
+      "title": "786 tokens AND a full model call before work starts.",
+      "problem": "This runs as its own inference on the incoming message, before anything happens. It is the first thing the user waits on. Its own design notes call it strictly fail-open — on any error the turn proceeds anyway, which is an argument that the common case never needed it.\n\nAfter the working-method rewrite this is your largest remaining latency cost.",
+      "action": "Delete it, and let `system.autonomy` carry the judgement. If you would rather keep it, measure first: log how often it returns clarify=true. If that is under ~10%, it is pure latency.",
+      "reference": {
+        "label": "Reference harness",
+        "note": "No pre-layer at all. The decision is pushed into the turn itself, in two sentences of always-on prose. Quoted verbatim.",
+        "text": "When you have enough information to act, act. Do not re-derive facts already established in the conversation, re-litigate a decision the user has already made, or narrate options you will not pursue. If you are weighing a choice, give a recommendation, not an exhaustive survey"
+      },
+      "reviewedHash": "444dd7c0c029"
+    },
+    "compaction.system": {
+      "verdict": "core",
+      "title": "Keep. 85 tokens.",
+      "problem": "Summarises older history when the context fills. Its output becomes the agent's only memory of the compacted span.",
+      "action": "No change.",
+      "reviewedHash": "2c0b86d3ee50"
+    },
+    "skill-author.role": {
+      "verdict": "optional",
+      "title": "Only fires in the create-skill wizard.",
+      "problem": "86 tokens, never sent on a normal turn.",
+      "action": "Leave it.",
+      "reviewedHash": "527f3c42b442"
+    },
+    "subagent.result-contract": {
+      "verdict": "core",
+      "title": "Keep. 121 tokens.",
+      "problem": "Appended to every subagent's system prompt. Tells it the final message is captured verbatim as a tool result, not shown to a human.",
+      "action": "No change.",
+      "reviewedHash": "0a1c70154b6e"
+    },
+    "subagent.role.general-purpose": {
+      "verdict": "core",
+      "title": "Keep. Role for the general-purpose subagent.",
+      "problem": "Prepended to the system prompt of a general-purpose subagent (every tool except spawning further subagents).",
+      "action": "No change.",
+      "reviewedHash": "b3da7cf6198b"
+    },
+    "subagent.description.general-purpose": {
+      "verdict": "core",
+      "title": "Keep. Picker blurb for general-purpose.",
+      "problem": "Listed inside the Agent tool description so the main agent can choose this type.",
+      "action": "No change.",
+      "reviewedHash": "3b3ea4154e75"
+    },
+    "subagent.role.explore": {
+      "verdict": "core",
+      "title": "Keep. Role for the explore subagent.",
+      "problem": "Prepended to the system prompt of a explore subagent (read-only search).",
+      "action": "No change.",
+      "reviewedHash": "3b5ad2d9d8f7"
+    },
+    "subagent.description.explore": {
+      "verdict": "core",
+      "title": "Keep. Picker blurb for explore.",
+      "problem": "Listed inside the Agent tool description so the main agent can choose this type.",
+      "action": "No change.",
+      "reviewedHash": "d551240d7cc4"
+    },
+    "subagent.role.plan": {
+      "verdict": "core",
+      "title": "Keep. Role for the plan subagent.",
+      "problem": "Prepended to the system prompt of a plan subagent (read-only architecture).",
+      "action": "No change.",
+      "reviewedHash": "e5f53c7b0302"
+    },
+    "subagent.description.plan": {
+      "verdict": "core",
+      "title": "Keep. Picker blurb for plan.",
+      "problem": "Listed inside the Agent tool description so the main agent can choose this type.",
+      "action": "No change.",
+      "reviewedHash": "427bb4b99973"
+    },
+    "tool.Read": {
+      "verdict": "core",
+      "title": "Keep. At parity with the reference — and it handles images.",
+      "problem": "Slightly longer than the reference and covers the same ground. Worth knowing while reading the runtime-evidence finding: this tool returns PNG/JPG/GIF/WebP as image blocks.",
+      "action": "Add one line the reference has: do not re-read a file you just edited to confirm the edit landed. It saves a round trip every time it applies.",
+      "reviewedHash": "7a8ceb148234"
+    },
+    "tool.Write": {
+      "verdict": "core",
+      "title": "Keep. At parity.",
+      "problem": "Covers the same ground as the reference, plus a guard the reference lacks: an un-searched Write of a new file is refused once.",
+      "action": "No change.",
+      "reviewedHash": "9e8653427f2e",
+      "ours": "The un-searched-Write refusal: a new source file is refused once with the closest existing matches. The reference has no such guard, and this is a direct defence against the duplicate-code failure."
+    },
+    "tool.Edit": {
+      "verdict": "core",
+      "title": "Keep. At parity.",
+      "problem": "Longer than the reference and covers the same contract: read first, exact match, uniqueness, replace_all.",
+      "action": "No change.",
+      "reviewedHash": "b6e25054c3fc"
+    },
+    "tool.Glob": {
+      "verdict": "core",
+      "title": "Keep.",
+      "problem": "Filename and path matching. No reference concern.",
+      "action": "No change.",
+      "reviewedHash": "2cb921609cf9"
+    },
+    "tool.Grep": {
+      "verdict": "core",
+      "title": "Keep.",
+      "problem": "Content search over ripgrep. No reference concern.",
+      "action": "No change.",
+      "reviewedHash": "50bff8f8e519"
+    },
+    "tool.Bash": {
+      "verdict": "core",
+      "title": "Keep. Should absorb the Git section.",
+      "problem": "Two omissions cost round trips: it does not state what shell state persists between calls, so the agent re-establishes context defensively; and it gives no pattern for waiting on a condition, which is where turns quietly stall.",
+      "action": "Add the persistence contract and the until-loop pattern. Then take in `system.git`.",
+      "reviewedHash": "0b2ac751f68f"
+    },
+    "tool.TaskCreate": {
+      "verdict": "core",
+      "title": "Rewritten — one line still missing.",
+      "problem": "The 3-step threshold and the when-not-to list now live here instead of the system prompt. What is still absent is the rule that makes a task list a LOOP rather than a checklist: finishing a task is where new work gets discovered, and that work has to land on the board or it is lost.\n\nThis is the half of 'tasks done does not mean work done' that belongs on the create side.",
+      "action": "ADD ONE BULLET to the When-to-use list: 'After finishing a task, add any follow-up work you discovered while doing it.' Verified absent — this is a real gap, and it is the half of your completion goal that lives on the create side. ~15 tokens, no new prompt, no extra round.",
+      "reviewedHash": "addressed"
+    },
+    "tool.TaskUpdate": {
+      "verdict": "core",
+      "title": "Rewritten — two gaps left.",
+      "problem": "1. Nothing mentions `status: \"deleted\"`, though your working-method tells the agent to delete abandoned tasks. The instruction has no action to bind to.\n\n2. Nothing tells the agent what to do after resolving one. The reference closes the loop here: mark it done, then look at the board again. Without that, a turn ends when the CURRENT task finishes rather than when the WORK finishes.",
+      "action": "TWO SHORT ADDITIONS, both inside this description. First: 'After resolving a task, check TaskList and pick up the next one.' Verified absent, and it is what turns a checklist into a loop — the behaviour you asked for, working identically in both modes. Second: the `status: \"deleted\"` path, which your working-method already tells the agent to use but no tool describes.",
+      "reviewedHash": "addressed"
+    },
+    "tool.TaskList": {
+      "verdict": "core",
+      "title": "Keep.",
+      "problem": "Lists tasks with blocked state. Cheap and useful.",
+      "action": "No change.",
+      "reviewedHash": "a6d548af654d"
+    },
+    "tool.TaskGet": {
+      "verdict": "core",
+      "title": "Keep. 46 tokens.",
+      "problem": "Reads one task with its dependency lists.",
+      "action": "No change.",
+      "reviewedHash": "b0de2faf2e9e"
+    },
+    "tool.AskUserQuestion": {
+      "verdict": "core",
+      "title": "Keep.",
+      "problem": "Your stall-ask rung depends on this tool existing and being understood.",
+      "action": "Thin against the reference, but the rung that uses it carries the guidance. Low priority.",
+      "reviewedHash": "59be04b7cc57"
+    },
+    "tool.Agent": {
+      "verdict": "core",
+      "title": "Keep. Delegation rules added.",
+      "problem": "Now carries the two rules that matter: do not re-run a delegated search, and relay the report because the user never sees it.",
+      "action": "Done.",
+      "reviewedHash": "addressed"
+    },
+    "tool.TaskStop": {
+      "verdict": "core",
+      "title": "Keep.",
+      "problem": "Stops a background task by id.",
+      "action": "No change.",
+      "reviewedHash": "785efd3dee88"
+    },
+    "tool.TaskOutput": {
+      "verdict": "core",
+      "title": "Keep.",
+      "problem": "Collects a background task's output.",
+      "action": "No change.",
+      "reviewedHash": "7a2574f044d5"
+    },
+    "tool.WebFetch": {
+      "verdict": "core",
+      "title": "Keep.",
+      "problem": "Fetches and digests a URL on the small model.",
+      "action": "No change.",
+      "reviewedHash": "1538172a6325"
+    },
+    "tool.WebSearch": {
+      "verdict": "core",
+      "title": "Keep.",
+      "problem": "Longer than the reference equivalent.",
+      "action": "No change.",
+      "reviewedHash": "3bb612291eb5"
+    },
+    "tool.Monitor": {
+      "verdict": "core",
+      "title": "Keep. Add the routing rule.",
+      "problem": "The common misuse of a watch tool is arming an unbounded watcher for a one-off event, which then stays armed long after the event fired. Nothing here steers away from that.",
+      "action": "Adopt the reference routing structure — it is the clearest tool prose in the reference set.",
+      "reviewedHash": "351102607615"
+    },
+    "tool.EnterWorktree": {
+      "verdict": "core",
+      "title": "Keep.",
+      "problem": "Isolated work in a git worktree.",
+      "action": "No change.",
+      "reviewedHash": "cbb77b119fab"
+    },
+    "tool.ExitWorktree": {
+      "verdict": "core",
+      "title": "Keep.",
+      "problem": "Returns from a worktree.",
+      "action": "No change.",
+      "reviewedHash": "48129143730d"
+    },
+    "tool.PushNotification": {
+      "verdict": "core",
+      "title": "Keep. 76 tokens.",
+      "problem": "Desktop notification.",
+      "action": "No change.",
+      "reviewedHash": "374b2b30950e"
+    },
+    "tool.CronCreate": {
+      "verdict": "core",
+      "title": "Keep.",
+      "problem": "Schedules recurring prompts.",
+      "action": "No change.",
+      "reviewedHash": "2bfb2808be37"
+    },
+    "tool.CronDelete": {
+      "verdict": "core",
+      "title": "Keep. 14 tokens.",
+      "problem": "Thinnest description you have, and adequate — the operation is unambiguous.",
+      "action": "No change.",
+      "reviewedHash": "17fc4e6e568e"
+    },
+    "tool.CronList": {
+      "verdict": "core",
+      "title": "Keep. 17 tokens.",
+      "problem": "Same.",
+      "action": "No change.",
+      "reviewedHash": "604d83692572"
+    },
+    "tool.ScheduleWakeup": {
+      "verdict": "core",
+      "title": "Keep.",
+      "problem": "One delayed wakeup.",
+      "action": "No change.",
+      "reviewedHash": "9619d5a0eb10"
+    },
+    "tool.Skill": {
+      "verdict": "core",
+      "title": "Keep.",
+      "problem": "Loads a skill's instructions. Currently inert — you ship zero skills.",
+      "action": "No change to the text. See the Optional group about shipping skills.",
+      "reviewedHash": "5477a818e769"
+    },
+    "tool.GraphQuery": {
+      "verdict": "core",
+      "title": "Keep. This is your differentiator.",
+      "problem": "The reference has no structural query tool at all — it locates code with find and grep. Your import-graph queries answer impact questions it can only approximate. It is under-sold: the system prompt mentions it in one line.",
+      "action": "Keep the description. Consider giving it a stronger mention in `system.working-method`.",
+      "reviewedHash": "8be69516027d",
+      "ours": "The whole tool. The reference locates code with find and grep and has no structural query at all. Slice, blast radius and structure answer impact questions it can only guess at."
+    },
+    "tool.CrewRun": {
+      "verdict": "optional",
+      "title": "Optional. Crew feature.",
+      "problem": "244 tokens sent on every request whether or not a crew exists.",
+      "action": "If crew is not a shipping feature yet, consider registering this tool conditionally.",
+      "reviewedHash": "cbb910ea20a5"
+    },
+    "tool.BackpackSearch": {
+      "verdict": "optional",
+      "title": "Optional. Crew feature.",
+      "problem": "121 tokens, same condition.",
+      "action": "Same as CrewRun.",
+      "reviewedHash": "d81716b7db22"
+    },
+    "tool.Workflow": {
+      "verdict": "optional",
+      "title": "604 tokens on every request. Your largest tool description.",
+      "problem": "Nearly three times the next largest. It is only useful if multi-agent orchestration is a feature you actively want used, and it is opt-in by its own text.",
+      "action": "If workflows are not a shipping feature, register this tool conditionally or cut the description hard. This is the single largest tool-side saving available.",
+      "reviewedHash": "8f2416700829"
+    },
+    "crew.team-file-format": {
+      "verdict": "optional",
+      "title": "818 tokens — but only when a crew exists.",
+      "problem": "Conditional on .magentra/team/ holding a specialist. Free otherwise.",
+      "action": "Leave it while crew is unused.",
+      "reviewedHash": "5ca27ec4fbe3"
+    },
+    "crew.orchestrator-section": {
+      "verdict": "optional",
+      "title": "383 tokens, same condition.",
+      "problem": "Injected only when the workspace has specialists.",
+      "action": "Leave it.",
+      "reviewedHash": "f40f54b656ef",
+      "ours": "Specialists with indexed knowledge backpacks. The reference's subagents are stateless and knowledge-free."
+    },
+    "missions.file-format": {
+      "verdict": "optional",
+      "title": "660 tokens, quoted on /mission scaffold.",
+      "problem": "Not sent on a normal turn.",
+      "action": "Leave it.",
+      "reviewedHash": "16cec13396d6"
+    },
+    "finishing.double-clause": {
+      "verdict": "core",
+      "title": "Keep. This is the sharpest argument in the prompt set.",
+      "problem": "Substituted into the evidence rung only when mocks, fakes or stubs the agent wrote itself were the thing it checked against. ~190 tokens, and a turn with real evidence never pays for it.\\n\\nIt survives from the retired circular-evidence rung. Only the argument was kept — confirming a contract from the dependency, and naming an honest gap, are already said once in the rung's closing paragraphs, and saying them twice teaches the model to skim.",
+      "action": "No change. If you ever shorten this, keep the middle sentence — a passing check against your own stand-in proves self-consistency and nothing more.",
+      "ours": "No reference equivalent exists anywhere. The insight that a mock is authored by the same understanding as the code, so the two agree by construction, is yours alone. Whatever else gets trimmed, this stays.",
+      "reviewedHash": "addressed"
+    },
+    "finishing.vision-on": {
+      "verdict": "core",
+      "title": "Keep. Fires when settings.vision is true.",
+      "problem": "Tells the agent a screenshot is real evidence it may go and take. Sent only when the workspace has declared the model can read images.",
+      "action": "No change. It only reaches the model when `/settings vision true` has been set, so it can never make a false capability claim.",
+      "reviewedHash": "addressed"
+    },
+    "finishing.vision-off": {
+      "verdict": "core",
+      "title": "Keep. The default, and the honest one.",
+      "problem": "Replaces the old 'You have no eyes here' line, which was a claim about the harness and was false — the Read tool does return images. This states a fact about the WORKSPACE instead, and the Read tool now enforces it by refusing image files outright rather than returning content the model cannot interpret.",
+      "action": "No change. Flip the behaviour with `/settings vision true` rather than editing this text.",
+      "ours": "The capability is a setting the engine enforces at the tool boundary, not a sentence the model is asked to believe. The reference has no equivalent — it simply has no such rung.",
+      "reviewedHash": "addressed"
     }
   },
-
-  "findings": {
-    "reminder.incomplete-tasks": {
-      "severity": "must",
-      "title": "Uncapped — this rung can fire repeatedly in one turn",
-      "problem": "Every other end-of-turn rung has a brake. This one has none. It increments `nudgeCount` and then never reads it, and it has no once-per-turn boolean fuse, so as long as any task is still pending it re-fires each time the turn tries to end. Each firing is a full round trip with the whole system prompt, all tool schemas and the entire conversation.\n\nThis compounds with `system.working-method`, which orders the agent to decompose work into one task per step plus a final verification task. More tasks means more chances this rung fires. The slowness and the over-planning are not two separate problems — they are the same loop.",
-      "evidence": [
-        "engine/core/src/runtime/session.ts:2336 — the condition is only `end_turn && !lastBatchHadError` plus a non-empty incomplete list",
-        "engine/core/src/runtime/session.ts:2339 — `nudgeCount++` with no matching read; the only site that reads it is the wrap-up rung at :2428",
-        "engine/core/src/runtime/session.ts:2375 — compare `!this.evidenceNudgeFired`, the fuse pattern every sibling uses",
-        "The only backstop today is the stall detector at session.ts:2480, which needs three identical rounds before it engages"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "note": "It ships no equivalent rung at all. Its end-of-turn completeness check is one sentence of always-on prose, which costs nothing extra because it is already in context.",
-        "text": "Before ending your turn, check your last paragraph. If it is a plan, an analysis, a question, a list of next steps, or a promise about work you have not done ('I'll…', 'let me know when…'), do that work now with tool calls. That includes retrying after errors and gathering missing information yourself. Do not stop because the context or session is long. End your turn only when the task is complete or you are blocked on input only the user can provide."
+  "workOrder": {
+    "about": "Ordered so that nothing is emptied before its replacement exists. Every merge edits the RECEIVING prompt first, then clears the source — do it the other way round and the rule is gone from the prompt set for as long as the gap lasts. A step goes green when every prompt it touches has changed. A step turns green only when its own test passes — the specific edit landed, or the source prompt is empty — not merely because the prompt was touched at some point.",
+    "phases": [
+      {
+        "phase": "1 · Close the completion loop",
+        "why": "The goal you named: the agent must not stop because the board emptied, because finishing work is where new work is discovered. Both halves of that live in the task tools, which is why it then behaves the same in OVERDRIVE and in normal mode. Do this first — several later steps delete prompts that only become safe to delete once these two carry the rule.",
+        "steps": [
+          {
+            "n": 1,
+            "kind": "edit",
+            "prompts": [
+              "tool.TaskCreate"
+            ],
+            "do": "Add the discovery rule to TaskCreate",
+            "detail": "One bullet in the When-to-use list: after completing a task, add any follow-up work you found while doing it. This is what stops the agent treating the original plan as the whole job.",
+            "test": {
+              "prompt": "tool.TaskCreate",
+              "matches": "follow-up|discovered while|new work you found"
+            }
+          },
+          {
+            "n": 2,
+            "kind": "edit",
+            "prompts": [
+              "tool.TaskUpdate"
+            ],
+            "do": "Add the continuation rule and the delete path to TaskUpdate",
+            "detail": "Two additions. 'After resolving a task, call TaskList and pick up the next one' — that single line turns a checklist into a loop. And the `status: \"deleted\"` path, which your working-method already tells the agent to use but no tool describes.",
+            "test": {
+              "prompt": "tool.TaskUpdate",
+              "matches": "TaskList"
+            }
+          }
+        ]
       },
-      "direction": "The prompt text is fine; the firing rule is the bug, and that is a code change in session.ts, not an edit here. Give it the same once-per-turn fuse its siblings have, and make it respect `MAX_AUTO_NUDGES`. Separately, consider whether it should fire at all when the agent explicitly said why a task stays open — right now saying so does not stop it re-asking."
-    },
-
-    "system.working-method": {
-      "severity": "must",
-      "title": "1,404 tokens of unconditional procedure — the largest single section",
-      "problem": "This section is sent on every request, including one-line questions, and it prescribes a heavyweight process regardless of task size: decompose into one task per concrete step, write each task like a self-contained issue, add a verification task before any edit, re-read the plan before the first edit, judge the system's design, record design debt, and close with a five-part wrap-up.\n\nTwo consequences. It is the most likely cause of code coming out roughly twice as long as it needs to be, because a fifteen-line patch gets the full ceremony. And it feeds the uncapped task nudge above, because it maximises the number of open tasks.\n\nThe threshold is also vague where it matters most: \"more than a couple of steps\" is not a number, and the negative case gets one short line in a different section.",
-      "evidence": [
-        "Largest registered prompt at ~1,404 tokens; the whole core system prompt is ~4,500",
-        "engine/core/src/agent/prompts.ts — SECTION_WORKING_METHOD, sent unconditionally via behaviorCore()",
-        "Feeds reminder.incomplete-tasks (session.ts:2336) by maximising open-task count"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "note": "Its planning guidance is not in the system prompt at all — it lives inside the task tools, where it is read in the context of deciding whether to plan. Note the hard number and the equal weight given to the negative case.",
-        "text": "Use this tool proactively in these scenarios:\n- Complex multi-step tasks — When a task requires 3 or more distinct steps or actions\n- Non-trivial and complex tasks — Tasks that require careful planning or multiple operations\n- User provides multiple tasks — When users provide a list of things to be done\n\nWhen NOT to Use This Tool — Skip using this tool when:\n- There is only a single, straightforward task\n- The task is trivial and tracking it provides no organizational benefit\n- The task can be completed in less than 3 trivial steps\n- The task is purely conversational or informational\n\nNOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly."
+      {
+        "phase": "2 · Merge — edit the target, then empty the source",
+        "why": "Five prompts hold the right content in the wrong place. Each step below is two actions in a fixed order: put the text where it belongs, confirm it reads well there, then empty the original. Never reverse that.",
+        "steps": [
+          {
+            "n": 3,
+            "kind": "merge",
+            "prompts": [
+              "tool.Bash",
+              "system.git"
+            ],
+            "do": "Bash absorbs Git",
+            "detail": "Add to `tool.Bash`: what shell state persists between calls, the until-loop pattern for waiting, and then the commit procedure and forbidden-flag list from `system.git`. Then empty `system.git`. Saves ~300 tokens on every request that has no repository in play.",
+            "test": {
+              "prompt": "system.git",
+              "disabled": true
+            }
+          },
+          {
+            "n": 4,
+            "kind": "merge",
+            "prompts": [
+              "system.communication",
+              "system.action-care"
+            ],
+            "do": "Communicating absorbs Acting with care, plus corrections",
+            "detail": "Reversibility and honest reporting are both about what you owe the user. Fold `system.action-care` in, add the corrections paragraph quoted on that prompt, then empty `system.action-care`. Expect ~120 tokens of overlap to disappear.",
+            "test": {
+              "prompt": "system.action-care",
+              "disabled": true
+            }
+          },
+          {
+            "n": 5,
+            "kind": "merge",
+            "prompts": [
+              "finishing.runtime-evidence",
+              "finishing.double-clause"
+            ],
+            "do": "Fix the evidence rung, then fold the mock case into it",
+            "detail": "Done in code. The two rungs are now one: runtime-evidence carries a `{{doubleNote}}` slot, filled only when the turn's checking leaned on stand-ins it wrote itself. The old rung is deleted, and its trigger folded in — keeping them separate meant disabling either one silently uncovered its half.",
+            "test": {
+              "prompt": "finishing.circular-evidence",
+              "gone": true
+            }
+          },
+          {
+            "n": 6,
+            "kind": "merge",
+            "prompts": [
+              "session.auto-name.instruction",
+              "session.auto-name.role"
+            ],
+            "do": "Collapse the two session-naming prompts into one",
+            "detail": "Small and purely tidiness: 16 tokens of role plus 55 of instruction for a single background call. Fold the role text in, empty the role prompt.",
+            "test": {
+              "prompt": "session.auto-name.role",
+              "disabled": true
+            }
+          }
+        ]
       },
-      "direction": "Cut this section down to what must be true on every request, and move the planning procedure into tool.TaskCreate / tool.TaskUpdate where it is read in context. Give the threshold a number. Give \"when not to plan\" as much space as \"when to plan\". Be honest about the token maths: tool descriptions are also sent every request, so this move does not save tokens — it changes what the guidance is scoped to, which is the part that matters."
-    },
-
-    "finishing.runtime-evidence": {
-      "severity": "must",
-      "title": "Tells the agent it has no eyes — the engine says otherwise",
-      "problem": "Step 4 of this rung reads: \"You have no eyes here — never claim you looked at a screenshot or a window.\"\n\nThat is a capability claim, and it is false for this engine. The Read tool already returns PNG, JPG, GIF and WebP as image content blocks, and the provider layer carries `type: \"image\"` parts. A vision-capable model can be shown a screenshot today, with no new plumbing.\n\nThe intended rule is about honesty — do not claim an observation you did not make. As written it reads as \"visual verification is impossible here\", so the agent stops looking for a way to see the change, falls back to type-checking, and reports success on UI work it never observed. That is exactly the failure mode being seen on frontend tasks.\n\nThe closing escape clause compounds it: a change needing \"a console, a display, a device\" is named as a legitimate stopping point. In a desktop UI application that clause fires on nearly every frontend task.",
-      "evidence": [
-        "engine/tools/src/read.ts:84-88 — image files are returned as `{ type: \"image\", data, mediaType }`",
-        "engine/providers/src/types.ts:14-20 — ToolResultPart supports `type: \"image\"`",
-        "app/tests/ui.e2e.js:605 — the workbench already screenshots itself via `capturePage()` into MAGENTRA_UI_CAPTURE",
-        "app/tests/run-ui-tests.js:13 — Electron already runs headless with --no-sandbox --headless --disable-gpu"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "note": "An older version carried this as a system-prompt rule. Newer versions moved it into an on-demand skill, so it costs nothing until a UI task actually needs it. Both are quoted — the first for the rule, the second for how it defines what counts as running.",
-        "text": "For UI or frontend changes, start the dev server and use the feature in a browser before reporting the task as complete. Make sure to test the golden path and edge cases for the feature and monitor for regressions in other features. Type checking and test suites verify code correctness, not feature correctness — if you can't test the UI, say so explicitly rather than claiming success.\n\n— and, from the on-demand skill that replaced it:\n\nRunning means launching the actual app and interacting with it — not the test suite, not an `import` of an internal function and a `console.log`. The app as a user (human or programmatic) would meet it: the CLI at its command, the server at its socket, the GUI at its window."
+      {
+        "phase": "3 · Delete what is now duplicated",
+        "why": "Only safe AFTER phases 1 and 2. Each of these repeats a rule that now lives somewhere better, and each costs either context on every request or a full round trip when it fires.",
+        "steps": [
+          {
+            "n": 7,
+            "kind": "delete",
+            "prompts": [
+              "system.tasks"
+            ],
+            "do": "Empty the Task list section",
+            "detail": "117 tokens repeating what `tool.TaskCreate` now says with a sharper threshold. Blocked until step 1 lands.",
+            "test": {
+              "prompt": "system.tasks",
+              "disabled": true
+            }
+          },
+          {
+            "n": 8,
+            "kind": "delete",
+            "prompts": [
+              "reminder.plan-first"
+            ],
+            "do": "Empty the empty-board reminder",
+            "detail": "Fires at turn start whenever the board is empty — the normal state for a small request — and costs a round trip to repeat what TaskCreate already says. Blocked until step 1 lands.",
+            "test": {
+              "prompt": "reminder.plan-first",
+              "disabled": true
+            }
+          },
+          {
+            "n": 9,
+            "kind": "edit",
+            "prompts": [
+              "system.autonomy"
+            ],
+            "do": "Add scope fidelity to Working autonomously",
+            "detail": "Append the scope paragraph quoted on that prompt. The blocked-parts rule is the valuable half: finish every other part in full and say what you left out. This must land before step 10.",
+            "test": {
+              "prompt": "system.autonomy",
+              "matches": "scope is the deliverable|left out|narrow"
+            }
+          },
+          {
+            "n": 10,
+            "kind": "delete",
+            "prompts": [
+              "clarify.system"
+            ],
+            "do": "Delete the clarify pre-layer",
+            "detail": "786 tokens AND a full model call before any work starts — your largest remaining latency cost. Blocked until step 9 lands, because `system.autonomy` then carries the judgement. If you would rather keep it, measure first: if it returns clarify=true under ~10% of the time, it is pure latency.",
+            "test": {
+              "prompt": "clarify.system",
+              "disabled": true
+            }
+          }
+        ]
       },
-      "direction": "Narrow the sentence to what it actually means: never claim an observation you did not make. Then give the rung a real path for UI work to point at — this repo already has the pieces (headless Electron plus capturePage). Keep the honest-gap ending; it is the best paragraph in this prompt and it should survive. If the configured model is not vision-capable, the fallback is asserting on readable state (DOM text, logs, exit codes), not skipping verification."
-    },
-
-    "tool.TaskCreate": {
-      "severity": "must",
-      "title": "390 chars carrying a decision the reference spends 2,163 on",
-      "problem": "This description says when to open a task list but barely says when not to. The judgement it governs — plan versus just do it — is the single biggest driver of both turn count and output length, and right now that judgement is made from `system.working-method`, which is unconditional and vague about the threshold.\n\nThis is where the guidance belongs, because it is read while the model is deciding about this exact tool.",
-      "evidence": [
-        "390 characters against 2,163 for the reference equivalent — 5.5×",
-        "By contrast Read/Edit/Write are at parity or larger, so this is not a general thinness problem — it is specific to the coordination tools"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "note": "Structure worth stealing: a numeric threshold, an explicit NOT list, and a closing line that names the cheap path.",
-        "text": "### When to Use This Tool\nUse this tool proactively in these scenarios:\n- Complex multi-step tasks — When a task requires 3 or more distinct steps or actions\n- After receiving new instructions — Immediately capture user requirements as tasks\n- When you start working on a task — Mark it as in_progress BEFORE beginning work\n\n### When NOT to Use This Tool\n- There is only a single, straightforward task\n- The task is trivial and tracking it provides no organizational benefit\n- The task can be completed in less than 3 trivial steps\n- The task is purely conversational or informational\n\n### Tips\n- Create tasks with clear, specific subjects that describe the outcome\n- Check TaskList first to avoid creating duplicate tasks"
+      {
+        "phase": "4 · Make the two modes agree",
+        "why": "Robustness in normal mode should not depend on switching a mode on. Right now OVERDRIVE restates rules the always-on sections also own, so the mode version quietly becomes the real one.",
+        "steps": [
+          {
+            "n": 11,
+            "kind": "edit",
+            "prompts": [
+              "system.overdrive"
+            ],
+            "do": "Strip OVERDRIVE down to what is genuinely mode-specific",
+            "detail": "Cut everything that is not about NOT ASKING and NOTHING BEING BLOCKED. Plan-first, verification and do-not-stop-early belong in `system.autonomy` and the task tools, where they apply in both modes. The reference keeps its autonomous variant to a single added idea; the quote is on that prompt.",
+            "test": {
+              "prompt": "system.overdrive",
+              "shorterThan": 300
+            }
+          },
+          {
+            "n": 12,
+            "kind": "code",
+            "prompts": [
+              "reminder.no-atlas"
+            ],
+            "do": "Remove the no-atlas call site",
+            "detail": "Emptying it here is machine-local. To have it gone on every machine, delete the rung from `session.ts`. Atlas is deferred by decision, and this is the only prompt still promoting it.",
+            "test": {
+              "prompt": "reminder.no-atlas",
+              "gone": true
+            }
+          }
+        ]
       },
-      "direction": "Bring the planning threshold here from system.working-method, with a number. Add a NOT list of equal weight. Add the duplicate-check tip — it is cheap and this engine has TaskList. Remember that whatever lands here interacts with the uncapped nudge: fewer spurious tasks means fewer forced extra rounds."
-    },
-
-    "tool.TaskUpdate": {
-      "severity": "must",
-      "title": "Says how to update, not when a task is genuinely done",
-      "problem": "The current description covers mechanics. The reference spends most of its length on one thing instead: the definition of completed, stated as a list of disqualifiers. That matters here more than in most harnesses, because a task marked complete is the only thing that stops the incomplete-tasks rung from firing again — so the meaning of \"done\" is directly load-bearing on turn count.",
-      "evidence": [
-        "343 characters against 2,019 for the reference equivalent — 5.9×",
-        "session.ts:2337 — the incomplete-tasks rung reads exactly `pending` and `in_progress` status, nothing else"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "note": "Note that it defines completion negatively, by naming what disqualifies it.",
-        "text": "- ONLY mark a task as completed when you have FULLY accomplished it\n- If you encounter errors, blockers, or cannot finish, keep the task as in_progress\n- When blocked, create a new task describing what needs to be resolved\n- Never mark a task as completed if:\n  - Tests are failing\n  - Implementation is partial\n  - You encountered unresolved errors\n  - You couldn't find necessary files or dependencies"
-      },
-      "direction": "Move the completion contract here from system.working-method. Add the blocked-task escape explicitly: when a task cannot be finished, say so and change its status rather than leaving it open — otherwise the end-of-turn rung keeps charging a round trip for it."
-    },
-
-    "system.communication": {
-      "severity": "improve",
-      "title": "No cap on the wrap-up, and nothing against rumination",
-      "problem": "This section says \"match the size of the reply to the size of the question\", which is right. But `system.working-method` then mandates a five-part wrap-up regardless of size and adds \"Never end a work turn with silence.\" When two sections conflict, the more specific one usually wins — here that is the one demanding the report.\n\nThere is also no instruction anywhere against self-correction spirals: re-auditing earlier statements, apologising, or narrating mistakes. That is pure output length with no reader value.",
-      "evidence": [
-        "system.working-method mandates: files changed, how to use it, expected vs observed, explicit verdict, open issues",
-        "The reference caps the same summary at one or two sentences"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "note": "Three separate excerpts: the hard cap from an older version, and two sections a newer version added.",
-        "text": "End-of-turn summary: one or two sentences. What changed and what's next. Nothing else.\n\n— on brevity done right:\n\nBeing readable and being concise are different things, and readable matters more. If the user has to reread your summary or ask you to explain, any time saved by brevity is gone. The way to keep output short is to be selective about what you include (drop details that don't change what the reader would do next), not to compress the writing into fragments, abbreviations, arrow chains like `A → B → fails`, or jargon.\n\n— on self-correction:\n\nAvoid unnecessary or excessive self-correction. Only correct an earlier statement in your user-facing text when the error would change the user's code, conclusions, or decisions. State corrections plainly and concisely, and continue the task; combine multiple corrections rather than enumerating them all. Don't add apologies or preambles, don't be overly self-critical, and don't ruminate or give a detailed account of the mistake or tally past errors. A follow-up question about your earlier work is not, by itself, a signal that you got something wrong — answer what was asked."
-      },
-      "direction": "Own the wrap-up contract here rather than leaving it in working-method, and give it a length. Add a corrections paragraph. The readable-versus-concise framing is better than a raw sentence cap and this section already half-states it — finish the thought instead of importing the cap."
-    },
-
-    "system.autonomy": {
-      "severity": "improve",
-      "title": "Covers when to stop, not what the deliverable is",
-      "problem": "This section handles the stopping question well — act when you can, stop for destructive or outward-facing decisions, do not end a turn on a promise. What it does not state is scope fidelity: that the requested scope is the deliverable, and quietly narrowing it is as much a failure as overrunning it.\n\nThat gap matters when a task turns out to be partly blocked. Nothing currently tells the agent to finish every other part in full and name what it left out, so scaling the work down silently is an available move.",
-      "evidence": [
-        "SECTION_AUTONOMY covers stopping conditions only",
-        "No prompt in the registry states what to do when part of a task is blocked but the rest is doable"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "note": "A section with no counterpart in this registry.",
-        "text": "Do ordinary work as asked, acting on the actual request rather than on speculation about what lies behind it. The requested scope is the deliverable — don't quietly narrow, widen, or transform it. Interpret ambiguity the way a careful colleague would: make routine judgment calls yourself, and check in only when different readings would lead to materially different work. If you find a real problem with the task as specified, state the concern in a sentence or two, then keep building: deliver the complete work under explicitly stated assumptions. Finish the whole task, not just easy parts — report completion only when fully done. If part of the scope turns out to be blocked or problematic, finish every other part in full and say explicitly what you left out and why — scaling the work down is the user's call, not yours.\n\nIf you find an uncertainty mid-task, first do everything that doesn't depend on the answer; for what does, state your assumption or ask your question at the right time. Reserve blocking questions for cases where proceeding under any assumption would be unsafe or would make the work useless if wrong."
-      },
-      "direction": "Add a scope-fidelity paragraph. The blocked-parts rule is the valuable half — it converts a silent shortfall into an explicit one. The uncertainty ordering rule also reduces round trips directly: do the independent work first, ask once, at the right moment."
-    },
-
-    "clarify.system": {
-      "severity": "improve",
-      "title": "786 tokens and a full round trip before work starts",
-      "problem": "This pre-layer runs as its own inference call on the incoming message, before anything happens. It is the first thing the user waits on, and it fires on requests the agent could simply have started.\n\nThe reference reaches a similar outcome with two sentences of always-on prose plus a well-specified question tool, and pays nothing up front.",
-      "evidence": [
-        "~786 tokens, executed as a separate provider call ahead of the turn",
-        "Its own design notes call it strictly fail-open, so on any error the turn proceeds anyway — which is an argument that the common case does not need it"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "note": "The decision is pushed into the turn itself rather than made in a pre-pass.",
-        "text": "When you have enough information to act, act. Do not re-derive facts already established in the conversation, re-litigate a decision the user has already made, or narrate options you will not pursue. If you are weighing a choice, give a recommendation, not an exhaustive survey.\n\nInterpret ambiguity the way a careful colleague would: make routine judgment calls yourself, and check in only when different readings would lead to materially different work."
-      },
-      "direction": "Either gate this behind a much cheaper test than a full inference call, or retire it and move the judgement into system.autonomy plus a stronger AskUserQuestion description. Measure before deciding: if it rarely returns clarify=true, it is pure latency."
-    },
-
-    "tool.Agent": {
-      "severity": "improve",
-      "title": "Missing the rule that stops duplicated work",
-      "problem": "The description explains what a subagent is but does not tell the model what to do after delegating. The expensive failure is delegating a search and then running the same search inline anyway, which doubles the cost of the thing delegation was supposed to make cheaper.",
-      "evidence": [
-        "1,110 characters against 1,584 for the reference — the closest of the coordination tools, so this is a content gap rather than a length gap"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "text": "Reach for this when the task matches an available agent type, when you have independent work to run in parallel, or when answering would mean reading across several files — delegate it and you keep the conclusion, not the file dumps. For a single-fact lookup where you already know the file, symbol, or value, search directly. Once you've delegated a search, don't also run it yourself — wait for the result.\n\n- The agent's final report is not shown to the user — relay what matters.\n- Subagents run in the background by default; you'll be notified when one completes. Never fabricate or predict a pending agent's results."
-      },
-      "direction": "Add the do-not-duplicate rule and the single-fact-lookup exception. Add the relay rule — a subagent's report is invisible to the user, and this engine has the same property. Worth noting: subagents here receive no skills at all (session.ts:1074 passes `skills: []`), which is a real constraint the description does not mention."
-    },
-
-    "tool.Bash": {
-      "severity": "improve",
-      "title": "Does not say what persists between calls, or how to wait",
-      "problem": "Two omissions cost round trips. The description does not state which shell state survives between calls, so the agent re-establishes context defensively. And it gives no guidance on waiting for a condition, which is where turns quietly stall.",
-      "evidence": [
-        "726 characters against 1,374 for the reference — 1.9×",
-        "This engine has both `run_in_background` and a Monitor tool, so the waiting guidance has somewhere to point"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "note": "Vendor-specific git lines omitted; the mechanics are the transferable part.",
-        "text": "- Working directory persists between calls, but prefer absolute paths — `cd` in a compound command can trigger a permission prompt. Shell state (env vars, functions) does not persist; the shell is initialized from the user's profile.\n- IMPORTANT: Avoid using this tool to run `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task.\n- Command output is displayed to you, not reliably to the user.\n- `run_in_background` runs the command detached: it keeps running across turns and re-invokes you when it exits. No `&` needed. Foreground `sleep` is blocked; use an until-loop to wait on a condition."
-      },
-      "direction": "State the persistence contract explicitly — it is cheap and it removes a whole class of defensive re-checking. Add the until-loop pattern for waiting. The \"output is displayed to you, not reliably to the user\" line is worth having: it is why results must be restated in the final message."
-    },
-
-    "tool.Monitor": {
-      "severity": "improve",
-      "title": "No guidance on choosing Monitor versus a background command",
-      "problem": "The most common misuse of a watch tool is arming an unbounded watcher for a one-off event, which then stays armed until timeout long after the event fired. Nothing in the current description steers away from that.",
-      "evidence": [
-        "601 characters against 4,970 for the reference — 8.3×, the widest gap of any shared tool"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "note": "It routes by how many notifications are wanted, which is the decision the model actually faces.",
-        "text": "Pick by how many notifications you need:\n- One (\"tell me when the server is ready / the build finishes\") → use a backgrounded command that exits when the condition is true, e.g. `until grep -q \"Ready in\" dev.log; do sleep 0.5; done`. You get a single completion notification when it exits.\n- One per occurrence, indefinitely (\"tell me every time an ERROR line appears\") → an unbounded command (`tail -f`, `inotifywait -m`, `while true`).\n- One per occurrence, until a known end → a command that emits lines and then exits.\n\nDon't use an unbounded command for a single notification. `tail -f` and `while true` never exit on their own, so the monitor stays armed until timeout even after the event has fired."
-      },
-      "direction": "Adopt the routing structure — it is the clearest bit of tool prose in the whole reference set. It also pairs with the Bash change above, since the two tools are the two halves of one decision."
-    },
-
-    "system.harness": {
-      "severity": "improve",
-      "title": "The parallel-call rule is right but buried mid-list",
-      "problem": "This section already contains the single most load-bearing latency instruction in the whole prompt — issue independent tool calls together. It sits seventh in a nine-item list, at the same visual weight as a note about markdown rendering.",
-      "evidence": [
-        "SECTION_HARNESS bullet 5 already states the rule and even names it \"the single biggest lever on how fast a turn feels\""
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "note": "Same rule, stated twice — once compactly in the harness section and once as an emphatic standalone. Repetition here is deliberate.",
-        "text": "Independent tool calls can run in parallel in one response.\n\n— and, separately:\n\nYou can call multiple tools in a single response. If you intend to call multiple tools and there are no dependencies between them, make all independent tool calls in parallel. Maximize use of parallel tool calls where possible to increase efficiency. However, if some tool calls depend on previous calls to inform dependent values, do NOT call these tools in parallel and instead call them sequentially."
-      },
-      "direction": "Promote it. Either lead the section with it or restate it at the end of the system prompt. The existing wording is good — the placement is what undersells it."
-    },
-
-    "system.code-style": {
-      "severity": "improve",
-      "title": "Strong on reuse, silent on the cost of over-delivering",
-      "problem": "This section is one of the better ones and its reuse and replace-in-place rules have no reference equivalent. The gap is the opposite direction: nothing here pushes back on scope creep inside a change — speculative abstraction, error handling for impossible states, half-finished implementations left behind.",
-      "evidence": [
-        "SECTION_CODE_STYLE covers reuse, deletion proof, comments, and 'build exactly what was asked'",
-        "The last of those is one line; the reference spends three on the same idea"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "text": "Don't add features, refactor, or introduce abstractions beyond what the task requires. A bug fix doesn't need surrounding cleanup; a one-shot operation doesn't need a helper. Don't design for hypothetical future requirements. Three similar lines is better than a premature abstraction. No half-finished implementations either.\n\nDon't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.\n\nAvoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code. If you are certain that something is unused, you can delete it completely."
-      },
-      "direction": "Expand the 'build exactly what was asked' line into its own short block. \"A bug fix doesn't need surrounding cleanup\" is the sentence doing the most work — it names the specific over-delivery that inflates a diff."
-    },
-
-    "reminder.wrapup-nudge": {
-      "severity": "improve",
-      "title": "Shares a nudge budget it does not control",
-      "problem": "This is the only rung that checks `MAX_AUTO_NUDGES`, but three other rungs increment the same counter without ever reading it. So the recovery nudge and the incomplete-tasks nudge silently consume this rung's budget, and on a turn with a couple of failures the wrap-up nudge can be exhausted before it ever fires.",
-      "evidence": [
-        "engine/core/src/runtime/session.ts:2428 — the only read of `nudgeCount`",
-        "session.ts:2323 and :2339 — writes with no corresponding read"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "note": "No equivalent rung; the requirement is stated once in always-on prose instead.",
-        "text": "Everything the user needs from this turn — answers, summaries, findings, conclusions, deliverables — must be in the final text message of your turn, with no tool calls after it. Keep text between tool calls to brief status notes. If something important appeared only mid-turn or in your thinking, restate it in that final message."
-      },
-      "direction": "Code fix, not a prompt fix: either give each rung its own budget or make every writer also a reader. Worth doing at the same time as the incomplete-tasks fuse, since it is the same counter."
-    },
-
-    "finishing.self-verify": {
-      "severity": "ok",
-      "title": "Already gated — this is not the latency problem",
-      "problem": "An earlier review flagged this as firing on every work turn. That is wrong and the code says so: it is gated on OVERDRIVE and on the turn having made at least one tool call, scoped that way on 2026-07-26 with the reasoning that an attended turn already has a checkpoint — the user reading the reply.\n\nLeft here so it does not get re-flagged. If turns feel slow in a normal session, this rung is not why; look at reminder.incomplete-tasks.",
-      "evidence": [
-        "engine/core/src/runtime/session.ts:2407 — `... && totalToolCallsThisTurn > 0 && this.overdrive`",
-        "session.ts:2397-2406 — the reasoning is documented in comments"
-      ],
-      "direction": "No change needed. The one thing worth checking is the cost in OVERDRIVE specifically, where it is a full-price round trip per turn — but that is the mode where an unverified finish is most expensive, so the trade is defensible."
-    },
-
-    "tool.Read": {
-      "severity": "ok",
-      "title": "At parity with the reference — and it already handles images",
-      "problem": "Slightly longer than the reference equivalent and covers the same ground. Worth knowing while reading the runtime-evidence finding: this tool returns PNG, JPG, GIF and WebP as image blocks, so screenshots can reach a vision-capable model with no new plumbing.\n\nOne line the reference has that is missing here, and it saves a round trip every time it applies: do not re-read a file you just edited to confirm the edit landed.",
-      "evidence": [
-        "835 characters against 796 for the reference — 1.0×",
-        "engine/tools/src/read.ts:84-88 — image branch"
-      ],
-      "reference": {
-        "label": "Reference harness",
-        "text": "- When you already know which part of the file you need, only read that part. This can be important for larger files.\n- Reading a directory, a missing file, or an empty file returns an error or system reminder rather than content.\n- Do NOT re-read a file you just edited to verify — Edit/Write would have errored if the change failed, and the harness tracks file state for you."
-      },
-      "direction": "Add the do-not-re-read line if it is not already implied elsewhere. SECTION_HARNESS states it, but stating it here too is cheap and this is where it gets applied."
-    },
-
-    "tool.Edit": {
-      "severity": "ok",
-      "title": "At parity — no change indicated",
-      "problem": "Longer than the reference equivalent and covers the same contract: read first, exact match including indentation, uniqueness, replace_all. The file primitives are not where this engine is behind.",
-      "evidence": ["433 characters against 366 for the reference — 0.8×"],
-      "direction": "Leave it. If time is limited, spend it on the coordination tools instead."
-    },
-
-    "tool.Write": {
-      "severity": "ok",
-      "title": "At parity — no change indicated",
-      "problem": "Covers the same ground as the reference, including the read-before-overwrite rule. This engine additionally refuses an un-searched Write of a new file once, which is a genuinely better guard than the reference has.",
-      "evidence": ["315 characters against 247 for the reference — 0.8×"],
-      "direction": "Leave it."
-    },
-
-    "system.identity": {
-      "severity": "ok",
-      "title": "No reference equivalent worth borrowing",
-      "problem": "The reference states its identity in two lines because it is first-party to its model. This engine has the harder problem — a swappable engine underneath a fixed product identity — and handles it explicitly. Nothing to import here.",
-      "evidence": ["~398 tokens, the fourth-largest core section"],
-      "direction": "The only question is length. If prompt budget gets tight, this is compressible without losing the rule; it is currently argued at more length than it needs."
-    }
+      {
+        "phase": "5 · Optional trims",
+        "why": "Nothing here is wrong. Each is context you pay for on every request in exchange for a feature that may not be live yet. Take them only if you want a leaner prompt.",
+        "steps": [
+          {
+            "n": 13,
+            "kind": "trim",
+            "prompts": [
+              "tool.Workflow"
+            ],
+            "do": "Cut or conditionally register the Workflow tool",
+            "detail": "604 tokens on every request, nearly three times the next largest tool description. The single biggest tool-side saving available, if multi-agent orchestration is not a shipping feature.",
+            "test": {
+              "prompt": "tool.Workflow",
+              "shorterThan": 300
+            }
+          },
+          {
+            "n": 14,
+            "kind": "trim",
+            "prompts": [
+              "tool.CrewRun",
+              "tool.BackpackSearch"
+            ],
+            "do": "Register the crew tools conditionally",
+            "detail": "365 tokens combined, sent whether or not a crew exists. Cheap win if crew is not live yet.",
+            "test": {
+              "prompt": "tool.CrewRun",
+              "shorterThan": 150
+            }
+          },
+          {
+            "n": 15,
+            "kind": "edit",
+            "prompts": [
+              "system.harness"
+            ],
+            "do": "Move the parallel-call bullet to the top of the harness section",
+            "detail": "Your biggest latency lever currently sits seventh in a nine-item list. Move it, do not reword it — your version teaches better than the reference's. Zero tokens added.\n\nThe code-style half of this step was withdrawn: that rule is already present in bullet 1.",
+            "test": {
+              "prompt": "system.harness",
+              "matches": "^How the harness works:\\n- When several tool calls"
+            }
+          }
+        ]
+      }
+    ]
   }
 }

@@ -108,23 +108,76 @@ const RUNTIME_EVIDENCE = definePrompt({
   channel: "reminder",
   where:
     "Fires once at the end of a turn that edited source files but never ran a command. Injected as a user-role reminder, which costs at least one extra round trip — shorten or blank it to make turns finish faster.",
-  placeholders: ["files"],
-  text: `<system-reminder>You changed code this turn ({{files}}) and did not run a single command, so nothing you wrote has been observed working. Settle that now, then finish.
+  placeholders: ["files", "visionNote", "doubleNote"],
+  text: `<system-reminder>You changed code this turn ({{files}}) and did not run a single command, so nothing you wrote has been observed working. Handle that now, then finish.
 
 Work down this list and stop as soon as the change is settled:
 1. Fast gate first — the project's own build/typecheck/lint if it has one. It catches the cheap failures, but passing it is NOT evidence: it proves the code parses, not that it behaves.
-2. Execute the path you changed, and the callers it reaches that your change could break. Drive it however this project can be driven: its CLI, its entry point, a one-off \`node -e\` / \`python -c\`, an existing test that already covers this path, a request against a server you start and stop.
-3. If a one-liner will not reach it, write a throwaway harness — put it in the system temp directory, not in the repository — and DELETE it in this same turn. A harness DRIVES your real code; it does not replace the thing you are unsure about. The moment you substitute a stand-in for the dependency, you stopped measuring reality and started measuring your own assumption.
-4. Judge against something you can actually read: exit codes, stdout, a log line, a returned value, a file the code wrote. You have no eyes here — never claim you looked at a screenshot or a window.
-5. Say in your wrap-up what you ran and what you saw. A failing run reported honestly is a good outcome; a silent one is not.
+2. Execute the path you changed, and the callers it reaches that your change could break.
+3. If a one-liner will not reach it, write a throwaway harness — put it in the system temp directory, not in the repository — and DELETE it in this same turn. A harness DRIVES your real code; it does not replace the thing you are unsure about. The
+moment you substitute a stand-in for the dependency, you stopped measuring reality and started measuring your own assumption.
+4. Judge against something you can actually read: exit codes, stdout, a log line, a returned value, a file the code wrote. {{visionNote}}
+5. Say in your wrap-up what you ran and what you observed. A failing run reported honestly is a good outcome; a silent one is not.
 
-If this change genuinely cannot be executed on this machine — it needs a console, a display, a device, a credential or a service you do not have — then STOP HERE AND SAY SO. Name the closest thing you did run, name what stays unverified, and move on. That is a complete and correct answer to this reminder, and it is worth more than a green result you had to manufacture. Nothing here asks you to end with a passing check; it asks you to know, and to say, what you actually observed.
+{{doubleNote}}
+If this change genuinely cannot be executed on this machine — it needs a device, a credential or a service you do not have — then STOP HERE AND SAY SO. Name the closest thing you did run, name what stays unverified, and move on. That is a complete and correct answer to this reminder, and it is worth more than a green result you had to manufacture. Nothing here asks you to end with a passing check; it asks you to know, and to say, what you actually observed.
 
 Where you cannot run a thing, you can still usually confirm its CONTRACT: import it and print its signature or docstring, check the type of what it returns, read the source you are calling. A function that needs a console still tells you what it gives back. That costs one command and is real evidence; guessing the contract and then encoding the guess into a stand-in is not.</system-reminder>`,
 });
 
-export function runtimeEvidenceText(files: string[]): string {
-  return renderPrompt(RUNTIME_EVIDENCE, { files: fileList(files) });
+const VISION_ON = definePrompt({
+  id: "finishing.vision-on",
+  group: GROUP,
+  label: "Vision clause — enabled",
+  channel: "reminder",
+  where:
+    "Substituted into `{{visionNote}}` of the runtime-evidence rung when settings.vision is true. Tells the agent a screenshot is real evidence it may go and get.",
+  text: "You CAN read images here: capture a screenshot of the running app and Read it. For a visual change that is the observation — take it rather than reasoning about what the pixels probably do.",
+});
+
+const VISION_OFF = definePrompt({
+  id: "finishing.vision-off",
+  group: GROUP,
+  label: "Vision clause — disabled",
+  channel: "reminder",
+  where:
+    "Substituted into `{{visionNote}}` when settings.vision is false (the default). States the limit as a fact about this workspace, not as a claim about what the harness can do.",
+  text: "Vision is off for this workspace, so you cannot read an image even if you produce one. Never claim you looked at a screenshot or a window. Verify a visual change through what the app WRITES instead — rendered text, DOM state, a log line, an exit code — or say plainly that the appearance stays unverified.",
+});
+
+/**
+ * The circular-evidence clause, folded into the rung above rather than shipped
+ * as a rung of its own.
+ *
+ * It answers a question the rest of the reminder cannot: the turn DID run
+ * something, so "nothing was observed" is false — but what it observed was a
+ * model of the dependency, authored by the same understanding that authored the
+ * code. The two agree by construction. Only the argument survives the merge;
+ * confirming a contract from the dependency and naming an honest gap are
+ * already said once in the closing paragraphs, and saying them twice in one
+ * reminder teaches the model to skim.
+ */
+const DOUBLE_CLAUSE = definePrompt({
+  id: "finishing.double-clause",
+  group: GROUP,
+  label: "Stand-in clause",
+  channel: "reminder",
+  where:
+    "Substituted into `{{doubleNote}}` of the runtime-evidence rung when the turn's checking leaned on mocks, fakes or stubs the agent wrote itself. Empty otherwise, so a turn with real evidence never pays for it.",
+  placeholders: ["doubleFiles"],
+  text: `
+The checking you ran leans on stand-ins you wrote yourself ({{doubleFiles}}). Read that again. A mock, fake, stub or patch is a MODEL of the thing it replaces, and you are its author — it agrees with whatever you believed when you wrote it. A passing check against your own stand-in proves your code is self-consistent and nothing more; it will agree with you just as confidently when you are wrong. So: say where each replaced contract came from, and if the answer is "I assumed it", that is the thing to fix, not the code. If the real contract differs from what your stand-in does, your code is wrong and your check was agreeing with the bug — fix both, and say so.
+`,
+});
+
+export function runtimeEvidenceText(files: string[], vision: boolean, doubleFiles: string[] = []): string {
+  return renderPrompt(RUNTIME_EVIDENCE, {
+    files: fileList(files),
+    visionNote: promptText(vision ? VISION_ON : VISION_OFF),
+    doubleNote: doubleFiles.length === 0
+      ? ""
+      : renderPrompt(DOUBLE_CLAUSE, { doubleFiles: fileList(doubleFiles) }),
+  });
 }
 
 /**
@@ -138,32 +191,7 @@ export function runtimeEvidenceText(files: string[]): string {
  * rung is a reminder, so it never blocks; what it asks for is either the real
  * contract or an honest statement of what remains unverified.
  */
-const CIRCULAR_EVIDENCE = definePrompt({
-  id: "finishing.circular-evidence",
-  group: GROUP,
-  label: "Circular evidence rung",
-  channel: "reminder",
-  where:
-    "Fires at the end of a turn that edited code and verified it only against mocks/fakes the agent wrote itself. Injected as a user-role reminder, so it also costs a round trip.",
-  placeholders: ["files", "doubleFiles"],
-  text: `<system-reminder>You changed code this turn ({{files}}) and the checking you ran leans on stand-ins you wrote yourself ({{doubleFiles}}). Read that sentence again before you finish.
 
-A mock, fake, stub or patch is a MODEL of the thing it replaces, and you are its author. It agrees with whatever you believed when you wrote it. So a passing check against your own stand-in tells you your code is self-consistent; it tells you nothing at all about the real dependency, and it will agree with you just as confidently when you are wrong.
-
-Before this turn ends, for every real thing you replaced:
-1. Say where its contract came from. If the answer is "I assumed it", that is the thing to fix, not the code.
-2. Confirm it from the dependency itself — import it and print its signature or docstring, check the type of what a real call returns, or read the source you are calling. This usually costs one command and does not need the dependency to be fully usable: a function that needs a console, a device or a credential still tells you its return type, its exception type, its units, and whether it hands back bytes or text.
-3. If the confirmed contract differs from what your stand-in does, your code is wrong and your check was agreeing with the bug. Fix both, and say so.
-
-If the contract genuinely cannot be confirmed here, say that plainly and name exactly which behaviours remain unverified. An honest gap is a good outcome. A green check built on your own assumption is not a good outcome — it is the same unverified guess wearing the costume of proof.</system-reminder>`,
-});
-
-export function circularEvidenceText(files: string[], doubleFiles: string[]): string {
-  return renderPrompt(CIRCULAR_EVIDENCE, {
-    files: fileList(files),
-    doubleFiles: fileList(doubleFiles),
-  });
-}
 
 /**
  * The end-of-turn self check. Judges the turn against the user's own query —

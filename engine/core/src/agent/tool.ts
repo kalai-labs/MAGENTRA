@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { definePrompt, promptText, type CoreEvent, type TaskItem } from "@magentra/protocol";
+import { definePrompt, promptText, renderPrompt, type CoreEvent, type TaskItem } from "@magentra/protocol";
 import type { ToolResultPart } from "@magentra/providers";
 import type { Settings } from "../config/settings.js";
 import type { CrewAgent } from "../crew/team.js";
@@ -84,9 +84,20 @@ export interface ToolContext {
   callId?: string;
 }
 
+/** Values filling a description's `{{slots}}`. See {@link ToolDefinition.descriptionVars}. */
+export type ToolDescriptionVars = Record<string, string | number>;
+
 export interface ToolDefinition<I = unknown> {
   name: string;
+  /**
+   * Sent to the model with every request. Write runtime values as `{{slots}}`
+   * and supply them via {@link descriptionVars} rather than interpolating them
+   * into the literal: an interpolated description never appears verbatim in the
+   * source, so the prompt editor cannot locate it to write an edit back.
+   */
   description: string;
+  /** Fills the `{{slots}}` in {@link description}. */
+  descriptionVars?: ToolDescriptionVars;
   inputSchema: z.ZodType<I>;
   permissionClass: PermissionClass;
   /**
@@ -147,7 +158,7 @@ export type AnyToolDefinition = ToolDefinition<any>;
  * Tolerant by design: a registry is built per session, and re-registering the
  * same tool must never be able to break one.
  */
-export function registerToolPrompt(name: string, description: string): string {
+export function registerToolPrompt(name: string, description: string, vars?: ToolDescriptionVars): string {
   const id = `tool.${name}`;
   try {
     return definePrompt({
@@ -156,6 +167,7 @@ export function registerToolPrompt(name: string, description: string): string {
       label: name,
       channel: "tool",
       where: `What the model reads to decide when to reach for ${name} and how to call it. The \`description\` field of the ${name} tool definition, sent on every request in which ${name} is available.`,
+      ...(vars ? { placeholders: Object.keys(vars) } : {}),
       text: description,
     });
   } catch {
@@ -163,10 +175,10 @@ export function registerToolPrompt(name: string, description: string): string {
   }
 }
 
-/** The description in force for a registered tool. */
-export function toolDescriptionText(name: string, fallback: string): string {
+/** The description in force for a registered tool, with its `{{slots}}` filled. */
+export function toolDescriptionText(name: string, fallback: string, vars?: ToolDescriptionVars): string {
   try {
-    return promptText(`tool.${name}`);
+    return vars ? renderPrompt(`tool.${name}`, vars) : promptText(`tool.${name}`);
   } catch {
     return fallback;
   }
@@ -178,7 +190,7 @@ export class ToolRegistry {
   register(tool: AnyToolDefinition): void {
     if (this.tools.has(tool.name)) throw new Error(`duplicate tool: ${tool.name}`);
     this.tools.set(tool.name, tool);
-    registerToolPrompt(tool.name, tool.description);
+    registerToolPrompt(tool.name, tool.description, tool.descriptionVars);
   }
 
   get(name: string): AnyToolDefinition | undefined {

@@ -304,6 +304,109 @@ pre.editor del { background: rgba(241, 106, 120, 0.16); color: #ffa2ab; text-dec
 .modal pre { margin: 0; padding: 20px 22px; overflow: auto; font: 12.5px/1.65 var(--mono); color: var(--text); white-space: pre-wrap; word-break: break-word; }
 
 
+
+
+
+.ours {
+  background: var(--green-soft); border-left: 2px solid var(--green);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 10px 13px; margin-top: 4px;
+}
+.ours p { color: var(--text-hi) !important; font-size: 12.5px !important; margin: 0 !important; }
+.principle {
+  border: 1px solid var(--border-hi); border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb),0.05), transparent);
+  padding: 15px 18px; margin-bottom: 14px;
+}
+.principle p { margin: 0 0 9px; color: var(--text); font-size: 12.8px; line-height: 1.62; max-width: 88ch; }
+.principle p:last-child { margin-bottom: 0; }
+.principle b { color: var(--accent-hi); font-weight: 620; letter-spacing: 0.02em; }
+
+/* ── work order ───────────────────────────────────────────────────────── */
+.stage.work { border-color: var(--border-hi); }
+.stage.work .stage-num { width: auto; min-width: 24px; padding: 0 7px; font-size: 10px; }
+.stage-head .prog {
+  margin-left: auto; width: 120px; height: 4px; border-radius: 2px;
+  background: var(--well); overflow: hidden; flex: none;
+}
+.stage-head .prog i { display: block; height: 100%; background: var(--green); transition: width 0.3s; min-width: 2px; }
+
+.phase {
+  display: flex; align-items: baseline; gap: 10px;
+  margin: 18px 0 3px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.phase:first-of-type { margin-top: 6px; border-top: none; padding-top: 0; }
+.phase .pname { font: 600 12px "Inter", sans-serif; color: var(--text-hi); letter-spacing: 0.01em; }
+.phase .pcount { font: 10.5px var(--mono); color: var(--text-faint); margin-left: auto; }
+.phase.done .pname { color: var(--green); }
+.pwhy { color: var(--text-faint); font-size: 12px; margin: 0 0 10px; max-width: 82ch; line-height: 1.55; }
+
+.step { display: flex; gap: 11px; padding: 8px 0; align-items: flex-start; }
+.step + .step { border-top: 1px solid rgba(36,43,50,0.6); }
+.step .sn {
+  flex: none; width: 20px; height: 20px; border-radius: 5px; margin-top: 1px;
+  display: grid; place-items: center; font: 600 10px/1 var(--mono);
+}
+.sn.edit { background: var(--accent-soft); color: var(--accent-hi); }
+.sn.merge { background: var(--amber-soft); color: var(--amber); }
+.sn.delete { background: var(--red-soft); color: var(--red); }
+.sn.code { background: var(--violet-soft); color: var(--violet); }
+.sn.trim { background: rgba(143,154,165,0.16); color: var(--text-dim); }
+.sn.done { background: var(--green); color: #04210f; }
+.step.done .sdo, .step.done .sdetail { color: var(--text-faint); }
+.step.done .sdo { text-decoration: line-through; text-decoration-color: rgba(143,154,165,0.5); }
+
+.sbody { min-width: 0; flex: 1; }
+.sdo { color: var(--text-hi); font-size: 13px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.sdo .kind {
+  font: 600 9.5px/1 "Inter", sans-serif; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 6px; border-radius: 4px; flex: none;
+}
+.kind.edit { background: var(--accent-soft); color: var(--accent-hi); }
+.kind.merge { background: var(--amber-soft); color: var(--amber); }
+.kind.delete { background: var(--red-soft); color: var(--red); }
+.kind.code { background: var(--violet-soft); color: var(--violet); }
+.kind.trim { background: rgba(143,154,165,0.16); color: var(--text-dim); }
+.sdetail { color: var(--text-dim); font-size: 12px; line-height: 1.55; margin-top: 3px; max-width: 84ch; }
+.slinks { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.plink {
+  font: 11px var(--mono); color: var(--text-dim);
+  background: var(--raised); border: 1px solid var(--border);
+  padding: 3px 8px; border-radius: 5px;
+}
+.plink:hover { color: var(--accent-hi); border-color: var(--border-hi); background: var(--hover); }
+
+/* ── verdicts ─────────────────────────────────────────────────────────── */
+.sev.delete   { background: var(--red); }
+.sev.merge    { background: var(--amber); }
+.sev.core     { background: var(--accent); }
+.sev.optional { background: var(--text-faint); }
+.sev.done     { background: var(--green); }
+
+.stage-num.delete   { background: var(--red);    color: #2a0509; }
+.stage-num.merge    { background: var(--amber);  color: #2a1a00; }
+.stage-num.core     { background: var(--accent); color: var(--accent-ink); }
+.stage-num.optional { background: #444d56;       color: var(--text-hi); }
+.stage-num.done     { background: var(--green);  color: #04210f; }
+
+.note-card.delete   { border-left: 2px solid var(--red); }
+.note-card.merge    { border-left: 2px solid var(--amber); }
+.note-card.core     { border-left: 2px solid var(--accent); }
+.note-card.optional { border-left: 2px solid var(--border-hi); }
+.note-card.done     { border-left: 2px solid var(--green); }
+
+.note-head .lvl.delete   { background: var(--red-soft);    color: var(--red); }
+.note-head .lvl.merge    { background: var(--amber-soft);  color: var(--amber); }
+.note-head .lvl.core     { background: var(--accent-soft); color: var(--accent-hi); }
+.note-head .lvl.optional { background: rgba(143,154,165,0.16); color: var(--text-dim); }
+.note-head .lvl.done     { background: var(--green-soft);  color: var(--green); }
+
+.mergelink {
+  font: 12px var(--mono); color: var(--amber);
+  background: var(--amber-soft); border: 1px solid rgba(244,168,58,0.3);
+  padding: 4px 10px; border-radius: var(--radius-sm);
+}
+.mergelink:hover { background: rgba(244,168,58,0.22); }
+
 /* ── review notes ─────────────────────────────────────────────────────── */
 .sev { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .sev.must { background: var(--red); }
@@ -363,6 +466,11 @@ pre.editor del { background: rgba(241, 106, 120, 0.16); color: #ffa2ab; text-dec
 
 .save-state { font: 11.5px/1 var(--mono); color: var(--text-faint); }
 .save-state.dirty { color: var(--amber); }
+.badge.off { background: rgba(143,154,165,0.16); color: var(--text-dim); }
+.mark.off { background: var(--text-faint) !important; }
+.pitem .mark.off, .chip .mark.off { background: var(--text-faint); }
+.sbtn.promote { border-color: rgba(176, 136, 249, 0.4); color: var(--violet); }
+.sbtn.promote:hover:not(:disabled) { background: var(--violet-soft); color: var(--violet); border-color: var(--violet); }
 .sbtn.save { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 .sbtn.save:hover { background: var(--accent-hi); border-color: var(--accent-hi); color: var(--accent-ink); }
 .sbtn.save:disabled { background: none; color: var(--text-faint); border-color: var(--border); font-weight: 400; }
@@ -400,7 +508,7 @@ pre.editor del { background: rgba(241, 106, 120, 0.16); color: #ffa2ab; text-dec
     <nav class="rail">
       <div class="rail-head">View</div>
       <button class="nav-item on" data-view="map">◈ Injection map<span class="n" id="n-all">0</span></button>
-      <button class="nav-item" data-view="notes">◆ Review notes<span class="n" id="n-notes">0</span></button>
+      <button class="nav-item" data-view="notes">◆ Review &amp; verdicts<span class="n" id="n-notes">0</span></button>
       <button class="nav-item" data-view="over">◆ Modified only<span class="n" id="n-over">0</span></button>
       <div class="rail-sep"></div>
       <div class="rail-head">Groups</div>
@@ -509,7 +617,7 @@ const MAP = [
 ];
 
 const state = {
-  prompts: [], byId: new Map(), groups: [], review: { findings: {} },
+  prompts: [], byId: new Map(), groups: [], review: { findings: {} }, source: {},
   view: "map", group: null, selected: null, query: "",
   split: false, preview: null,
   /** Unsaved editor text per prompt id. Presence here means "dirty". */
@@ -536,12 +644,24 @@ async function load() {
   state.groups = [...new Set(data.prompts.map((p) => p.group))].sort();
   state.preview = data.preview;
   state.review = data.review ?? { findings: {} };
+  state.work = data.review?.workOrder ?? null;
+  state.review.meta = data.review?.meta ?? {};
+  state.source = data.source ?? {};
   state.dir = data.dir;
   render();
 }
 
 const noteFor = (id) => state.review.findings?.[id];
-const SEV_RANK = { must: 0, improve: 1, ok: 2 };
+const VERDICTS = [
+  { key: "delete",   label: "Shall be deleted", blurb: "Duplicates something else, or serves a parked feature. Empty it here, or remove its call site to affect every machine." },
+  { key: "merge",    label: "Shall be merged",  blurb: "Right content, wrong place. Fold it into the named prompt, then empty this one." },
+  { key: "core",     label: "Core",             blurb: "Load-bearing. Keep it. Any action here refines the wording — it is not a question about whether the prompt should exist." },
+  { key: "optional", label: "Optional",         blurb: "Works, costs little, nothing breaks without it. Cut it for a leaner prompt; keep it while the feature it serves is live." },
+];
+const V_RANK = { delete: 0, merge: 1, core: 2, optional: 3 };
+const V_META = Object.fromEntries(VERDICTS.map((v) => [v.key, v]));
+/** The dot: an addressed finding reads settled whatever verdict it started at. */
+const dotOf = (note) => (note.addressed ? "done" : note.verdict);
 
 function setStatus(kind, text) {
   const n = $("#status");
@@ -559,6 +679,7 @@ function markDirty(id, text) {
   const p = state.byId.get(id);
   if (text === p.currentText) state.draft.delete(id);
   else state.draft.set(id, text);
+  p.disabledPreview = text.trim() === "";
   paintMeta();
   paintSaveState();
 }
@@ -613,6 +734,35 @@ async function resetPrompt(id) {
   refreshBudget();
 }
 
+/**
+ * Writes the text in force into the .ts literal it came from, so it ships as
+ * the default instead of living in a machine-local override file.
+ */
+async function promote(id) {
+  const p = state.byId.get(id);
+  const text = textOf(p);
+  if (!confirm(`Write this text into ${state.source[id]?.file ?? "source"}?\n\n`
+    + "It becomes the shipped default and shows up in git diff. The local override is removed.")) return;
+  setStatus("saving", "Writing source, typechecking…");
+  try {
+    const res = await fetch("/api/promote/" + encodeURIComponent(id), { method: "POST", body: text });
+    const out = await res.json();
+    if (!out.ok) {
+      setStatus("error", "Not promoted");
+      alert("Promote failed.\n\n" + out.reason);
+      return;
+    }
+    state.draft.delete(id);
+    setStatus("saved", "Written to " + out.file);
+    renderedId = null;
+    await load();
+    state.selected = id;
+    render();
+  } catch {
+    setStatus("error", "Promote failed");
+  }
+}
+
 /** Saves any pending edit, then moves the selection. */
 async function select(id) {
   if (state.selected && isDirty(state.selected) && state.selected !== id) {
@@ -636,7 +786,11 @@ function visiblePrompts() {
   if (state.view === "over") list = list.filter((p) => p.overridden);
   else if (state.view === "notes") {
     list = list.filter((p) => noteFor(p.id));
-    list.sort((a, b) => SEV_RANK[noteFor(a.id).severity] - SEV_RANK[noteFor(b.id).severity]);
+    const rank = (p) => {
+      const n = noteFor(p.id);
+      return (n.addressed ? 10 : 0) + V_RANK[n.verdict];
+    };
+    list.sort((a, b) => rank(a) - rank(b));
   } else if (state.group) list = list.filter((p) => p.group === state.group);
   return list;
 }
@@ -647,9 +801,12 @@ function paintRail() {
   $("#n-over").textContent = overCount;
   const noteEl = $("#n-notes");
   if (noteEl) {
-    const must = state.prompts.filter((p) => noteFor(p.id)?.severity === "must").length;
+    const todo = state.prompts.filter((p) => {
+      const n = noteFor(p.id);
+      return n && !n.addressed && (n.verdict === "delete" || n.verdict === "merge");
+    }).length;
     const all = state.prompts.filter((p) => noteFor(p.id)).length;
-    noteEl.textContent = must > 0 ? `${must}!/${all}` : String(all);
+    noteEl.textContent = todo > 0 ? `${todo}!/${all}` : String(all);
   }
 
   for (const b of document.querySelectorAll(".nav-item[data-view]")) {
@@ -681,9 +838,10 @@ function paintRail() {
     const b = el("button", "pitem" + (state.selected === p.id ? " on" : ""));
     const row = el("div", "row");
     const note = noteFor(p.id);
-    if (note) row.append(el("i", "sev " + note.severity));
+    if (note) row.append(el("i", "sev " + dotOf(note)));
     row.append(el("span", "label", p.label));
-    if (isDirty(p.id)) row.append(el("i", "mark", ""));
+    if (isDirty(p.id)) row.append(el("i", "mark"));
+    else if (p.disabled) row.append(el("i", "mark off"));
     else if (p.overridden) row.append(el("i", "mark"));
     b.append(row, el("span", "id", p.id));
     b.onclick = () => select(p.id);
@@ -706,11 +864,12 @@ function chipFor(p, opts = {}) {
   if (opts.indent) b.style.marginLeft = "22px";
   if (opts.ord != null) b.append(el("span", "ord", String(opts.ord)));
   const note = noteFor(p.id);
-  if (note) b.append(el("i", "sev " + note.severity));
+  if (note) b.append(el("i", "sev " + dotOf(note)));
   b.append(el("span", "name", p.label));
   if (!opts.grid) b.append(el("span", "desc", p.where.split(/(?<=\.)\s/)[0]));
-  if (p.overridden) b.append(el("i", "mark"));
-  b.append(el("span", "tok", "~" + fmt(p.currentTokens)));
+  if (p.disabled) b.append(el("i", "mark off"));
+  else if (p.overridden) b.append(el("i", "mark"));
+  b.append(el("span", "tok", p.disabled ? "off" : "~" + fmt(p.currentTokens)));
   b.onclick = () => select(p.id);
   return b;
 }
@@ -768,16 +927,136 @@ function renderMap() {
   main.append(wrap);
 }
 
+
+/** The server evaluates each step's own test; the UI just reads the verdict. */
+const stepDone = (step) => step.done === true;
+
+/**
+ * The ordered plan, above the verdict groups. Order is the point: every merge
+ * edits the receiving prompt before the source is emptied, so the rule is never
+ * absent from the prompt set in between.
+ */
+function renderWorkOrder(wrap) {
+  const w = state.work;
+  if (!w) return;
+  const all = w.phases.flatMap((ph) => ph.steps);
+  const done = all.filter(stepDone).length;
+
+  const card = el("div", "stage work");
+  const sh = el("div", "stage-head");
+  sh.append(el("i", "stage-num core", `${done}/${all.length}`));
+  const t = el("div");
+  t.append(el("h2", null, "Work order"));
+  t.append(el("div", "sub", "Do it in this sequence — later steps depend on earlier ones"));
+  sh.append(t);
+  const bar = el("div", "prog");
+  const fill = el("i");
+  fill.style.width = `${Math.round((done / all.length) * 100)}%`;
+  bar.append(fill);
+  sh.append(bar);
+  card.append(sh);
+
+  const body = el("div", "stage-body");
+  body.append(el("p", "stage-note", w.about));
+
+  for (const ph of w.phases) {
+    const phDone = ph.steps.every(stepDone);
+    const h = el("div", "phase" + (phDone ? " done" : ""));
+    h.append(el("span", "pname", ph.phase));
+    h.append(el("span", "pcount", `${ph.steps.filter(stepDone).length}/${ph.steps.length}`));
+    body.append(h);
+    body.append(el("p", "pwhy", ph.why));
+
+    for (const st of ph.steps) {
+      const d = stepDone(st);
+      const row = el("div", "step" + (d ? " done" : ""));
+      row.append(el("i", "sn " + (d ? "done" : st.kind), d ? "✓" : String(st.n)));
+      const mid = el("div", "sbody");
+      const line = el("div", "sdo");
+      line.append(el("span", "kind " + st.kind, st.kind));
+      line.append(document.createTextNode(st.do));
+      mid.append(line);
+      mid.append(el("div", "sdetail", st.detail));
+      const links = el("div", "slinks");
+      for (const id of st.prompts) {
+        const b = el("button", "plink", id);
+        b.onclick = () => select(id);
+        links.append(b);
+      }
+      mid.append(links);
+      row.append(mid);
+      body.append(row);
+    }
+  }
+  card.append(body);
+  wrap.append(card);
+}
+
 function renderList() {
   const main = $("#main");
   const wrap = el("div", "wrap");
   const list = visiblePrompts();
   const head = el("div", "page-head");
-  head.append(el("h1", null, state.query ? `“${state.query}”` : state.view === "over" ? "Modified prompts" : state.group));
-  head.append(el("p", null, list.length === 0
-    ? "Nothing here yet."
+  head.append(el("h1", null, state.query ? `“${state.query}”`
+    : state.view === "over" ? "Modified prompts"
+    : state.view === "notes" ? "Design review — every prompt, and what to do with it"
+    : state.group));
+  head.append(el("p", null, state.view === "notes"
+    ? `Design surface for the whole agent: all ${list.length} prompts, what each is for, and what to do with it. Work the order below — it is sequenced so nothing is removed before its replacement exists.`
+    : list.length === 0 ? "Nothing here yet."
     : `${list.length} prompt${list.length === 1 ? "" : "s"}. Click one to edit it.`));
   wrap.append(head);
+
+  if (state.view === "notes") {
+    if (state.review.meta?.principle) {
+      const box = el("div", "principle");
+      for (const para of state.review.meta.principle.split("\n\n")) {
+        const el_ = el("p");
+        el_.innerHTML = rich(para).replace(/^(\d\. [A-Z][A-Z ,]+\.)/, "<b>$1</b>");
+        box.append(el_);
+      }
+      wrap.append(box);
+    }
+    renderWorkOrder(wrap);
+    for (const v of VERDICTS) {
+      const open = list.filter((p) => noteFor(p.id).verdict === v.key && !noteFor(p.id).addressed);
+      if (!open.length) continue;
+      const card = el("div", "stage");
+      const sh = el("div", "stage-head");
+      sh.append(el("i", "stage-num " + v.key, String(open.length)));
+      const t = el("div");
+      t.append(el("h2", null, v.label));
+      t.append(el("div", "sub", v.blurb));
+      sh.append(t);
+      card.append(sh);
+      const body = el("div", "stage-body");
+      const chain = el("div", "chain");
+      for (const p of open) chain.append(chipFor(p, {}));
+      body.append(chain);
+      card.append(body);
+      wrap.append(card);
+    }
+    const settled = list.filter((p) => noteFor(p.id).addressed);
+    if (settled.length) {
+      const card = el("div", "stage");
+      const sh = el("div", "stage-head");
+      sh.append(el("i", "stage-num done", String(settled.length)));
+      const t = el("div");
+      t.append(el("h2", null, "Done"));
+      t.append(el("div", "sub", "Changed since the review. Nothing left to decide."));
+      sh.append(t);
+      card.append(sh);
+      const body = el("div", "stage-body");
+      const chain = el("div", "chain");
+      for (const p of settled) chain.append(chipFor(p, {}));
+      body.append(chain);
+      card.append(body);
+      wrap.append(card);
+    }
+    main.textContent = "";
+    main.append(wrap);
+    return;
+  }
 
   const card = el("div", "stage");
   const body = el("div", "stage-body");
@@ -817,17 +1096,19 @@ function rich(text) {
 /** The review note attached to a prompt: what is wrong, the evidence, how a
  *  mature reference harness words the same thing, and a suggested direction. */
 function noteCard(note) {
-  const card = el("div", "note-card " + note.severity);
+  const done = note.addressed;
+  const card = el("div", "note-card " + (done ? "done" : note.verdict));
 
   const head = el("div", "note-head");
-  head.append(el("span", "lvl " + note.severity,
-    note.severity === "must" ? "must fix" : note.severity === "improve" ? "could improve" : "checked · ok"));
+  head.append(el("span", "lvl " + (done ? "done" : note.verdict),
+    done ? "done" : V_META[note.verdict]?.label ?? note.verdict));
   head.append(el("h3", null, note.title));
-  const fold = el("button", "fold", "hide");
+  const fold = el("button", "fold", done ? "show" : "hide");
   head.append(fold);
   card.append(head);
 
-  const body = el("div", "note-body");
+  // An addressed note folds away by default — it is history, not a task.
+  const body = el("div", "note-body" + (done ? " hidden" : ""));
   fold.onclick = () => {
     const hidden = body.classList.toggle("hidden");
     fold.textContent = hidden ? "show" : "hide";
@@ -850,8 +1131,17 @@ function noteCard(note) {
     body.append(ul);
   }
 
+  if (note.ours) {
+    body.append(el("div", "note-sub", "Ours — keep this"));
+    const o = el("div", "ours");
+    const op = el("p");
+    op.innerHTML = rich(note.ours);
+    o.append(op);
+    body.append(o);
+  }
+
   if (note.reference) {
-    body.append(el("div", "note-sub", "How a reference harness words this"));
+    body.append(el("div", "note-sub", "How a reference harness words this — prior art, not a target"));
     const ref = el("div", "ref");
     ref.append(el("div", "who", note.reference.label ?? "Reference harness"));
     if (note.reference.note) {
@@ -863,11 +1153,18 @@ function noteCard(note) {
     body.append(ref);
   }
 
-  if (note.direction) {
-    body.append(el("div", "note-sub", "Suggested direction"));
+  if (note.mergeInto) {
+    body.append(el("div", "note-sub", "Merge into"));
+    const t = el("button", "mergelink", note.mergeInto);
+    t.onclick = () => select(note.mergeInto);
+    body.append(t);
+  }
+
+  if (note.action) {
+    body.append(el("div", "note-sub", "What to do"));
     const dir = el("div", "dir");
     const dp = el("p");
-    dp.innerHTML = rich(note.direction);
+    dp.innerHTML = rich(note.action);
     dir.append(dp);
     body.append(dir);
   }
@@ -893,7 +1190,8 @@ function renderEditor() {
   const acts = el("div", "ed-actions");
   const ch = CHANNEL[p.channel];
   acts.append(el("span", "badge " + ch.cls, ch.text));
-  if (p.overridden) acts.append(el("span", "badge over", "modified"));
+  if (p.disabled) acts.append(el("span", "badge off", "disabled"));
+  else if (p.overridden) acts.append(el("span", "badge over", "modified"));
   head.append(acts);
   wrap.append(head);
 
@@ -929,6 +1227,14 @@ function renderEditor() {
   revertBtn.onclick = () => resetPrompt(p.id);
   bar.append(revertBtn);
 
+  const src = state.source[p.id];
+  const promoteBtn = el("button", "sbtn promote", "Promote to source");
+  promoteBtn.title = src?.ok
+    ? `Writes this text into ${src.file}, then typechecks. Reverts if the build breaks.`
+    : `Not promotable — ${src?.reason ?? "source literal not located"}`;
+  promoteBtn.onclick = () => promote(p.id);
+  bar.append(promoteBtn);
+
   const saveBtn = el("button", "sbtn save", "Save");
   saveBtn.onclick = () => save(p.id);
   bar.append(saveBtn);
@@ -960,7 +1266,9 @@ function renderEditor() {
   wrap.append(panes);
 
   const hint = el("div", "hint");
-  hint.innerHTML = `Saved live to <code>${esc(p.file)}</code>. Clearing the box, or typing the default back, deletes the file and restores the shipped text.`;
+  hint.innerHTML = `Saves to <code>${esc(p.file)}</code>.`
+    + ` <b>Empty the box and save to switch this prompt off</b> — a disabled section is dropped from the system prompt and a disabled reminder is never injected.`
+    + ` Typing the default back, or pressing Reset to default, deletes the file and restores the shipped text.`;
   wrap.append(hint);
 
   main.textContent = "";
@@ -986,7 +1294,9 @@ function paintSaveState() {
   const p = state.byId.get(state.selected);
   const dirty = isDirty(p.id);
   box.className = "save-state" + (dirty ? " dirty" : "");
-  box.textContent = dirty ? "unsaved" : p.overridden ? "saved · modified" : "saved · default";
+  box.textContent = dirty
+    ? (textOf(p).trim() === "" ? "unsaved · will DISABLE" : "unsaved")
+    : p.disabled ? "saved · DISABLED" : p.overridden ? "saved · modified" : "saved · default";
   const btn = document.querySelector(".ed-bar .sbtn.save");
   if (btn) {
     btn.disabled = !dirty;
@@ -994,6 +1304,15 @@ function paintSaveState() {
   }
   const revert = document.querySelector(".ed-bar .sbtn.revert");
   if (revert) revert.disabled = !p.overridden && !dirty;
+  const promoteBtn = document.querySelector(".ed-bar .sbtn.promote");
+  if (promoteBtn) {
+    const src = state.source[p.id];
+    promoteBtn.disabled = !src?.ok || dirty || !p.overridden || p.disabled;
+    promoteBtn.textContent = !src?.ok ? "Not promotable"
+      : dirty ? "Save first"
+      : p.disabled ? "Disabled — cannot promote"
+      : "Promote to source";
+  }
 }
 
 /** Refreshes the comparison pane after a save, without touching the textarea. */

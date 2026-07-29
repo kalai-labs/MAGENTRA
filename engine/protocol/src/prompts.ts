@@ -56,6 +56,8 @@ export interface PromptEntry extends PromptMeta {
   /** The text actually in use — the override when one exists, else the default. */
   currentText: string;
   overridden: boolean;
+  /** True when the override is blank: the prompt is switched off. */
+  disabled: boolean;
   /** Absolute path of this prompt's override file (whether or not it exists). */
   file: string;
 }
@@ -125,8 +127,11 @@ function overrideText(id: string): string | undefined {
   }
   let text: string | undefined;
   try {
-    const raw = readFileSync(file, "utf8");
-    text = raw.trim() ? raw.replace(/\r\n/g, "\n").replace(/\n+$/, "") : undefined;
+    // A blank override file means DISABLED, not "no override" — it is how an
+    // operator switches a prompt off. Resetting to the shipped default is a
+    // separate action that deletes the file (see clearPromptOverride).
+    text = readFileSync(file, "utf8").replace(/\r\n/g, "\n").replace(/\n+$/, "");
+    if (!text.trim()) text = "";
   } catch {
     text = undefined;
   }
@@ -157,6 +162,11 @@ export function renderPrompt(id: string, vars: Record<string, string | number>):
   });
 }
 
+/** Whether a prompt is switched off — its override exists and is blank. */
+export function isPromptDisabled(id: string): boolean {
+  return promptText(id).trim() === "";
+}
+
 /** Every declared prompt, with its default, its current text, and its file. */
 export function promptCatalog(): PromptEntry[] {
   return [...registry.values()].map((meta) => {
@@ -166,27 +176,34 @@ export function promptCatalog(): PromptEntry[] {
       defaultText: meta.text,
       currentText: override ?? meta.text,
       overridden: override !== undefined,
+      disabled: override !== undefined && override.trim() === "",
       file: promptFile(meta.id),
     };
   });
 }
 
 /**
- * Writes an override file. Text equal to the default (ignoring trailing
- * whitespace) removes the file instead, so "edited back to the original" and
- * "never edited" are the same state rather than two states that drift.
+ * Writes an override file.
+ *
+ * Text equal to the default removes the file instead, so "edited back to the
+ * original" and "never edited" are one state rather than two that drift.
+ *
+ * Blank text is NOT that case: it is stored, and it disables the prompt. A
+ * disabled section is dropped from the system prompt and a disabled reminder is
+ * never injected, so emptying the box is how a prompt is switched off without
+ * touching the code that would otherwise still emit it.
  */
 export function writePromptOverride(id: string, text: string): void {
   const meta = registry.get(id);
   if (!meta) throw new Error(`unknown prompt id: ${id}`);
   const normalized = text.replace(/\r\n/g, "\n").replace(/\n+$/, "");
-  if (!normalized.trim() || normalized === meta.text.replace(/\n+$/, "")) {
+  if (normalized.trim() && normalized === meta.text.replace(/\n+$/, "")) {
     clearPromptOverride(id);
     return;
   }
   const dir = promptsDir();
   mkdirSync(dir, { recursive: true });
-  writeFileSync(promptFile(id), `${normalized}\n`, "utf8");
+  writeFileSync(promptFile(id), normalized ? `${normalized}\n` : "", "utf8");
   cache.delete(id);
 }
 
@@ -195,6 +212,19 @@ export function clearPromptOverride(id: string): void {
   const file = promptFile(id);
   if (existsSync(file)) rmSync(file);
   cache.delete(id);
+}
+
+/**
+ * Replaces a prompt's shipped default in memory.
+ *
+ * For authoring tools only. Defaults are resolved from source at module load,
+ * so a tool that rewrites the source literal would otherwise keep serving the
+ * stale text until the process restarts. Nothing in the engine calls this.
+ */
+export function setPromptDefault(id: string, text: string): void {
+  const meta = registry.get(id);
+  if (!meta) throw new Error(`unknown prompt id: ${id}`);
+  meta.text = text;
 }
 
 /** Override files present on disk that no longer match a declared prompt. */
