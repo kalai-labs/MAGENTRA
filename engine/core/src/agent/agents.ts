@@ -52,7 +52,7 @@ export const SUBAGENT_RESULT_ID = definePrompt({
   where:
     "Appended to EVERY subagent's system prompt, on top of the normal core sections. Tells the subagent its final message is captured verbatim as the tool result, not shown to a human.",
   text: `Subagent output contract:
-- You are running as a subagent. Your FINAL message is captured verbatim and returned to the calling agent as the result of its tool call. It is raw data for another agent, not a message to a human.
+- You are running as a subagent. Your FINAL message is captured verbatim and returned to the calling agent as the result of its tool call. It is raw data for another agent, not a message to a human. Therefore write your final message carefully in the sense of what has to be delivered to the orchestrator agent.
 - Do not open with a preamble, greeting, or a description of what you are about to do. Do not ask questions — there is no user to answer. Lead with the answer and include only what the caller needs.`,
 });
 

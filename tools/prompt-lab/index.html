@@ -374,6 +374,11 @@ pre.editor del { background: rgba(241, 106, 120, 0.16); color: #ffa2ab; text-dec
   padding: 3px 8px; border-radius: 5px;
 }
 .plink:hover { color: var(--accent-hi); border-color: var(--border-hi); background: var(--hover); }
+.plink.mark { margin-left: auto; }
+.plink.mark.on { color: var(--amber); border-color: var(--amber-soft); }
+/* Asserted by hand, not proven by the step's test — must not look verified. */
+.sn.marked { background: var(--amber-soft); color: var(--amber); }
+.smark { font: 10.5px var(--mono); color: var(--amber); margin-top: 4px; }
 
 /* ── verdicts ─────────────────────────────────────────────────────────── */
 .sev.delete   { background: var(--red); }
@@ -932,6 +937,60 @@ function renderMap() {
 const stepDone = (step) => step.done === true;
 
 /**
+ * The next prompt in the current list whose note is still open, wrapping to the
+ * top when the tail is exhausted so notes skipped earlier are not stranded.
+ * Returns null when this was the last open one.
+ */
+function nextOpenNote(id) {
+  const list = visiblePrompts();
+  const at = list.findIndex((p) => p.id === id);
+  if (at === -1) return null;
+  const open = (p) => p.id !== id && !noteFor(p.id)?.addressed;
+  const found = list.slice(at + 1).find(open) ?? list.slice(0, at).find(open);
+  return found?.id ?? null;
+}
+
+/**
+ * Moves a review note to the Done list, or brings it back.
+ *
+ * On finishing one, the next open note opens in place, so a review pass is one
+ * click per prompt. The target is chosen BEFORE the write: settling a note sorts
+ * it to the bottom of the list, so "the next one" is a different prompt after.
+ */
+async function markNote(id, done) {
+  const next = done ? nextOpenNote(id) : null;
+  const res = await fetch("/api/note/" + encodeURIComponent(id), { method: done ? "PUT" : "DELETE" });
+  if (!res.ok) {
+    setStatus("error", "Could not update " + id);
+    return;
+  }
+  const keep = state.selected;
+  await load();
+  state.selected = keep;
+  renderedId = null;
+  // select() carries the unsaved-edit guard, so advancing can never drop a draft.
+  if (next) await select(next);
+  else {
+    render();
+    if (done) setStatus("ok", "Last open note — nothing left in this list");
+  }
+}
+
+/** Sets or clears the manual done mark for a work-order step. */
+async function markStep(n, done) {
+  const res = await fetch("/api/step/" + n, { method: done ? "PUT" : "DELETE" });
+  if (!res.ok) {
+    setStatus("error", "Could not update step " + n);
+    return;
+  }
+  const keep = state.selected;
+  await load();
+  state.selected = keep;
+  renderedId = null;
+  render();
+}
+
+/**
  * The ordered plan, above the verdict groups. Order is the point: every merge
  * edits the receiving prompt before the source is emptied, so the rule is never
  * absent from the prompt set in between.
@@ -969,20 +1028,34 @@ function renderWorkOrder(wrap) {
 
     for (const st of ph.steps) {
       const d = stepDone(st);
+      // A hand-marked step reads as done but never wears the verified green.
+      const badge = st.verified ? "done" : st.markedDone ? "marked" : st.kind;
       const row = el("div", "step" + (d ? " done" : ""));
-      row.append(el("i", "sn " + (d ? "done" : st.kind), d ? "✓" : String(st.n)));
+      row.append(el("i", "sn " + badge, d ? "✓" : String(st.n)));
       const mid = el("div", "sbody");
       const line = el("div", "sdo");
       line.append(el("span", "kind " + st.kind, st.kind));
       line.append(document.createTextNode(st.do));
       mid.append(line);
       mid.append(el("div", "sdetail", st.detail));
+      if (st.markedDone) {
+        mid.append(el("div", "smark", st.verified
+          ? `marked done by hand${st.markedAt ? " on " + st.markedAt : ""} — the test passes too`
+          : `marked done by hand${st.markedAt ? " on " + st.markedAt : ""} — the test does not pass`));
+      }
       const links = el("div", "slinks");
       for (const id of st.prompts) {
         const b = el("button", "plink", id);
         b.onclick = () => select(id);
         links.append(b);
       }
+      const mark = el("button", "plink mark" + (st.markedDone ? " on" : ""),
+        st.markedDone ? "Unmark" : "Mark done");
+      mark.title = st.markedDone
+        ? "Drop the manual mark and go back to what the test says"
+        : "Record this step as done even though its test does not pass";
+      mark.onclick = () => markStep(st.n, !st.markedDone);
+      links.append(mark);
       mid.append(links);
       row.append(mid);
       body.append(row);
@@ -1103,6 +1176,14 @@ function noteCard(note) {
   head.append(el("span", "lvl " + (done ? "done" : note.verdict),
     done ? "done" : V_META[note.verdict]?.label ?? note.verdict));
   head.append(el("h3", null, note.title));
+  // Notes whose action is "No change." can never settle on their own, since that
+  // would mean editing a prompt the review said to leave alone.
+  const move = el("button", "fold", note.markedAddressed ? "reopen" : "move to Done");
+  move.title = note.markedAddressed
+    ? "Put this note back on the open list"
+    : "Nothing to do here — send it to the Done list";
+  move.onclick = () => markNote(note.id, !note.markedAddressed);
+  head.append(move);
   const fold = el("button", "fold", done ? "show" : "hide");
   head.append(fold);
   card.append(head);
@@ -1267,7 +1348,7 @@ function renderEditor() {
 
   const hint = el("div", "hint");
   hint.innerHTML = `Saves to <code>${esc(p.file)}</code>.`
-    + ` <b>Empty the box and save to switch this prompt off</b> — a disabled section is dropped from the system prompt and a disabled reminder is never injected.`
+    + ` <b>Empty the box and save to switch this prompt off</b> — a disabled section is dropped from the system prompt, a disabled reminder is never injected, and a disabled tool description withholds the tool itself (the model is not offered it, and a call naming it is refused).`
     + ` Typing the default back, or pressing Reset to default, deletes the file and restores the shipped text.`;
   wrap.append(hint);
 

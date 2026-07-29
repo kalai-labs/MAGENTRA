@@ -12,8 +12,12 @@ const inputSchema = z.object({
 export const writeTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "Write",
   description: `Writes a file to the local filesystem, overwriting if one exists.
-
-Use it to create new files or fully replace one you have already Read this session. Overwriting an existing file you have not Read (or that changed on disk since) fails. Prefer Edit for partial changes. Parent directories are created automatically.`,
+## When To Use:
+- Create a new files or fully replace one you have already Read this session.
+## When Not To Use:
+- Prefer Edit for partial changes. Parent directories are created automatically.
+## Note that:
+- Overwriting an existing file you have not Read (or that changed on disk since) fails.`,
   permissionClass: "mutate",
   isFileEdit: true,
   permissionSubject: (input) => input.file_path,

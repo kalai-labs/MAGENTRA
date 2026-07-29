@@ -1,5 +1,12 @@
 import type { z } from "zod";
-import { definePrompt, promptText, renderPrompt, type CoreEvent, type TaskItem } from "@magentra/protocol";
+import {
+  definePrompt,
+  isPromptDisabled,
+  promptText,
+  renderPrompt,
+  type CoreEvent,
+  type TaskItem,
+} from "@magentra/protocol";
 import type { ToolResultPart } from "@magentra/providers";
 import type { Settings } from "../config/settings.js";
 import type { CrewAgent } from "../crew/team.js";
@@ -184,6 +191,26 @@ export function toolDescriptionText(name: string, fallback: string, vars?: ToolD
   }
 }
 
+/**
+ * Whether a tool has been switched off by emptying its description prompt.
+ *
+ * Every other channel drops a disabled prompt before it reaches the model. A
+ * tool description cannot work that way: blanking it would still offer the tool,
+ * with nothing left to say when it applies — strictly worse than either keeping
+ * the description or removing the tool. So an empty description withholds the
+ * tool entirely, which is what "disabled" means everywhere else.
+ *
+ * A name with no registered prompt is not disabled; the caller falls back to the
+ * literal description on the tool definition.
+ */
+export function isToolDisabled(name: string): boolean {
+  try {
+    return isPromptDisabled(`tool.${name}`);
+  } catch {
+    return false;
+  }
+}
+
 export class ToolRegistry {
   private readonly tools = new Map<string, AnyToolDefinition>();
 
@@ -199,6 +226,11 @@ export class ToolRegistry {
 
   list(): AnyToolDefinition[] {
     return [...this.tools.values()];
+  }
+
+  /** The tools actually offered to the model — {@link isToolDisabled} excluded. */
+  enabled(): AnyToolDefinition[] {
+    return this.list().filter((t) => !isToolDisabled(t.name));
   }
 
   /** A registry containing only the named subset (for subagents). */

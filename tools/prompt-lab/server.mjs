@@ -150,24 +150,43 @@ async function loadFindings() {
  */
 function markAddressed(review, prompts) {
   const byId = new Map(prompts.map((p) => [p.id, p]));
+  const noteMarks = review.manualAddressed ?? {};
   const out = {};
   for (const [id, note] of Object.entries(review.findings ?? {})) {
     const p = byId.get(id);
     const hash = p ? createHash("sha1").update(p.currentText).digest("hex").slice(0, 12) : "";
+    const marked = noteMarks[id] !== undefined;
     out[id] = {
       ...note,
+      id,
+      markedAddressed: marked,
       addressed:
+        marked ||
         note.reviewedHash === "addressed" ||
         (p?.disabled ?? false) ||
         (note.reviewedHash !== undefined && note.reviewedHash !== hash),
     };
   }
+  const marks = review.workOrder?.manualDone ?? {};
   const work = review.workOrder
     ? {
         ...review.workOrder,
         phases: review.workOrder.phases.map((ph) => ({
           ...ph,
-          steps: ph.steps.map((st) => ({ ...st, done: stepPasses(st, byId) })),
+          steps: ph.steps.map((st) => {
+            const mark = marks[String(st.n)];
+            const verified = stepPasses(st, byId);
+            return {
+              ...st,
+              // `done` drives the counters and the strikethrough; the two flags
+              // below keep the distinction visible, so a step someone asserted is
+              // never mistaken for one the tests actually confirmed.
+              done: verified || mark !== undefined,
+              verified,
+              markedDone: mark !== undefined,
+              ...(mark?.at ? { markedAt: mark.at } : {}),
+            };
+          }),
         })),
       }
     : null;
@@ -175,12 +194,70 @@ function markAddressed(review, prompts) {
 }
 
 /**
- * Whether a work-order step has actually been carried out.
+ * Records or clears an operator's manual "done" mark for a work-order step.
+ *
+ * Some steps can never satisfy their own test: the operator decides the edit is
+ * not worth making, the step is withdrawn, or the work landed somewhere the test
+ * cannot see. Those stay red forever, and a board that cannot reach zero stops
+ * being a picture of what is left.
+ *
+ * Stored beside the work order rather than in the overrides directory, because it
+ * is progress on a shared plan and belongs with the plan. Kept separate from the
+ * tests so {@link markAddressed} can report the two independently.
+ */
+/**
+ * Moves a review note to the Done list by hand, or brings it back.
+ *
+ * Most notes settle on their own: the prompt's text stops matching the snapshot
+ * the note was written against. Notes whose action is "No change." never can —
+ * clearing them would mean editing a prompt the review said to leave alone.
+ */
+async function setNoteAddressed(id, done) {
+  const file = join(HERE, "findings.json");
+  const review = JSON.parse(await readFile(file, "utf8"));
+  if (!review.findings?.[id]) return { ok: false, reason: `no review note for ${id}` };
+
+  const marks = review.manualAddressed ?? {};
+  if (done) marks[id] = { at: new Date().toISOString().slice(0, 10) };
+  else delete marks[id];
+  if (Object.keys(marks).length > 0) review.manualAddressed = marks;
+  else delete review.manualAddressed;
+
+  await writeFile(file, `${JSON.stringify(review, null, 2)}\n`, "utf8");
+  broadcast({ type: "note-addressed", id, done });
+  return { ok: true, id, done };
+}
+
+async function setStepDone(n, done) {
+  const file = join(HERE, "findings.json");
+  // Parsed strictly, unlike loadFindings: a read can fall back to an empty
+  // review, but writing over a file we failed to understand would destroy it.
+  const review = JSON.parse(await readFile(file, "utf8"));
+  const steps = (review.workOrder?.phases ?? []).flatMap((ph) => ph.steps ?? []);
+  if (!steps.some((st) => st.n === n)) return { ok: false, reason: `no work-order step ${n}` };
+
+  const marks = review.workOrder.manualDone ?? {};
+  if (done) marks[String(n)] = { at: new Date().toISOString().slice(0, 10) };
+  else delete marks[String(n)];
+  if (Object.keys(marks).length > 0) review.workOrder.manualDone = marks;
+  else delete review.workOrder.manualDone;
+
+  await writeFile(file, `${JSON.stringify(review, null, 2)}\n`, "utf8");
+  broadcast({ type: "work-order", step: n, done });
+  return { ok: true, step: n, done };
+}
+
+/**
+ * Whether a work-order step's own test confirms it was carried out.
  *
  * Deliberately not "the prompt changed at some point" — that flag is true for
  * any earlier edit and would mark a step done that nobody has started. Each
  * step declares its own test: the receiving prompt now contains the rule, the
  * source prompt is empty, or the prompt no longer exists at all.
+ *
+ * A step can also be marked done by hand (see {@link setStepDone}) for the cases
+ * no test can express. That mark is reported separately and never comes through
+ * here — this function only ever answers for the evidence.
  */
 function stepPasses(step, byId) {
   const t = step.test;
@@ -487,6 +564,23 @@ const server = createServer(async (req, res) => {
         markSelfWrite(id);
         clearPromptOverride(id);
         return json(res, 200, { id, overridden: false, currentTokens: estimateTokens(promptText(id)) });
+      }
+    }
+
+    if (path.startsWith("/api/note/")) {
+      const id = decodeURIComponent(path.slice("/api/note/".length));
+      if (req.method === "PUT" || req.method === "DELETE") {
+        const result = await setNoteAddressed(id, req.method === "PUT");
+        return json(res, result.ok ? 200 : 404, result);
+      }
+    }
+
+    if (path.startsWith("/api/step/")) {
+      const n = Number(path.slice("/api/step/".length));
+      if (!Number.isInteger(n)) return json(res, 400, { ok: false, reason: "step must be a number" });
+      if (req.method === "PUT" || req.method === "DELETE") {
+        const result = await setStepDone(n, req.method === "PUT");
+        return json(res, result.ok ? 200 : 404, result);
       }
     }
 

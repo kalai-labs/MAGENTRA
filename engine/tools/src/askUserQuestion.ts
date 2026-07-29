@@ -24,7 +24,7 @@ const inputSchema = z.object({
 
 export const askUserQuestionTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "AskUserQuestion",
-  description: `Asks the user up to 4 multiple-choice questions and blocks until they answer.
+  description: `Asks the user up to 5 multiple-choice questions and blocks until they answer.
 
 Use it only when you are stuck on a decision that genuinely belongs to the user — one the request, the code, and sensible defaults cannot settle. For choices with a conventional default, pick it, mention it, and move on. If you recommend an option, put it first and append "(Recommended)" to its label. The UI always adds an "Other" free-text option.`,
   permissionClass: "interact",

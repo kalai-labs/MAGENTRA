@@ -52,7 +52,13 @@ export const taskCreateTool: ToolDefinition<z.infer<typeof createSchema>> = {
   name: "TaskCreate",
   description: `Adds a task to the session task list so the user can follow progress.
 
-Use it for multi-step work (3+ distinct steps), when the user lists several things to do, or when new requirements arrive mid-task. Skip it for a single trivial action — just do the work. Tasks start as pending; use TaskUpdate to move them through in_progress to completed, and check TaskList first to avoid duplicates.`,
+## When To Use:
+- Use it for multi-step work (3+ distinct steps), when the user lists several things to do, or when new requirements arrive mid-task.
+- Skip it for a single trivial action — just do the work.
+- After completing a task, add any follow-up work you found while doing it.
+
+## Note that:
+- Tasks start as pending; use TaskUpdate to move them through in_progress to completed, and check TaskList first to avoid duplicates.`,
   permissionClass: "interact",
   parallelSafe: true,
   execute: async (input, ctx) => {
@@ -84,7 +90,10 @@ export const taskUpdateTool: ToolDefinition<z.infer<typeof updateSchema>> = {
   name: "TaskUpdate",
   description: `Updates a task in the session task list.
 
-Mark a task in_progress before starting it and completed the moment it is fully done. Never mark completed while tests fail, the implementation is partial, or errors are unresolved — keep it in_progress and create a new task for the blocker. Read the task's current state (TaskGet) before updating it.`,
+Mark a task in_progress before starting it and completed the moment it is fully done. Never mark completed while tests fail, the implementation is partial, or errors are unresolved — keep it in_progress and create a new task for the blocker. Read the task's current state (TaskGet) before updating it.
+
+## Note that:
+- After resolving a task, call TaskList and pick up the next one.`,
   permissionClass: "interact",
   parallelSafe: true,
   execute: async (input, ctx) => {

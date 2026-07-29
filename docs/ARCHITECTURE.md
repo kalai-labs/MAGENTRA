@@ -149,8 +149,8 @@ logged to the transcript.
 
 Composed at runtime from exported prose sections (one string per section, swappable by
 an embedding IDE): identity/behavior core (original text implementing the reference
-behaviors), environment block, project memory (`MAGENTRA.md`, falling back to
-`AGENTS.md`), skills list. Harness-injected `<system-reminder>` blocks carry task-list
+behaviors), environment block, skills list. Per-project instruction files are not read
+yet — that is a deferred feature. Harness-injected `<system-reminder>` blocks carry task-list
 changes, background completions, plan-mode entry, and hook feedback; the prompt tells
 the model these come from the harness, not the user.
 
