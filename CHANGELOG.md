@@ -10,6 +10,14 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.15.0 — 2026-07-30
+
+### Features
+
+- addon as a new feature and deletion of atlas ([67ad5df](https://github.com/kalai-labs/MAGENTRA/commit/67ad5dfa974dd969ef4df44be70dd3dc53f7b54f))
+
+[Compare with v0.14.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.14.0...v0.15.0)
+
 ## 0.14.0 — 2026-07-30
 
 ### Features
