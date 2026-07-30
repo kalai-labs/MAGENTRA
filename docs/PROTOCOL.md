@@ -181,8 +181,6 @@ Emitted when a tool call has passed validation and permission and is about to ru
 | `subagent` | boolean? | True when this call belongs to a subagent's nested session, not the top-level turn. |
 | `agentId` | string? | Stable id of the subagent this call belongs to (e.g. `"ag_1"`). Only set on subagent events. |
 | `agentDesc` | string? | The spawning `description` for that subagent. Only set on subagent events. |
-| `agentColor` | string? | Crew agent's color, stamped when the subagent is a crew specialist. |
-| `agentEmoji` | string? | Crew agent's emoji, stamped when the subagent is a crew specialist. |
 
 ```json
 {"type":"tool_call_started","id":"toolu_01","tool":"Bash","input":{"command":"npm test","description":"Run the test suite"},"description":"Run the test suite"}
@@ -200,8 +198,6 @@ Emitted when a tool call has passed validation and permission and is about to ru
 | `subagent` | boolean? | True when this call belongs to a subagent's nested session. |
 | `agentId` | string? | Stable id of the subagent this call belongs to. Only set on subagent events. |
 | `agentDesc` | string? | The spawning `description` for that subagent. Only set on subagent events. |
-| `agentColor` | string? | Crew agent's color, when the subagent is a crew specialist. |
-| `agentEmoji` | string? | Crew agent's emoji, when the subagent is a crew specialist. |
 
 ```json
 {"type":"tool_call_finished","id":"toolu_01","tool":"Bash","resultPreview":"12 passed, 0 failed","isError":false}
@@ -218,8 +214,6 @@ show the agent immediately instead of waiting for its first tool call.
 | `agentId` | string | Stable subagent id, e.g. `"ag_1"`; matches later tool-call events. |
 | `agentDesc` | string | The spawning `description`. |
 | `background` | boolean? | True when the agent runs detached as a background task. |
-| `agentColor` | string? | Crew agent's color, when the subagent is a crew specialist. |
-| `agentEmoji` | string? | Crew agent's emoji, when the subagent is a crew specialist. |
 
 ```json
 {"type":"agent_spawned","agentId":"ag_1","agentDesc":"Explore the parser module"}
@@ -403,55 +397,6 @@ nothing is locked); `why` powers the per-skill "?" explainers.
 {"type":"modes_updated","modes":[{"id":"surgeon","name":"Surgeon","description":"Minimal-diff discipline","why":"Enable for focused fixes in mature code.","active":false,"builtin":true,"recommended":true,"conflicts":[]},{"id":"entropy","name":"Entropy","description":"Strategic over tactical","active":true,"builtin":true,"conflicts":["surgeon"]}]}
 ```
 
-### `team_updated`
-
-Full crew roster repaint: emitted when the team loads, reloads, or a member's state
-changes.
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `type` | `"team_updated"` | |
-| `agents` | array | One entry per crew member — fields below. |
-
-Per agent:
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | string | Member id (team filename stem). |
-| `name` | string | Display name. |
-| `role` | string | Role line from the team file. |
-| `model` | string? | Member's own model, when set. |
-| `provider` | string? | Dedicated-endpoint members: the API kind (`"anthropic"` \| `"openai-compatible"`). |
-| `baseUrl` | string? | Dedicated-endpoint members: the base URL they run on. |
-| `emoji` | string? | |
-| `color` | string? | |
-| `docCount` | number | How many docs feed the member's backpack. |
-| `ready` | boolean | Backpack readiness: a distilled brief exists, or every doc reached at least the "noted" phase. |
-| `spend` | string? | Ledger spend summary (`"12.3k in / 4.1k out over 7 runs"`); absent when the member has never run. |
-| `lessonsPromoted` | number | Durable lessons earned through verified work. |
-| `lessonsCandidate` | number | Lessons still on probation. |
-| `tasksCompleted` | number | Verified completed tasks from the hash-chained service record. |
-
-```json
-{"type":"team_updated","agents":[{"id":"scout","name":"Scout","role":"Fast Researcher","model":"deepseek-ai/DeepSeek-V4-Flash","emoji":"🔎","docCount":1,"ready":true,"spend":"3.1k in / 420 out over 1 run","lessonsPromoted":0,"lessonsCandidate":2,"tasksCompleted":1}]}
-```
-
-### `backpack_progress`
-
-Streams a crew member's backpack build phases so the frontend can show readiness.
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `type` | `"backpack_progress"` | |
-| `agentId` | string | Crew member id. |
-| `phase` | string | One of `"raw"` \| `"noted"` \| `"embedded"` \| `"brief"`. |
-| `done` | number | Docs finished in this phase. |
-| `total` | number | Docs in this phase. |
-
-```json
-{"type":"backpack_progress","agentId":"scout","phase":"noted","done":1,"total":3}
-```
-
 ### `session_restored`
 
 The full prior conversation, render-ready, sent once on a resume so the frontend can
@@ -629,8 +574,7 @@ can never drift apart in a frontend.
 ### `slash_command`
 
 Runs a built-in command (`help`, `atlas`, `clear`, `compact`, `session`, `tasks`, `skills`,
-`lab`, `build-crew`, `crew`, `team`, `mission`, `mode`, `styles`, `debug`, `settings`,
-`resume`, `sessions`). The full registry — with argument hints and descriptions — ships to
+`mission`, `mode`, `styles`, `debug`, `settings`, `resume`, `sessions`). The full registry — with argument hints and descriptions — ships to
 the frontend in `session_started.commands`.
 
 `settings` with no args emits the effective config (each key's value and originating layer) as
@@ -642,12 +586,6 @@ to the project or global `settings.json`, and applies it live where the running 
 through the same path as the `set_modes` request (nothing is locked; enabling a skill switches off
 anything it `conflicts:` with, with an advisory message), then emits `modes_updated`. `/styles` is a
 deprecated alias. Toggles are session-only and are not persisted to settings.
-
-`build-crew` bootstraps a workspace crew: if `.magentra/team/*.md` already holds valid (or malformed)
-specialist files it reports the roster as `command_output` and stops; otherwise it dispatches a
-general-purpose subagent to design 2-4 specialists and write their team files, validates the result
-through the team loader, and reports each file's `✓`/`✗` outcome. Safe and idempotent — a second call
-while a build is in flight, or once a crew exists, does not start another.
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -769,14 +707,6 @@ with a full `modes_updated` repaint.
 
 ```json
 {"type":"set_modes","active":["entropy"]}
-```
-
-### `reload_team`
-
-Re-reads `.magentra/team/*.md` and emits a fresh `team_updated`. No fields beyond `type`.
-
-```json
-{"type":"reload_team"}
 ```
 
 ## Round-trip sequences

@@ -2,7 +2,7 @@
 
 An autonomous agent harness. One product: a desktop app (Windows `.exe`, Linux
 AppImage/tar.gz, macOS `.dmg`) wrapped around an agent engine that plans, edits
-code, runs commands, and dispatches a crew of specialist sub-agents.
+code, runs commands, and dispatches specialist sub-agents.
 
 ## Install
 
@@ -50,8 +50,7 @@ FEATURES.md        Every feature, and whether it has a real test yet.
 | `runtime/`      | The turn loop (`session`), the protocol endpoint (`engine`), permissions, session accounting. |
 | `agent/`        | What an agent *is*: system prompt, tool contract, subagent types, skills, hooks. |
 | `config/`       | Layered settings, and the model rate card used for cost.          |
-| `knowledge/`    | How the agent learns a codebase: atlas, import graph, symbols, docs, RAG backpacks, the reuse gate. |
-| `crew/`         | The multi-agent team: roster, per-member endpoints, experience, service record, cost ledger, packs. |
+| `knowledge/`    | How the agent learns a codebase: atlas, import graph, symbols, docs, deterministic retrieval, the reuse gate. |
 | `ma/`           | The discipline-skill system (`.magentra/skills/*.md`) and oracle-script debugging. |
 | `scheduling/`   | Work that runs later: cron, standing missions, background jobs, workflows. |
 | `state/`        | What persists: the transcript, the task list.                     |

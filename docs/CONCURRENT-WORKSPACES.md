@@ -131,7 +131,7 @@ within one top-level turn** (parent stays `busy`), which is not two independent 
   and `tabId` routing on the way in — the bulk of the non-UI work.
 - **The renderer's singletons become per-Tab.** The largest change: today's module-level
   singular state (`streamEl`, `currentSessionId`, `busy`, `contextTokens`, `backgroundJobs`,
-  permission queue, changes, crew view, mission rail…) is lifted into a per-Tab `TabState`,
+  permission queue, changes, mission rail…) is lifted into a per-Tab `TabState`,
   and event dispatch routes by `tabId`.
 
 ---

@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { writeFileAtomic } from "../util/fsAtomic.js";
-import { bm25Search, tokenize, type Bm25Index } from "./backpack/bm25.js";
+import { bm25Search, tokenize, type Bm25Index } from "./bm25.js";
 import {
   MAX_FILE_BYTES,
   SCAN_EXTS,
@@ -41,8 +41,7 @@ import { extractSymbolSites, loadOrBuildSymbolIndex, tokensOf, type SymbolIndexD
  *                   built, not taken: tokenized identifier-aware, given the
  *                   user's own answers, and expanded from the corpus itself
  *                   when the raw words have no purchase.
- *   3. LEXICAL    — Okapi BM25 over the chunks (the implementation already in
- *                   this repo, previously pointed only at crew documents).
+ *   3. LEXICAL    — Okapi BM25 over the chunks (knowledge/bm25.ts).
  *   4. STRUCTURAL — personalized PageRank over the import graph, its teleport
  *                   vector weighted by the lexical scores.
  *   5. FUSE       — Reciprocal Rank Fusion. Ranks, not scores: BM25 sums IDF

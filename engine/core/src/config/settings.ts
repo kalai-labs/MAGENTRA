@@ -6,8 +6,8 @@ import { STATE_DIR_NAME } from "@magentra/protocol";
 import { writeFileAtomic } from "../util/fsAtomic.js";
 
 /**
- * Fallback OpenAI-compatible endpoint for the provider and the backpack
- * embedder, used only when no `baseUrl` is configured. Any OpenAI-compatible
+ * Fallback OpenAI-compatible endpoint for the provider, used only when no
+ * `baseUrl` is configured. Any OpenAI-compatible
  * server works — set `baseUrl` to point at your own (a hosted `/v1` API, a
  * gateway, or a local server).
  */
@@ -154,12 +154,6 @@ export const settingsSchema = z
         apiKeyEnv: z.string().optional(),
       })
       .default({ enabled: true }),
-    embeddings: z
-      .object({
-        model: z.string().default("BAAI/bge-m3"),
-        enabled: z.boolean().default(true),
-      })
-      .default({ model: "BAAI/bge-m3", enabled: true }),
     reuseCheck: z
       .object({
         // "gate" (the old refuse-once mode) was retired 2026-07-20: the check

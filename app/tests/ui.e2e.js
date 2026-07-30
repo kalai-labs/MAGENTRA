@@ -41,7 +41,6 @@ function apiResult(name, args) {
       const baseUrl = raw.replace(/\/+$/, "").replace(/\/(chat\/completions|models)$/i, "");
       return { ok: true, models: [MODEL], ...(baseUrl ? { baseUrl } : {}) };
     }
-    case "pickDoc": return { ok: true, path: "/tmp/context.md" };
     case "pickContextFiles":
       return { ok: true, files: [{ name: "context.md", ok: true, bytes: 24, kind: "text", text: "hello from an attached file" }] };
     case "detectLocalServers":
@@ -86,7 +85,7 @@ function wireTestIpc() {
   ipcMain.on("test:frame", (_event, frame) => frames.push(frame));
   ipcMain.on("test:modes", (_event, active) => modes.push(active));
   ipcMain.on("test:permission", (_event, value) => permissions.push(value));
-  for (const name of ["interrupt", "restart", "reloadTeam", "external", "titlebar", "window-control"]) {
+  for (const name of ["interrupt", "restart", "external", "titlebar", "window-control"]) {
     ipcMain.on(`test:${name}`, (_event, value) => signals.push({ name, value }));
   }
 }
@@ -216,7 +215,7 @@ async function run() {
     assert.ok(frames.some((frame) => frame.type === "delete_session" && frame.id === "older-session"));
   });
 
-  await test("task, mission, and crew surfaces remain live without leaving context", async () => {
+  await test("task and mission surfaces remain live without leaving context", async () => {
     await evaluate(`document.querySelector('#sessionsCloseBtn').click()`);
     await emit({ type: "task_list_updated", tasks: [
       { id: "t1", subject: "Map current UI", status: "completed" },
@@ -293,44 +292,9 @@ async function run() {
       && frame.draft.investigate === "Audit the UI for regressions"));
     // A running one-off shows STOP, and every row exposes DELETE (two-click arm).
     assert.ok(await evaluate(`[...document.querySelectorAll('.lab-btn')].some((b) => b.textContent === 'DELETE')`));
-    await emit({ type: "team_updated", agents: [
-      { id: "reviewer", name: "Reviewer", role: "Find regressions", model: MODEL, ready: true, emoji: "R" },
-      { id: "tester", name: "Tester", role: "Exercise UI", model: MODEL, ready: false, emoji: "T" },
-    ] });
-    await evaluate(`document.querySelector('.inspector-tab[data-inspector="crew"]').click()`);
-    assert.equal(await evaluate(`document.querySelectorAll('.inspector-crew-card').length`), 2);
-    assert.equal(await evaluate(`document.querySelector('#inspectorCrewCount').textContent`), "2");
-    await evaluate(`document.querySelector('#openCrewViewBtn').click()`);
-    assert.equal(await evaluate(`document.body.dataset.view`), "team");
-    assert.equal(await evaluate(`document.querySelectorAll('.crew-card').length`), 2);
-    await evaluate(`document.querySelector('#teamReloadBtn').click(); document.querySelector('.crew-add').click()`);
-    await pause();
-    assert.ok(signals.some((signal) => signal.name === "reloadTeam"));
-    assert.ok(calls.some((call) => call.name === "createTeamTemplate"));
-    await evaluate(`document.querySelector('.crew-menu-btn').click(); document.querySelectorAll('.ctx-item')[0].click()`);
-    await pause();
-    assert.ok(calls.some((call) => call.name === "editAgent" && call.args[0] === "reviewer"));
-    await evaluate(`document.querySelector('.crew-menu-btn').click(); document.querySelectorAll('.ctx-item')[1].click()`);
-    await pause();
-    assert.ok(calls.some((call) => call.name === "pickDoc" && call.args[0] === "reviewer"));
-    await evaluate(`document.querySelector('.crew-menu-btn').click(); document.querySelectorAll('.ctx-item')[2].click()`);
-    await pause();
-    assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.command === "crew" && frame.args === "export reviewer"));
-    await evaluate(`document.querySelector('#teamBtn').click(); document.querySelector('.crew-menu-btn').click(); document.querySelectorAll('.ctx-item')[3].click()`);
-    await pause();
-    assert.ok(calls.some((call) => call.name === "removeAgent" && call.args[0] === "reviewer"));
-    await evaluate(`document.querySelector('#teamHireBtn').click()`);
-    await pause();
-    await evaluate(`(() => { document.querySelector('#promptModalInput').value = '/tmp/reviewer.crewpack.json'; document.querySelector('#promptModalOk').click(); })()`);
-    await pause();
-    assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.command === "crew" && frame.args.includes("hire /tmp/reviewer.crewpack.json")));
-    await evaluate(`document.querySelector('#teamBtn').click(); document.querySelector('#draftTeamBtn').click()`);
-    await pause();
-    assert.ok(frames.some((frame) => frame.type === "user_message" && frame.text.includes("propose a crew for it")));
   });
 
   await test("attach, model, and composer controls act on runtime state", async () => {
-    await evaluate(`document.querySelector('#teamCloseBtn').click()`);
     // Attach button opens the file picker; a readable file becomes a pending chip.
     await evaluate(`document.querySelector('#attachBtn').click()`);
     await pause();

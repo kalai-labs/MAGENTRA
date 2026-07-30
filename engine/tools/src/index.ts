@@ -18,8 +18,6 @@ import { cronCreateTool, cronDeleteTool, cronListTool, scheduleWakeupTool } from
 import { skillTool } from "./skill.js";
 import { workflowTool } from "./workflow.js";
 import { graphQueryTool } from "./graphQuery.js";
-import { crewRunTool } from "./crewRun.js";
-import { backpackSearchTool } from "./backpackSearch.js";
 
 export {
   readTool,
@@ -49,8 +47,6 @@ export {
   skillTool,
   workflowTool,
   graphQueryTool,
-  crewRunTool,
-  backpackSearchTool,
 };
 export { resolveBashPath, spawnShell, killTree, bashDeletionSubject } from "./bash.js";
 export {
@@ -94,8 +90,6 @@ export function createDefaultRegistry(): ToolRegistry {
     skillTool,
     workflowTool,
     graphQueryTool,
-    crewRunTool,
-    backpackSearchTool,
   ]) {
     registry.register(tool);
   }

@@ -66,7 +66,7 @@ spend a budget in three grades.
   "constructor" resolves to an inherited function, so `postings[t] ??= []` never
   assigns and `df[t] ?? 0` adds one to a function. Prose rarely contains the
   word; source code contains it in the first file. This was a live bug in the
-  shipped backpack index, found only by pointing it at code.
+  shipped BM25 index, found only by pointing it at code.
 - Retrieval quality on a genuinely vague request is still limited, and that is
   not a ranking failure: "improve the UI" does not say what to improve, and no
   amount of IR invents the answer. What the system does instead is refuse to

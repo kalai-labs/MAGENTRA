@@ -315,20 +315,6 @@
       "action": "Leave it. Revisit when the atlas feature comes back.",
       "reviewedHash": "123d86f84aca"
     },
-    "backpack.note": {
-      "verdict": "optional",
-      "title": "Crew feature. Runs only on /build-crew.",
-      "problem": "47 tokens, and never sent unless you build a specialist backpack.",
-      "action": "Leave it.",
-      "reviewedHash": "c34905492f6b"
-    },
-    "backpack.brief": {
-      "verdict": "optional",
-      "title": "Crew feature. Runs only on /build-crew.",
-      "problem": "40 tokens, same condition.",
-      "action": "Leave it.",
-      "reviewedHash": "4320766d0187"
-    },
     "session.auto-name.role": {
       "verdict": "merge",
       "title": "Two prompts for one call.",
@@ -603,41 +589,12 @@
       "reviewedHash": "8be69516027d",
       "ours": "The whole tool. The reference locates code with find and grep and has no structural query at all. Slice, blast radius and structure answer impact questions it can only guess at."
     },
-    "tool.CrewRun": {
-      "verdict": "optional",
-      "title": "Optional. Crew feature.",
-      "problem": "244 tokens sent on every request whether or not a crew exists.",
-      "action": "If crew is not a shipping feature yet, consider registering this tool conditionally.",
-      "reviewedHash": "cbb910ea20a5"
-    },
-    "tool.BackpackSearch": {
-      "verdict": "optional",
-      "title": "Optional. Crew feature.",
-      "problem": "121 tokens, same condition.",
-      "action": "Same as CrewRun.",
-      "reviewedHash": "d81716b7db22"
-    },
     "tool.Workflow": {
       "verdict": "optional",
       "title": "604 tokens on every request. Your largest tool description.",
       "problem": "Nearly three times the next largest. It is only useful if multi-agent orchestration is a feature you actively want used, and it is opt-in by its own text.",
       "action": "If workflows are not a shipping feature, register this tool conditionally or cut the description hard. This is the single largest tool-side saving available.",
       "reviewedHash": "8f2416700829"
-    },
-    "crew.team-file-format": {
-      "verdict": "optional",
-      "title": "818 tokens — but only when a crew exists.",
-      "problem": "Conditional on .magentra/team/ holding a specialist. Free otherwise.",
-      "action": "Leave it while crew is unused.",
-      "reviewedHash": "5ca27ec4fbe3"
-    },
-    "crew.orchestrator-section": {
-      "verdict": "optional",
-      "title": "383 tokens, same condition.",
-      "problem": "Injected only when the workspace has specialists.",
-      "action": "Leave it.",
-      "reviewedHash": "f40f54b656ef",
-      "ours": "Specialists with indexed knowledge backpacks. The reference's subagents are stateless and knowledge-free."
     },
     "missions.file-format": {
       "verdict": "optional",
@@ -876,17 +833,10 @@
           },
           {
             "n": 14,
-            "kind": "trim",
-            "prompts": [
-              "tool.CrewRun",
-              "tool.BackpackSearch"
-            ],
-            "do": "Register the crew tools conditionally",
-            "detail": "365 tokens combined, sent whether or not a crew exists. Cheap win if crew is not live yet.",
-            "test": {
-              "prompt": "tool.CrewRun",
-              "shorterThan": 150
-            }
+            "kind": "done",
+            "prompts": [],
+            "do": "Crew tools removed from the product",
+            "detail": "Resolved by deletion, not by conditional registration: the crew feature (CrewRun, BackpackSearch, the team roster section and the backpack prompts) was removed from the codebase, so those 365 tokens are no longer sent at all. Nothing left to trim here."
           },
           {
             "n": 15,

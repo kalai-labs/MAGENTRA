@@ -62,7 +62,7 @@ function syncWorkbenchContext() {
 }
 
 function switchInspector(tab) {
-  activeInspectorTab = ["tasks", "changes", "crew"].includes(tab) ? tab : "tasks";
+  activeInspectorTab = ["tasks", "changes"].includes(tab) ? tab : "tasks";
   inspectorTabs.forEach((button) => {
     const active = button.dataset.inspector === activeInspectorTab;
     button.classList.toggle("active", active);
@@ -96,7 +96,7 @@ function closeInspector() {
  * has moved its cwd. */
 // Right-click a sidebar workspace to choose exactly how it opens — a new tab in
 // this window, or a separate window — instead of a single implicit behaviour.
-// Reuses the shared ctx-menu machinery (closeCtxMenu / openCtxMenuEl in crew.js).
+// Reuses the shared ctx-menu machinery (closeCtxMenu / openCtxMenuEl in util.js).
 function openWorkspaceCtxMenu(e, opts) {
   e.preventDefault();
   if (typeof closeCtxMenu === "function") closeCtxMenu();
@@ -317,63 +317,6 @@ function renderSidebarMissions() {
   }
 }
 
-/** Compact crew block at the foot of the Tasks panel (ref layout): every
- * specialist with its readiness, one click away from the full crew view. */
-function renderCrewMini() {
-  if (!crewMiniListEl) return;
-  crewMiniListEl.textContent = "";
-  if (crewMiniCountEl) crewMiniCountEl.textContent = teamAgents.length ? String(teamAgents.length) : "";
-  const mini = document.getElementById("crewMini");
-  if (mini) mini.classList.toggle("hidden", teamAgents.length === 0);
-  for (const agent of teamAgents.slice(0, 6)) {
-    const row = document.createElement("button");
-    row.className = "crew-mini-row";
-    const glyph = document.createElement("span");
-    glyph.className = "crew-mini-glyph";
-    glyph.textContent = agent.ready ? "◈" : "◇";
-    const name = document.createElement("span");
-    name.className = "crew-mini-name";
-    name.textContent = agent.name || agent.id;
-    const status = document.createElement("span");
-    status.className = "crew-mini-status" + (agent.ready ? " ready" : "");
-    status.textContent = agent.ready ? "Ready" : "Indexing";
-    row.append(glyph, name, status);
-    row.addEventListener("click", () => openInspector("crew"));
-    crewMiniListEl.appendChild(row);
-  }
-}
-
-function renderInspectorCrew() {
-  renderCrewMini();
-  if (!inspectorCrewListEl) return;
-  inspectorCrewListEl.textContent = "";
-  if (inspectorCrewCountEl) inspectorCrewCountEl.textContent = teamAgents.length ? String(teamAgents.length) : "";
-  if (teamAgents.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "sidebar-empty";
-    empty.textContent = "No specialists configured";
-    inspectorCrewListEl.appendChild(empty);
-    return;
-  }
-  for (const agent of teamAgents) {
-    const card = document.createElement("button");
-    card.className = "inspector-crew-card";
-    const head = document.createElement("div");
-    head.className = "inspector-crew-head";
-    head.textContent = agent.name || agent.id;
-    const status = document.createElement("span");
-    status.className = "inspector-crew-status" + (agent.ready ? " ready" : "");
-    status.textContent = agent.ready ? "ready" : "indexing";
-    head.appendChild(status);
-    const role = document.createElement("div");
-    role.className = "inspector-crew-role";
-    role.textContent = agent.role || agent.description || agent.model || "specialist";
-    card.append(head, role);
-    card.addEventListener("click", () => showView("team"));
-    inspectorCrewListEl.appendChild(card);
-  }
-}
-
 function sessionChangeTotals() {
   const files = [...sessionChanges.entries()];
   return files.reduce(
@@ -582,7 +525,6 @@ if (reviewOpenBtnEl) reviewOpenBtnEl.addEventListener("click", () => {
 if (reviewUndoBtnEl) reviewUndoBtnEl.addEventListener("click", () => {
   if (activeReviewPath) void undoFileChange(activeReviewPath);
 });
-if (openCrewViewBtnEl) openCrewViewBtnEl.addEventListener("click", () => showView("team"));
 if (sidebarSessionsRefreshEl) sidebarSessionsRefreshEl.addEventListener("click", () => requestSessionList());
 if (sidebarMissionNewEl) sidebarMissionNewEl.addEventListener("click", () => labNewBtnEl.click());
 if (attachBtnEl) attachBtnEl.addEventListener("click", () => {

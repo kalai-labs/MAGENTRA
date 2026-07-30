@@ -1,8 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { loadBackpackIndex } from "../knowledge/backpack/index.js";
 import {
   STATE_DIR_NAME,
   addUsage,
@@ -95,9 +94,6 @@ import { buildSymbolIndex, loadOrBuildSymbolIndex, type SymbolIndexData } from "
 import { SessionStats, type ContextBreakdown } from "./sessionStats.js";
 import type { Settings } from "../config/settings.js";
 import { addExactPermission } from "../config/settings.js";
-import { type CrewAgent, CREW_ALWAYS_ALLOWED, crewSection } from "../crew/team.js";
-import { CrewExperience } from "../crew/experience.js";
-import { recordCrewRun } from "../crew/ledger.js";
 import type { Skill } from "../agent/skills.js";
 import { TaskStore } from "../state/taskStore.js";
 import { isToolDisabled, toolDescriptionText } from "../agent/tool.js";
@@ -429,19 +425,19 @@ export interface SessionOptions {
   extraPromptSections?: string[];
   /**
    * Share an existing PermissionEngine instead of building one (subagents get
-   * their parent's): session-allows granted during one specialist run hold for
+   * their parent's): session-allows granted during one subagent run hold for
    * the next, and mode/deletion-guard changes reach the whole tree.
    */
   permissionEngine?: PermissionEngine;
   /**
-   * Share the parent's SessionStats (subagents/crew children do): their token
+   * Share the parent's SessionStats (subagents do): their token
    * spend, API time and code changes belong to the same /session report as the
    * orchestrator's. Also set on /resume with the ledger rebuilt from the
    * transcript's meta snapshot. Omitted for a fresh root session.
    */
   stats?: SessionStats;
   /**
-   * Subagent/crew child session: its transcript lives in sessions/subagents/
+   * Subagent child session: its transcript lives in sessions/subagents/
    * (off the resumable listing) and stats snapshots are the root's job.
    */
   child?: boolean;
@@ -449,20 +445,6 @@ export interface SessionOptions {
   hookRunner?: HookRunner;
   /** The .ma style engine; omitted for subagent sessions (children inherit no modes). */
   modeEngine?: ModeEngine;
-  /** CREW Phase A: the loaded team roster (main session only; children never inherit it). */
-  team?: CrewAgent[];
-  /** CREW Phase B: this session's own crew agent id (set for specialist children so BackpackSearch self-scopes). */
-  crewSelf?: string;
-  /**
-   * Resolves a dedicated Provider for a crew member whose team file declares an
-   * endpoint (provider/baseurl/apikeyenv frontmatter). undefined → the member
-   * shares the session provider. A warning → the endpoint could not be resolved
-   * (e.g. missing env key): the spawn falls back to the session provider AND the
-   * default model, and the warning is surfaced as a non-fatal error event.
-   */
-  crewProviderResolver?: (agent: CrewAgent) => { provider: Provider } | { warning: string } | undefined;
-  /** A2: called at turn start when the .magentra/team/*.md files changed on disk since the last turn. */
-  onTeamFilesChanged?: () => void;
 }
 
 interface PendingToolCall {
@@ -508,7 +490,7 @@ export class Session {
   private turnCounter = 0;
   /**
    * Whole-session accounting (cost, API time, code changes, and the CURRENT
-   * context size). Shared by reference with every subagent/crew child, so one
+   * context size). Shared by reference with every subagent child, so one
    * /session report covers the whole tree. See SessionStats for why context and
    * usage must not be conflated.
    */
@@ -589,12 +571,6 @@ export class Session {
   /** Finishing rungs fire at most once per turn each (reset at turn start). */
   private evidenceNudgeFired = false;
   private incompleteTasksNudgeFired = false;
-  /** A2: mutable crew roster (hot-reloadable); consumed by buildSystemPrompt and services.team. */
-  private teamAgents: CrewAgent[];
-  /** Hirable crew: the experience manager (lessons + service record). Main session with a team only. */
-  private experience: CrewExperience | undefined;
-  /** A2: last observed team-directory signature, for hot-reload detection. */
-  private lastTeamSig: string | undefined;
   /** Set by interrupt(); the background atlas loop checks it and stops taking work. */
   private atlasCancelled = false;
   private activeChildren = 0;
@@ -616,21 +592,10 @@ export class Session {
     this.registry = opts.registry;
     this.emit = opts.emit;
     this.messages = opts.initialMessages ?? [];
-    this.teamAgents = opts.team ?? [];
     this.hooks = opts.hookRunner;
     this.extraPromptSections = [...(opts.extraPromptSections ?? [])];
     this.transcript = new Transcript(this.stateDir, this.id, { child: opts.child ?? false });
     this.tasks = new TaskStore(this.stateDir, this.id, this.emit);
-    // Hirable crew: when a crew-owned task is verified completed, confirm the
-    // lessons that rode on the run and capture new candidates from the report.
-    if (this.teamAgents.length > 0) this.experience = new CrewExperience(this.cwd);
-    this.tasks.onStatusChange = (task, prev) => {
-      if (task.status !== "completed" || prev === "completed") return;
-      const owner = task.owner;
-      if (!owner || owner === "orchestrator" || !this.experience) return;
-      if (!this.teamAgents.some((a) => a.id === owner)) return;
-      void this.experience.onTaskCompleted(task, (o) => this.runInference(o));
-    };
     this.background = new BackgroundManager(this.stateDir, this.emit, (t) => this.remind(t));
     this.permissions =
       opts.permissionEngine ??
@@ -721,25 +686,12 @@ export class Session {
       },
       worktreeBaseRef: opts.settings.worktree.baseRef,
       ...(opts.skills !== undefined ? { skills: opts.skills } : {}),
-      ...(this.teamAgents.length > 0 ? { team: this.teamAgents } : {}),
-      ...(opts.crewSelf !== undefined ? { crewSelf: opts.crewSelf } : {}),
-      ...(this.experience !== undefined ? { experience: this.experience } : {}),
     };
   }
 
   /** Marks this session (and every child it spawns from now on) as unattended. */
   setUnattended(value: boolean): void {
     this.unattended = value;
-  }
-
-  /** A2: replace the crew roster live (used by the engine on team-file hot-reload). */
-  setTeam(agents: CrewAgent[]): void {
-    this.teamAgents = agents;
-    this.services.team = agents.length > 0 ? agents : undefined;
-    if (agents.length > 0 && !this.experience) {
-      this.experience = new CrewExperience(this.cwd);
-      this.services.experience = this.experience;
-    }
   }
 
   remind(text: string): void {
@@ -936,12 +888,7 @@ export class Session {
    * distinctly. Everything else (permissions, questions, tasks, background
    * notifications) passes through unchanged.
    */
-  private emitFromChild(
-    event: CoreEvent,
-    agentId: string,
-    agentDesc: string,
-    stamp?: { agentColor?: string; agentEmoji?: string },
-  ): void {
+  private emitFromChild(event: CoreEvent, agentId: string, agentDesc: string): void {
     switch (event.type) {
       case "turn_started":
       case "turn_finished":
@@ -957,12 +904,6 @@ export class Session {
           subagent: true,
           agentId: event.agentId ?? agentId,
           agentDesc: event.agentDesc ?? agentDesc,
-          ...(stamp?.agentColor !== undefined && event.agentColor === undefined
-            ? { agentColor: stamp.agentColor }
-            : {}),
-          ...(stamp?.agentEmoji !== undefined && event.agentEmoji === undefined
-            ? { agentEmoji: stamp.agentEmoji }
-            : {}),
         });
         return;
       default:
@@ -974,8 +915,7 @@ export class Session {
    * Spawns a child Session with a restricted registry and an agent-type role.
    * The child shares this session's provider (so scripted/live turns are drawn
    * from the same stream, parent-then-child-then-parent), emit, and approval
-   * channel — except a crew member with a resolvable dedicated endpoint, which
-   * runs on its own Provider (see SessionOptions.crewProviderResolver). Foreground: resolves with the child's final assistant text.
+   * channel. Foreground: resolves with the child's final assistant text.
    * Background: resolves with a task id; the final text lands in the task
    * output file when the child finishes.
    */
@@ -993,54 +933,21 @@ export class Session {
     }
 
     const agentId = `ag_${++Session.agentCounter}`;
-    const crew = opts.crew?.agent;
-    const agentDesc = crew ? `${crew.emoji ?? ""} ${crew.name}`.trim() : opts.description;
-    // A crew member with a dedicated endpoint runs on its own Provider; an
-    // unresolvable endpoint falls back to the session provider AND default
-    // model (its declared model most likely doesn't exist on the fallback host).
-    let crewProvider: Provider | undefined;
-    let crewModel = crew?.model;
-    if (crew) {
-      const resolved = this.opts.crewProviderResolver?.(crew);
-      if (resolved !== undefined) {
-        if ("provider" in resolved) {
-          crewProvider = resolved.provider;
-        } else {
-          this.emit({ type: "error", message: resolved.warning, fatal: false });
-          crewModel = undefined;
-        }
-      }
-    }
-    const baseSettings = crew ? { ...this.settings, model: crewModel ?? this.settings.model } : this.settings;
+    const agentDesc = opts.description;
     // Interactive children inherit the lifted budgets — a capped child inside
     // an uncapped run is a hidden stop. An explicit spawn-time iteration cap
     // (e.g. the atlas pipeline's) still wins, and unattended (mission) runs
     // keep their configured budgets so a scheduled run stays bounded.
     const liftedSettings = this.unattended
-      ? baseSettings
-      : { ...baseSettings, maxIterationsPerTurn: Number.MAX_SAFE_INTEGER, maxTokensPerTurn: Number.MAX_SAFE_INTEGER };
+      ? this.settings
+      : { ...this.settings, maxIterationsPerTurn: Number.MAX_SAFE_INTEGER, maxTokensPerTurn: Number.MAX_SAFE_INTEGER };
     const childSettings =
       opts.maxIterations !== undefined
         ? { ...liftedSettings, maxIterationsPerTurn: opts.maxIterations }
         : liftedSettings;
-    const stamp = crew
-      ? {
-          ...(crew.color !== undefined ? { agentColor: crew.color } : {}),
-          ...(crew.emoji !== undefined ? { agentEmoji: crew.emoji } : {}),
-        }
-      : undefined;
 
     const allNames = this.registry.list().map((t) => t.name);
-    // A crew specialist never spawns further agents or workflows in Phase A.
-    const childRegistry = crew
-      ? this.registry.subset(
-          (crew.tools && crew.tools.length > 0
-            ? [...new Set([...crew.tools, ...CREW_ALWAYS_ALLOWED])]
-            : allNames
-          ).filter((n) => n !== "Agent" && n !== "Workflow"),
-        )
-      : this.registry.subset(agentToolNames(def, allNames));
-    const backpackSection = crew ? this.backpackPromptSection(crew.id, opts.crew?.backpackBrief) : undefined;
+    const childRegistry = this.registry.subset(agentToolNames(def, allNames));
     const system = buildSystemPrompt({
       env: {
         cwd: this.cwd,
@@ -1050,35 +957,26 @@ export class Session {
         date: new Date().toISOString().slice(0, 10),
       },
       skills: [],
-      extraSections: crew
-        ? [
-            `You are ${crew.name}, the crew's ${crew.role}.`,
-            crew.rolePrompt,
-            ...(backpackSection ? [backpackSection] : []),
-            ...(opts.crew?.lessons ? [opts.crew.lessons] : []),
-            promptText(SUBAGENT_RESULT_ID),
-          ]
-        : [opts.roleOverride ?? agentRoleText(def), promptText(SUBAGENT_RESULT_ID)],
+      extraSections: [opts.roleOverride ?? agentRoleText(def), promptText(SUBAGENT_RESULT_ID)],
     });
     const child = new Session({
       cwd: this.cwd,
       settings: childSettings,
-      provider: crewProvider ?? this.provider,
+      provider: this.provider,
       registry: childRegistry,
-      emit: (event) => this.emitFromChild(event, agentId, agentDesc, stamp),
+      emit: (event) => this.emitFromChild(event, agentId, agentDesc),
       requestApproval: this.opts.requestApproval,
       askUser: async () => {
         throw new Error("subagents cannot ask the user — decide or report back");
       },
       systemPromptOverride: system,
       // The child shares this session's PermissionEngine: an "always allow
-      // this session" granted during one specialist's run holds for the next.
+      // this session" granted during one subagent's run holds for the next.
       permissionEngine: this.permissions,
-      // ...and its stats ledger: a crew member's spend (possibly on its own
-      // model) belongs in the same /session report as the orchestrator's.
+      // ...and its stats ledger: a subagent's spend belongs in the same
+      // /session report as the orchestrator's.
       stats: this.stats,
       child: true,
-      ...(crew ? { crewSelf: crew.id } : {}),
     });
     child.setUnattended(this.unattended);
 
@@ -1089,7 +987,6 @@ export class Session {
       type: "agent_spawned" as const,
       agentId,
       agentDesc,
-      ...(stamp ?? {}),
     };
 
     if (opts.runInBackground) {
@@ -1111,7 +1008,6 @@ export class Session {
               onExit(1);
             } finally {
               this.activeChildren--;
-              this.recordCrewUsage(crew?.id, child);
             }
           })();
           return { stop: () => child.interrupt() };
@@ -1133,20 +1029,10 @@ export class Session {
     } finally {
       this.activeChildren--;
       this.liveChildren.delete(child);
-      this.recordCrewUsage(crew?.id, child);
       this.emit({ type: "agent_finished", agentId, ...(failed ? { isError: true } : {}) });
     }
   }
 
-  /** Cost ledger: bank a crew child's run usage against its member id (best-effort). */
-  private recordCrewUsage(crewId: string | undefined, child: Session): void {
-    if (!crewId || !child.lastTurnUsage) return;
-    try {
-      recordCrewRun(this.cwd, crewId, child.lastTurnUsage);
-    } catch {
-      // accounting must never fail a run
-    }
-  }
 
   /**
    * HARD STOP — everything this session started, stopped now.
@@ -1209,7 +1095,6 @@ export class Session {
         ...this.extraPromptSections,
         ...this.dynamicSections.values(),
         ...(this.opts.modeEngine?.promptSections() ?? []),
-        ...(this.teamAgents.length > 0 ? [crewSection(this.teamAgents)] : []),
         // A disabled header drops the whole section, body and all. Injecting the
         // file's contents with no header would hand the model an unlabelled wall
         // of text — worse than not sending it, and not what emptying a section
@@ -1227,42 +1112,6 @@ export class Session {
   private static section(headerId: string, body: string): string[] {
     const header = promptTextIfEnabled(headerId);
     return header === undefined ? [] : [`${header}\n\n${body}`];
-  }
-
-  /** CREW Phase B: the knowledge-brief prompt section for a specialist, or undefined. */
-  private backpackPromptSection(agentId: string, briefOverride?: string): string | undefined {
-    const index = loadBackpackIndex(this.cwd, agentId);
-    const brief = briefOverride ?? index?.brief;
-    // Never point the specialist at a tool it was not given: BackpackSearch is
-    // withheld when its description is emptied, and an instruction to call a
-    // tool that is not in the schema list only earns a failed call.
-    const search = isToolDisabled("BackpackSearch") ? "" : "\n(Use BackpackSearch for exact passages.)";
-    if (brief) return `# Your knowledge brief\n${brief}${search}`;
-    if (index && index.chunks.length > 0 && search !== "") {
-      return "(backpack still indexing — BackpackSearch over raw text is available)";
-    }
-    return undefined;
-  }
-
-  /** A2: a cheap signature of the team dir (names + mtime + size) for hot-reload detection. */
-  private teamDirSignature(): string {
-    const dir = join(this.cwd, ".magentra", "team");
-    let names: string[];
-    try {
-      names = readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
-    } catch {
-      return "";
-    }
-    return names
-      .map((n) => {
-        try {
-          const st = statSync(join(dir, n));
-          return `${n}:${st.mtimeMs}:${st.size}`;
-        } catch {
-          return n;
-        }
-      })
-      .join("|");
   }
 
   /**
@@ -1880,13 +1729,6 @@ export class Session {
     if (this.busy) throw new Error("session is already processing a turn");
     this.busy = true;
 
-    // A2: hot-reload the crew when its files changed since the last turn.
-    if (this.opts.onTeamFilesChanged) {
-      const sig = this.teamDirSignature();
-      if (this.lastTeamSig !== undefined && sig !== this.lastTeamSig) this.opts.onTeamFilesChanged();
-      this.lastTeamSig = sig;
-    }
-
     if (this.hooks?.has("UserPromptSubmit")) {
       const summary = this.hooks.summarize(
         await this.hooks.run("UserPromptSubmit", {
@@ -1942,9 +1784,9 @@ export class Session {
     const turnId = `t_${++this.turnCounter}`;
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
-    /** This session's OWN main-loop spend, which is what the per-turn budget and
-     *  the crew ledger are about. The tree-wide total (this plus the auxiliary
-     *  prompts and every subagent) is the stats phase, opened just below. */
+    /** This session's OWN main-loop spend, which is what the per-turn budget is
+     *  about. The tree-wide total (this plus the auxiliary prompts and every
+     *  subagent) is the stats phase, opened just below. */
     const turnUsage: Usage = emptyUsage();
     // Open the deliberation phase: from here every invocation anywhere in the
     // tree counts toward this turn's D(t) and T_turn. Only the root opens one —
@@ -2735,9 +2577,9 @@ export class Session {
     }
 
     // Bank this response against the whole-session ledger: its billed tokens
-    // (per model — a crew child may run on a different one), the API time it
+    // (per model — a subagent may run on a different one), the API time it
     // took, and, for a root session, the window occupancy its input reveals.
-    // The ledger is shared with the parent, so a crew/subagent's spend lands in
+    // The ledger is shared with the parent, so a subagent's spend lands in
     // the same /session report — but its window is its own conversation's, so a
     // child never writes the root's context figure.
     this.stats.recordResponse(model, end.usage, Date.now() - apiStartedAt, !this.opts.child);

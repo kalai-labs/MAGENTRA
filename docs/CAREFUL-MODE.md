@@ -68,7 +68,7 @@ careful predictor         one main-model inference, fail-open
             ↓                     a truncated reply is salvaged, never silently dropped
             HOLD RAISED (PermissionEngine)          ▶ carefully: scouting
             ↓
-            scout: Read / Grep / Glob / GraphQuery / BackpackSearch / Skill
+            scout: Read / Grep / Glob / GraphQuery / Skill
                    everything else refused; all prose suppressed
                    soft warn after 4 rounds — a reminder, never a cut
             ↓

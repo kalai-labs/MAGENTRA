@@ -18,7 +18,7 @@ Coverage includes:
 
 - first launch, recent workspaces, the persistent sidebar, and maximized launch;
 - session resume/search/rename/archive/delete and new-conversation reset;
-- tasks, every mission action, crew cards/actions, and style modes;
+- tasks, every mission action, and style modes;
 - composer send/queue/stop/history, slash and bang commands,
   attachment mentions, model selection, and all permission modes;
 - reasoning, streaming Markdown, operations, subagents, background jobs, errors,

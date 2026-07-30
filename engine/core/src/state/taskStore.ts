@@ -14,13 +14,6 @@ export class TaskStore implements TaskStoreApi {
   private tasks = new Map<string, TaskItem>();
   private nextId = 1;
   private readonly file: string;
-  /**
-   * Fires after a persisted status change (not deletion), with the previous
-   * status. The session uses it to record crew experience when an owned task
-   * is verified completed; it must never throw into the mutation path.
-   */
-  onStatusChange?: (task: TaskItem, prevStatus: TaskItem["status"]) => void;
-
   constructor(
     stateDir: string,
     sessionId: string,
@@ -54,7 +47,6 @@ export class TaskStore implements TaskStoreApi {
   update(id: string, patch: TaskPatch): TaskItem {
     const task = this.tasks.get(id);
     if (!task) throw new Error(`No task with id ${id}`);
-    const prevStatus = task.status;
 
     if (patch.status === "deleted") {
       this.tasks.delete(id);
@@ -91,13 +83,6 @@ export class TaskStore implements TaskStoreApi {
       if (!target.blocks.includes(id)) target.blocks.push(id);
     }
     this.persist();
-    if (task.status !== prevStatus) {
-      try {
-        this.onStatusChange?.(task, prevStatus);
-      } catch {
-        /* observers never break a mutation */
-      }
-    }
     return task;
   }
 

@@ -30,12 +30,6 @@ contextBridge.exposeInMainWorld("magentra", {
       ...(message ? { message } : {}),
       ...(tabId ? { tabId } : {}),
     }),
-  addDoc: (agentId, filePath) => ipcRenderer.invoke("team:addDoc", { agentId, filePath }),
-  createTeamTemplate: () => ipcRenderer.invoke("team:createTemplate"),
-  reloadTeam: () => ipcRenderer.send("team:reload"),
-  removeAgent: (agentId) => ipcRenderer.invoke("team:removeAgent", agentId),
-  editAgent: (agentId) => ipcRenderer.invoke("team:editAgent", agentId),
-  pickDoc: (agentId) => ipcRenderer.invoke("team:pickDoc", agentId),
   writeEnv: (payload) => ipcRenderer.invoke("setup:writeEnv", payload),
   testConnection: (payload) => ipcRenderer.invoke("setup:testConnection", payload),
   // Which local model servers (Ollama, LM Studio) are present on this machine.

@@ -284,19 +284,14 @@
   <p>Two different clocks. The <b>system prompt</b> is rebuilt from scratch on <em>every</em> loop iteration. <b>Reminders</b> are queued during the turn and flushed into the next user message, then drained.</p>
 
   <h3>System prompt — rebuilt per provider call</h3>
-  <p><code>session.ts:709</code> → <code>buildSystemPrompt()</code>, called fresh at <code>:1266</code>. A <code>systemPromptOverride</code> short-circuits the whole thing (<code>:710</code>) — that's how subagents and crew specialists get their own identity.</p>
+  <p><code>session.ts:709</code> → <code>buildSystemPrompt()</code>, called fresh at <code>:1266</code>. A <code>systemPromptOverride</code> short-circuits the whole thing (<code>:710</code>) — that's how subagents get their own identity.</p>
   <ol class="steps">
     <li><span class="i">1</span><div><b>behaviorCore()</b> — ten static sections joined<span class="ref">prompts.ts:89 · identity, harness, communication, action-care, git, code-style, tasks, working-method, autonomy, plan-mode</span></div></li>
     <li><span class="i">2</span><div><b>environmentBlock</b> — cwd, is-git-repo, platform, model, date<span class="ref">prompts.ts:112 · values gathered session.ts:714</span></div></li>
     <li><span class="i">3</span><div><b>projectMemoryBlock</b> — the project guide file from cwd<span class="ref">prompts.ts:121</span></div></li>
     <li><span class="i">4</span><div><b>skillsBlock</b> — action-skill <em>names and descriptions only</em>, never bodies<span class="ref">prompts.ts:139 · loaded once at boot, bootstrap.ts:114</span></div></li>
-    <li><span class="i">5</span><div><b>extraSections</b>, in order: static sections, tool-mutated <code>dynamicSections</code>, active discipline skills, crew roster, ATLAS.md, standards<span class="ref">session.ts:722 · modeEngine.promptSections() at ma/modes.ts:508</span></div></li>
+    <li><span class="i">5</span><div><b>extraSections</b>, in order: static sections, tool-mutated <code>dynamicSections</code>, active discipline skills, ATLAS.md, standards<span class="ref">session.ts:722 · modeEngine.promptSections() at ma/modes.ts:508</span></div></li>
   </ol>
-
-  <div class="note">
-    <b>Backpack knowledge is not in the main prompt</b>
-    <code>backpackPromptSection</code> (<code>session.ts:734</code>) injects a knowledge brief only into a <em>crew child's</em> prompt. The main session reaches that corpus through the <code>BackpackSearch</code> tool instead.
-  </div>
 
   <h3>Reminders — queued, flushed once, drained</h3>
   <p>Queued via <code>remind()</code> (<code>:375</code>), flushed by <code>withReminders()</code> (<code>:1563</code>) as one wrapped block appended to the next user message.</p>
@@ -458,7 +453,6 @@ const STAGES = [
       ["<code>Engine.send()</code> switch: <code>user_message</code> → <code>startExclusive(… runTurn(text))</code>","engine.ts:614"],
       ["<b>startExclusive</b> refuses overlap and chains onto <code>turnPromise</code> so <code>idle()</code> never forgets in-flight work","engine.ts:590"],
       ["Busy latch set — a second turn throws \"session is already processing a turn\"","session.ts:938"],
-      ["Crew hot-reload check via the team-dir signature","session.ts:943"],
       ["<b>UserPromptSubmit hook</b> — the one thing that can kill a turn before it starts","session.ts:949"],
       ["Reminders queued: plan-first, skill turn-start injections, atlas hints","session.ts:970, :985, :1005"],
       ["Prompt enters history <em>with reminders appended</em>","session.ts:1014 · withReminders() :1563"],
@@ -525,9 +519,9 @@ const STOPS = [
   { m:"Read-before-write freshness", loc:"fileState.ts:35", tr:"Write/Edit on a file not read this session, or changed on disk since", v:"silent", d:"<b>on — not configurable</b>", dis:"none", tags:["silent","ondefault"] }
 ];
 
-const CORE_EV = ["session_started","turn_started","text_delta","thinking_delta","tool_call_started","tool_call_finished","tool_output_delta","retry_status","agent_spawned","agent_finished","permission_request","question_request","task_list_updated","file_edited","background_notification","overdrive_changed","command_output","session_list","turn_finished","error","skill_draft","skills_updated","modes_updated","team_updated","backpack_progress","session_restored","model_catalog","cwd_changed","missions_updated"];
+const CORE_EV = ["session_started","turn_started","text_delta","thinking_delta","tool_call_started","tool_call_finished","tool_output_delta","retry_status","agent_spawned","agent_finished","permission_request","question_request","task_list_updated","file_edited","background_notification","overdrive_changed","command_output","session_list","turn_finished","error","skill_draft","skills_updated","modes_updated","session_restored","model_catalog","cwd_changed","missions_updated"];
 const CORE_HOT = new Set(["permission_request","question_request"]);
-const FRONT_EV = ["user_message","permission_response","question_response","steer_message","interrupt","set_overdrive","set_deletion_guard","slash_command","bang_command","resume_session","delete_session","stop_background","rename_session","archive_session","list_sessions","set_modes","reload_team","generate_skill","install_skill"];
+const FRONT_EV = ["user_message","permission_response","question_response","steer_message","interrupt","set_overdrive","set_deletion_guard","slash_command","bang_command","resume_session","delete_session","stop_background","rename_session","archive_session","list_sessions","set_modes","generate_skill","install_skill"];
 const FRONT_HOT = new Set(["permission_response","question_response","steer_message","interrupt"]);
 
 // tabs

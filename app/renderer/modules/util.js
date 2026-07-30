@@ -143,3 +143,22 @@ function summarizeError(resultPreview) {
   if (chosen.length > 160) chosen = chosen.slice(0, 157) + "...";
   return chosen;
 }
+
+// ---------------------------------------------------------------------------
+// Shared context-menu machinery. One menu is open at a time, app-wide: each
+// builder (workspace rows, tab headers, pane headers) constructs its own
+// .ctx-menu, assigns it to openCtxMenuEl, and parks its listener teardown in
+// closeOpenCtxMenuListeners. closeCtxMenu() is the single closer, so opening
+// any menu reliably dismisses whichever one was already up.
+// ---------------------------------------------------------------------------
+
+let openCtxMenuEl = null;
+let closeOpenCtxMenuListeners = null;
+
+function closeCtxMenu() {
+  if (!openCtxMenuEl) return;
+  if (closeOpenCtxMenuListeners) closeOpenCtxMenuListeners();
+  closeOpenCtxMenuListeners = null;
+  if (openCtxMenuEl.parentNode) openCtxMenuEl.parentNode.removeChild(openCtxMenuEl);
+  openCtxMenuEl = null;
+}

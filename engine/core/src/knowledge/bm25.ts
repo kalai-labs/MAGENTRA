@@ -1,6 +1,6 @@
 /**
- * Hand-rolled Okapi BM25 over the backpack chunks. The index is a plain,
- * JSON-serializable object so it can live inside the persisted backpack file.
+ * Hand-rolled Okapi BM25 over a corpus of text chunks. The index is a plain,
+ * JSON-serializable object so it can be persisted alongside whatever built it.
  * Everything here is pure and deterministic: the same corpus and query always
  * produce the same ranking.
  */

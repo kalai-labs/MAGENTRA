@@ -101,13 +101,13 @@ Core → frontend events: `session_started` (with the slash-command registry in
 `tool_call_finished`, `agent_spawned`, `agent_finished`, `permission_request`,
 `question_request`, `task_list_updated`, `file_edited` (unified diff),
 `background_notification`, `overdrive_changed`, `command_output`, `session_list`,
-`turn_finished`, `error`, `modes_updated`, `team_updated`, `backpack_progress`,
+`turn_finished`, `error`, `modes_updated`,
 `session_restored`, `model_catalog`, `cwd_changed`, `missions_updated`.
 
 Frontend → core requests: `user_message`, `permission_response`, `question_response`,
 `interrupt`, `set_overdrive`, `set_deletion_guard`, `slash_command`,
 `bang_command`, `resume_session`, `delete_session`, `stop_background`,
-`rename_session`, `archive_session`, `list_sessions`, `set_modes`, `reload_team`.
+`rename_session`, `archive_session`, `list_sessions`, `set_modes`.
 
 ## Core concepts
 
@@ -222,7 +222,7 @@ recent tail verbatim. Full JSONL transcript is never rewritten — compaction is
   `sessions/subagents/` (child-session transcripts), `settings.json`, `tasks/`
   (persisted task lists + background task output), `plans/`, `worktrees/`, `skills/`,
   `modes/` (workspace styles), `missions/` (+ `missions/out/` run reports and logs),
-  `team/` (crew files, `docs/`, `backpacks/`, `experience/`), `debug/` (repro
+  `debug/` (repro
   scripts), `tmp/`, `scheduled_tasks.json`, `ATLAS.md`, `LEXICON.md`.
 - `~/.magentra/`: global `settings.json`, global `skills/`.
 - Env vars override file config; project settings override global; zod-validated with
@@ -249,8 +249,8 @@ everything below except the team tools. Per-tool field tables and behavior live 
   (PreToolUse/PostToolUse/UserPromptSubmit/SessionStart/Stop), MCP stdio client
   (`mcp__<server>__<tool>`, wired in `engine/core/src/integrations/mcp.ts`),
   EnterWorktree/ExitWorktree, CronCreate/Delete/List, ScheduleWakeup, PushNotification.
-- **Phase 4**: Workflow (node:vm sandbox, journal + resume — shipped), plus the crew
-  tools CrewRun, BackpackSearch, GraphQuery (shipped). SendMessage and
+- **Phase 4**: Workflow (node:vm sandbox, journal + resume — shipped) and
+  GraphQuery (shipped). SendMessage and
   TeamCreate/TeamDelete remain unbuilt.
 
 ## Dependencies (one-line justifications)

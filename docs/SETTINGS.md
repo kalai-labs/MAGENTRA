@@ -106,8 +106,6 @@ load fine — the key is ignored.)
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `embeddings.model` | `"BAAI/bge-m3"` | Embedding model used to build crew backpacks (hosted, over the OpenAI-compatible `/embeddings` endpoint). |
-| `embeddings.enabled` | `true` | When `false`, no embedding calls are made; backpack BM25 search keeps working. |
 
 ## Reuse check
 
@@ -167,13 +165,12 @@ Everything the engine persists in a workspace lives under `.magentra/`:
 | --- | --- |
 | `settings.json` | Project settings (this document). |
 | `sessions/` | Append-only JSONL transcripts, one per session. |
-| `sessions/subagents/` | Transcripts of subagent/crew child sessions. |
+| `sessions/subagents/` | Transcripts of subagent child sessions. |
 | `tasks/` | Persisted task lists (per session) and background-task output. |
 | `worktrees/` | Git worktrees created by EnterWorktree. |
 | `skills/` | Workspace skills (global ones live in `~/.magentra/skills/`). |
 | `skills/` | Workspace skill files — disciplines and on-demand actions (`docs/SKILLS.md`). |
 | `missions/` | Mission files (`<id>.md`), `continuous.json` (running loops), and `out/<id>/` with the default `report.md` plus `log.jsonl` (one JSON line per run). |
-| `team/` | Crew member files (`<id>.md`), plus `docs/`, `backpacks/`, and `experience/` (`<id>.json` lessons, `<id>.record.jsonl` service records). |
 | `debug/` | The `/debug` repro oracle scripts (`repro.sh` / `repro.ps1`). |
 | `tmp/` | Engine scratch space. |
 | `logs/` | Desktop-app launch logs (secrets redacted, old logs pruned). |

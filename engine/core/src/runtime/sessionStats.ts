@@ -11,7 +11,7 @@ import { formatDuration } from "../config/pricing.js";
 import type { Settings } from "../config/settings.js";
 
 /**
- * Whole-session accounting, shared by a session and every subagent/crew child it
+ * Whole-session accounting, shared by a session and every subagent it
  * spawns (children hold a reference to the parent's instance, so a `/session`
  * summary — and the live meters — cover the entire tree, not just the
  * orchestrator's own calls).
@@ -135,7 +135,7 @@ export class SessionStats {
   }
 
   /**
-   * Bank one model invocation: its billed tokens (per model — a crew child may
+   * Bank one model invocation: its billed tokens (per model — a subagent may
    * run on a different one), its API time, and, for a conversational call, the
    * context size its prompt reveals.
    *

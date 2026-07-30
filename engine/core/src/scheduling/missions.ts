@@ -1,15 +1,15 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { MissionDraft } from "@magentra/protocol";
-import { scanFrontmatter } from "../crew/team.js";
+import { scanFrontmatter } from "../config/frontmatter.js";
 import { definePrompt, promptText } from "@magentra/protocol";
 
 /**
- * The MISSION system: research-lab missions a user sends their agent crew on.
+ * The MISSION system: standing investigations a user sends the agent on.
  * A mission is a small markdown file under .magentra/missions/ describing a
  * standing investigation — sweep the web for keywords, research a question,
- * compile a report. Missions are the research-lab layer over the crew:
- * versionable, shareable files that survive sessions. The engine runs them on
+ * compile a report. They are versionable, shareable files that survive
+ * sessions. The engine runs them on
  * demand (/mission run) or on a cron schedule (the optional `schedule` key),
  * turning each into a full orchestrator turn via {@link buildMissionPrompt}.
  */
@@ -149,7 +149,7 @@ function splitList(value: string | undefined): string[] {
  */
 export const MISSION_FILE_FORMAT_ID = definePrompt({
   id: "missions.file-format",
-  group: "8 · Crew & missions",
+  group: "8 · Missions",
   label: "Mission file format",
   channel: "side-call-user",
   where:
@@ -197,10 +197,10 @@ export function missionFormatExample(): string {
 /**
  * Builds the turn prompt that launches a mission — the full brief handed to the
  * orchestrator model. Structured for a weak orchestrator: header + charter,
- * an explicit per-keyword web sweep, a task-decomposition method (crew-aware
- * when a team is loaded), and a concrete deliverable instruction.
+ * an explicit per-keyword web sweep, a task-decomposition method, and a
+ * concrete deliverable instruction.
  */
-export function buildMissionPrompt(mission: Mission, opts: { hasTeam: boolean; previousReport?: boolean }): string {
+export function buildMissionPrompt(mission: Mission, opts: { previousReport?: boolean }): string {
   const sections: string[] = [];
 
   sections.push(`MISSION "${mission.name}" (id: ${mission.id})
@@ -225,14 +225,9 @@ ${lines}
 For EACH keyword: run WebSearch on it, then follow the most promising hits with WebFetch to read the actual pages. Capture the source URL with every claim you take from the web — a claim without its URL does not count as evidence.`);
   }
 
-  const method = opts.hasTeam
-    ? `## Method
+  sections.push(`## Method
 Decompose this mission into tasks with TaskCreate. Make each task self-contained: what to do, and its own acceptance check (how to tell it is done). Create a final verification task that states the expected end state of the whole mission.
-Assign every task an owner from the crew roster via TaskUpdate's owner field, and execute owned tasks with CrewRun. Verify each returned report against the task's acceptance check before marking the task completed; a failed check goes back to the owner with the evidence of what fell short. A task with no suitable specialist is owned by "orchestrator" — do it yourself directly.`
-    : `## Method
-Decompose this mission into tasks with TaskCreate. Make each task self-contained: what to do, and its own acceptance check (how to tell it is done). Create a final verification task that states the expected end state of the whole mission.
-There is no crew loaded — execute the tasks yourself, directly, one at a time, checking each against its acceptance check before completing it.`;
-  sections.push(method);
+Execute the tasks yourself, directly, one at a time, checking each against its acceptance check before completing it.`);
 
   const outPath = missionDeliverablePath(mission);
   sections.push(`## Deliverable

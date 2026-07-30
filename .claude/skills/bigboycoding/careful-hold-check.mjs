@@ -64,7 +64,7 @@ console.log("\nCAREFUL MODE — hold invariants\n");
     check(`held: ${name} refused`, await allow(engine, tool(name, "network")), false);
   }
   // Class "read" is NOT the allowlist: these spawn children or record state.
-  for (const name of ["Agent", "CrewRun", "TaskCreate", "AskUserQuestion"]) {
+  for (const name of ["Agent", "TaskCreate", "AskUserQuestion"]) {
     check(`held: ${name} refused (not a scout tool)`, await allow(engine, tool(name, "read")), false);
   }
   for (const name of SCOUT_TOOLS) {

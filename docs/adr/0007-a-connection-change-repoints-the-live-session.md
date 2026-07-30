@@ -21,7 +21,7 @@ engine running.
 - **The frame is the session's connection truth, and it is written into the
   environment.** The key does not go into the provider alone. It is set as the
   env var `resolveApiKeySource` reads, because three other consumers resolve the
-  connection independently — crew endpoints, the backpack embedder, and the host
+  connection independently — the chat provider and the host
   named in provider error messages. Rebuilding only the chat provider leaves
   those three pointed at the previous API, which is worse than not switching at
   all: one provider's key sent to another's URL.
@@ -38,7 +38,7 @@ engine running.
 
 - **`settings.baseUrl` is never handed to the Anthropic client.** For an
   Anthropic session that key names an OpenAI-compatible *embeddings* host (see
-  `launchBackpackBuilds`). One mapping — `endpointSpecFromSettings` — decides how
+  One mapping — `endpointSpecFromSettings` — decides how
   settings become an endpoint, and boot and the swap both go through it, so the
   two can never disagree about that.
 

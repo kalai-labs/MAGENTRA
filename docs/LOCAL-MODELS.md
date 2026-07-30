@@ -81,28 +81,6 @@ desktop app: set the Base URL to a local endpoint (leave the API key blank),
 choose a model, and set a Context size. Saving writes the same
 `.magentra/settings.json` the wizard does.
 
-## Semantic search (backpack) on local models
-
-Magentra's optional semantic search uses an embeddings model. The hosted default
-(`BAAI/bge-m3`) does not exist on a local server, so on a keyless local setup
-**embeddings are disabled automatically and search falls back to fast keyword
-(BM25) ranking** — which needs no model and works out of the box.
-
-To enable semantic search locally, pull an embedding model and name it in
-settings, e.g. for Ollama:
-
-```bash
-ollama pull nomic-embed-text
-```
-
-then in `.magentra/settings.json`:
-
-```json
-{
-  "embeddings": { "model": "nomic-embed-text", "enabled": true }
-}
-```
-
 ## Running the engine directly (CLI)
 
 The same works without the desktop app. In your workspace's

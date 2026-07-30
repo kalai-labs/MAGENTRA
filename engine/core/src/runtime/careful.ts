@@ -49,8 +49,8 @@ export const CAREFUL_MODE_ENABLED = false;
  * The only tools a Scout Phase may call. Everything absent from this set is
  * refused by the permission hold with a teaching message.
  *
- * Reading tools only, and deliberately not the delegating ones: Agent and
- * CrewRun are `permissionClass: "read"` yet spawn children that write, and
+ * Reading tools only, and deliberately not the delegating ones: Agent is
+ * `permissionClass: "read"` yet spawns children that write, and
  * Task* would populate the task list with work the user has not yet approved.
  * Children inherit the parent's PermissionEngine, so a spawned session would in
  * fact be held too — they are excluded because a scout is a reading session,
@@ -61,7 +61,6 @@ export const SCOUT_TOOLS: ReadonlySet<string> = new Set([
   "Grep",
   "Glob",
   "GraphQuery",
-  "BackpackSearch",
   "Skill",
 ]);
 
@@ -201,7 +200,7 @@ export function carefulScoutSection(userText: string): string {
   return `# CAREFUL MODE — scout phase (you have NOT been approved to act yet)
 The user has asked to approve your proposal before you touch anything. Right now you may look, and nothing else.
 
-- Available to you: Read, Grep, Glob, GraphQuery, BackpackSearch, Skill. Every other tool — writing, editing, running commands, spawning agents, recording tasks, network — is held by the permission engine and will refuse. That is not a malfunction and there is no way around it; it unlocks when the user approves.
+- Available to you: Read, Grep, Glob, GraphQuery, Skill. Every other tool — writing, editing, running commands, spawning agents, recording tasks, network — is held by the permission engine and will refuse. That is not a malfunction and there is no way around it; it unlocks when the user approves.
 - You are confirming the TARGET, not proving the PATH. What you write at the end is a proposal of DIRECTION, not a plan: no step list, no task breakdown, no promised diff. You do NOT need to know which files you will change. You will plan properly after the user approves, when every tool is back.
 - THE USER HAS ALREADY ANSWERED your questions, above. Those answers are requirements, and they also tell you where to look — let them narrow what you open rather than reading as if you had never asked.
 - DO NOT RE-READ. On a second or later proposal in this conversation, the map lists what you already read and what has not changed since. Trust it. Re-open a file only when you need a part you did not see, or when it is no longer visible above.

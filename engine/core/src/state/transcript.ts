@@ -91,7 +91,7 @@ export class Transcript {
   readonly file: string;
 
   constructor(stateDir: string, readonly sessionId: string, opts?: { child?: boolean }) {
-    // Subagent/crew children live in a subdirectory so the resumable session
+    // Subagent children live in a subdirectory so the resumable session
     // listing (a non-recursive readdir of sessions/) never shows them.
     const dir = opts?.child ? join(stateDir, "sessions", "subagents") : join(stateDir, "sessions");
     this.file = join(dir, `${sessionId}.jsonl`);

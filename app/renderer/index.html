@@ -67,9 +67,6 @@
         <span class="dock-glyph">✓</span><span class="dock-label">Tasks</span>
         <span id="dockMissionCount" class="dock-badge hidden">0</span>
       </button>
-      <button class="dock-btn hidden" id="teamBtn" title="Crew" aria-label="Crew">
-        <span class="dock-glyph team-glyph">◇</span><span class="dock-label">Crew</span>
-      </button>
       <button class="dock-btn hidden" id="navSkills" title="Skills" aria-label="Skills">
         <span class="dock-glyph">◈</span><span class="dock-label">Skills</span>
         <span id="dockSkillsCount" class="dock-badge hidden">0</span>
@@ -210,19 +207,6 @@
           <span id="hintAuto" class="hint-auto">asks before commands · deletions always ask</span>
         </div>
       </footer>
-    </section>
-
-    <section id="teamView" class="stage-view hidden">
-      <div class="team-head view-head">
-        <span class="team-title view-title">◪ CREW</span>
-        <span id="teamCount" class="team-sub view-sub">no agents</span>
-        <button id="draftTeamBtn">✨ DRAFT MY CREW</button>
-        <button id="teamHireBtn" title="Import a crew/team pack from a file or URL (unsigned — hire only from trusted sources)" aria-label="Hire from pack">⇩ HIRE PACK</button>
-        <button id="teamReloadBtn" class="view-tool" title="Reload crew files" aria-label="Reload crew files">⟳</button>
-        <button id="teamCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
-      </div>
-      <div id="teamRoster"></div>
-      <p class="team-hint">Agents live in <code>.magentra/team/*.md</code> — edit files directly, or drop documents onto a card: they are indexed into that member's <em>backpack</em>, distilled into a standing brief it carries on every run, and retrieved in full when a task touches them.</p>
     </section>
 
     <section id="skillsView" class="stage-view hidden">
@@ -409,9 +393,6 @@
         <div class="set-card" id="glossaryCard">
           <div class="set-card-title">GLOSSARY</div>
           <dl class="glossary">
-            <dt>crew</dt><dd>a bench of specialist agents saved as <code>.magentra/team/*.md</code> files; the orchestrator dispatches them on tasks. One agent is a <em>member</em>.</dd>
-            <dt>backpack</dt><dd>a member's document knowledge — drop files on its card and they are indexed for retrieval during that member's runs.</dd>
-            <dt>lessons</dt><dd>knowledge a member earns from verified work: candidates ride on probation and are promoted only after repeated confirmation.</dd>
             <dt>atlas</dt><dd>the whole-design map of this workspace at <code>.magentra/ATLAS.md</code>; <code>/atlas</code> builds or refreshes it.</dd>
             <dt>mission</dt><dd>a saved directive file under <code>.magentra/missions/</code> that the lab runs on demand, on a loop, or on a cron schedule (MISSIONS in the dock).</dd>
             <dt>task list</dt><dd>the live plan of record in the TASKS rail — the current work items, ending with a verification task.</dd>
@@ -441,7 +422,6 @@
     <div class="inspector-tabs" role="tablist" aria-label="Inspector views">
       <button class="inspector-tab active" data-inspector="tasks" role="tab" aria-selected="true">Tasks</button>
       <button class="inspector-tab" data-inspector="changes" role="tab" aria-selected="false">Changes <span id="inspectorChangesCount"></span></button>
-      <button class="inspector-tab" data-inspector="crew" role="tab" aria-selected="false">Crew <span id="inspectorCrewCount"></span></button>
       <button id="taskCollapse" class="inspector-collapse" title="Close inspector" aria-label="Close inspector">»</button>
     </div>
 
@@ -461,10 +441,6 @@
           <dt>Usage</dt><dd id="inspectorUsage">—</dd>
         </dl>
       </div>
-      <div class="inspector-context" id="crewMini">
-        <div class="inspector-section-head"><span>Crew <span id="crewMiniCount"></span></span></div>
-        <div id="crewMiniList" class="crew-mini-list"></div>
-      </div>
     </section>
 
     <section id="inspectorChanges" class="inspector-panel hidden" data-panel="changes">
@@ -475,11 +451,6 @@
       </div>
     </section>
 
-    <section id="inspectorCrew" class="inspector-panel hidden" data-panel="crew">
-      <div class="inspector-section-head"><span>Available specialists</span></div>
-      <div id="inspectorCrewList" class="inspector-list"></div>
-      <button id="openCrewViewBtn" class="inspector-wide-action">Manage crew</button>
-    </section>
   </aside>
   <button id="taskTab" class="inspector-peek hidden" title="Show inspector" aria-label="Show inspector">◫ <span id="taskTabCount">0/0</span></button>
 
@@ -540,7 +511,7 @@
         <dt>Esc</dt><dd>close topmost panel · interrupt the running turn</dd>
         <dt><span class="mod-key">Ctrl</span>+L</dt><dd>clear chat (fresh session)</dd>
         <dt><span class="mod-key">Ctrl</span>+K</dt><dd>focus the composer</dd>
-        <dt><span class="mod-key">Ctrl</span>+1…7</dt><dd>console · sessions · crew · missions · changes · settings · skills</dd>
+        <dt><span class="mod-key">Ctrl</span>+1…6</dt><dd>console · sessions · missions · changes · settings · skills</dd>
         <dt>Y / N</dt><dd>allow · deny in the approval dialog</dd>
         <dt>Tab</dt><dd>reach tool rows, diffs, and skill toggles; Enter/Space activates</dd>
         <dt>/</dt><dd>command palette in the composer</dd>
@@ -793,7 +764,6 @@
   <script src="modules/overdrive.js"></script>
   <script src="modules/tour.js"></script>
   <script src="modules/stream.js"></script>
-  <script src="modules/crew.js"></script>
   <script src="modules/setup.js"></script>
   <script src="modules/events.js"></script>
   <script src="modules/landing.js"></script>

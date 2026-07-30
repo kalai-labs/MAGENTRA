@@ -36,13 +36,13 @@ const TOUR_STEPS = [
   },
   {
     target: "#taskRail",
-    title: "Tasks, changes, crew",
-    copy: "The inspector shows the agent's live task list, every file edit as a reviewable diff (undo included), and your crew of specialists.",
+    title: "Tasks and changes",
+    copy: "The inspector shows the agent's live task list and every file edit as a reviewable diff, undo included.",
   },
   {
     target: "#sidebarSessionsList",
     title: "Sessions & missions",
-    copy: "Every conversation is saved — resume any of them from here. Missions are standing directives the lab runs on demand or on a schedule.",
+    copy: "Every conversation is saved — resume any of them from here. Missions are standing directives the agent runs on demand or on a schedule.",
   },
   {
     target: null, // centered wrap-up card

@@ -569,7 +569,6 @@ const MAP = [
       { id: "system.skills-block", cond: true },
       { id: "system.atlas-header", cond: true },
       { id: "system.standards-header", cond: true },
-      { id: "crew.orchestrator-section", cond: true },
       { id: "system.overdrive", cond: true },
     ],
   },
@@ -615,7 +614,7 @@ const MAP = [
   {
     title: "Background calls",
     sub: "never seen by the main agent",
-    note: "Separate inference calls the engine makes on its own — naming a session, compacting history, mapping the codebase, building a crew backpack. They run on settings.smallModel when one is configured.",
+    note: "Separate inference calls the engine makes on its own — naming a session, compacting history, mapping the codebase. They run on settings.smallModel when one is configured.",
     channels: ["side-call", "side-call-user"],
     grid: true,
   },

@@ -151,4 +151,4 @@ Legend: ✅ done per-pane · ⚠️ partial / by other means · ❌ missing (thi
 | Task list | ⚠️ bubbles + focused rail | ⚠️ unchanged | — |
 | Approvals / Overdrive | ✅ | ✅ | — |
 | Full-screen OVERDRIVE cinematic | 🚫 shared | 🚫 shared | — |
-| Global views (Settings/Skills/Crew/Changes) | 🚫 act on focused | 🚫 unchanged | — |
+| Global views (Settings/Skills/Changes) | 🚫 act on focused | 🚫 unchanged | — |

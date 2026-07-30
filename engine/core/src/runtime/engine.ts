@@ -22,9 +22,6 @@ import { HookRunner } from "../agent/hooks.js";
 import { BUILTIN_SKILL_FILES, loadModes, ModeEngine, parseSkillMd } from "../ma/modes.js";
 import { parseFrontmatter } from "../config/frontmatter.js";
 import { loadSkills } from "../agent/skills.js";
-import { loadAtlas } from "../knowledge/atlas.js";
-import { buildCrewPrompt, loadTeam, type CrewAgent } from "../crew/team.js";
-import { LAB_FILE_NAME, compileLab, findLabFile, parseLabFile, snapshotLab } from "../lab.js";
 import {
   buildMissionFile,
   buildMissionPrompt,
@@ -36,27 +33,16 @@ import {
   saveContinuousState,
   type Mission,
 } from "../scheduling/missions.js";
-import { buildBackpack } from "../knowledge/backpack/build.js";
-import { createEmbedder, type Embedder } from "../knowledge/backpack/embed.js";
-import { docKey, loadBackpackIndex, sha256 } from "../knowledge/backpack/index.js";
-import { loadExperience } from "../crew/experience.js";
-import { exportCrewPack, hireCrewPack } from "../crew/pack.js";
-import { formatLedgerEntry, loadLedger } from "../crew/ledger.js";
-import { exportTeamPack, hireTeamPack } from "../crew/teamPack.js";
 import {
   createProviderForEndpoint,
-  endpointKey,
   endpointSpecFromSettings,
-  resolveCrewEndpoint,
   type EndpointSpec,
-} from "../crew/providerFactory.js";
-import { readRecord, summarizeRecord, verifyRecordChain } from "../crew/serviceRecord.js";
+} from "../config/providerFactory.js";
 import { CAREFUL_MODE_ENABLED } from "./careful.js";
 import { Session } from "./session.js";
 import { SessionStats } from "./sessionStats.js";
 import {
   DEFAULT_API_KEY_ENV,
-  DEFAULT_OPENAI_BASE_URL,
   describeSettings,
   resolveApiKey,
   setSetting,
@@ -70,13 +56,12 @@ import type { ToolRegistry } from "../agent/tool.js";
 import { Transcript, stripSystemReminders } from "../state/transcript.js";
 
 /** When a just-persisted setting takes effect, relative to the running session. */
-type SettingTiming = "session" | "nextTurn" | "backpackRebuild" | "restart" | "clear";
+type SettingTiming = "session" | "nextTurn" | "restart" | "clear";
 
 /** The human-readable note reported for each timing after `/settings <key> <value>`. */
 const SETTING_TIMING_NOTE: Record<SettingTiming, string> = {
   session: "Applied to the current session.",
   nextTurn: "Takes effect on the next turn.",
-  backpackRebuild: "Takes effect on the next backpack rebuild.",
   restart: "Takes effect after restarting magentra.",
   clear: "Takes effect after /clear (new session).",
 };
@@ -88,10 +73,9 @@ const SETTING_TIMING_NOTE: Record<SettingTiming, string> = {
  * is the single source of truth — the old divorced live/restart Sets rotted
  * silently when a new key fell through to the wrong default.
  *   session         — pushed into the live session immediately (see applySettingLive)
- *   nextTurn        — the running session re-reads it at the start of the next turn
- *   backpackRebuild — picked up on the next backpack (re)build
- *   restart         — wired outside the Engine (hooks, MCP); only a restart reads it
- *   clear           — a fresh session via /clear picks it up
+ *   nextTurn — the running session re-reads it at the start of the next turn
+ *   restart  — wired outside the Engine (hooks, MCP); only a restart reads it
+ *   clear    — a fresh session via /clear picks it up
  */
 export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTiming> = {
   // The five connection keys are "session" because applySettingLive rebuilds the
@@ -119,7 +103,6 @@ export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTi
   mcpServers: "restart",
   worktree: "clear",
   search: "nextTurn",
-  embeddings: "backpackRebuild",
   modes: "clear",
   allowInsecureTls: "session",
   reuseCheck: "clear",
@@ -145,9 +128,9 @@ export interface EngineOptions {
   registry: ToolRegistry;
   skills?: Skill[];
   /**
-   * Constructs the Provider for a crew member's dedicated endpoint (team-file
-   * provider/baseurl/apikeyenv). Defaults to the real factory; injectable so
-   * tests hand out FakeProviders without touching the network.
+   * Constructs the Provider for a resolved endpoint. Defaults to the real
+   * factory; injectable so tests hand out FakeProviders without touching the
+   * network.
    */
   providerFactory?: (spec: EndpointSpec) => Provider;
 }
@@ -182,7 +165,7 @@ export class Engine {
     string,
     { resolve: (answers: Record<string, string[]>) => void; expected: number; answers: Record<string, string[]> }
   >();
-  /** Chain of ALL outstanding exclusive work (turns, /compact, /build-crew); idle() awaits it. */
+  /** Chain of ALL outstanding exclusive work (turns, /compact); idle() awaits it. */
   private turnPromise: Promise<void> = Promise.resolve();
   /** True while exclusive session work is in flight — set synchronously so a same-tick send is refused. */
   private busy = false;
@@ -201,16 +184,8 @@ export class Engine {
   /** Same memory, for the CAREFUL MODE modifier — a /clear-created session must
    *  inherit the user's armed choice, not silently drop back to unguarded. */
   private carefulEnabled = false;
-  private team: CrewAgent[];
-  private teamWarnings: string[];
-  /** Agent ids with a backpack build currently in flight (dedupes launches). */
-  private readonly backpackBuilding = new Set<string>();
-  /** The anthropic-without-embeddings-endpoint warning fired (once per engine). */
-  private embedderWarned = false;
   /** `!` commands received mid-turn, run in order once the engine goes idle. */
   private readonly pendingBangs: string[] = [];
-  /** One Provider per distinct crew endpoint, shared across spawns and sessions. */
-  private readonly crewProviders = new Map<string, Provider>();
 
   constructor(private readonly opts: EngineOptions) {
     this.scheduler = new CronScheduler({
@@ -227,9 +202,6 @@ export class Engine {
       },
     });
     this.hookRunner = new HookRunner({ cwd: this.opts.cwd, hooks: this.opts.settings.hooks });
-    const team = loadTeam(this.opts.cwd);
-    this.team = team.agents;
-    this.teamWarnings = team.warnings;
     this.session = this.createSession();
   }
 
@@ -275,9 +247,6 @@ export class Engine {
         }),
       hookRunner: this.hookRunner,
       modeEngine: this.modeEngine,
-      onTeamFilesChanged: () => this.reloadTeam(),
-      crewProviderResolver: (agent) => this.resolveCrewProvider(agent),
-      ...(this.team.length > 0 ? { team: this.team } : {}),
       ...(this.opts.skills ? { skills: this.opts.skills } : {}),
       ...(sessionId ? { sessionId } : {}),
       ...(initialMessages ? { initialMessages } : {}),
@@ -306,35 +275,12 @@ export class Engine {
     this.session.setCareful(armed);
   }
 
-  /**
-   * The crew-endpoint seam handed to every Session: resolves a member's
-   * declared endpoint against the environment and caches one Provider per
-   * distinct endpoint, so repeated CrewRun spawns reuse the same instance.
-   */
-  private resolveCrewProvider(agent: CrewAgent): { provider: Provider } | { warning: string } | undefined {
-    const resolution = resolveCrewEndpoint(agent, this.opts.settings);
-    if (resolution === undefined || "warning" in resolution) return resolution;
-    const key = endpointKey(resolution.spec);
-    let provider = this.crewProviders.get(key);
-    if (!provider) {
-      provider = (this.opts.providerFactory ?? createProviderForEndpoint)(resolution.spec);
-      this.crewProviders.set(key, provider);
-    }
-    return { provider };
-  }
-
   start(): void {
     this.announceSession();
     // Boot-only work below: /clear and /resume swap sessions via
-    // announceSession() alone, so they never re-launch builds, re-arm
-    // mission loops, or repeat the lab hint.
+    // announceSession() alone, so they never re-arm mission loops.
     this.publishModelCatalog();
-    this.launchBackpackBuilds();
     this.rearmContinuousMissions();
-    // A blueprint with no live crew is almost certainly waiting to be applied.
-    if (this.team.length === 0 && findLabFile(this.opts.cwd)) {
-      this.emit({ type: "command_output", text: `🧪 ${LAB_FILE_NAME} found — /lab load builds the whole lab from it.` });
-    }
   }
 
   /**
@@ -398,11 +344,7 @@ export class Engine {
     for (const warning of this.modeWarnings) {
       this.emit({ type: "error", message: warning, fatal: false });
     }
-    for (const warning of this.teamWarnings) {
-      this.emit({ type: "error", message: warning, fatal: false });
-    }
     this.emitModesUpdated();
-    this.emitTeamUpdated();
     if (this.hookRunner.has("SessionStart")) {
       const session = this.session;
       void this.hookRunner
@@ -419,7 +361,7 @@ export class Engine {
     }
   }
 
-  /** Resolves when ALL outstanding exclusive work (turn, /compact, /build-crew) completes. */
+  /** Resolves when ALL outstanding exclusive work (turn, /compact) completes. */
   idle(): Promise<void> {
     return this.turnPromise;
   }
@@ -435,7 +377,7 @@ export class Engine {
   }
 
   /**
-   * `/atlas` runs in the BACKGROUND, deliberately unlike /compact or /build-crew.
+   * `/atlas` runs in the BACKGROUND, deliberately unlike /compact.
    * Mapping a codebase is a long fan-out of read-only agents, and it touches
    * nothing the session owns — it never appends to the conversation, it only
    * reads files and writes ATLAS.md at the end. So there is no reason to hold
@@ -686,7 +628,7 @@ export class Engine {
 
   /**
    * The single seam for starting exclusive session work — a user turn, /compact,
-   * or /build-crew. Two invariants it exists to hold:
+   * or /compact. Two invariants it exists to hold:
    *   1. Exclusive work never overlaps a running turn: if the session is mid-turn
    *      (or another exclusive job is in flight) it refuses with a command_output
    *      and returns false, so callers do nothing further.
@@ -878,9 +820,6 @@ export class Engine {
       case "set_modes":
         this.applyModes(request.active);
         break;
-      case "reload_team":
-        this.reloadTeam();
-        break;
       case "generate_skill":
         this.startSkillGeneration(request.description, request.kind, {
           ...(request.model ? { model: request.model } : {}),
@@ -929,157 +868,6 @@ export class Engine {
     for (const text of messages) this.emit({ type: "command_output", text });
     this.emitModesUpdated();
     return messages;
-  }
-
-  private emitTeamUpdated(): void {
-    // Depth per card: spend, lessons, and verified work — the same sources
-    // /crew reads, so a card answers "what has this member done and cost".
-    const ledger = loadLedger(this.opts.cwd);
-    this.emit({
-      type: "team_updated",
-      agents: this.team.map((a) => {
-        const lessons = loadExperience(this.opts.cwd, a.id).lessons;
-        const spend = ledger.members[a.id];
-        return {
-          id: a.id,
-          name: a.name,
-          role: a.role,
-          ...(a.model !== undefined ? { model: a.model } : {}),
-          ...(a.provider !== undefined ? { provider: a.provider } : {}),
-          ...(a.baseUrl !== undefined ? { baseUrl: a.baseUrl } : {}),
-          ...(a.emoji !== undefined ? { emoji: a.emoji } : {}),
-          ...(a.color !== undefined ? { color: a.color } : {}),
-          docCount: a.docs.length,
-          docs: a.docs,
-          ready: this.isBackpackReady(a),
-          ...(spend ? { spend: formatLedgerEntry(spend) } : {}),
-          lessonsPromoted: lessons.filter((l) => l.status === "promoted").length,
-          lessonsCandidate: lessons.filter((l) => l.status === "candidate").length,
-          tasksCompleted: summarizeRecord(readRecord(this.opts.cwd, a.id)).tasksCompleted,
-        };
-      }),
-    });
-  }
-
-  /** Reload the crew from disk, update the live session roster, re-emit, and (re)launch backpack builds. */
-  private reloadTeam(): void {
-    const team = loadTeam(this.opts.cwd);
-    this.team = team.agents;
-    this.teamWarnings = team.warnings;
-    for (const warning of team.warnings) {
-      this.emit({ type: "error", message: warning, fatal: false });
-    }
-    this.session.setTeam(this.team);
-    this.emitTeamUpdated();
-    this.launchBackpackBuilds();
-  }
-
-  /** A backpack is ready when a distilled brief exists, or every doc reached at least the "noted" phase. */
-  private isBackpackReady(agent: CrewAgent): boolean {
-    if (agent.docs.length === 0) return false;
-    const index = loadBackpackIndex(this.opts.cwd, agent.id);
-    if (!index) return false;
-    if (index.brief !== undefined) return true;
-    return agent.docs.every((rel) => {
-      const meta = index.docs[docKey(rel)];
-      return meta !== undefined && (meta.phase === "noted" || meta.phase === "embedded");
-    });
-  }
-
-  /** True when an agent's on-disk backpack is missing, stale (changed doc), or incomplete. */
-  private needsBackpackBuild(agent: CrewAgent): boolean {
-    if (agent.docs.length === 0) return false;
-    const index = loadBackpackIndex(this.opts.cwd, agent.id);
-    if (!index) return true;
-    if (index.brief === undefined) return true;
-    for (const rel of agent.docs) {
-      let buf: Buffer;
-      try {
-        buf = readFileSync(join(this.opts.cwd, rel));
-      } catch {
-        continue; // a missing document cannot be (re)built — don't loop forever on it
-      }
-      if (index.docs[docKey(rel)]?.sha256 !== sha256(buf)) return true;
-    }
-    if (
-      this.opts.settings.embeddings.enabled &&
-      index.embeddings === undefined &&
-      index.embeddingsAttempted === undefined &&
-      index.chunks.length > 0
-    ) {
-      return true;
-    }
-    return false;
-  }
-
-  /** Launch one background backpack build per agent whose index is stale/incomplete. */
-  private launchBackpackBuilds(): void {
-    const settings = this.opts.settings;
-    const apiKey = resolveApiKey(settings);
-    // An Anthropic session without an explicit baseUrl has no OpenAI-compatible
-    // embeddings endpoint — building against the fallback default would send
-    // the Anthropic key to the wrong host. Warn once and build without
-    // embeddings (keyword retrieval still works).
-    const anthropicNoEndpoint = settings.provider === "anthropic" && settings.baseUrl === undefined;
-    if (anthropicNoEndpoint && settings.embeddings.enabled && !this.embedderWarned && this.team.some((a) => a.docs.length > 0)) {
-      this.embedderWarned = true;
-      this.emit({
-        type: "error",
-        message:
-          "Backpack embeddings are disabled: the Anthropic provider has no embeddings endpoint. Set a baseUrl for an OpenAI-compatible embeddings host, or /settings embeddings.enabled false to silence this.",
-        fatal: false,
-      });
-    }
-    const embedder: Embedder | undefined =
-      settings.embeddings.enabled && apiKey && !anthropicNoEndpoint
-        ? createEmbedder({
-            apiKey,
-            baseUrl: settings.baseUrl ?? DEFAULT_OPENAI_BASE_URL,
-            model: settings.embeddings.model,
-          })
-        : undefined;
-
-    for (const agent of this.team) {
-      if (this.backpackBuilding.has(agent.id)) continue;
-      if (!this.needsBackpackBuild(agent)) continue;
-      this.backpackBuilding.add(agent.id);
-      const session = this.session;
-      session.background.launch({
-        kind: "backpack",
-        description: `indexing backpack for ${agent.id}`,
-        start: (outputFile, onExit) => {
-          const ac = new AbortController();
-          void (async () => {
-            try {
-              const { warnings } = await buildBackpack({
-                cwd: this.opts.cwd,
-                agent,
-                runInference: (o) => session.services.runInference(o),
-                ...(embedder ? { embedder } : {}),
-                onProgress: (p) =>
-                  this.emit({
-                    type: "backpack_progress",
-                    agentId: p.agentId,
-                    phase: p.phase,
-                    done: p.done,
-                    total: p.total,
-                  }),
-                signal: ac.signal,
-              });
-              writeFileSync(outputFile, warnings.length ? warnings.join("\n") : `backpack ready for ${agent.id}`);
-              onExit(0);
-            } catch (err) {
-              writeFileSync(outputFile, `backpack build failed: ${(err as Error).message}`);
-              onExit(1);
-            } finally {
-              this.backpackBuilding.delete(agent.id);
-              this.emitTeamUpdated();
-            }
-          })();
-          return { stop: () => ac.abort() };
-        },
-      });
-    }
   }
 
   private handleSlash(command: string, args?: string, opts?: { unattended?: boolean }): void {
@@ -1232,20 +1020,8 @@ export class Engine {
       case "settings":
         this.handleSettings(args);
         break;
-      case "build-crew":
-        this.handleBuildCrew();
-        break;
-      case "crew":
-        this.handleCrew(args);
-        break;
       case "mission":
         this.handleMission(args, opts?.unattended === true);
-        break;
-      case "team":
-        this.handleTeam(args);
-        break;
-      case "lab":
-        this.handleLab(args);
         break;
       case "resume":
         if (args) this.resumeSession(args.trim());
@@ -1431,9 +1207,9 @@ export class Engine {
    *
    * The frame is the session's connection truth from here on. It is written into
    * the in-memory settings and into this process's environment, because those
-   * are what every OTHER consumer resolves from: crew endpoints, the backpack
-   * embedder, and the host named in provider error messages. Rebuilding only the
-   * chat provider would leave those three pointed at the previous API.
+   * are what every OTHER consumer resolves from, including the host named in
+   * provider error messages. Rebuilding only the chat provider would leave
+   * those pointed at the previous API.
    *
    * Nothing is persisted here. The app writes `.env` and
    * `.magentra/settings.json` before it sends this frame (that is what a later
@@ -1494,16 +1270,12 @@ export class Engine {
    * Rebuild the session provider from the current settings, in place. Shared by
    * the set_connection frame and by /settings on any connection key.
    *
-   * Cached crew providers are dropped: they were built from the previous key and
-   * endpoint, and `endpointKey` includes both, so keeping them would only hold
-   * stale credentials in memory.
    */
   private rebuildProvider(): void {
     const spec = endpointSpecFromSettings(this.opts.settings, resolveApiKey(this.opts.settings));
     const provider = (this.opts.providerFactory ?? createProviderForEndpoint)(spec);
     // opts.provider is what publishModelCatalog and every new session read.
     this.opts.provider = provider;
-    this.crewProviders.clear();
     this.session.setProvider(provider);
   }
 
@@ -1528,351 +1300,6 @@ export class Engine {
     delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
   }
 
-  /**
-   * `/build-crew`: bootstraps a workspace crew of specialist agents when none exists.
-   * If a crew (or partial/malformed crew) is already on disk, it reports the state and
-   * does nothing — safe and idempotent. Otherwise it dispatches a general-purpose
-   * subagent (via the same spawnAgent seam the auto-atlas uses) to design 2-4
-   * specialists and Write their team files, then validates the result through the real
-   * {@link loadTeam} loader and reports per-file success/failure.
-   */
-  private handleBuildCrew(): void {
-    const existing = loadTeam(this.opts.cwd);
-    if (existing.agents.length > 0 || existing.warnings.length > 0) {
-      this.emit({ type: "command_output", text: renderCrewState(existing.agents, existing.warnings) });
-      return;
-    }
-
-    const toolNames = this.opts.registry.list().map((t) => t.name);
-    const atlas = loadAtlas(this.opts.cwd);
-    // Route through the exclusive seam: the crew's child session must not run
-    // concurrently with a live parent turn, and a second /build-crew while one is
-    // in flight is refused (busy) — no overwrite, no double-spawn.
-    this.startExclusive("/build-crew", async () => {
-      this.emit({ type: "command_output", text: "🧭 designing a crew for this workspace…" });
-      try {
-        await this.session.spawnAgent({
-          agentType: "general-purpose",
-          description: "design the workspace crew",
-          prompt: buildCrewPrompt({ toolNames, ...(atlas ? { atlas } : {}) }),
-        });
-      } catch (err) {
-        this.emit({
-          type: "command_output",
-          text: `🧭 crew build failed (${(err as Error).message}) — run /build-crew again to retry.`,
-        });
-        return;
-      }
-      // Validate through the real loader — never a second parser.
-      const built = loadTeam(this.opts.cwd);
-      this.emit({ type: "command_output", text: renderCrewBuildResult(built.agents, built.warnings) });
-      if (built.agents.length > 0) this.reloadTeam(); // hot-load the new roster live
-    });
-  }
-
-  /**
-   * `/crew` — the hirable-crew command family: roster with readiness + CV
-   * summary, pack export (fails closed on secrets), pack hire (validated,
-   * lessons re-earn trust), and per-member record/lessons inspection.
-   */
-  private handleCrew(args?: string): void {
-    const say = (text: string) => this.emit({ type: "command_output", text });
-    const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
-    const sub = tokens[0]?.toLowerCase();
-
-    if (sub === undefined) {
-      if (this.team.length === 0) {
-        say("No crew yet. /build-crew designs one; /crew hire <path> imports a member from a crew pack.");
-        return;
-      }
-      const ledger = loadLedger(this.opts.cwd);
-      const lines = this.team.map((a) => {
-        const record = summarizeRecord(readRecord(this.opts.cwd, a.id));
-        const lessons = loadExperience(this.opts.cwd, a.id).lessons;
-        const promoted = lessons.filter((l) => l.status === "promoted").length;
-        const candidates = lessons.filter((l) => l.status === "candidate").length;
-        const cv =
-          record.tasksCompleted > 0 || record.hires > 0
-            ? ` — ${record.tasksCompleted} task${record.tasksCompleted === 1 ? "" : "s"} done across ${record.projects.length} project${record.projects.length === 1 ? "" : "s"}${record.chainOk ? "" : " ⚠ record chain broken"}`
-            : " — no work history yet";
-        const spend = ledger.members[a.id];
-        const cost = spend ? ` · ${formatLedgerEntry(spend)}` : "";
-        return `${a.emoji ?? "•"} ${a.id} — ${a.name}, ${a.role} [${this.isBackpackReady(a) ? "ready" : "building"}] ${promoted} promoted / ${candidates} candidate lesson${candidates === 1 ? "" : "s"}${cv}${cost}`;
-      });
-      say(lines.join("\n"));
-      return;
-    }
-
-    if (sub === "export") {
-      const id = tokens[1];
-      if (!id) {
-        say("Usage: /crew export <id> [dest-dir] [redact]");
-        return;
-      }
-      const redact = tokens.includes("redact");
-      const dest = tokens.slice(2).find((t) => t !== "redact");
-      const result = exportCrewPack(this.opts.cwd, id, { ...(dest ? { dest } : {}), redact });
-      if (!result.ok) {
-        const findings = (result.findings ?? []).map((f) => `  - ${f.kind} in ${f.where}: ${f.sample}`);
-        say(
-          [
-            ...result.warnings,
-            ...(findings.length > 0
-              ? [`Export refused — secret-shaped content found:`, ...findings, `Fix the sources, or re-run as: /crew export ${id} redact`]
-              : []),
-          ].join("\n") || "Export failed.",
-        );
-        return;
-      }
-      say([`📦 exported ${id} → ${result.path}`, ...result.warnings].join("\n"));
-      return;
-    }
-
-    if (sub === "hire") {
-      const asIdx = tokens.findIndex((t, i) => i >= 2 && t.toLowerCase() === "as");
-      const path = (asIdx === -1 ? tokens.slice(1) : tokens.slice(1, asIdx)).join(" ");
-      const asId = asIdx !== -1 ? tokens[asIdx + 1] : undefined;
-      if (!path) {
-        say("Usage: /crew hire <path-to-crewpack> [as <new-id>]");
-        return;
-      }
-      const result = hireCrewPack(this.opts.cwd, path, {
-        ...(asId !== undefined ? { asId } : {}),
-        validToolNames: this.opts.registry.list().map((t) => t.name),
-        currentEmbeddingModel: this.opts.settings.embeddings.model,
-      });
-      if (!result.ok) {
-        say(["Hire refused:", ...result.errors.map((e) => `  - ${e}`)].join("\n"));
-        return;
-      }
-      const cv = result.summary;
-      say(
-        [
-          `🤝 hired ${result.name} as "${result.id}"`,
-          `   backpack: ${result.backpackState} · lessons: ${result.lessonsImported?.promoted ?? 0} promoted, ${result.lessonsImported?.candidates ?? 0} on probation`,
-          ...(cv ? [`   CV: ${cv.tasksCompleted} tasks across ${cv.projects.length} project(s), chain ${cv.chainOk ? "verified ✓" : "BROKEN ⚠"}`] : []),
-          ...result.warnings.map((w) => `   ⚠ ${w}`),
-        ].join("\n"),
-      );
-      this.reloadTeam();
-      return;
-    }
-
-    if (sub === "record" || sub === "lessons") {
-      const id = tokens[1];
-      if (!id) {
-        say(`Usage: /crew ${sub} <id>`);
-        return;
-      }
-      if (sub === "record") {
-        const entries = readRecord(this.opts.cwd, id);
-        if (entries.length === 0) {
-          say(`No service record for "${id}" yet — it starts with the first verified task.`);
-          return;
-        }
-        const chain = verifyRecordChain(entries);
-        const lines = entries.map((e) => {
-          const bits = Object.entries(e.data)
-            .filter(([k]) => k !== "project")
-            .map(([k, v]) => `${k}=${String(v)}`)
-            .join(" ");
-          return `#${e.seq} ${e.ts.slice(0, 10)} [${String(e.data.project ?? "?")}] ${e.event}${bits ? ` ${bits}` : ""}`;
-        });
-        say([...lines, chain.ok ? "chain verified ✓" : `chain BROKEN at entry ${chain.brokenAt} ⚠`].join("\n"));
-      } else {
-        const lessons = loadExperience(this.opts.cwd, id).lessons;
-        if (lessons.length === 0) {
-          say(`No lessons for "${id}" yet — they are captured when its completed tasks are verified.`);
-          return;
-        }
-        const fmt = (l: (typeof lessons)[number]) =>
-          `  [${l.scope}] ${l.text} (+${l.confirmations}/-${l.contradictions}${l.origin === "imported" ? ", imported" : ""})`;
-        const group = (status: string) => lessons.filter((l) => l.status === status).map(fmt);
-        say(
-          [
-            `promoted (${group("promoted").length}):`,
-            ...group("promoted"),
-            `on probation (${group("candidate").length}):`,
-            ...group("candidate"),
-            ...(group("retired").length > 0 ? [`retired (${group("retired").length}):`, ...group("retired")] : []),
-          ].join("\n"),
-        );
-      }
-      return;
-    }
-
-    say("Usage: /crew | /crew export <id> [dest|redact] | /crew hire <path> [as <id>] | /crew record <id> | /crew lessons <id>");
-  }
-
-  /**
-   * `/lab` — the one-file lab blueprint (magentricks.md). `load [path]`
-   * compiles the blueprint into the canonical team/mission files (upsert
-   * only — nothing it doesn't mention is touched) and hot-reloads the
-   * roster; `save [path]` snapshots the current lab back into the blueprint;
-   * bare `/lab` reports the state.
-   */
-  private handleLab(args?: string): void {
-    const say = (text: string) => this.emit({ type: "command_output", text });
-    const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
-    const sub = tokens[0]?.toLowerCase();
-    const defaultPath = findLabFile(this.opts.cwd) ?? join(this.opts.cwd, LAB_FILE_NAME);
-
-    if (sub === undefined) {
-      const { missions } = loadMissions(this.opts.cwd);
-      say(
-        [
-          existsSync(defaultPath) ? `Blueprint: ${defaultPath}` : `No ${LAB_FILE_NAME} yet — /lab save writes one from the current lab.`,
-          `Live lab: ${this.team.length} member${this.team.length === 1 ? "" : "s"}, ${missions.length} mission${missions.length === 1 ? "" : "s"}.`,
-          "Usage: /lab load [path] (blueprint → lab) | /lab save [path] (lab → blueprint)",
-        ].join("\n"),
-      );
-      return;
-    }
-
-    if (sub === "load") {
-      const path = tokens[1] ?? defaultPath;
-      let text: string;
-      try {
-        text = readFileSync(path, "utf8");
-      } catch {
-        say(`Cannot read ${path}. Write a blueprint there (or /lab save to generate one from the current lab).`);
-        return;
-      }
-      const result = compileLab(this.opts.cwd, parseLabFile(text));
-      const applied = result.created.length + result.updated.length;
-      if (applied > 0) this.reloadTeam(); // missions are re-read per command; the roster hot-loads here
-      say(
-        [
-          `🧪 lab loaded from ${path}:`,
-          ...(result.created.length ? [`  created: ${result.created.join(", ")}`] : []),
-          ...(result.updated.length ? [`  updated: ${result.updated.join(", ")}`] : []),
-          ...(result.unchanged.length ? [`  unchanged: ${result.unchanged.join(", ")}`] : []),
-          ...result.warnings.map((w) => `  ✗ ${w}`),
-          ...(applied === 0 && result.warnings.length === 0 ? ["  (everything already matched)"] : []),
-        ].join("\n"),
-      );
-      return;
-    }
-
-    if (sub === "save") {
-      const path = tokens[1] ?? defaultPath;
-      const snapshot = snapshotLab(this.opts.cwd);
-      if (snapshot.members === 0 && snapshot.missions === 0) {
-        say("Nothing to save — no crew or missions yet. /build-crew designs a crew; /mission new <id> scaffolds a mission.");
-        return;
-      }
-      writeFileSync(path, snapshot.text);
-      say(`🧪 lab saved → ${path} (${snapshot.members} member${snapshot.members === 1 ? "" : "s"}, ${snapshot.missions} mission${snapshot.missions === 1 ? "" : "s"}). Edit it and /lab load applies it.`);
-      return;
-    }
-
-    say("Usage: /lab | /lab load [path] | /lab save [path]");
-  }
-
-  /**
-   * `/team` — whole-crew distribution: `export [name] [redact]` packs every
-   * member plus the mission files into one shareable `<name>.teampack.json`
-   * (fails closed on secret-shaped content); `hire <path>` imports one —
-   * members validated like standalone crew packs (collisions skipped, the
-   * rest still hire), missions added without overwriting.
-   */
-  private handleTeam(args?: string): void {
-    const say = (text: string) => this.emit({ type: "command_output", text });
-    const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
-    const sub = tokens[0]?.toLowerCase();
-
-    if (sub === "export") {
-      const redact = tokens.includes("redact");
-      const name = tokens.slice(1).find((t) => t !== "redact");
-      const result = exportTeamPack(this.opts.cwd, {
-        ...(name ? { name } : {}),
-        redact,
-        modelHint: this.opts.settings.model,
-      });
-      if (!result.ok) {
-        const findings = (result.findings ?? []).map(
-          (f) => `  - ${f.kind} in ${f.member ? `[${f.member}] ` : ""}${f.where}: ${f.sample}`,
-        );
-        say(
-          [
-            ...result.warnings,
-            ...(findings.length > 0
-              ? ["Export refused — secret-shaped content found:", ...findings, `Fix the sources, or re-run as: /team export${name ? ` ${name}` : ""} redact`]
-              : []),
-          ].join("\n") || "Export failed.",
-        );
-        return;
-      }
-      say([`📦 team exported → ${result.path}`, ...result.warnings].join("\n"));
-      return;
-    }
-
-    if (sub === "hire") {
-      const path = tokens.slice(1).join(" ");
-      if (!path) {
-        say("Usage: /team hire <path-or-https-url>");
-        return;
-      }
-      const hireFrom = (file: string): void => {
-        const result = hireTeamPack(this.opts.cwd, file, {
-          validToolNames: this.opts.registry.list().map((t) => t.name),
-          currentEmbeddingModel: this.opts.settings.embeddings.model,
-        });
-        if (!result.ok && result.hired.length === 0 && result.errors.length > 0) {
-          say(["Team hire refused:", ...result.errors.map((e) => `  - ${e}`)].join("\n"));
-          return;
-        }
-        const lines = [
-          `🤝 team${result.teamName ? ` "${result.teamName}"` : ""} hired — ${result.hired.length} member${result.hired.length === 1 ? "" : "s"}, ${result.missionsAdded.length} mission${result.missionsAdded.length === 1 ? "" : "s"} added`,
-          ...result.hired.map((h) => `   ✓ ${h.id}${h.name ? ` — ${h.name}` : ""}${h.warnings.length ? ` (${h.warnings.join("; ")})` : ""}`),
-          ...result.skipped.map((s) => `   ✗ ${s.id} skipped: ${s.reasons.join("; ")}`),
-          ...result.missionsAdded.map((m) => `   🧪 mission ${m}`),
-          ...result.warnings.map((w) => `   ⚠ ${w}`),
-        ];
-        say(lines.join("\n"));
-        if (result.hired.length > 0) this.reloadTeam();
-      };
-
-      // Community loop: hire straight from a URL — download to a temp file,
-      // then run the exact same validation path a local pack takes.
-      if (/^https?:\/\//i.test(path)) {
-        this.startExclusive("hiring a team pack", async () => {
-          say(`⬇ downloading team pack from ${path} …`);
-          let buf: Buffer;
-          try {
-            const res = await fetch(path, { signal: AbortSignal.timeout(30_000), redirect: "follow" });
-            if (!res.ok) {
-              say(`Download failed: HTTP ${res.status} ${res.statusText}`);
-              return;
-            }
-            buf = Buffer.from(await res.arrayBuffer());
-          } catch (err) {
-            say(`Download failed: ${(err as Error).message}`);
-            return;
-          }
-          if (buf.length > 100 * 1024 * 1024) {
-            say("Download refused: team pack exceeds 100MB.");
-            return;
-          }
-          const tmp = join(this.opts.cwd, STATE_DIR_NAME, "tmp", `hire-${Date.now()}.teampack.json`);
-          mkdirSync(dirname(tmp), { recursive: true });
-          writeFileSync(tmp, buf);
-          try {
-            hireFrom(tmp);
-          } finally {
-            rmSync(tmp, { force: true });
-          }
-        });
-        return;
-      }
-
-      hireFrom(path);
-      return;
-    }
-
-    say("Usage: /team export [name] [redact] | /team hire <path-or-https-url>");
-  }
-
   /** The cron prompt a scheduled mission fires with (re-reads the file at fire time). */
   private static missionRunPrompt(id: string): string {
     return `/mission run ${id}`;
@@ -1894,7 +1321,7 @@ export class Engine {
       const savedBudget = settings.maxTokensPerTurn;
       this.emit({
         type: "command_output",
-        text: `🧪 mission "${mission.name}" launched${unattended ? " (unattended)" : ""} — the lab is on it.`,
+        text: `🧪 mission "${mission.name}" launched${unattended ? " (unattended)" : ""}.`,
       });
       let ok = false;
       try {
@@ -1912,7 +1339,7 @@ export class Engine {
         }
         if (mission.budgetTokens !== undefined) settings.maxTokensPerTurn = mission.budgetTokens;
         const previousReport = existsSync(join(cwd, missionDeliverablePath(mission)));
-        await session.runTurn(buildMissionPrompt(mission, { hasTeam: this.team.length > 0, previousReport }));
+        await session.runTurn(buildMissionPrompt(mission, { previousReport }));
         ok = true;
       } finally {
         session.setUnattended(false);
@@ -2000,7 +1427,7 @@ export class Engine {
   }
 
   /**
-   * `/mission` — the research-lab command family: list the standing missions,
+   * `/mission` — the mission command family: list the standing missions,
    * scaffold a new one, launch one now (a full orchestrator turn built by
    * {@link buildMissionPrompt}), loop one continuously (start/stop), or put
    * one on its cron schedule (durable — survives restarts, fires when idle).
@@ -2264,7 +1691,7 @@ export class Engine {
       say(`Could not write mission "${id}": ${(err as Error).message}`);
       return;
     }
-    say(`🧪 mission "${id}" created → ${path}. Launch it with the RUN button in the Lab, or /mission run ${id}.`);
+    say(`🧪 mission "${id}" created → ${path}. Launch it with the RUN button in Missions, or /mission run ${id}.`);
     this.emitMissionsUpdated();
   }
 
@@ -2580,24 +2007,6 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
   { cmd: "/session", args: "", desc: "this session's usage: tokens per model, API/wall time, code churn, context now" },
   { cmd: "/tasks", args: "", desc: "show the task list" },
   { cmd: "/skills", args: "[on|off <id>]", desc: "list skills (disciplines + on-demand), or toggle a discipline (session only)" },
-  { cmd: "/lab", args: "[load|save]", desc: "one-file lab blueprint (magentricks.md): load applies it, save snapshots it" },
-  { cmd: "/build-crew", args: "", desc: "design a crew of specialist agents (if none exists yet)" },
-  {
-    cmd: "/crew", args: "[export|hire|record|lessons]", desc: "roster + readiness + service-record summary per member",
-    help: [
-      "  /crew export <id> [dest|redact]  pack a member into <id>.crewpack.json (fails closed on secrets)",
-      "  /crew hire <path> [as <id>]      import a crew pack; knowledge arrives ready, lessons re-earn trust",
-      "  /crew record <id>   a member's verified work history (hash-chained)",
-      "  /crew lessons <id>  a member's experience ledger by status",
-    ],
-  },
-  {
-    cmd: "/team", args: "export|hire", desc: "whole-crew pack: export or hire everything at once",
-    help: [
-      "  /team export [name] [redact]  pack the WHOLE crew + missions into <name>.teampack.json",
-      "  /team hire <path|url>         import a team pack (members validated, missions added)",
-    ],
-  },
   {
     cmd: "/mission", args: "[new|run|start|stop|schedule|unschedule <id>]", desc: "list the lab's missions (.magentra/missions/*.md)",
     help: [
@@ -2628,7 +2037,7 @@ function renderHelp(): string {
     "  ! <command>      run a shell command; output lands in the conversation",
     "  Esc              interrupt the current turn",
     "",
-    "Glossary (crew, backpack, atlas, mission, skills, deletion guard): SETTINGS → GLOSSARY in the app.",
+    "Glossary (atlas, mission, skills, deletion guard): SETTINGS → GLOSSARY in the app.",
   );
   return lines.join("\n");
 }
@@ -2721,57 +2130,6 @@ export function reconstructForDisplay(messages: Msg[]): RestoredMessage[] {
     });
   }
   return out;
-}
-
-/** One roster line per loaded specialist: `✓ 🔍 reviewer — Argus, Code Reviewer [model @ endpoint]`. */
-function crewRosterLines(agents: CrewAgent[]): string[] {
-  return agents.map((a) => {
-    const emoji = a.emoji ? `${a.emoji} ` : "";
-    const endpoint = a.provider === "anthropic" ? "anthropic" : a.baseUrl;
-    const runsOn = a.model || endpoint ? ` [${[a.model, endpoint].filter(Boolean).join(" @ ")}]` : "";
-    return `  ✓ ${emoji}${a.id} — ${a.name}, ${a.role}${runsOn}`;
-  });
-}
-
-/** One line per skipped file, carrying the loader's own `team/<file>: <reason>` warning. */
-function crewWarningLines(warnings: string[]): string[] {
-  return warnings.map((w) => `  ✗ ${w}`);
-}
-
-/** Report for `/build-crew` when a crew (valid, or only malformed files) is already present. */
-function renderCrewState(agents: CrewAgent[], warnings: string[]): string {
-  const lines: string[] = [];
-  if (agents.length > 0) {
-    lines.push(`crew already exists — ${agents.length} specialist${agents.length === 1 ? "" : "s"}:`);
-    lines.push(...crewRosterLines(agents));
-  }
-  if (warnings.length > 0) {
-    lines.push(
-      agents.length > 0
-        ? `${warnings.length} team file${warnings.length === 1 ? "" : "s"} could not be loaded:`
-        : `no valid crew, but ${warnings.length} team file${warnings.length === 1 ? "" : "s"} could not be loaded:`,
-    );
-    lines.push(...crewWarningLines(warnings));
-    lines.push("Fix the file(s) above (or remove them and run /build-crew) to design a fresh crew.");
-  }
-  return lines.join("\n");
-}
-
-/** Report after the `/build-crew` subagent returns: per-file ✓/✗ validated through loadTeam. */
-function renderCrewBuildResult(agents: CrewAgent[], warnings: string[]): string {
-  if (agents.length === 0) {
-    const detail = warnings.length > 0 ? `\n${crewWarningLines(warnings).join("\n")}` : "";
-    return `🧭 crew build failed — no valid team files were produced.${detail}\nRun /build-crew again to retry.`;
-  }
-  const lines = [
-    `🧭 crew ready — ${agents.length} specialist${agents.length === 1 ? "" : "s"} written to .magentra/team/:`,
-    ...crewRosterLines(agents),
-  ];
-  if (warnings.length > 0) {
-    lines.push(`${warnings.length} file${warnings.length === 1 ? "" : "s"} skipped (malformed):`);
-    lines.push(...crewWarningLines(warnings));
-  }
-  return lines.join("\n");
 }
 
 // ── Create-skill wizard: authoring prompt ────────────────────────────────────

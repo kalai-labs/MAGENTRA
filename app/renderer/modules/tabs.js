@@ -2,7 +2,7 @@
 //
 // The renderer was built single-tab: ~55 module-level variables across the other
 // modules hold one workspace's live console (its transcript DOM, turn flags,
-// session, permissions, model, changes, crew, missions…). To run several
+// session, permissions, model, changes, missions…). To run several
 // workspaces at once WITHOUT rewriting every handler, we bundle exactly those
 // variables into a TabState and, when the focused tab changes, swap the bundle
 // out and the target tab's bundle in. Handlers keep reading/writing the same
@@ -79,10 +79,6 @@ const TAB_ACCESSORS = [
   ["modesReceived", () => modesReceived, (v) => { modesReceived = v; }, () => false],
   ["pendingModesNote", () => pendingModesNote, (v) => { pendingModesNote = v; }, () => false],
   ["actionSkills", () => actionSkills, (v) => { actionSkills = v; }, () => []],
-  // crew
-  ["teamAgents", () => teamAgents, (v) => { teamAgents = v; }, () => []],
-  ["teamProgress", () => teamProgress, (v) => { teamProgress = v; }, () => new Map()],
-  ["teamSeenFirstUpdate", () => teamSeenFirstUpdate, (v) => { teamSeenFirstUpdate = v; }, () => false],
   // changes review
   ["sessionChanges", () => sessionChanges, (v) => { sessionChanges = v; }, () => new Map()],
   ["activeReviewPath", () => activeReviewPath, (v) => { activeReviewPath = v; }, () => null],
@@ -384,7 +380,7 @@ function buildPaneComposer(tabId) {
 }
 
 /** A small popup anchored above `anchorEl` with the pane's overflow actions.
- * Reuses the shared ctx-menu machinery (crew.js). */
+ * Reuses the shared ctx-menu machinery (util.js). */
 function openPaneOverflowMenu(anchorEl, items) {
   if (typeof closeCtxMenu === "function") closeCtxMenu();
   const menuEl = document.createElement("div");
@@ -923,7 +919,7 @@ function toggleTabCareful(tabId) {
 
 /** Right-click a pane's header: move it to the big (bottom) slot in the 3-pane
  * layout, and pick this workspace's OWN skills (checkboxes) without leaving the
- * pane you're in. Reuses the shared ctx-menu machinery (crew.js). */
+ * pane you're in. Reuses the shared ctx-menu machinery (util.js). */
 function openPaneCtxMenu(e, tabId) {
   e.preventDefault();
   if (typeof closeCtxMenu === "function") closeCtxMenu();

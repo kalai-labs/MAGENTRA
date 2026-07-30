@@ -9,7 +9,6 @@ import {
 } from "@magentra/protocol";
 import type { ToolResultPart } from "@magentra/providers";
 import type { Settings } from "../config/settings.js";
-import type { CrewAgent } from "../crew/team.js";
 
 export type PermissionClass = "read" | "mutate" | "execute" | "network" | "interact";
 
@@ -36,14 +35,6 @@ export interface SpawnAgentOptions {
    * author a full document, which the explore role explicitly discourages.
    */
   roleOverride?: string;
-  /** CREW: run this child as a crew specialist (role prompt, model, tool subset, identity stamps). */
-  crew?: {
-    agent: CrewAgent;
-    /** Phase B seam: a per-run backpack brief injected into the specialist's prompt. Always undefined in Phase A. */
-    backpackBrief?: string;
-    /** Experience: the member's learned-lessons prompt section for this run (assembled by CrewExperience.beginRun). */
-    lessons?: string;
-  };
 }
 
 /** Services a tool can reach through its context. */
@@ -76,12 +67,6 @@ export interface SessionServices {
   worktreeBaseRef?: "fresh" | "head";
   /** Phase 3b: skills loaded from .magentra/skills, consumed by the Skill tool. */
   skills?: { name: string; description: string; body: string }[];
-  /** CREW Phase A: the loaded team roster (main session only), consumed by the CrewRun tool. */
-  team?: CrewAgent[];
-  /** CREW Phase B: this session's own crew agent id when it is a specialist; lets BackpackSearch default to self. */
-  crewSelf?: string;
-  /** Hirable crew: the per-workspace experience manager (main session only), consumed by CrewRun. */
-  experience?: import("../crew/experience.js").CrewExperience;
 }
 
 export interface ToolContext {
@@ -144,7 +129,7 @@ export interface ToolDefinition<I = unknown> {
    * Search/lookup terms this call is evidence of — the reuse gate records them
    * so that a later Write of a new file whose name overlaps a searched term is
    * allowed through (the agent already looked). Only search-shaped tools
-   * (Grep/Glob/GraphQuery/BackpackSearch) implement it; it never affects the
+   * (Grep/Glob/GraphQuery) implement it; it never affects the
    * call's own execution.
    */
   searchTerms?: (input: I) => string[];
@@ -276,7 +261,7 @@ export interface TaskStoreApi {
 
 export interface BackgroundTaskInfo {
   id: string;
-  kind: "bash" | "monitor" | "agent" | "backpack";
+  kind: "bash" | "monitor" | "agent";
   description: string;
   outputFile: string;
   status: "running" | "completed" | "failed" | "stopped";

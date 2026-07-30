@@ -218,11 +218,11 @@ function rememberWorkspace(config, workspace) {
  *  llama.cpp box on the home network, …), which needs no API key and deserves
  *  a longer connect budget than a hosted API.
  *
- *  MIRRORED in engine/core/src/crew/providerFactory.ts, which decides the same
+ *  MIRRORED in engine/core/src/config/providerFactory.ts, which decides the same
  *  question on the engine side (may this connection boot without a key?). The
  *  app cannot import from the engine — it ships as a bundled child process — so
  *  the two must be changed together; app/tests/connection.test.js and
- *  .claude/skills/bigboycoding/api-key-resolution-check.mjs assert they agree.
+ *  .claude/skills/bigboycoding/connection-check.mjs assert they agree.
  *  When they disagreed, the app accepted a keyless LAN endpoint and the engine
  *  then refused to start on it. */
 function isLocalBaseUrl(baseUrl) {

@@ -136,10 +136,6 @@ export type CoreEvent =
       agentId?: string;
       /** The spawning `description` for the subagent this call belongs to. Only set on subagent events. */
       agentDesc?: string;
-      /** Crew agent's color, stamped when the subagent is a crew specialist. */
-      agentColor?: string;
-      /** Crew agent's emoji, stamped when the subagent is a crew specialist. */
-      agentEmoji?: string;
     }
   | {
       type: "tool_call_finished";
@@ -153,10 +149,6 @@ export type CoreEvent =
       agentId?: string;
       /** The spawning `description` for the subagent this call belongs to. Only set on subagent events. */
       agentDesc?: string;
-      /** Crew agent's color, stamped when the subagent is a crew specialist. */
-      agentColor?: string;
-      /** Crew agent's emoji, stamped when the subagent is a crew specialist. */
-      agentEmoji?: string;
     }
   | {
       /** A subagent was just dispatched — emitted before its first model turn so
@@ -167,10 +159,6 @@ export type CoreEvent =
       agentDesc: string;
       /** True when the agent runs detached as a background task. */
       background?: boolean;
-      /** Crew agent's color, stamped when the subagent is a crew specialist. */
-      agentColor?: string;
-      /** Crew agent's emoji, stamped when the subagent is a crew specialist. */
-      agentEmoji?: string;
     }
   | { type: "agent_finished"; agentId: string; isError?: boolean }
   | {
@@ -291,41 +279,6 @@ export type CoreEvent =
         recommended?: boolean;
         conflicts?: string[];
       }[];
-    }
-  | {
-      type: "team_updated";
-      agents: {
-        id: string;
-        name: string;
-        role: string;
-        model?: string;
-        /** Dedicated-endpoint members: the API kind ("anthropic" | "openai-compatible") and base URL they run on. */
-        provider?: string;
-        baseUrl?: string;
-        emoji?: string;
-        color?: string;
-        docCount: number;
-        /** Workspace-relative paths of the member's backpack documents. */
-        docs: string[];
-        /** Backpack readiness: a distilled brief exists, or every doc reached at least the "noted" phase. */
-        ready: boolean;
-        /** Ledger spend summary ("12.3k in / 4.1k out over 7 runs"); absent when the member has never run. */
-        spend?: string;
-        /** Durable lessons earned through verified work. */
-        lessonsPromoted: number;
-        /** Lessons still on probation. */
-        lessonsCandidate: number;
-        /** Verified completed tasks from the hash-chained service record. */
-        tasksCompleted: number;
-      }[];
-    }
-  | {
-      type: "backpack_progress";
-      agentId: string;
-      /** One of "raw" | "noted" | "embedded" | "brief". */
-      phase: string;
-      done: number;
-      total: number;
     }
   /**
    * The full prior conversation, render-ready, sent once on /resume so the
@@ -473,7 +426,6 @@ export type FrontendRequest =
   | { type: "archive_session"; id: string }
   | { type: "list_sessions" }
   | { type: "set_modes"; active: string[] }
-  | { type: "reload_team" }
   /**
    * Ask the engine to author a skill .md from a plain-language description
    * (LLM-generated, parser-validated). `model` overrides which model authors it

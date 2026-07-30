@@ -9,7 +9,6 @@
 const STAGE_VIEWS = {
   console: consoleViewEl,
   sessions: sessionsViewEl,
-  team: teamViewEl,
   lab: labViewEl,
   changes: changesViewEl,
   settings: settingsViewEl,
@@ -24,7 +23,6 @@ function showView(name) {
   document.body.dataset.view = name;
   navConsoleEl.classList.toggle("active", name === "console");
   navSessionsEl.classList.toggle("active", name === "sessions");
-  teamBtnEl.classList.toggle("active", name === "team");
   navLabEl.classList.toggle("active", name === "lab");
   navChangesEl.classList.toggle("active", name === "changes");
   navSettingsEl.classList.toggle("active", name === "settings");
@@ -33,6 +31,12 @@ function showView(name) {
   // accelerators, so it re-reads the real factor each time it becomes visible.
   if (name === "settings") adoptExternalZoom();
 }
+
+// Dock navigation. setup.js adds its own navSettings listener for the
+// connection card; both fire, and the order between them does not matter.
+navConsoleEl.addEventListener("click", () => showView("console"));
+navSettingsEl.addEventListener("click", () => showView("settings"));
+settingsCloseBtnEl.addEventListener("click", () => showView("console"));
 
 // ---------------------------------------------------------------------------
 // In-app menu bar. The OS title bar (and its native menu) is gone — the top
@@ -67,11 +71,10 @@ const MENU_BAR = [
     items: [
       { label: "Console", hint: "Ctrl+1", action: () => showView("console") },
       { label: "Sessions", hint: "Ctrl+2", needsWorkspace: true, action: () => { showView("sessions"); requestSessionList(); } },
-      { label: "Crew", hint: "Ctrl+3", needsWorkspace: true, action: () => showView("team") },
-      { label: "Missions", hint: "Ctrl+4", needsWorkspace: true, action: () => showView("lab") },
-      { label: "Changes", hint: "Ctrl+5", needsWorkspace: true, action: () => showView("changes") },
-      { label: "Settings", hint: "Ctrl+6", action: () => { showView("settings"); void loadConnectionCard(); } },
-      { label: "Skills", hint: "Ctrl+7", needsWorkspace: true, action: () => showView("skills") },
+      { label: "Missions", hint: "Ctrl+3", needsWorkspace: true, action: () => showView("lab") },
+      { label: "Changes", hint: "Ctrl+4", needsWorkspace: true, action: () => showView("changes") },
+      { label: "Settings", hint: "Ctrl+5", action: () => { showView("settings"); void loadConnectionCard(); } },
+      { label: "Skills", hint: "Ctrl+6", needsWorkspace: true, action: () => showView("skills") },
       { sep: true },
       { label: "Toggle Full Screen", hint: "F11", action: () => toggleFullScreen() },
     ],

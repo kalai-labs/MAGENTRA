@@ -36,12 +36,6 @@ contextBridge.exposeInMainWorld("magentra", {
   restartEngine: () => ipcRenderer.send("test:restart"),
   respondPermission: (id, decision, message) =>
     ipcRenderer.send("test:permission", message ? { id, decision, message } : { id, decision }),
-  addDoc: (agentId, filePath) => api("addDoc", agentId, filePath),
-  createTeamTemplate: () => api("createTeamTemplate"),
-  reloadTeam: () => ipcRenderer.send("test:reloadTeam"),
-  removeAgent: (agentId) => api("removeAgent", agentId),
-  editAgent: (agentId) => api("editAgent", agentId),
-  pickDoc: (agentId) => api("pickDoc", agentId),
   writeEnv: (payload) => api("writeEnv", payload),
   testConnection: (payload) => api("testConnection", payload),
   detectLocalServers: () => api("detectLocalServers"),

@@ -576,7 +576,7 @@ window.addEventListener("keydown", (e) => {
     resolvePanePermission(focusedTabId, "deny");
     return;
   }
-  // A non-console stage view (Settings, Skills, Changes, Crew, Sessions,
+  // A non-console stage view (Settings, Skills, Changes, Sessions,
   // Missions) is a full-surface "popup tab" — Esc returns to the console, the
   // same as its ✕. Sits below the modals above and above the stop-work
   // fallback, so Esc closes an open view before it interrupts a running turn.
@@ -638,7 +638,7 @@ const isMod = (e) => (IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
 const isTypingTarget = (t) =>
   t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT");
 
-const VIEW_KEYS = { 1: "console", 2: "sessions", 3: "team", 4: "lab", 5: "changes", 6: "settings", 7: "skills" };
+const VIEW_KEYS = { 1: "console", 2: "sessions", 3: "lab", 4: "changes", 5: "settings", 6: "skills" };
 
 function toggleShortcutSheet() {
   if (!shortcutSheetEl) return;

@@ -527,10 +527,6 @@ function onToolCallStarted(event) {
 
   if (event.subagent) {
     const card = getOrCreateAgentCard(event);
-    if (event.agentColor) {
-      card.cardEl.classList.add("crewed");
-      card.cardEl.style.borderTopColor = event.agentColor;
-    }
     const row = createToolRow(event.tool, event.description, event.input);
     withAutoScroll(() => {
       card.bodyEl.appendChild(row.rowEl);
@@ -1110,9 +1106,6 @@ function handleEngineEvent(event) {
     case "modes_updated":
       onModesUpdated(event);
       break;
-    case "team_updated":
-      onTeamUpdated(event);
-      break;
     case "skills_updated":
       actionSkills = Array.isArray(event.skills) ? event.skills : [];
       renderSkillsSurfaces();
@@ -1125,9 +1118,6 @@ function handleEngineEvent(event) {
       break;
     case "missions_updated":
       onMissionsUpdated(event);
-      break;
-    case "backpack_progress":
-      onBackpackProgress(event);
       break;
     case "file_edited":
       onFileEdited(event);

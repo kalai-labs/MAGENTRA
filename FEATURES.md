@@ -78,8 +78,8 @@ on a clean turn.
 A modifier of OVERDRIVE, not a third stance (composer pill, `/careful on`, or the `careful` field on `set_overdrive`). OVERDRIVE removes approval from every *action*; CAREFUL adds it back at exactly one *decision* — which direction to take. What the user approves is a **proposal of direction, never a plan** (ADR 0003), and the approved proposal then becomes the brief the work runs on. Armed independently of OVERDRIVE and inert while it is off; session-scoped, and `/resume` restores it from the transcript meta.
 
 - [ ] **Predictor** — one main-model inference before the turn decides whether the request needs several tool-driven steps, or one irreversible step. Size and reversibility only, never clarity. Strictly fail-open: a thrown call or malformed verdict runs the turn normally. Root attended sessions only — never children, never unattended missions. `llm`
-- [ ] **Scout hold** — while held, only `Read`/`Grep`/`Glob`/`GraphQuery`/`BackpackSearch`/`Skill` run; everything else is refused with a teaching message. Beats allow rules, `allow_always` grants, session allows, and OVERDRIVE itself; a user's own deny rule still refuses first. Children inherit it via the shared `PermissionEngine`. Lifted unconditionally by the turn's `finally`. `pure`
-- [x] **Deterministic code retrieval** — `knowledge/retrieval.ts`, a general capability with no model in it: declaration-bounded chunking, Okapi BM25 over the code (the repo's own implementation, previously pointed only at crew documents), personalized PageRank whose teleport is weighted by the lexical scores, and Reciprocal Rank Fusion over the two. Prose ranked separately from code; a wider extension set than the import graph, so stylesheets and templates are findable. Persisted as `.magentra/codeindex.json` with the same incremental mtime+size contract as `graph.json`. See ADR 0006. `pure` + `fs`
+- [ ] **Scout hold** — while held, only `Read`/`Grep`/`Glob`/`GraphQuery`/`Skill` run; everything else is refused with a teaching message. Beats allow rules, `allow_always` grants, session allows, and OVERDRIVE itself; a user's own deny rule still refuses first. Children inherit it via the shared `PermissionEngine`. Lifted unconditionally by the turn's `finally`. `pure`
+- [x] **Deterministic code retrieval** — `knowledge/retrieval.ts`, a general capability with no model in it: declaration-bounded chunking, Okapi BM25 over the code (`knowledge/bm25.ts`), personalized PageRank whose teleport is weighted by the lexical scores, and Reciprocal Rank Fusion over the two. Prose ranked separately from code; a wider extension set than the import graph, so stylesheets and templates are findable. Persisted as `.magentra/codeindex.json` with the same incremental mtime+size contract as `graph.json`. See ADR 0006. `pure` + `fs`
 - [x] **Query building** — the request is prose and code is identifiers, so the query is built rather than taken: identifier-aware tokenization on both sides, verbatim quoted/backticked/path-shaped terms, caller-supplied intent (CAREFUL passes the user's answers), and bounded pseudo-relevance feedback when the request's own vocabulary is thin, with a symbol-similarity fallback when BM25 returns nothing. `pure`
 - [x] **The directory spread scales with the repository** — the per-directory allowance stops one neighbourhood filling the whole result, but a project with only one neighbourhood has nothing to spread: a fixed cap hid everything past the fourth file, so in a flat repository (a script, a game, anything without a `src/` tree) the fifth-best match was unreachable however well it scored. The allowance is now the path budget over the directories actually in play, never tighter than the floor. `pure`
 - [x] **Honest retrieval confidence** — the result carries `weak` and a topical-coverage count, and the rendering leads with "treat this as a starting guess" when the request's words are not words the codebase uses. Coverage counts terms common enough to be a topic (df ≥ 3), because BM25 rewards rarity and a word occurring twice would otherwise produce a confident ranking of the wrong file. `pure`
@@ -133,20 +133,6 @@ A modifier of OVERDRIVE, not a third stance (composer pill, `/careful on`, or th
 - [ ] **Symbol index** — updates incrementally as files change, with no explicit rebuild. `fs`
 - [ ] **Reuse check** — a new file whose symbols resemble existing code (with no related search/read this session) gets a reminder listing the closest matches — firm wording for near-duplicates — alongside the allowed Write; it never refuses. `fs` + `llm`
 - [ ] **STANDARDS.md** — re-read every turn (not cached at boot), capped at 16 KB with a truncation notice. `fs` + `llm`
-- [ ] **Backpack RAG — build** — the ladder `raw → noted → embedded → brief` runs, caches on file signature, and reports progress. `llm` (embeddings are a real API call)
-- [ ] **Backpack RAG — retrieval** — `BackpackSearch` returns the chunk that actually answers the question, and the agent uses it. `llm`
-
-## Crew
-
-- [ ] **Roster** — specialists load from `.magentra/team/*.md`; the roster hot-reloads when a file changes. `fs`
-- [ ] **Parallel dispatch** — two `CrewRun` calls in one turn genuinely overlap, and results are attributed to the right specialist. `llm`
-- [ ] **Per-member endpoints** — a member's declared model/baseUrl/apiKeyEnv is used; the key resolves from the env var **or** the settings file (declaring `apikeyenv:` must never resolve *worse* than omitting it). `pure` + `llm`
-- [ ] **Endpoint fail-soft** — an unresolvable endpoint warns and falls back to the session provider, never a silent 404 on the wrong host. `pure`
-- [ ] **Cost ledger** — per-member usage accumulates (`+=`, never overwrite) across runs. `fs`
-- [ ] **Experience / lessons** — a lesson is promoted at exactly 3 confirmations across ≥2 distinct tasks with 0 contradictions. Not before, not after. `fs`
-- [ ] **Service record** — the audit log is hash-chained; each entry's `prev` is the previous entry's hash. Verify the chain independently, do not trust the writer. `fs`
-- [ ] **Crew pack export/import** — a clean member round-trips byte-identically; a member carrying a secret **fails closed** (no file written at all) unless `redact` is passed. `fs`
-- [ ] **`/build-crew`** — designs a crew from the project when none exists. `llm`
 
 ## Discipline skills
 
@@ -201,8 +187,7 @@ A modifier of OVERDRIVE, not a third stance (composer pill, `/careful on`, or th
 - [x] **The saved key is resolved by PROVIDER, not by file order** — a workspace switched between an OpenAI-compatible endpoint and Anthropic keeps both key lines in its `.env`. Reveal, "keep the saved key", TEST and the setup check took the first `*_API_KEY` line, which could be the other provider's — sent to this provider's URL and reported as a bad key. `hasCredentials` now asks the question the engine asks, in the engine's order, and across both settings layers. `fs`
 - [x] **Local means the LAN, in both halves** — the app and the engine each decide whether a keyless connection is complete, in separate code (the app cannot import the engine). The engine's copy only knew loopback, so a keyless `http://192.168.1.20:1234/v1` that the app accepted made the engine refuse to boot with "No API key found". Both now cover loopback, `.local`, the private ranges and `host.docker.internal`, and the parity is asserted. `pure`
 - [x] **"OpenAI-compatible" is negotiated, not assumed** — optional body fields are where servers differ. A 400 naming `stream_options`, `max_tokens` (OpenAI's reasoning models want `max_completion_tokens`) or `num_ctx` drops or renames that field and re-sends once, then remembers for the life of the provider. Cost of an unfamiliar API: one extra request, once — instead of a dead turn. Nothing that changes what the model can do is negotiable (`tools` is never dropped). `net`
-- [x] **State files are written atomically** — `settings.json`, `graph.json`, `symbols.json`, `codeindex.json`, backpack indexes, `profiles.json` and `config.json` all go through one write-then-rename helper per half of the app. `settings.json` has two writers (the engine and the app), and the app SIGKILLs the engine 3s into a shutdown: a truncated file reads as "no settings", which presents as a workspace that lost its endpoint and key. `fs`
-- [ ] **Crew designer** — the CREW view lists agents and can add a doc to a backpack by drag-and-drop. `ui`
+- [x] **State files are written atomically** — `settings.json`, `graph.json`, `symbols.json`, `codeindex.json`, `profiles.json` and `config.json` all go through one write-then-rename helper per half of the app. `settings.json` has two writers (the engine and the app), and the app SIGKILLs the engine 3s into a shutdown: a truncated file reads as "no settings", which presents as a workspace that lost its endpoint and key. `fs`
 - [ ] **Changes panel** — accumulated `file_edited` diffs render. `ui`
 - [x] **Streaming Markdown** — each block renders as soon as it is complete, not when the turn ends; a half-streamed fence, table or formula stays plain text until its closing delimiter arrives, so nothing flickers through a partial parse. `ui`
 - [x] **Markdown before a question card** — a `question_request` closes the streaming message first, so the text above an approval card is rendered while the user is deciding on it rather than after. `ui`
@@ -223,7 +208,7 @@ A modifier of OVERDRIVE, not a third stance (composer pill, `/careful on`, or th
    it needs no key. Context/usage accounting, permissions, modes, settings, and
    the protocol are all in this bucket.
 2. **`fs` next.** A temp workspace and assertions on what lands on disk covers
-   most of knowledge/, crew/, and state/.
+   most of knowledge/ and state/.
 3. **`proc`.** Bash, ripgrep, git worktrees, MCP.
 4. **`llm` last, and keep them few.** They are the only tests that prove the
    product *works*, so do not skip them — but one solid test per feature beats

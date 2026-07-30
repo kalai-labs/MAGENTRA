@@ -519,10 +519,6 @@ function getOrCreateAgentCard(event) {
 
   const cardEl = document.createElement("div");
   cardEl.className = "agent-card running";
-  if (event.agentColor) {
-    cardEl.classList.add("crewed");
-    cardEl.style.borderTopColor = event.agentColor;
-  }
 
   const head = document.createElement("div");
   head.className = "agent-head";

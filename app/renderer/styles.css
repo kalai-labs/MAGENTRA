@@ -1111,15 +1111,8 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .inspector-context dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 12px; font-size: max(10px, 0.71rem); }
 .inspector-context dt { color: var(--text-faint); }
 .inspector-context dd { overflow: hidden; color: var(--text-dim); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
-.crew-mini-list { display: flex; flex-direction: column; gap: 2px; }
-.crew-mini-row { width: 100%; display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; color: var(--text-dim); text-align: left; font-size: max(10px, 0.74rem); }
-.crew-mini-row:hover { color: var(--text); background: var(--hover); }
-.crew-mini-glyph { color: var(--accent); }
-.crew-mini-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.crew-mini-status { color: var(--text-faint); font-size: max(10px, 0.66rem); }
-.crew-mini-status.ready { color: var(--green); }
 .inspector-list { display: flex; flex-direction: column; gap: 5px; }
-.inspector-change-row, .inspector-crew-card { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); text-align: left; }
+.inspector-change-row { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); text-align: left; }
 .inspector-change-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; }
 .inspector-change-row:hover { border-color: var(--border-hi); background: var(--hover); }
 .inspector-file-name { min-width: 0; overflow: hidden; color: var(--text); font: 0.74rem var(--mono); text-overflow: ellipsis; white-space: nowrap; }
@@ -1129,11 +1122,6 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .inspector-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
 .inspector-actions button, .inspector-wide-action { min-height: 32px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); color: var(--text); font-size: max(10px, 0.73rem); }
 .inspector-actions button:not(:disabled):hover, .inspector-wide-action:hover { border-color: var(--accent); color: var(--accent-hi); }
-.inspector-crew-card { color: var(--text-dim); }
-.inspector-crew-head { display: flex; align-items: center; gap: 7px; color: var(--text); font-size: max(10px, 0.76rem); }
-.inspector-crew-status { margin-left: auto; color: var(--text-faint); font-size: max(10px, 0.66rem); }
-.inspector-crew-status.ready { color: var(--green); }
-.inspector-crew-role { margin-top: 4px; color: var(--text-faint); font-size: max(10px, 0.69rem); }
 .inspector-wide-action { width: 100%; margin-top: 10px; }
 .inspector-peek { position: fixed; top: 61px; right: 10px; z-index: 7; padding: 6px 10px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--panel); color: var(--accent-hi); font-size: max(10px, 0.72rem); font-variant-numeric: tabular-nums; box-shadow: var(--shadow); }
 
@@ -1161,10 +1149,10 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 #reviewDoneBtn:hover { background: var(--accent-hi); color: var(--accent-ink); }
 
 /* -----------------------------------------------------------------------
-   Full views: changes, sessions, missions, crew, settings
+   Full views: changes, sessions, missions, settings
    ----------------------------------------------------------------------- */
 
-#changesList, #sessionsList, #labList, #teamRoster { width: 100%; max-width: 1120px; margin: 0 auto; padding: 14px 26px 36px; overflow-y: auto; }
+#changesList, #sessionsList, #labList { width: 100%; max-width: 1120px; margin: 0 auto; padding: 14px 26px 36px; overflow-y: auto; }
 .changes-empty, .sessions-empty, .team-hint { width: 100%; max-width: 1120px; margin: 0 auto; padding: 18px 26px; color: var(--text-faint); font-size: max(10px, 0.8rem); }
 .change-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .change-counts { margin-left: auto; font: 0.72rem var(--mono); }
@@ -1197,28 +1185,6 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .lab-btn:not(:disabled):hover { border-color: var(--accent); }
 .lab-btn.danger, .lab-warning { color: var(--red); }
 
-#draftTeamBtn { margin-left: auto; }
-#draftTeamBtn, #teamHireBtn, #teamReloadBtn { padding: 6px 10px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); color: var(--text); font-size: max(10px, 0.72rem); }
-#draftTeamBtn:hover, #teamHireBtn:hover, #teamReloadBtn:hover { border-color: var(--accent); color: var(--accent-hi); }
-#teamRoster { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px; }
-.crew-card, .crew-add { width: 300px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
-.crew-card { padding: 12px; }
-.crew-card:hover, .crew-card.dropping { border-color: var(--accent); }
-.crew-card-head { display: flex; align-items: baseline; gap: 7px; }
-.crew-emoji { font-size: 1.1rem; }
-.crew-name { color: var(--text-hi); font-weight: 650; }
-.crew-model { margin-left: auto; color: var(--text-faint); font-size: max(10px, 0.66rem); }
-.crew-menu-btn { border: 0; background: none; color: var(--text-dim); }
-.crew-role { margin-top: 3px; color: var(--accent-hi); font-size: max(10px, 0.75rem); }
-.crew-stats, .crew-blurb, .pack-effect, .pack-drop-hint, .crew-path { margin-top: 5px; color: var(--text-faint); font-size: max(10px, 0.69rem); line-height: 1.45; }
-.crew-pack { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border); }
-.pack-title { color: var(--text-dim); font-size: max(10px, 0.67rem); font-weight: 700; }
-.pack-ready { color: var(--green); } .pack-building { color: var(--amber); }
-.pack-docs { margin: 5px 0 0; padding-left: 17px; color: var(--text-dim); font-size: max(10px, 0.7rem); }
-.pack-bar { height: 3px; margin-top: 6px; overflow: hidden; border-radius: 999px; background: var(--border); }
-.pack-bar-fill { height: 100%; background: var(--accent); }
-.crew-add { min-height: 140px; display: flex; align-items: center; justify-content: center; border-style: dashed; color: var(--text-faint); }
-.crew-add:hover { color: var(--accent-hi); border-color: var(--accent); }
 
 /* Skills view: discipline + action cards, badges, ? explainers, toggles. */
 #skillsView { overflow-y: auto; }
@@ -1488,7 +1454,7 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
   #transcript { padding: 16px 14px 10px; }
   #composer { padding: 0 14px 12px; }
   .composer-toolbar { flex-wrap: wrap; }
-  .view-head, #changesList, #sessionsList, #labList, #teamRoster, .set-grid { padding-left: 14px; padding-right: 14px; }
+  .view-head, #changesList, #sessionsList, #labList, .set-grid { padding-left: 14px; padding-right: 14px; }
   .session-row, .lab-row { grid-template-columns: 1fr; }
   .session-actions, .lab-actions { flex-direction: row; }
 }
