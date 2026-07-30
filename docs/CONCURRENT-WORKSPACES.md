@@ -1,8 +1,8 @@
 # Magentra — Concurrent Workspace Tabs
 
-Status: **designed 2026-07-23, implementation in progress.** This is the alignment
-artifact for the multi-workspace feature; it is the "grill-with-docs" output of the
-design session that agreed it. Kept current as the phase lands (see ROADMAP.md Phase W).
+Status: **shipped.** This is the alignment artifact for the multi-workspace
+feature; it is the "grill-with-docs" output of the design session that agreed it,
+kept current with the implementation.
 
 Today Magentra runs exactly one workspace: opening a new one, or leaving the current
 one, kills the running engine and drops any in-flight work. This document defines the
