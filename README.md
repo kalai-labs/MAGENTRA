@@ -77,9 +77,23 @@ so the artifact needs no `node_modules` at runtime.
 
 ## Versioning
 
-Four-part (`MAJOR.MINOR.PATCH.BUILD`), driven by commit messages. You do not pick
-the number — the commits do. See [VERSIONING.md](VERSIONING.md). Commit with:
+Semantic (`MAJOR.MINOR.PATCH`), driven by commit messages. You do not pick the
+number — the commits do. A break is MAJOR, a `feat` is MINOR, everything else is
+PATCH. See [VERSIONING.md](VERSIONING.md). Commit with:
 
 ```sh
 npm run commit
 ```
+
+## Updates
+
+The app checks GitHub for a newer release on launch and every six hours, and puts
+what it finds at the bottom of the inspector. Nothing downloads until you click.
+
+Windows installer and Linux AppImage builds update themselves in one click. The
+macOS `.dmg`, the Windows portable `.exe`, the `.deb` and the `.tar.gz` cannot
+replace a running unsigned app, so one click downloads the right file for your
+install instead. See
+[docs/adr/0009-updates-have-two-tiers.md](docs/adr/0009-updates-have-two-tiers.md).
+
+Set `"updateCheck": false` in the app's `config.json` to turn the check off.

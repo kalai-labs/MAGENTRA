@@ -2,8 +2,11 @@
 
 This file lists every release. The version tool writes it. Do not edit it by hand.
 
-The version has four parts: MAJOR.MINOR.PATCH.BUILD. To learn what the parts
-mean, read [VERSIONING.md](VERSIONING.md).
+The version has three parts: MAJOR.MINOR.PATCH. To learn what the parts mean,
+read [VERSIONING.md](VERSIONING.md).
+
+Releases up to 0.13.0.0 carry a fourth BUILD part. See
+[docs/adr/0008-the-version-is-semver.md](docs/adr/0008-the-version-is-semver.md).
 
 <!-- new-release -->
 

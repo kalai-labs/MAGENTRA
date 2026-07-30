@@ -12,7 +12,7 @@ const config = {
   types: {
     feat: { bump: 'minor', section: 'Features' },
     fix: { bump: 'patch', section: 'Bug fixes' },
-    docs: { bump: 'build', section: 'Documentation' },
+    docs: { bump: 'patch', section: 'Documentation' },
   },
   scopes: [],
   subjectMaxLength: 72,

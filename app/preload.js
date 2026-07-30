@@ -44,6 +44,18 @@ contextBridge.exposeInMainWorld("magentra", {
   getWebSearch: () => ipcRenderer.invoke("settings:getWebSearch"),
   setWebSearch: (enabled) => ipcRenderer.invoke("settings:setWebSearch", enabled),
   getAppInfo: () => ipcRenderer.invoke("app:info"),
+  // Updates. `updateState` is the state now, for a window that just opened;
+  // `onUpdateState` is every change after that. An update is app-global, so the
+  // main process broadcasts to every window rather than to one tab.
+  updateState: () => ipcRenderer.invoke("updates:state"),
+  checkUpdates: () => ipcRenderer.invoke("updates:check"),
+  startUpdate: () => ipcRenderer.invoke("updates:start"),
+  installUpdate: () => ipcRenderer.invoke("updates:install"),
+  onUpdateState: (cb) => {
+    const listener = (_evt, state) => cb(state);
+    ipcRenderer.on("updates:changed", listener);
+    return () => ipcRenderer.removeListener("updates:changed", listener);
+  },
   openExternal: (url) => ipcRenderer.send("app:openExternal", url),
   openLogs: () => ipcRenderer.invoke("app:openLogs"),
   connectionInfo: () => ipcRenderer.invoke("connection:info"),

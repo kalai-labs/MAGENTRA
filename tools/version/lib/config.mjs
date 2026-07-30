@@ -19,8 +19,6 @@ import * as version from './version.mjs';
  * @typedef {object} Target
  * @property {string} path A path from the repository root. A `*` is allowed in
  *   place of one directory name. For an example, see VERSIONING.md.
- * @property {'full' | 'semver'} format `full` writes `0.1.0.0`.
- *   `semver` writes `0.1.0`, for tools that accept only three parts.
  */
 
 /**
@@ -102,11 +100,8 @@ function validateConfig(config, path) {
   }
 
   for (const target of config.targets) {
-    if (target.format !== 'full' && target.format !== 'semver') {
-      fail(
-        `target "${target.path}" has format "${target.format}". ` +
-          `Use "full" or "semver".`,
-      );
+    if (typeof target.path !== 'string' || target.path.length === 0) {
+      fail('every entry of "targets" must have a "path".');
     }
   }
 }

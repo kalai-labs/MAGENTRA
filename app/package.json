@@ -1,6 +1,6 @@
 {
   "name": "magentra-app",
-  "version": "0.13.0.0",
+  "version": "0.13.0",
   "private": true,
   "description": "MAGENTRA desktop app — the Electron shell around the agent engine.",
   "homepage": "https://github.com/kalai-labs/MAGENTRA",
@@ -15,7 +15,7 @@
     "dist:all": "node scripts/bundle-engine.js --target win --target linux && node scripts/dist.js --win --linux",
     "smoke": "node scripts/launch.js --smoke",
     "test:ui": "node tests/run-ui-tests.js",
-    "test:main": "node tests/changes.test.js && node tests/window.test.js && node tests/connection.test.js && node tests/reasoning.test.mjs"
+    "test:main": "node tests/changes.test.js && node tests/window.test.js && node tests/connection.test.js && node tests/reasoning.test.mjs && node tests/updates.test.js"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -63,10 +63,10 @@
       ]
     },
     "portable": {
-      "artifactName": "MAGENTRA-${env.MAGENTRA_VERSION}-win-portable.exe"
+      "artifactName": "MAGENTRA-${version}-win-portable.exe"
     },
     "nsis": {
-      "artifactName": "MAGENTRA-${env.MAGENTRA_VERSION}-win-setup.exe",
+      "artifactName": "MAGENTRA-${version}-win-setup.exe",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     },
@@ -93,7 +93,7 @@
           ]
         }
       ],
-      "artifactName": "MAGENTRA-${env.MAGENTRA_VERSION}-linux-${arch}.${ext}",
+      "artifactName": "MAGENTRA-${version}-linux-${arch}.${ext}",
       "category": "Development",
       "extraResources": [
         {
@@ -116,7 +116,7 @@
           ]
         }
       ],
-      "artifactName": "MAGENTRA-${env.MAGENTRA_VERSION}-mac-${arch}.${ext}",
+      "artifactName": "MAGENTRA-${version}-mac-${arch}.${ext}",
       "category": "public.app-category.developer-tools",
       "identity": null,
       "extraResources": [

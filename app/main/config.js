@@ -197,10 +197,19 @@ function readConfig() {
       model: typeof parsed.model === "string" ? parsed.model : DEFAULT_MODEL,
       theme: THEMES.includes(parsed.theme) ? parsed.theme : DEFAULT_THEME,
       recentWorkspaces: recent.slice(0, MAX_RECENT_WORKSPACES),
+      // Background update checking. On unless a user turned it off explicitly,
+      // which is the shape every other optional key here uses.
+      updateCheck: parsed.updateCheck !== false,
       ...(windowState ? { window: windowState } : {}),
     };
   } catch {
-    return { workspace: null, model: DEFAULT_MODEL, theme: DEFAULT_THEME, recentWorkspaces: [] };
+    return {
+      workspace: null,
+      model: DEFAULT_MODEL,
+      theme: DEFAULT_THEME,
+      recentWorkspaces: [],
+      updateCheck: true,
+    };
   }
 }
 

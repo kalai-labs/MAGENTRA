@@ -278,6 +278,13 @@ async function boot() {
       if (info && info.version && setVersionEl) {
         setVersionEl.textContent = "v" + info.version;
         if (sidebarVersionEl) sidebarVersionEl.textContent = "v" + info.version;
+        // The commit replaced the old fourth version part as the thing that says
+        // exactly which source a build came from. A packaged build has one.
+        if (info.commit) {
+          const built = `v${info.version} (${info.commit})`;
+          setVersionEl.title = built;
+          if (sidebarVersionEl) sidebarVersionEl.title = built;
+        }
       }
     } catch {
       // ignore — version display is best-effort

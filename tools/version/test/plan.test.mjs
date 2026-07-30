@@ -20,14 +20,13 @@ import { format, parse } from '../lib/version.mjs';
 const config = {
   tagPrefix: 'v',
   releaseBranch: 'main',
-  targets: [
-    { path: 'package.json', format: 'full' },
-    { path: 'apps/*/package.json', format: 'semver' },
-  ],
+  targets: [{ path: 'package.json' }, { path: 'apps/*/package.json' }],
   types: {
     feat: { bump: 'minor', section: 'Features' },
     fix: { bump: 'patch', section: 'Bug fixes' },
-    docs: { bump: 'build', section: 'Documentation' },
+    docs: { bump: 'patch', section: 'Documentation' },
+    refactor: { bump: 'patch', section: 'Refactoring' },
+    chore: { bump: 'patch', section: 'Chores' },
   },
   scopes: [],
   subjectMaxLength: 72,
@@ -66,96 +65,98 @@ describe('makePlan', () => {
     commit('feat: add the version tool');
     commit('feat!: break something');
 
-    const plan = makePlan(root, config, parse('0.1.0.0'));
+    const plan = makePlan(root, config, parse('0.1.0'));
 
     assert.equal(plan.isFirstRelease, true);
     assert.equal(plan.hasRelease, true);
     assert.equal(plan.level, null);
-    // The first release uses 0.1.0.0 exactly, also after a breaking commit.
-    assert.equal(format(plan.next), '0.1.0.0');
+    // The first release uses 0.1.0 exactly, also after a breaking commit.
+    assert.equal(format(plan.next), '0.1.0');
     assert.equal(plan.commits.length, 2);
   });
 
   it('makes no release when no commit comes after the tag', () => {
-    tag('v0.1.0.0');
+    tag('v0.1.0');
 
-    const plan = makePlan(root, config, parse('0.1.0.0'));
+    const plan = makePlan(root, config, parse('0.1.0'));
 
     assert.equal(plan.hasRelease, false);
     assert.equal(plan.level, null);
-    assert.equal(format(plan.next), '0.1.0.0');
+    assert.equal(format(plan.next), '0.1.0');
   });
 
-  it('increases BUILD for a docs commit', () => {
+  it('increases PATCH for a docs commit', () => {
     commit('docs: repair a typo');
 
-    const plan = makePlan(root, config, parse('0.1.0.0'));
-
-    assert.equal(plan.level, 'build');
-    assert.equal(format(plan.next), '0.1.0.1');
-  });
-
-  it('increases PATCH for a fix commit, and clears BUILD', () => {
-    commit('fix: stop the crash on exit');
-
-    const plan = makePlan(root, config, parse('0.1.0.1'));
+    const plan = makePlan(root, config, parse('0.1.0'));
 
     assert.equal(plan.level, 'patch');
-    assert.equal(format(plan.next), '0.1.1.0');
+    assert.equal(format(plan.next), '0.1.1');
+  });
+
+  it('releases every type that used to bump BUILD, all at PATCH', () => {
+    // docs, refactor and chore all ship now. A push that carries only these
+    // still makes a release, which is what keeps packaging exercised.
+    commit('refactor: split a module');
+    commit('chore: tidy the lockfile');
+
+    const plan = makePlan(root, config, parse('0.1.0'));
+
+    assert.equal(plan.level, 'patch');
+    assert.equal(format(plan.next), '0.1.1');
+    assert.equal(plan.commits.length, 3);
   });
 
   it('takes the largest bump when the commits have different types', () => {
-    // The history after v0.1.0.0 now holds: docs, fix. The fix wins.
-    const plan = makePlan(root, config, parse('0.1.0.0'));
-
-    assert.equal(plan.level, 'patch');
-    assert.equal(plan.commits.length, 2);
-  });
-
-  it('increases MINOR for a feature, and MAJOR for a break', () => {
-    tag('v0.1.1.0');
+    // The history after v0.1.0 now holds: docs, refactor, chore, feat.
     commit('feat: add a retry policy');
 
-    let plan = makePlan(root, config, parse('0.1.1.0'));
-    assert.equal(plan.level, 'minor');
-    assert.equal(format(plan.next), '0.2.0.0');
+    const plan = makePlan(root, config, parse('0.1.0'));
 
+    assert.equal(plan.level, 'minor');
+    assert.equal(format(plan.next), '0.2.0');
+    assert.equal(plan.commits.length, 4);
+  });
+
+  it('increases MAJOR for a break', () => {
+    tag('v0.2.0');
     commit('feat(cli)!: rename a flag');
 
-    plan = makePlan(root, config, parse('0.1.1.0'));
+    const plan = makePlan(root, config, parse('0.2.0'));
+
     assert.equal(plan.level, 'major');
-    assert.equal(format(plan.next), '1.0.0.0');
+    assert.equal(format(plan.next), '1.0.0');
   });
 
   it('reads a break from the BREAKING CHANGE footer', () => {
-    tag('v1.0.0.0');
+    tag('v1.0.0');
     commit('fix: repair a defect', 'BREAKING CHANGE: the --out flag is now --output.');
 
-    const plan = makePlan(root, config, parse('1.0.0.0'));
+    const plan = makePlan(root, config, parse('1.0.0'));
 
     assert.equal(plan.level, 'major');
-    assert.equal(format(plan.next), '2.0.0.0');
+    assert.equal(format(plan.next), '2.0.0');
     assert.equal(plan.commits[0]?.breaking, true);
   });
 
   it('ignores a commit that does not have the necessary form', () => {
-    tag('v2.0.0.0');
+    tag('v2.0.0');
     commit('a message with no type');
     commit('docs: repair a typo');
 
-    const plan = makePlan(root, config, parse('2.0.0.0'));
+    const plan = makePlan(root, config, parse('2.0.0'));
 
-    assert.equal(plan.level, 'build');
+    assert.equal(plan.level, 'patch');
     assert.equal(plan.commits.length, 1);
     assert.equal(plan.ignored.length, 1);
     assert.equal(plan.ignored[0]?.subject, 'a message with no type');
   });
 
   it('makes no release when every commit after the tag is ignored', () => {
-    tag('v2.0.0.1');
+    tag('v2.0.1');
     commit('a message with no type');
 
-    const plan = makePlan(root, config, parse('2.0.0.1'));
+    const plan = makePlan(root, config, parse('2.0.1'));
 
     assert.equal(plan.hasRelease, false);
     assert.equal(plan.ignored.length, 1);
@@ -164,23 +165,38 @@ describe('makePlan', () => {
   it('bumps from the highest tag when the VERSION file lags behind it', () => {
     // The release commit that updates the VERSION file lives on the remote
     // until the next pull, and a rebase can drop it while its tag stays. The
-    // version must still increase: a fix after v2.0.0.1 must never release
+    // version must still increase: a fix after v2.0.1 must never release
     // v1.x, whatever the stale file says.
     commit('fix: repair a defect on a stale checkout');
 
-    const plan = makePlan(root, config, parse('1.0.0.0'));
+    const plan = makePlan(root, config, parse('1.0.0'));
 
     assert.equal(plan.hasRelease, true);
-    assert.equal(format(plan.current), '2.0.0.1');
-    assert.equal(format(plan.next), '2.0.1.0');
+    assert.equal(format(plan.current), '2.0.1');
+    assert.equal(format(plan.next), '2.0.2');
+  });
+
+  it('finds and bumps from a legacy four-part tag', () => {
+    // Every release up to v0.13.0.0 is tagged with four parts. If the tag glob
+    // or the parser stopped matching those, this repository would have no tags
+    // at all: the next release would report itself as the first one and rewrite
+    // the changelog from the whole history.
+    tag('v3.0.0.0');
+    commit('fix: repair a defect after the move to semver');
+
+    const plan = makePlan(root, config, parse('2.0.1'));
+
+    assert.equal(plan.fromTag, 'v3.0.0.0');
+    assert.equal(format(plan.current), '3.0.0');
+    assert.equal(format(plan.next), '3.0.1');
   });
 });
 
 describe('syncTargets', () => {
-  it('writes the full version, and the short version where it is necessary', () => {
+  it('writes the same version to every target', () => {
     writeFileSync(
       join(root, 'package.json'),
-      JSON.stringify({ name: 'root', version: '0.0.0.0' }, null, 2),
+      JSON.stringify({ name: 'root', version: '0.0.0' }, null, 2),
       'utf8',
     );
     execFileSync('mkdir', ['-p', join(root, 'apps', 'desktop')]);
@@ -190,19 +206,18 @@ describe('syncTargets', () => {
       'utf8',
     );
 
-    const results = syncTargets(root, config, parse('1.2.3.4'));
+    const results = syncTargets(root, config, parse('1.2.3'));
 
     const byPath = new Map(results.map((result) => [result.path, result.to]));
-    assert.equal(byPath.get('package.json'), '1.2.3.4');
-    // electron-builder and vsce reject a version that has four parts.
+    assert.equal(byPath.get('package.json'), '1.2.3');
     assert.equal(byPath.get('apps/desktop/package.json'), '1.2.3');
   });
 
   it('does not fail when a target matches no file', () => {
     const results = syncTargets(
       root,
-      { ...config, targets: [{ path: 'nothing/*/package.json', format: 'full' }] },
-      parse('1.2.3.4'),
+      { ...config, targets: [{ path: 'nothing/*/package.json' }] },
+      parse('1.2.3'),
     );
 
     assert.deepEqual(results, []);

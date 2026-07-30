@@ -29,6 +29,7 @@ const { logEvent, setLogWorkspace, flushLog, initFallbackLog, activeLogsDir } = 
 const { resolveWorkspaceFile, undoWorkspaceDiffs } = require("./main/changes.js");
 const { testEndpoint, validateCredentialPayload } = require("./main/connection.js");
 const { readProfiles, upsertProfile, deleteProfile, findProfile, sanitizeProfile } = require("./main/profiles.js");
+const { initUpdates, updateState, checkNow, startUpdate, installNow } = require("./main/updates.js");
 
 const SMOKE = process.argv.includes("--smoke");
 
@@ -1427,11 +1428,12 @@ ipcMain.handle("setup:testConnection", async (_evt, payload) => {
   return result;
 });
 
-// Packaged builds carry the real 4-part version as `magentraVersion`
-// (electron-builder itself only accepts semver — see scripts/dist.js);
-// development reads the 4-part straight from package.json via getVersion().
+// The version is semver, so getVersion() is the whole truth — no shadow field.
+// `magentraCommit` is injected at packaging time (scripts/dist.js) and says
+// which commit this build came from; a development run has no commit.
 ipcMain.handle("app:info", () => ({
-  version: require("./package.json").magentraVersion || app.getVersion(),
+  version: app.getVersion(),
+  commit: require("./package.json").magentraCommit || "",
 }));
 
 // Theme switches re-tint the window-controls overlay so the min/max/close
@@ -1756,74 +1758,15 @@ app.on("web-contents-created", (_evt, contents) => {
 });
 
 // ---------------------------------------------------------------------------
-// Update check (notify-only). The binaries ship unsigned (no code-signing cert
-// yet), so silent auto-update is off the table — instead, compare the latest
-// GitHub release tag against this build once per launch and tell the user.
+// Updates. The tiers, the detection and the one click all live in
+// main/updates.js; this is the wiring. An update is app-global, so its state
+// goes to every open window rather than into one workspace's transcript.
 // ---------------------------------------------------------------------------
 
-const RELEASES_URL = "https://github.com/kalai-labs/MAGENTRA/releases/latest";
-
-function compareVersions(a, b) {
-  const pa = String(a).replace(/^v/, "").split(".").map(Number);
-  const pb = String(b).replace(/^v/, "").split(".").map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] || 0) - (pb[i] || 0);
-    if (d !== 0) return d;
-  }
-  return 0;
-}
-
-/** True when this install format can self-update (electron-updater support):
- *  Windows NSIS and Linux AppImage. tar.gz/deb and the unsigned mac dmg
- *  cannot — those fall back to the notify-only release poll below. */
-function selfUpdateSupported() {
-  return process.platform === "win32" || Boolean(process.env.APPIMAGE);
-}
-
-async function checkForUpdates() {
-  if (!app.isPackaged) return;
-  if (selfUpdateSupported()) {
-    try {
-      const { autoUpdater } = require("electron-updater");
-      autoUpdater.logger = { info: () => {}, warn: () => {}, error: (m) => logEvent("sys", { ev: "updater-error", m: String(m) }) };
-      autoUpdater.on("update-downloaded", (info) => {
-        logEvent("sys", { ev: "update-downloaded", version: info?.version });
-        sendToRenderer("engine:event", {
-          type: "command_output",
-          text: `⬆ MAGENTRA ${info?.version ?? ""} downloaded — it installs when you quit the app.`,
-        });
-      });
-      await autoUpdater.checkForUpdatesAndNotify();
-      return;
-    } catch (err) {
-      // Fall through to the notify-only poll: an updater failure must never
-      // cost the user the "a new version exists" signal.
-      logEvent("sys", { ev: "updater-fallback", m: String(err && err.message) });
-    }
-  }
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch("https://api.github.com/repos/kalai-labs/MAGENTRA/releases/latest", {
-      headers: { accept: "application/vnd.github+json" },
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) return;
-    const body = await res.json();
-    const latest = body && typeof body.tag_name === "string" ? body.tag_name : null;
-    const current = require("./package.json").magentraVersion || app.getVersion();
-    if (latest && compareVersions(latest, current) > 0) {
-      logEvent("sys", { ev: "update-available", current, latest });
-      sendToRenderer("engine:event", {
-        type: "command_output",
-        text: `⬆ MAGENTRA ${latest} is available (you run v${current}). Download: ${RELEASES_URL}`,
-      });
-    }
-  } catch {
-    // offline or rate-limited — try again next launch
-  }
-}
+ipcMain.handle("updates:state", () => updateState());
+ipcMain.handle("updates:check", () => checkNow());
+ipcMain.handle("updates:start", () => startUpdate());
+ipcMain.handle("updates:install", () => installNow());
 
 app.whenReady().then(() => {
   // The in-app menu bar (renderer #menuBar) replaces the native menu in
@@ -1834,7 +1777,11 @@ app.whenReady().then(() => {
   // any workspace opens) must still leave a log a user can find from the UI.
   initFallbackLog(app.getPath("userData"));
   createWindow();
-  setTimeout(() => void checkForUpdates(), 5000);
+  initUpdates({
+    broadcast: (state) => broadcastToRenderers("updates:changed", state),
+    log: (ev, data) => logEvent("sys", { ev, ...data }),
+    enabled: currentConfig.updateCheck !== false,
+  });
 });
 
 app.on("window-all-closed", () => {

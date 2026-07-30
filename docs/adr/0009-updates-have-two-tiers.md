@@ -44,6 +44,14 @@ there permanently, so it does not sit in a `catch` block.
 - The check uses the releases feed, never `api.github.com`, which allows 60
   unauthenticated requests per hour per IP. One office behind one NAT would
   exhaust that.
+- The asset name cannot be built from `process.arch`. electron-builder renames
+  `${arch}` per target, so one x64 build is `x86_64` in an AppImage, `amd64` in a
+  deb and `x64` in a tarball. Deriving it the obvious way produced a 404 for two
+  of the three formats. `tests/updates.test.js` pins the names a real
+  `dist:linux` writes, because nothing else would catch the drift.
+- Some platforms have no artifact at all: only an arm64 dmg and an x64 Linux
+  build are published. There the click opens the release page. A confidently
+  wrong file name would be worse than an honest list.
 
 ## Recovery
 

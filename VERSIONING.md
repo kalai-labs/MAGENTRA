@@ -7,29 +7,37 @@ You do not choose a version number. The commits choose it.
 
 ## The version number
 
-A MAGENTRA version has **four** parts:
+A MAGENTRA version has **three** parts. It is a semantic version:
 
 ```
-MAJOR . MINOR . PATCH . BUILD
-  1   .   4   .   2   .   7
+MAJOR . MINOR . PATCH
+  1   .   4   .   2
 ```
 
-| Part      | It increases when…                                | Effect on you        |
-| --------- | ------------------------------------------------- | -------------------- |
-| **MAJOR** | The behaviour changes, and your old code breaks.  | You must change code. |
-| **MINOR** | A new feature is available.                       | Your old code works. |
-| **PATCH** | A defect is repaired. There is no new feature.    | Your old code works. |
-| **BUILD** | Nothing that you can observe changes.             | Nothing.             |
-
-The BUILD part is the difference between MAGENTRA and standard semantic
-versioning. It gives a version to every commit, also to a commit that only
-changes a comment or a document. Therefore each release is traceable, and a
-document repair does not look like a defect repair.
+| Part      | It increases when…                               | Effect on you         |
+| --------- | ------------------------------------------------ | --------------------- |
+| **MAJOR** | The behaviour changes, and your old code breaks. | You must change code. |
+| **MINOR** | A new feature is available.                      | Your old code works.  |
+| **PATCH** | Everything else that ships.                      | Your old code works.  |
 
 **When one part increases, all smaller parts go back to 0.**
 
-The first release is `0.1.0.0`. The tool does not bump the first release. It
-uses the `VERSION` file exactly.
+The whole scheme is three rules: a break is MAJOR, a `feat` is MINOR, everything
+else is PATCH.
+
+The version must be a semantic version because the desktop app updates itself,
+and the updater compares versions with semver and nothing else. A version it
+reads as equal means "no update". Read
+[docs/adr/0008-the-version-is-semver.md](docs/adr/0008-the-version-is-semver.md).
+
+The first release is `0.1.0`. The tool does not bump the first release. It uses
+the `VERSION` file exactly.
+
+### Releases before 0.13.1
+
+A version used to have a fourth BUILD part, for example `0.12.1.1`. Those tags
+stay in the repository, and the tool still reads them: `0.12.1.1` and `0.12.1`
+are the same version to it. Nothing you do needs the old form.
 
 ## How a commit changes the version
 
@@ -47,13 +55,17 @@ type scope  subject
 | `fix`      | PATCH               | Bug fixes                |
 | `perf`     | PATCH               | Performance              |
 | `revert`   | PATCH               | Reverts                  |
-| `docs`     | BUILD               | Documentation            |
-| `refactor` | BUILD               | Refactoring              |
-| `test`     | BUILD               | Tests                    |
-| `build`    | BUILD               | Build system             |
-| `ci`       | BUILD               | Continuous integration   |
-| `chore`    | BUILD               | Chores                   |
-| `style`    | BUILD               | Code style               |
+| `docs`     | PATCH               | Documentation            |
+| `refactor` | PATCH               | Refactoring              |
+| `test`     | PATCH               | Tests                    |
+| `build`    | PATCH               | Build system             |
+| `ci`       | PATCH               | Continuous integration   |
+| `chore`    | PATCH               | Chores                   |
+| `style`    | PATCH               | Code style               |
+
+Every type ships. There is no type that makes no release, so packaging runs on
+every push, and a mistake in a commit type never stops a repair from reaching a
+user.
 
 To declare a break, put a `!` before the colon:
 
@@ -72,24 +84,33 @@ Set retries: 5 to keep the old behaviour.
 
 A break always increases MAJOR. The type does not matter.
 
+### Choose the type by what a user can observe
+
+`refactor` means a user cannot tell the difference. If your change removes a
+feature, changes a default, or repairs something a user complained about, it is
+not a `refactor` — it is a `feat!`, a `feat`, or a `fix`.
+
+The type decides what the changelog tells your users, and a `refactor` line tells
+them nothing happened. Say what happened.
+
 ### An example
 
-The version is `0.1.0.0`. These commits go to `main`, one after the other:
+The version is `0.1.0`. These commits go to `main`, one after the other:
 
 | Commit                         | New version |
 | ------------------------------ | ----------- |
-| `docs: repair a typo`          | `0.1.0.1`   |
-| `refactor: split a module`     | `0.1.0.2`   |
-| `fix: stop the crash on exit`  | `0.1.1.0`   |
-| `feat: add a retry policy`     | `0.2.0.0`   |
-| `feat!: rename the --out flag` | `1.0.0.0`   |
+| `docs: repair a typo`          | `0.1.1`     |
+| `refactor: split a module`     | `0.1.2`     |
+| `fix: stop the crash on exit`  | `0.1.3`     |
+| `feat: add a retry policy`     | `0.2.0`     |
+| `feat!: rename the --out flag` | `1.0.0`     |
 
 ### More than one commit in one release
 
 A release can contain many commits. The **largest** bump wins.
 
 One `feat` commit and ten `docs` commits together give a MINOR bump. MINOR is
-larger than BUILD.
+larger than PATCH.
 
 ## The commands
 
@@ -144,7 +165,7 @@ Do not edit `VERSION` by hand. The tool writes it.
 {
   "tagPrefix": "v",
   "releaseBranch": "main",
-  "targets": [{ "path": "package.json", "format": "full" }],
+  "targets": [{ "path": "package.json" }],
   "types": { "feat": { "bump": "minor", "section": "Features" } },
   "scopes": [],
   "subjectMaxLength": 72
@@ -166,30 +187,18 @@ A target tells the tool where to write a copy of the version.
 
 ```json
 "targets": [
-  { "path": "package.json",             "format": "full"   },
-  { "path": "packages/*/package.json",  "format": "full"   },
-  { "path": "apps/*/package.json",      "format": "semver" }
+  { "path": "package.json" },
+  { "path": "packages/*/package.json" },
+  { "path": "apps/*/package.json" }
 ]
 ```
 
 A `*` stands for one directory name. A target that matches no file is not an
 error. Therefore you can name a directory before it exists.
 
-There are two formats:
-
-| Format   | The tool writes | Use it for                                       |
-| -------- | --------------- | ------------------------------------------------ |
-| `full`   | `1.4.2.7`       | npm packages, and every tool that accepts it.    |
-| `semver` | `1.4.2`         | A tool that accepts three parts only.            |
-
-Some tools reject a version that has four parts. Two examples are
-`electron-builder` and `vsce`. Give those tools the `semver` format.
-
-It is safe to remove the BUILD part. A BUILD change does not change the
-behaviour. Therefore the product of the tool is the same.
-
-npm itself accepts a version that has four parts, when the package is private.
-This is tested.
+Every target gets the same text. A target used to be able to ask for a shortened
+version, because `electron-builder` rejects a four-part one. The version is a
+semantic version now, so there is one form and every tool accepts it.
 
 ## The version tool
 
