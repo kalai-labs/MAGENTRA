@@ -101,7 +101,9 @@
         <span id="toolCount">0</span><span class="meter-label">ops</span>
       </div>
       <button id="revealWorkspaceBtn" class="topbar-tool hidden" title="Show the workspace folder in your file manager" aria-label="Show the workspace folder in your file manager">📁</button>
-      <button id="inspectorToggle" class="topbar-tool hidden" title="Toggle inspector" aria-label="Toggle inspector">◫</button>
+      <!-- The dot marks a pending update while the inspector is collapsed, which
+           it is by default — without it the update notice would be invisible. -->
+      <button id="inspectorToggle" class="topbar-tool hidden" title="Toggle inspector" aria-label="Toggle inspector">◫<span id="inspectorToggleDot" class="topbar-tool-dot hidden"></span></button>
       <!-- Stand-in for the native title bar, which full screen takes away
            (on Windows the controls overlay goes with it). Shown only while
            full screen — otherwise the real window buttons are there. -->
@@ -420,6 +422,16 @@
       </div>
     </section>
 
+    <!-- Pinned below whichever panel is showing. An update is app-global, so it
+         lives here rather than in a workspace's transcript, and it rests at
+         "up to date" instead of appearing and disappearing. -->
+    <div id="updateFoot" class="update-foot hidden">
+      <button id="updateAction" class="update-action" type="button">
+        <span id="updateLabel">Up to date</span>
+        <span id="updateBar" class="update-bar hidden"><span id="updateBarFill"></span></span>
+      </button>
+      <a id="updateNotes" class="update-notes hidden" href="#" title="What's new">?</a>
+    </div>
   </aside>
   <button id="taskTab" class="inspector-peek hidden" title="Show inspector" aria-label="Show inspector">◫ <span id="taskTabCount">0/0</span></button>
 
@@ -665,6 +677,7 @@
   <script src="modules/events.js"></script>
   <script src="modules/landing.js"></script>
   <script src="modules/session.js"></script>
+  <script src="modules/updates.js"></script>
   <script src="modules/tabs.js"></script>
   <script src="modules/composer.js"></script>
 </body>

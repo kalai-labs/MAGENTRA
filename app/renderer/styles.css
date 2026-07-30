@@ -696,8 +696,9 @@ body.review-open #topbar { right: var(--review-w); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 #topToast { transform: translateX(-50%); }
-.topbar-tool { width: 30px; height: 30px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-dim); }
+.topbar-tool { position: relative; width: 30px; height: 30px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-dim); }
 .topbar-tool:hover, .topbar-tool.active { color: var(--text-hi); background: var(--hover); }
+.topbar-tool-dot { position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 999px; background: var(--accent); }
 
 /* The renderer's own window buttons, visible only in full screen (main.js
    toggles this cluster). Grouped tight and pushed to the far right so they read
@@ -1102,6 +1103,19 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .inspector-file-meta { color: var(--text-faint); font-size: max(10px, 0.68rem); }
 .diff-counts { font: 0.68rem var(--mono); }
 .diff-counts .add { color: var(--green); } .diff-counts .del { color: var(--red); }
+/* Pinned to the bottom of the inspector, below whichever panel is showing.
+   `margin-top: auto` inside the inspector's flex column does the pinning. */
+.update-foot { display: flex; align-items: center; gap: 6px; margin-top: auto; padding: 8px 9px; border-top: 1px solid var(--border); }
+.update-action { flex: 1; min-width: 0; min-height: 28px; display: flex; flex-direction: column; gap: 4px; padding: 4px 8px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); font-size: max(10px, 0.7rem); text-align: left; }
+/* Resting is quiet: an update the user has not asked about must not look like an
+   error. Only a pending update earns the accent. */
+.update-foot.pending .update-action { border-color: var(--border-hi); background: var(--raised); color: var(--accent-hi); }
+.update-foot.pending .update-action:hover { border-color: var(--accent); }
+.update-bar { height: 3px; overflow: hidden; border-radius: 999px; background: var(--border); }
+#updateBarFill { display: block; width: 0; height: 100%; background: var(--accent); transition: width 0.25s; }
+.update-notes { width: 20px; height: 20px; flex: none; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 999px; color: var(--text-faint); font-size: max(10px, 0.66rem); text-decoration: none; }
+.update-notes:hover { border-color: var(--accent); color: var(--accent-hi); }
+
 .inspector-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
 .inspector-actions button { min-height: 32px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); color: var(--text); font-size: max(10px, 0.73rem); }
 .inspector-actions button:not(:disabled):hover { border-color: var(--accent); color: var(--accent-hi); }

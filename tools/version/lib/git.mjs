@@ -8,7 +8,11 @@
 
 import { execFileSync } from 'node:child_process';
 
-import { compare as compareVersions, parse as parseVersion } from './version.mjs';
+import {
+  compare as compareVersions,
+  legacyBuild,
+  parse as parseVersion,
+} from './version.mjs';
 
 /**
  * Run git and return what it prints.
@@ -54,22 +58,38 @@ export function repositoryRoot(from = process.cwd()) {
  * @returns {{ tag: string, version: import('./version.mjs').Version }[]}
  */
 export function versionTags(root, tagPrefix) {
-  const pattern = `${tagPrefix}[0-9]*.[0-9]*.[0-9]*.[0-9]*`;
+  // Three globbed parts match a three-part tag and a legacy four-part one alike,
+  // because the last `*` absorbs the `.BUILD` suffix. Every release up to
+  // v0.13.0.0 is tagged with four parts, and dropping those from this list would
+  // make the next release look like the first one — it would re-release the
+  // current version with the whole history as its changelog.
+  const pattern = `${tagPrefix}[0-9]*.[0-9]*.[0-9]*`;
   const output = git(['tag', '--list', pattern], { cwd: root });
   if (!output) return [];
 
-  /** @type {{ tag: string, version: import('./version.mjs').Version }[]} */
+  /**
+   * @type {{
+   *   tag: string,
+   *   version: import('./version.mjs').Version,
+   *   build: number,
+   * }[]}
+   */
   const tags = [];
 
   for (const tag of output.split('\n').filter(Boolean)) {
+    const text = tag.slice(tagPrefix.length);
     try {
-      tags.push({ tag, version: parseVersion(tag.slice(tagPrefix.length)) });
+      tags.push({ tag, version: parseVersion(text), build: legacyBuild(text) });
     } catch {
       // The tag looks like a version tag, but it is not one. Ignore it.
     }
   }
 
-  return tags.sort((a, b) => compareVersions(b.version, a.version));
+  // The legacy BUILD part orders a tie. v0.13.0.0 and v0.13.0.1 are the same
+  // version, and the newer of the two is the one the next release follows.
+  return tags.sort(
+    (a, b) => compareVersions(b.version, a.version) || b.build - a.build,
+  );
 }
 
 /**

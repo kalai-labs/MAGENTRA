@@ -22,6 +22,25 @@ let passed = 0;
 
 const pause = (ms = 35) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// The live update state the renderer reads when it opens. `disabled` is the
+// honest default: a test build is not packaged, so the affordance stays hidden
+// until the update scenario says otherwise.
+let updateStateNow = {
+  status: "disabled",
+  tier: "none",
+  current: "0.0.0-test",
+  version: null,
+  percent: 0,
+  notesUrl: "https://github.com/kalai-labs/MAGENTRA/releases",
+};
+
+/** Broadcast an update state, the way main/updates.js does. */
+async function pushUpdateState(patch) {
+  updateStateNow = { ...updateStateNow, ...patch };
+  windowRef.webContents.send("test:update-state", { ...updateStateNow });
+  await pause();
+}
+
 function apiResult(name, args) {
   calls.push({ name, args });
   switch (name) {
@@ -29,7 +48,10 @@ function apiResult(name, args) {
     case "chooseWorkspace":
     case "openWorkspace": return { workspace: WORKSPACE, model: MODEL };
     case "setModel": return { workspace: WORKSPACE, model: args[0] };
-    case "getAppInfo": return { version: "0.0.0-test" };
+    case "getAppInfo": return { version: "0.0.0-test", commit: "abc1234" };
+    // The update state the renderer starts from. The scenario drives the rest by
+    // pushing states over test:update-state, as main/updates.js broadcasts them.
+    case "updateState": return { ...updateStateNow };
     case "connectionInfo": return { baseUrl: "https://api.test/v1", model: MODEL, hasKey: true, contextWindow: 65536 };
     case "revealKey": return { key: "test-key" };
     case "getWebSearch": return true;
@@ -1594,6 +1616,62 @@ async function run() {
     assert.equal(afterFocusedClose.directStreams, 1, "exactly one stream in the single console — no orphan from the closed tab");
     assert.ok(afterFocusedClose.shownIsA, "the single console shows the SURVIVING tab's own stream, not the closed tab's");
     assert.ok(afterFocusedClose.transcriptHasA, "the surviving tab's content is shown in the single console");
+  });
+
+  // Last on purpose. The OVERDRIVE scenario above reads a computed border colour
+  // after a fixed pause that must outlast a CSS sweep; inserting work before it
+  // makes that pause too short and Chromium serves the pre-OVERDRIVE style.
+  await test("the update footer rests, offers one click, and badges a collapsed inspector", async () => {
+    const foot = `document.querySelector('#updateFoot')`;
+    const label = `document.querySelector('#updateLabel').textContent`;
+    const dotHidden = `document.querySelector('#inspectorToggleDot').classList.contains('hidden')`;
+
+    // A development build shows nothing at all.
+    await pushUpdateState({ status: "disabled", tier: "none" });
+    assert.equal(await evaluate(`${foot}.classList.contains('hidden')`), true);
+
+    // Resting: visible, quiet, and not marked as needing attention.
+    await pushUpdateState({ status: "uptodate", tier: "self", current: "0.13.0" });
+    assert.equal(await evaluate(`${foot}.classList.contains('hidden')`), false);
+    assert.equal(await evaluate(label), "Up to date");
+    assert.equal(await evaluate(`${foot}.classList.contains('pending')`), false);
+    assert.equal(await evaluate(dotHidden), true, "resting must not badge the toggle");
+
+    // Available on the self tier: one click installs.
+    await pushUpdateState({ status: "available", version: "0.13.1" });
+    assert.equal(await evaluate(label), "\u2191 Update to 0.13.1");
+    assert.equal(await evaluate(`${foot}.classList.contains('pending')`), true);
+    assert.equal(await evaluate(dotHidden), false, "a pending update badges the collapsed toggle");
+
+    // The same state on the assisted tier promises only a download, because an
+    // unsigned macOS or portable build cannot replace itself.
+    await pushUpdateState({ status: "available", tier: "assisted", version: "0.13.1" });
+    assert.equal(await evaluate(label), "\u2191 Download 0.13.1");
+
+    // One click reaches the main process.
+    await evaluate(`document.querySelector('#updateAction').click()`);
+    await pause();
+    assert.ok(calls.some((call) => call.name === "startUpdate"), "the click starts the update");
+
+    // Downloading: progress renders and the button stops accepting clicks.
+    await pushUpdateState({ status: "downloading", percent: 41 });
+    assert.equal(await evaluate(label), "Downloading 41%");
+    assert.equal(await evaluate(`document.querySelector('#updateBar').classList.contains('hidden')`), false);
+    assert.equal(await evaluate(`document.querySelector('#updateBarFill').style.width`), "41%");
+    assert.equal(await evaluate(`document.querySelector('#updateAction').disabled`), true);
+
+    // Ready: the click becomes a restart.
+    await pushUpdateState({ status: "ready", tier: "self", percent: 100, version: "0.13.1" });
+    assert.equal(await evaluate(label), "\u2191 Restart to finish");
+    await evaluate(`document.querySelector('#updateAction').click()`);
+    await pause();
+    assert.ok(calls.some((call) => call.name === "installUpdate"), "the click installs");
+
+    // Resting again: the click is a manual re-check.
+    await pushUpdateState({ status: "uptodate", version: null, percent: 0 });
+    await evaluate(`document.querySelector('#updateAction').click()`);
+    await pause();
+    assert.ok(calls.some((call) => call.name === "checkUpdates"), "resting re-checks on click");
   });
 
   if (rendererErrors.length > 0) throw new Error(`renderer errors:\n${rendererErrors.join("\n")}`);

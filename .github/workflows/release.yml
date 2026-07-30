@@ -57,12 +57,19 @@ jobs:
 
       # The annotated tag holds the changelog of this release. Therefore the
       # notes of the GitHub release are the same as the changelog.
-      - name: Publish the GitHub release
+      #
+      # It is created as a DRAFT. A draft is excluded from /releases/latest,
+      # which is the path every client resolves to find an update. A release
+      # published before its binaries exist would answer that call with a tag
+      # whose channel file is missing, and the update check would then fail for
+      # every user at once — not merely be delayed. The `publish` job below flips
+      # the draft only once every platform's artifacts are attached.
+      - name: Draft the GitHub release
         if: steps.release.outputs.released == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.release.outputs.tag }}
-        run: gh release create "$TAG" --title "$TAG" --notes-from-tag
+        run: gh release create "$TAG" --title "$TAG" --notes-from-tag --draft
 
       - name: Report the result
         run: |
@@ -72,10 +79,15 @@ jobs:
             echo 'No release. No commit changes the version.' >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  # Build the desktop artifacts on each OS and attach them to the release the
-  # job above published. Per-OS runners keep packaging honest: every artifact
+  # Build the desktop artifacts on each OS and attach them to the draft release
+  # the job above created. Per-OS runners keep packaging honest: every artifact
   # bundles the ripgrep binary npm installed natively for that platform, and
   # bundle-engine.js --target fails the build if it is missing.
+  #
+  # latest.yml and latest-linux.yml are the channel files electron-updater reads
+  # for the self-updating formats (Windows NSIS, Linux AppImage). macOS ships
+  # unsigned, so it can never replace itself and needs no channel file — see
+  # docs/adr/0009-updates-have-two-tiers.md.
   binaries:
     name: Binaries (${{ matrix.name }})
     needs: release
@@ -127,3 +139,29 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.release.outputs.tag }}
         run: gh release upload "$TAG" ${{ matrix.upload }} --clobber
+
+  # Publish the draft, and only now. Every platform in the matrix must have
+  # succeeded: `needs` fails this job if any leg failed, so a packaging break
+  # leaves the release a draft that no client can see. That is the safe
+  # direction — users keep being offered the previous release, which works.
+  #
+  # To retract a release after this point, do NOT delete it: flip it back with
+  # `gh release edit <tag> --prerelease`, which takes it out of /releases/latest
+  # while leaving it installable for anyone who already has the link. Deleting it
+  # would strand a client mid-download.
+  publish:
+    name: Publish the release
+    needs: [release, binaries]
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Undraft the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release.outputs.tag }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release edit "$TAG" --draft=false
+          echo "Published $TAG with all artifacts attached." >> "$GITHUB_STEP_SUMMARY"

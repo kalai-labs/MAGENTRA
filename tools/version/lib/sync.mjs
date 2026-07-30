@@ -6,14 +6,9 @@
  * copy. A copy is necessary because other tools, for example npm, read the
  * version from `package.json`.
  *
- * A target has one of two formats:
- *
- *   full    The complete version, for example `0.1.0.0`.
- *   semver  Only the first three parts, for example `0.1.0`.
- *
- * Use `semver` for a tool that accepts only three parts. Two examples are
- * electron-builder and vsce. These tools reject `0.1.0.0`. The BUILD part is
- * safe to remove, because a BUILD change does not change the behaviour.
+ * Every target gets the same text. A target used to be able to ask for a
+ * shortened version, because electron-builder rejects a four-part one; the
+ * version is semver now, so there is one form and every tool accepts it.
  */
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -44,11 +39,9 @@ import * as version from './version.mjs';
 export function syncTargets(root, config, next, options = {}) {
   /** @type {SyncResult[]} */
   const results = [];
+  const text = version.format(next);
 
   for (const target of config.targets) {
-    const text =
-      target.format === 'semver' ? version.toSemver(next) : version.format(next);
-
     for (const relative of expand(root, target.path)) {
       const result = writeJsonVersion(root, relative, text, options.dryRun ?? false);
       if (result) results.push(result);

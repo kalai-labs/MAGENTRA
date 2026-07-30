@@ -165,6 +165,10 @@ on a clean turn.
 - [ ] **Linux artifact** — AppImage/tar.gz launches on a clean machine, with a working Grep (the bundled `rg`). `ui`
 - [ ] **Windows artifact** — the portable `.exe` launches, with a working Grep (the bundled `rg.exe`). `ui`
 - [ ] **No `node_modules` at runtime** — the packaged engine is one self-contained file. `proc`
+- [ ] **Update tier per format** — an NSIS install and a writable AppImage self-update; the portable `.exe`, the `.dmg`, the `.deb` and the `.tar.gz` open their own asset in the browser. A read-only AppImage moves to the assisted tier instead of failing. `ui`
+- [ ] **One click, no earlier download** — nothing reaches the network until the user clicks Update; the inspector footer then shows progress and offers Restart now. `ui`
+- [ ] **Offline rests** — with no network, or against a release whose channel file is missing, the footer reads "Up to date" rather than showing an error. `ui`
+- [ ] **Retraction** — `gh release edit <tag> --prerelease` takes a release out of `/releases/latest`, and clients are offered the previous one again. `proc`
 
 ---
 

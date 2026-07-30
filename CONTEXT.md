@@ -3,6 +3,37 @@
 The ubiquitous language of MAGENTRA. A glossary, not a spec — no implementation
 details, no decisions. Decisions live in `docs/adr/`.
 
+## Update Tier
+
+The capability class an install belongs to, fixed by the format it was installed
+from and never changing afterwards.
+
+A **self-updating** install replaces itself in place, so the user's one click
+finishes the job. An **assisted** install cannot, so the same click starts the
+correct download and the user performs the final install gesture.
+
+Which tier a format lands in is not a preference. It follows from what the
+operating system permits an unsigned application to do to itself.
+
+## Retraction
+
+Withdrawing a published version from what users are offered, without deleting
+it. The version keeps existing and stays installable on purpose — deleting it
+would strand anyone mid-download, and would erase the record of what shipped.
+
+_Avoid_: rollback, unpublish, pulling a release
+
+## Additive-Only State
+
+The rule that a key in persisted state is only ever added — never renamed, never
+given a new meaning. Removal is safe, because every reader already treats an
+absent key as its default.
+
+It exists so that any version can read any other version's state. That is what
+makes going back to an earlier version safe, and it is the reason MAGENTRA needs
+no migration machinery. The cost is that a breaking change to state is not
+available: the answer is always a new key.
+
 ## Stance
 
 A session-scoped posture that changes how much the agent asks before it acts.

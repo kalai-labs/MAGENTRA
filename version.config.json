@@ -4,32 +4,25 @@
   "releaseBranch": "main",
   "targets": [
     {
-      "path": "package.json",
-      "format": "full"
+      "path": "package.json"
     },
     {
-      "path": "engine/protocol/package.json",
-      "format": "full"
+      "path": "engine/protocol/package.json"
     },
     {
-      "path": "engine/providers/package.json",
-      "format": "full"
+      "path": "engine/providers/package.json"
     },
     {
-      "path": "engine/core/package.json",
-      "format": "full"
+      "path": "engine/core/package.json"
     },
     {
-      "path": "engine/tools/package.json",
-      "format": "full"
+      "path": "engine/tools/package.json"
     },
     {
-      "path": "engine/host/package.json",
-      "format": "full"
+      "path": "engine/host/package.json"
     },
     {
-      "path": "app/package.json",
-      "format": "full"
+      "path": "app/package.json"
     }
   ],
   "types": {
@@ -50,31 +43,31 @@
       "section": "Reverts"
     },
     "docs": {
-      "bump": "build",
+      "bump": "patch",
       "section": "Documentation"
     },
     "refactor": {
-      "bump": "build",
+      "bump": "patch",
       "section": "Refactoring"
     },
     "test": {
-      "bump": "build",
+      "bump": "patch",
       "section": "Tests"
     },
     "build": {
-      "bump": "build",
+      "bump": "patch",
       "section": "Build system"
     },
     "ci": {
-      "bump": "build",
+      "bump": "patch",
       "section": "Continuous integration"
     },
     "chore": {
-      "bump": "build",
+      "bump": "patch",
       "section": "Chores"
     },
     "style": {
-      "bump": "build",
+      "bump": "patch",
       "section": "Code style"
     }
   },
