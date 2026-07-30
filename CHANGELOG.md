@@ -7,6 +7,23 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.12.1.1 — 2026-07-30
+
+### Documentation
+
+- new docs ([bee4980](https://github.com/kalai-labs/MAGENTRA/commit/bee49804926aab5573657f83c45c3c94de1a30b2))
+
+### Refactoring
+
+- removed unused features part 1 ([5ebbb37](https://github.com/kalai-labs/MAGENTRA/commit/5ebbb37f7b7c7c100f41afff60011cedbceb9e3f))
+- deleted unused features part 2 ([be3b850](https://github.com/kalai-labs/MAGENTRA/commit/be3b850e6fad25a69ab4cd445b78e44363768c8b))
+- stale docs removed ([e52f74e](https://github.com/kalai-labs/MAGENTRA/commit/e52f74e5a649a54feaade507bf49938dd767e116))
+- stale docs removed part 2 ([cba8d3e](https://github.com/kalai-labs/MAGENTRA/commit/cba8d3ed38eddc71e6651e88c00728d1b14f252b))
+- cleanings ([bd994d3](https://github.com/kalai-labs/MAGENTRA/commit/bd994d37c2b349434772ac89084aae0625ac9b3c))
+- cleaning continued ([c855ecf](https://github.com/kalai-labs/MAGENTRA/commit/c855ecfdee2472a9e8df9f782029bd7e960b98e1))
+
+[Compare with v0.12.1.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.12.1.0...v0.12.1.1)
+
 ## 0.12.1.0 — 2026-07-29
 
 ### Bug fixes
