@@ -585,20 +585,6 @@ function paneFor(id, ts) {
     odBtn.title = "OVERDRIVE — fully autonomous for this workspace";
     odBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleTabOverdrive(id); });
     head.appendChild(odBtn);
-    // Per-screen CAREFUL, on the same rule as the shared pill: it exists only
-    // while THIS pane's OVERDRIVE is engaged (syncTabOverdrive hides it), since
-    // the mode modifies that stance. Tiling hides the shared composer, so
-    // without this button CAREFUL could not be reached at all in this layout.
-    // Not built at all while the mode is a withdrawn beta — see
-    // CAREFUL_MODE_ENABLED in state.js; syncTabOverdrive then finds no button.
-    if (CAREFUL_MODE_ENABLED) {
-      const cfBtn = document.createElement("button");
-      cfBtn.className = "pane-cf-btn hidden";
-      cfBtn.textContent = "◉";
-      cfBtn.setAttribute("aria-pressed", "false");
-      cfBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleTabCareful(id); });
-      head.appendChild(cfBtn);
-    }
     // Per-screen "open the folder": tiled panes each show a different workspace,
     // so the button carries its own tab id rather than relying on which pane is
     // focused. Same action as the topbar button in the single-console view.
@@ -807,13 +793,13 @@ function hidePaneApproval(tabId) {
   ts.paneEl.classList.remove("needs-approval");
 }
 
-// --- Per-tab OVERDRIVE / CAREFUL -------------------------------------------
-// Both are per-engine, so with tiled screens each workspace owns its own. A
-// pane's buttons drive ITS tab's engine, and the effect is scoped to that pane:
+// --- Per-tab OVERDRIVE ------------------------------------------------------
+// Per-engine, so with tiled screens each workspace owns its own. A pane's
+// button drives ITS tab's engine, and the effect is scoped to that pane:
 // the same hot-lined input box and the same engage sweep a single console
 // shows, bounded by the screen that engaged it rather than the whole window.
 
-/** Point the shared OVERDRIVE/CAREFUL chrome (the composer pills and the
+/** Point the shared OVERDRIVE chrome (the composer pill and the
  * document shell) at the FOCUSED tab's own stance, so an untile back to a single
  * console is never stale. Called when focus moves and when the focused pane's
  * own buttons change that stance. The engine is not told: whatever changed the
@@ -823,17 +809,10 @@ function syncChromeSafetyFromFocusedTab() {
   if (!focTab || typeof uiSettings === "undefined") return;
   uiSettings.overdrive = focTab.overdrive === true;
   if (typeof lastSentSafety !== "undefined") lastSentSafety.overdrive = uiSettings.overdrive;
-  // Only adopt CAREFUL from a tab that has actually reported one — a fresh tab
-  // has no opinion yet, and treating that as "off" would silently clear the
-  // user's setting just for focusing a new pane.
-  if (typeof focTab.careful === "boolean") {
-    uiSettings.careful = focTab.careful;
-    if (typeof lastSentSafety !== "undefined") lastSentSafety.careful = uiSettings.careful;
-  }
   if (typeof applyOverdriveShell === "function") applyOverdriveShell();
 }
 
-/** Reflect a tab's overdrive + careful on its pane (input tint, buttons). */
+/** Reflect a tab's overdrive on its pane (input tint, button). */
 function syncTabOverdrive(ts) {
   if (!ts || !ts.paneEl) return;
   const on = ts.overdrive === true;
@@ -850,41 +829,15 @@ function syncTabOverdrive(ts) {
       ? "OVERDRIVE on for this workspace — click to disengage"
       : "OVERDRIVE — fully autonomous for this workspace";
   }
-  const cf = ts.paneEl.querySelector(".pane-cf-btn");
-  if (cf) {
-    const careful = ts.careful === true;
-    // Hidden while this pane's OVERDRIVE is off — the setting survives, exactly
-    // as the shared pill's does.
-    cf.classList.toggle("hidden", !on);
-    cf.classList.toggle("on", careful);
-    cf.setAttribute("aria-pressed", careful ? "true" : "false");
-    cf.title = careful
-      ? "CAREFUL on for this workspace — substantial requests wait for your approval. Click to turn off."
-      : "CAREFUL — propose a direction and wait for approval, this workspace only";
-  }
 }
 
-/** Set a tab's overdrive/careful (optionally telling its engine) and repaint its
- * pane. CAREFUL rides the same frame as OVERDRIVE — the two can never reach an
- * engine out of step — and is left out when this tab has never had a value for
- * it, which tells the engine to leave that setting alone. */
-function setTabOverdrive(tabId, enabled, sendToEngine, careful) {
+/** Set a tab's overdrive (optionally telling its engine) and repaint its pane. */
+function setTabOverdrive(tabId, enabled, sendToEngine) {
   const ts = tabs.get(tabId);
   if (!ts) return;
   ts.overdrive = enabled === true;
-  // CAREFUL is per-engine too, so each tab remembers its own. Recorded only
-  // when a value was actually supplied — undefined means "this tab has never
-  // said", which must not be read as "off".
-  if (typeof careful === "boolean") ts.careful = careful;
   if (sendToEngine && window.magentra && window.magentra.send) {
-    window.magentra.send(
-      {
-        type: "set_overdrive",
-        enabled: ts.overdrive,
-        ...(typeof ts.careful === "boolean" ? { careful: ts.careful } : {}),
-      },
-      tabId,
-    );
+    window.magentra.send({ type: "set_overdrive", enabled: ts.overdrive }, tabId);
   }
   syncTabOverdrive(ts);
 }
@@ -901,20 +854,6 @@ function toggleTabOverdrive(tabId) {
   if (next && ts.paneEl && typeof playOverdriveCinematic === "function") {
     playOverdriveCinematic(ts.paneEl);
   }
-}
-
-/** Pane button click: flip this workspace's CAREFUL. Rides the set_overdrive
- * frame, so the pane's stance reaches its engine in one piece. */
-function toggleTabCareful(tabId) {
-  const ts = tabs.get(tabId);
-  if (!ts) return;
-  setTabOverdrive(tabId, ts.overdrive === true, true, !(ts.careful === true));
-  if (tabId === focusedTabId) syncChromeSafetyFromFocusedTab();
-  announce(
-    ts.careful
-      ? "CAREFUL mode on for this workspace — Magentra will propose a direction for your approval before acting."
-      : "CAREFUL mode off for this workspace.",
-  );
 }
 
 /** Right-click a pane's header: move it to the big (bottom) slot in the 3-pane

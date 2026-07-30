@@ -1,5 +1,7 @@
 # CAREFUL rides the OVERDRIVE frames instead of getting its own
 
+> **Superseded — 2026-07-30.** CAREFUL MODE was removed from the product. This record is kept for the reasoning; the code it describes no longer exists.
+
 CAREFUL MODE needed to reach the frontend and back. The symmetric choice was to
 mirror OVERDRIVE — a `set_careful` request and a `careful_changed` event, exactly
 as `set_overdrive` and `overdrive_changed` already exist. We instead added an

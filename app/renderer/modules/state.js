@@ -131,23 +131,7 @@ const DEFAULT_UI_SETTINGS = {
   // First-enable teaching dialog is shown once, ever; after that, flipping the
   // composer toggle on engages the mode directly.
   overdriveIntroSeen: false,
-  // CAREFUL MODE: the OVERDRIVE modifier that makes a substantial request
-  // present a short proposal for approval before anything is touched. Remembered
-  // independently of `overdrive`, so disengaging and re-engaging OVERDRIVE
-  // restores the choice instead of quietly dropping it.
-  careful: false,
 };
-
-/**
- * CAREFUL MODE is a WITHDRAWN BETA — the renderer twin of CAREFUL_MODE_ENABLED
- * in engine/core/src/runtime/careful.ts, and it must be flipped with it.
- *
- * While false, neither CAREFUL toggle is built or shown (the composer pill and
- * the per-pane button), the setting is forced off on load, and the engine
- * refuses to arm the mode regardless of what any frame asks for. The paint and
- * toggle code itself is left whole so re-enabling is these two constants.
- */
-const CAREFUL_MODE_ENABLED = false;
 
 function loadUiSettings() {
   let saved = {};
@@ -179,10 +163,9 @@ function loadUiSettings() {
     }
     settings.fontMigrated = true;
   }
-  // The old 32k default compacted far too eagerly on today's windows: a single
-  // careful turn can hold more than that in scout reads alone. Raise it once,
-  // and only for installs still sitting on that default — a limit the user
-  // chose themselves is theirs, whatever its value.
+  // The old 32k default compacted far too eagerly on today's windows. Raise it
+  // once, and only for installs still sitting on that default — a limit the
+  // user chose themselves is theirs, whatever its value.
   if (!settings.compactLimitMigrated) {
     if (settings.compactLimit === 32000) settings.compactLimit = DEFAULT_UI_SETTINGS.compactLimit;
     settings.compactLimitMigrated = true;
@@ -191,9 +174,6 @@ function loadUiSettings() {
   settings.zoom = clampZoom(settings.zoom);
   settings.rainOpacity = clampUnit(settings.rainOpacity, DEFAULT_UI_SETTINGS.rainOpacity);
   settings.compactLimit = clampCompactLimit(settings.compactLimit);
-  // A withdrawn beta must not come back from an old localStorage entry: an
-  // install that armed CAREFUL before it was pulled loads with it off.
-  if (!CAREFUL_MODE_ENABLED) settings.careful = false;
   return settings;
 }
 
@@ -311,7 +291,7 @@ function syncUiControlsFromSettings() {
 
 // Safety toggles reach the engine as frames; only send what actually changed
 // (a fresh session gets a forced full send since it boots with defaults).
-const lastSentSafety = { deletions: null, overdrive: null, careful: null, compactLimit: null };
+const lastSentSafety = { deletions: null, overdrive: null, compactLimit: null };
 function applySafetySettings(force) {
   if (window.magentra && window.magentra.send) {
     if (force || uiSettings.deletions !== lastSentSafety.deletions) {
@@ -320,21 +300,9 @@ function applySafetySettings(force) {
     }
     // OVERDRIVE rides the same re-send-on-link pattern: a fresh session boots
     // with the mode off, so a forced send re-asserts the user's saved choice.
-    // CAREFUL rides this same frame rather than one of its own — it modifies
-    // OVERDRIVE, so the two can never reach the engine out of step. Either one
-    // changing re-sends both.
-    if (
-      force ||
-      uiSettings.overdrive !== lastSentSafety.overdrive ||
-      uiSettings.careful !== lastSentSafety.careful
-    ) {
-      window.magentra.send({
-        type: "set_overdrive",
-        enabled: uiSettings.overdrive === true,
-        careful: uiSettings.careful === true,
-      });
+    if (force || uiSettings.overdrive !== lastSentSafety.overdrive) {
+      window.magentra.send({ type: "set_overdrive", enabled: uiSettings.overdrive === true });
       lastSentSafety.overdrive = uiSettings.overdrive;
-      lastSentSafety.careful = uiSettings.careful;
     }
     // Auto-compact limit: same pattern. A fresh session's engine starts at 0
     // (off) until this asserts the user's chosen limit on link.

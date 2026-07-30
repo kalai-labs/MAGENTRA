@@ -1,6 +1,5 @@
 import type { PermissionDecision } from "@magentra/protocol";
 import type { AnyToolDefinition } from "../agent/tool.js";
-import { SCOUT_TOOLS, carefulHoldMessage } from "./careful.js";
 
 export interface PermissionRequestPayload {
   tool: string;
@@ -137,18 +136,6 @@ export class PermissionEngine {
    *  guard and is auto-denied by the unattended path. Deliberately NOT
    *  OVERDRIVE: a background run never gets the full bypass. */
   private workspaceDeletionBypass = false;
-  /**
-   * CAREFUL MODE's scout hold. While true, only the reading tools in
-   * SCOUT_TOOLS may run; everything else is refused with a teaching message.
-   *
-   * This is the whole enforcement of CAREFUL MODE, and it lives here rather
-   * than in the system prompt on purpose: OVERDRIVE means nothing asks, so a
-   * model that ignored a prompt-level "do not edit yet" would edit the user's
-   * repository before they ever saw the plan they were meant to approve. It
-   * also covers subagents for free — Session hands children the parent's
-   * PermissionEngine, so a held parent cannot spawn an unheld child.
-   */
-  private carefulHold = false;
   private readonly deny: ParsedRule[];
   private readonly allow: ParsedRule[];
   private readonly sessionAllow: ParsedRule[] = [];
@@ -184,18 +171,6 @@ export class PermissionEngine {
   /** Unattended missions only — see workspaceDeletionBypass. */
   setWorkspaceDeletionBypass(enabled: boolean): void {
     this.workspaceDeletionBypass = enabled;
-  }
-
-  /** CAREFUL MODE: raise or lift the scout hold. Raised when a careful turn
-   *  begins, lifted on approval, cancellation, interrupt, or turn end — the
-   *  turn's `finally` lifts it unconditionally so a crashed turn can never
-   *  leave the next one held. */
-  setCarefulHold(enabled: boolean): void {
-    this.carefulHold = enabled;
-  }
-
-  isCarefulHeld(): boolean {
-    return this.carefulHold;
   }
 
   /** Adds a session-scoped allow rule. Subject "*" or undefined matches any subject. */
@@ -234,17 +209,6 @@ export class PermissionEngine {
         source: "rule",
         message: `Permission denied by settings rule. The user's configuration forbids this call; do not retry it verbatim.`,
       };
-    }
-
-    // CAREFUL MODE scout hold: only the reading tools run until the user has
-    // approved a plan. Placed here — after the user's own deny rules, ahead of
-    // everything else — because it must beat allow rules, "always allow"
-    // grants, and the allow-all stance alike. It never asks: there is nothing
-    // to approve per-call, and the one approval that matters is the plan
-    // itself. It also deliberately ignores OVERDRIVE, which is the point:
-    // CAREFUL is the checkpoint the user asked to put back INTO OVERDRIVE.
-    if (this.carefulHold && !SCOUT_TOOLS.has(tool.name)) {
-      return { allowed: false, source: "mode", message: carefulHoldMessage(tool.name) };
     }
 
     // Protected-path guard: an edit into MAGENTRA's own state dir or a .env

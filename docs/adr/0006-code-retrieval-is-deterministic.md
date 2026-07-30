@@ -1,5 +1,7 @@
 # Deciding what to read is a retrieval problem, not a model's job
 
+> **Superseded — 2026-07-30.** Deterministic code retrieval (`knowledge/retrieval.ts`), which only ever ran inside CAREFUL MODE's scout phase, was removed from the product. This record is kept for the reasoning; the code it describes no longer exists.
+
 An agent handed a list of file paths has to open files to discover whether they
 matter, and every open is a round trip whose whole context is re-sent. On a
 large codebase that is the entire cost of investigating. `knowledge/retrieval.ts`

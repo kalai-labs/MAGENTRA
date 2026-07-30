@@ -1,5 +1,11 @@
 # A silent pre-layer is worse than a slow one
 
+> **Partly superseded — 2026-07-30.** CAREFUL MODE, whose failure prompted this
+> record, was removed. The principle and its fix still govern the surviving
+> clarify pre-layer: it announces itself before the inference, and the truncated
+> reply salvage (`salvageQuestionObjects`, now in `runtime/session.ts`) is what
+> keeps a cut-off question round from reading as "nothing to ask".
+
 CAREFUL MODE puts three single-shot inferences in front of a turn: the
 predictor, the question round, and the map that grounds them. Each one is
 fail-open by design — a broken verdict costs a checkpoint, never the turn. That

@@ -3,8 +3,7 @@ import { findSimilarSymbols, loadOrBuildSymbolIndex, type SymbolIndexData } from
 
 /**
  * Turning a request into graph seeds — the one place that decides "which files
- * does this topic concern", shared by the GraphQuery tool and by CAREFUL MODE's
- * scout map so the two can never disagree about it.
+ * does this topic concern". Used by the GraphQuery tool.
  */
 
 /** Symbol-matched seeds: how many, and how close a name has to be to count. */

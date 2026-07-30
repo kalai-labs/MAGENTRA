@@ -2,7 +2,7 @@
 
 Changing where inference happens used to kill the engine process and start a new
 one. That is a correct way to apply a new endpoint and a terrible way to try one:
-the conversation, the session id, the task list and the OVERDRIVE/CAREFUL stance
+the conversation, the session id, the task list and the OVERDRIVE stance
 all died with the process. Trying a second provider on the same problem cost the
 work that defined the problem.
 

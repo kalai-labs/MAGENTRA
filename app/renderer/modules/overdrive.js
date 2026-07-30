@@ -20,40 +20,9 @@ function applyOverdriveShell() {
       ? "OVERDRIVE active — fully autonomous. Click to disengage."
       : "OVERDRIVE — fully autonomous stance (nothing asks)";
   }
-  applyCarefulShell();
   // The footer safety hint reads OVERDRIVE state, so keep it in step on every
   // change — including engine-driven ones that skip applySafetySettings.
   renderSafetyHint();
-}
-
-/** Paint the CAREFUL pill. It only exists while OVERDRIVE is engaged — the mode
- * is a modifier of that stance, and a toggle that does nothing where it stands
- * is worse than no toggle at all. The setting itself survives being hidden. */
-function applyCarefulShell() {
-  const overdriveOn = uiSettings.overdrive === true;
-  // Withdrawn beta: the pill stays hidden and the shell stays "off" whatever the
-  // stored setting says. See CAREFUL_MODE_ENABLED in state.js.
-  const on = CAREFUL_MODE_ENABLED && uiSettings.careful === true;
-  document.documentElement.dataset.careful = overdriveOn && on ? "on" : "off";
-  if (!carefulBtnEl) return;
-  carefulBtnEl.classList.toggle("hidden", !overdriveOn || !CAREFUL_MODE_ENABLED);
-  carefulBtnEl.classList.toggle("on", on);
-  carefulBtnEl.setAttribute("aria-pressed", on ? "true" : "false");
-  carefulBtnEl.title = on
-    ? "CAREFUL active — substantial requests present a short proposal for your approval first. Click to turn off."
-    : "CAREFUL — propose a direction and wait for approval before acting";
-}
-
-function onCarefulToggleClick() {
-  uiSettings.careful = !uiSettings.careful;
-  saveUiSettings();
-  applySafetySettings(false); // rides the set_overdrive frame
-  applyCarefulShell();
-  announce(
-    uiSettings.careful
-      ? "CAREFUL mode on — Magentra will propose a direction for your approval before acting."
-      : "CAREFUL mode off.",
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -186,37 +155,25 @@ function onOverdriveToggleClick() {
  * session resume). Adopt it without echoing back and without the cinematic. */
 function onOverdriveChanged(event) {
   const enabled = Boolean(event && event.enabled);
-  // CAREFUL rides this frame. Absent means "unchanged" (an engine that predates
-  // the field), so only adopt it when the field is actually present — and never
-  // while the mode is a withdrawn beta, so an older engine or a transcript that
-  // still carries the flag cannot re-arm it behind the hidden pill.
-  const carefulSent = CAREFUL_MODE_ENABLED && event && typeof event.careful === "boolean";
   // Reflect on the pane that owns this event — overdrive is per-engine, so each
   // tiled screen keeps its own state and glow.
   const tabId =
     (typeof dispatchTabId !== "undefined" && dispatchTabId) ||
     (typeof focusedTabId !== "undefined" ? focusedTabId : null);
   if (typeof setTabOverdrive === "function" && tabId) {
-    setTabOverdrive(tabId, enabled, false, carefulSent ? event.careful : undefined);
+    setTabOverdrive(tabId, enabled, false);
   }
   // The shared button, document shell, and persisted default track the FOCUSED
   // tab only — a background tab flipping its own stance must not flip the app.
   if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
   uiSettings.overdrive = enabled;
   lastSentSafety.overdrive = enabled; // engine is already there; don't re-send
-  if (carefulSent) {
-    uiSettings.careful = event.careful;
-    lastSentSafety.careful = event.careful;
-  }
   saveUiSettings();
   applyOverdriveShell();
   syncActivityUi();
 }
 
 if (overdriveBtnEl) overdriveBtnEl.addEventListener("click", onOverdriveToggleClick);
-// No listener while CAREFUL is a withdrawn beta — the pill is hidden, and an
-// unhidden one must still do nothing. See CAREFUL_MODE_ENABLED in state.js.
-if (carefulBtnEl && CAREFUL_MODE_ENABLED) carefulBtnEl.addEventListener("click", onCarefulToggleClick);
 if (overdriveEngageBtnEl) overdriveEngageBtnEl.addEventListener("click", confirmOverdriveDialog);
 if (overdriveCancelBtnEl) overdriveCancelBtnEl.addEventListener("click", closeOverdriveDialog);
 

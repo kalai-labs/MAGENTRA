@@ -140,7 +140,7 @@ export class SessionStats {
    * context size its prompt reveals.
    *
    * `conversational` is false for the one-off prompts that never sit in the
-   * window — clarification, CAREFUL prediction, auto-naming, the compaction
+   * window — clarification, auto-naming, the compaction
    * summarizer. Those are real spend and real deliberation, so they count toward
    * usage and toward the phase, but their tiny private prompt must NOT be
    * mistaken for the conversation's context size.

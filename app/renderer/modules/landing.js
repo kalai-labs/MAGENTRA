@@ -808,17 +808,15 @@ function onQuestionRequest(event) {
   // appendPhaseBanner do. Text streams in as PLAIN text for liveness and is only
   // re-rendered as Markdown when it finalizes — so a card appended over a live
   // message leaves that message showing raw source until something else closes
-  // it, which is the end of the turn. CAREFUL MODE made this obvious (its
-  // proposal is always Markdown and always followed by a card), but it applies
-  // to every question round.
+  // it, which is the end of the turn. This applies to every question round.
   finalizeAssistantEl();
 
   // The card renders into the right pane on its own (routeEngineEvent swaps the
   // globals to the owning tab before calling this). The ANSWER does not: it is
   // sent from a click handler that runs long after those globals were restored,
   // so without capturing the tab here it would reach whichever engine happens to
-  // be focused. In CAREFUL MODE that is an approval starting work in the wrong
-  // workspace. Same shape as sendPermissionDecision's `permission.tabId`.
+  // be focused — an answer reaching the wrong workspace. Same shape as
+  // sendPermissionDecision's `permission.tabId`.
   const ownerTabId =
     (event && event.tabId) ||
     (typeof dispatchTabId !== "undefined" && dispatchTabId) ||

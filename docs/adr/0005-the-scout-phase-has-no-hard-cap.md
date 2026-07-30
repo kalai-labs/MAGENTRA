@@ -1,5 +1,7 @@
 # The Scout Phase has no hard cap
 
+> **Superseded — 2026-07-30.** CAREFUL MODE was removed from the product. This record is kept for the reasoning; the code it describes no longer exists.
+
 A numeric cap on the Scout Phase's tool rounds is the obvious fix for a phase
 that once ran for ten minutes, and it is the one guaranteed to work: at N
 rounds, force the Briefing. We deliberately did not do it.

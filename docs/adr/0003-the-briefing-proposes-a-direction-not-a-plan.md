@@ -1,5 +1,7 @@
 # The Briefing proposes a direction, not a plan
 
+> **Superseded — 2026-07-30.** CAREFUL MODE was removed from the product. This record is kept for the reasoning; the code it describes no longer exists.
+
 CAREFUL MODE's Briefing was built as a plan the user approves, and its third
 section demanded a file manifest: *every* file the change would touch, and only
 files the agent had actually opened. `CONTEXT.md` recorded that requirement as a

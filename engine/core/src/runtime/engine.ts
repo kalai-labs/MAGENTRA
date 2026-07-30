@@ -38,7 +38,6 @@ import {
   endpointSpecFromSettings,
   type EndpointSpec,
 } from "../config/providerFactory.js";
-import { CAREFUL_MODE_ENABLED } from "./careful.js";
 import { Session } from "./session.js";
 import { SessionStats } from "./sessionStats.js";
 import {
@@ -181,9 +180,6 @@ export class Engine {
    * but the engine must not lose it between those two moments.
    */
   private overdriveEnabled = false;
-  /** Same memory, for the CAREFUL MODE modifier — a /clear-created session must
-   *  inherit the user's armed choice, not silently drop back to unguarded. */
-  private carefulEnabled = false;
   /** `!` commands received mid-turn, run in order once the engine goes idle. */
   private readonly pendingBangs: string[] = [];
 
@@ -254,25 +250,7 @@ export class Engine {
     });
     session.services.cron = this.scheduler;
     if (this.overdriveEnabled) session.setOverdrive(true);
-    if (this.carefulEnabled) session.setCareful(true);
     return session;
-  }
-
-  /**
-   * The single place CAREFUL MODE is armed, from any source: the set_overdrive
-   * frame, the /careful command, or a restored transcript's meta. Each of those
-   * used to set the engine mirror and the session flag itself, so the gate is
-   * stated once here instead of three times.
-   *
-   * The mode is a withdrawn beta (see CAREFUL_MODE_ENABLED), so while that
-   * constant is false this collapses every arming request to "off" — the state
-   * the frontend is then told about is the true one, not a request that was
-   * quietly ignored.
-   */
-  private applyCareful(enabled: boolean): void {
-    const armed = CAREFUL_MODE_ENABLED && enabled;
-    this.carefulEnabled = armed;
-    this.session.setCareful(armed);
   }
 
   start(): void {
@@ -322,7 +300,6 @@ export class Engine {
       cwd: this.opts.cwd,
       model: this.opts.settings.model,
       overdrive: this.session.isOverdrive(),
-      careful: this.session.isCareful(),
       skills: (this.opts.skills ?? []).map((s) => ({ name: s.name, description: s.description })),
     });
     this.emit({ type: "task_list_updated", tasks: this.session.tasks.list() });
@@ -751,9 +728,6 @@ export class Engine {
       case "set_overdrive":
         this.overdriveEnabled = request.enabled;
         this.session.setOverdrive(request.enabled);
-        // Optional on the frame: an older frontend that never sends it must not
-        // switch CAREFUL off just by toggling OVERDRIVE.
-        if (typeof request.careful === "boolean") this.applyCareful(request.careful);
         break;
       case "set_model":
         this.handleSetModel(request.model);
@@ -957,40 +931,6 @@ export class Engine {
           });
         } else {
           this.emit({ type: "command_output", text: "Usage: /overdrive on|off" });
-        }
-        break;
-      }
-      case "careful": {
-        // Withdrawn beta: the command is off the registry, so it no longer
-        // completes or shows in /help, but a user who remembers it and types it
-        // anyway deserves an answer rather than "unknown command".
-        if (!CAREFUL_MODE_ENABLED) {
-          this.emit({
-            type: "command_output",
-            text: "CAREFUL MODE is unavailable — it is withdrawn while it is reworked. OVERDRIVE is unaffected.",
-          });
-          break;
-        }
-        const arg = args?.trim();
-        if (arg === "on" || arg === "off") {
-          const enabled = arg === "on";
-          this.applyCareful(enabled);
-          // Say plainly when the setting is armed but inert — a toggle that
-          // reports success and then does nothing is worse than one that refuses.
-          const inert = enabled && !this.session.isOverdrive();
-          this.emit({
-            type: "command_output",
-            text: enabled
-              ? `◉ CAREFUL MODE armed — substantial requests present a short proposal for your approval before anything is touched.${inert ? " It takes effect once OVERDRIVE is engaged." : ""}`
-              : "CAREFUL MODE off — OVERDRIVE acts without proposing first.",
-          });
-        } else if (!arg) {
-          this.emit({
-            type: "command_output",
-            text: `CAREFUL MODE is ${this.session.isCareful() ? "ON" : "OFF"}${this.session.isCareful() && !this.session.isOverdrive() ? " (inert — OVERDRIVE is off)" : ""}. Usage: /careful on|off`,
-          });
-        } else {
-          this.emit({ type: "command_output", text: "Usage: /careful on|off" });
         }
         break;
       }
@@ -1892,7 +1832,6 @@ export class Engine {
         this.overdriveEnabled = meta.overdrive;
         this.session.setOverdrive(meta.overdrive);
       }
-      if (typeof meta?.careful === "boolean") this.applyCareful(meta.careful);
       this.announceSession();
       // Repaint the conversation in the UI. Replaces the old text-only note:
       // the frontend rebuilds the chat from this render-ready snapshot.
@@ -2017,8 +1956,6 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
     ],
   },
   { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous stance: nothing asks, self-verified completion" },
-  // /careful is deliberately absent: CAREFUL MODE is a withdrawn beta
-  // (CAREFUL_MODE_ENABLED in runtime/careful.ts). Restore this line when it returns.
   { cmd: "/styles", args: "[on|off <id>]", desc: "deprecated alias for /skills" },
   { cmd: "/settings", args: "[global] [k v]", desc: "show settings, or set one (add global to save to ~/.magentra)" },
   { cmd: "/resume", args: "<session-id>", desc: "resume a previous session" },

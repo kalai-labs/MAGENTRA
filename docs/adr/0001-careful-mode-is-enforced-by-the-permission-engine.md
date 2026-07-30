@@ -1,5 +1,7 @@
 # CAREFUL MODE is enforced by the permission engine, not by the system prompt
 
+> **Superseded — 2026-07-30.** CAREFUL MODE was removed from the product. This record is kept for the reasoning; the code it describes no longer exists.
+
 CAREFUL MODE asks the agent to investigate, propose a plan, and wait for the
 user's approval before changing anything. The obvious implementation is a
 system-prompt section saying so — MAGENTRA steers behaviour that way everywhere

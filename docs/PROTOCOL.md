@@ -99,7 +99,6 @@ Emitted once when a session begins (on `start()`, after `/clear`, and after a re
 | `cwd` | string | Absolute working directory. |
 | `model` | string | Configured model id. |
 | `overdrive` | boolean | Whether OVERDRIVE (the fully-autonomous stance) is active for the session. |
-| `careful` | boolean? | Whether CAREFUL MODE is armed — the OVERDRIVE modifier that makes a substantial request present a proposal for approval before acting. Only has an effect while `overdrive` is true, and remembered independently of it. **Always `false` in current builds: the mode is a withdrawn beta (see `set_overdrive`).** |
 | `commands` | `SlashCommandInfo[]` | The engine's slash-command registry, so the frontend palette can never drift. |
 | `rateCard` | `Record<string, { input, output, cacheRead?, cacheWrite?, contextWindow }>` | Per-model $/1M rates + context windows — the built-in table with user `pricing` overrides applied. The frontend's single source for model hints; it must keep no pricing copy of its own. |
 
@@ -545,30 +544,15 @@ Toggles the always-ask deletion guard (`true` = guard active, the default).
 
 ### `set_overdrive`
 
-Toggles OVERDRIVE, the fully-autonomous stance. `careful` arms CAREFUL MODE, the
-modifier that makes a substantial request present a proposal for approval before it
-acts.
-
-> **`careful` is inert in current builds.** CAREFUL MODE is a withdrawn beta, so
-> the engine collapses every arming request to `false` — from this frame, from
-> `/careful`, and from a resumed transcript — and reports that `false` back on
-> `overdrive_changed`. The field stays on the wire so the protocol does not
-> change shape when the mode returns. `enabled` is unaffected.
+Toggles OVERDRIVE, the fully-autonomous stance.
 
 | Field | Type |
 | --- | --- |
 | `type` | `"set_overdrive"` |
 | `enabled` | boolean |
-| `careful` | boolean? |
-
-`careful` is **optional, and omitting it means "leave that setting alone"** —
-never "off". A frontend that knows nothing about CAREFUL cannot disarm it just by
-toggling OVERDRIVE, and MAGENTRA's own per-pane OVERDRIVE button relies on this.
-The engine reports both states back together on `overdrive_changed`, so the two
-can never drift apart in a frontend.
 
 ```json
-{"type":"set_overdrive","enabled":true,"careful":true}
+{"type":"set_overdrive","enabled":true}
 ```
 
 ### `slash_command`
