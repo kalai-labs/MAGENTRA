@@ -177,7 +177,7 @@ function onModesUpdated(event) {
 }
 
 // ---------------------------------------------------------------------------
-// Missions view (research lab): list mission files with live state, and run
+// Missions view: list mission files with live state, and run
 // them without knowing the slash syntax — every button routes through the
 // exact /mission handlers the terminal uses.
 // ---------------------------------------------------------------------------
