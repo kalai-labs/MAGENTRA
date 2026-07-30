@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.13.0.1 — 2026-07-30
+
+### Continuous integration
+
+- better prompt engineering ([9ea9b31](https://github.com/kalai-labs/MAGENTRA/commit/9ea9b31ea62a9807da9c2d41b6cba62baecca93d))
+
+[Compare with v0.13.0.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.13.0.0...v0.13.0.1)
+
 ## 0.13.0.0 — 2026-07-30
 
 ### Features
