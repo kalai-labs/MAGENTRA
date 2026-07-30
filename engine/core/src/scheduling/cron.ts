@@ -241,7 +241,7 @@ export class CronScheduler {
       job.lastFireKey = this.fireKey(job, now);
       // Ephemeral recurring jobs expire 7 days after creation (a forgotten
       // in-session cron must not fire forever). DURABLE jobs — scheduled
-      // missions the user explicitly armed — never expire: a weekly mission
+      // jobs the user explicitly armed — never expire: a weekly job
       // must survive week 2.
       if (!job.durable && now.getTime() >= job.createdAt + SEVEN_DAYS_MS) {
         this.jobs.delete(job.id);

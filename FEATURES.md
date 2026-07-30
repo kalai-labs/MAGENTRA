@@ -30,7 +30,7 @@ land?), not on the model's prose.
 - [ ] **Turn loop** — user message → streamed thinking/text → tool calls → turn end. `llm`
 - [ ] **Interrupt** — a running turn stops promptly, including pending question rounds. `llm`
 - [ ] **Interactive turns run uncapped** — no iteration cap, no per-turn token budget, unlimited signal-driven recovery nudges (failed batch, length cutoff, open tasks); the wrap-up nudge keeps its cap and the stall detector is the brake. `pure`
-- [ ] **Bounded runs stay bounded** — unattended (mission) runs and explicitly capped children respect `maxIterationsPerTurn`/`maxTokensPerTurn`, with the final-round warning. `pure` + `llm`
+- [ ] **Bounded runs stay bounded** — explicitly capped children respect `maxIterationsPerTurn`/`maxTokensPerTurn`, with the final-round warning. `pure` + `llm`
 - [ ] **Self-verify rung** — the first clean end-attempt injects the completeness+economy self-check (query-shaped evidence, no invented rituals); a silent DONE ends the turn with one visible reply; fires once per turn, re-armed by steering. `llm`
 - [ ] **Stall detector** — three consecutive identical rounds (same calls, same results) force a strategy pivot; after two pivots, the model must ask the user one concrete question. `pure` + `llm`
 - [ ] **Reuse gate reminds, never blocks** — a would-be new-file Write block becomes a reminder; the signal survives, the refusal doesn't. `pure`
@@ -114,10 +114,6 @@ on a clean turn.
 
 ## Scheduling
 
-- [ ] **Standing missions** — a mission file runs, writes its deliverable, and honours its token budget. `llm`
-- [ ] **Mission scheduling** — a cron schedule fires it; `continuous: true` re-arms with a cooldown. `llm`
-- [ ] **Unattended safety** — a scheduler-fired run forces bypass and auto-denies what it must, while an attended `/mission run` still asks. `pure` + `llm`
-- [ ] **Malformed mission file** — is skipped *loudly* (a warning at startup), never silently. `fs`
 
 ## State
 

@@ -565,7 +565,6 @@ const MAP = [
       { id: "system.action-care" }, { id: "system.git" }, { id: "system.code-style" },
       { id: "system.tasks" }, { id: "system.working-method" }, { id: "system.autonomy" },
       { id: "system.environment" },
-      { id: "system.project-memory-header", cond: true },
       { id: "system.skills-block", cond: true },
       { id: "system.atlas-header", cond: true },
       { id: "system.standards-header", cond: true },
@@ -596,7 +595,7 @@ const MAP = [
     sub: "the finishing ladder, top to bottom",
     note: "Checked in this order after the model stops calling tools. The self-verify rung fires on EVERY work turn — it is the one fixed extra round per turn, and the first place to look when turns feel slow.",
     rows: [
-      { id: "finishing.runtime-evidence" }, { id: "finishing.circular-evidence" },
+      { id: "finishing.runtime-evidence" },
       { id: "reminder.wrapup-nudge" },
       { id: "finishing.self-verify" },
       { id: "finishing.self-verify.closing-code", indent: true },

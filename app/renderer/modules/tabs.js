@@ -2,7 +2,7 @@
 //
 // The renderer was built single-tab: ~55 module-level variables across the other
 // modules hold one workspace's live console (its transcript DOM, turn flags,
-// session, permissions, model, changes, missions…). To run several
+// session, permissions, model, changes…). To run several
 // workspaces at once WITHOUT rewriting every handler, we bundle exactly those
 // variables into a TabState and, when the focused tab changes, swap the bundle
 // out and the target tab's bundle in. Handlers keep reading/writing the same
@@ -60,13 +60,11 @@ const TAB_ACCESSORS = [
   ["nowDetail", () => nowDetail, (v) => { nowDetail = v; }, () => ""],
   ["nowOverrideText", () => nowOverrideText, (v) => { nowOverrideText = v; }, () => null],
   ["nowOverrideTimeoutId", () => nowOverrideTimeoutId, (v) => { nowOverrideTimeoutId = v; }, () => null],
-  // mission rail
+  // task rail
   ["taskStatusById", () => taskStatusById, (v) => { taskStatusById = v; }, () => new Map()],
   ["taskTimes", () => taskTimes, (v) => { taskTimes = v; }, () => new Map()],
   ["currentTasks", () => currentTasks, (v) => { currentTasks = v; }, () => []],
   ["taskTickerId", () => taskTickerId, (v) => { taskTickerId = v; }, () => null],
-  ["labMissions", () => labMissions, (v) => { labMissions = v; }, () => []],
-  ["labWarnings", () => labWarnings, (v) => { labWarnings = v; }, () => []],
   // model + context meter
   ["modelRateCard", () => modelRateCard, (v) => { modelRateCard = v; }, () => ({})],
   ["contextTokens", () => contextTokens, (v) => { contextTokens = v; }, () => 0],
@@ -1028,8 +1026,6 @@ function repaintChromeFromFocusedTab() {
   updateSessionMeter();
   renderSidebarWorkspaces();
   renderSidebarSessions();
-  renderSidebarMissions();
-  renderMissions();
   // The shared task rail follows focus: repaint it from THIS tab's own task list
   // (a background tab's update no longer clobbers it — see onTaskListUpdated).
   if (typeof renderTaskRail === "function") renderTaskRail(currentTasks);

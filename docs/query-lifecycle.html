@@ -195,12 +195,12 @@
   </div>
 
   <h3>Guards before the model is even called — capped runs only</h3>
-  <p>Interactive root turns run <b>uncapped</b>: <code>maxIterationsPerTurn</code> and <code>maxTokensPerTurn</code> default to <code>MAX_SAFE_INTEGER</code>, so neither break ever fires. The caps only bite when <code>capped</code> is set — <b>unattended (mission) runs and child sessions</b>. The stall detector, not these caps, is the brake on an interactive turn.</p>
+  <p>Interactive root turns run <b>uncapped</b>: <code>maxIterationsPerTurn</code> and <code>maxTokensPerTurn</code> default to <code>MAX_SAFE_INTEGER</code>, so neither break ever fires. The caps only bite when <code>capped</code> is set — <b>child sessions</b>. The stall detector, not these caps, is the brake on an interactive turn.</p>
   <div class="ladder">
     <div class="rung halt"><div class="h"><span>Iteration cap — unattended &amp; capped children</span><span class="badge halt">ENDS CAPPED TURN</span></div>
       <p><code>session.ts</code> · When <code>capped</code>, emits <code>⏸ Iteration cap reached — send any message to continue</code> and sets <code>stopReason = "max_iterations"</code>. Interactive children default to <code>MAX_SAFE_INTEGER</code> unless given an explicit spawn-time cap.</p></div>
     <div class="rung halt"><div class="h"><span>Per-turn output budget — unattended &amp; capped children</span><span class="badge halt">ENDS CAPPED TURN</span></div>
-      <p><code>session.ts</code> · When <code>capped</code>, emits <code>⏸ Turn token budget reached</code>. Counts <em>billed output across the whole turn</em>, not context size. A mission's <code>budget:</code> key overrides the token ceiling.</p></div>
+      <p><code>session.ts</code> · When <code>capped</code>, emits <code>⏸ Turn token budget reached</code>. Counts <em>billed output across the whole turn</em>, not context size.</p></div>
   </div>
 
   <h3>The nudge ladder — what happens when the model stops calling tools</h3>
@@ -274,7 +274,6 @@
 
   <div class="note warn">
     <b>Unattended mode inverts every human gate into an auto-deny</b>
-    <code>session.ts:275</code> — a mission run takes the allow-all stance (<code>permissions.setOverdrive(true)</code>), but the unattended flag still auto-denies anything that insists on asking: <code>requestApproval</code> never prompts — it denies with an explanation — and <code>askUser</code> rejects outright. Combined with the point above, the net effect is that in an unattended mission the <em>only</em> thing that reliably gets refused is destructive work. Subagents are hard-blocked from both channels in both stances (<code>session.ts:581</code>).
   </div>
 </section>
 
@@ -399,7 +398,7 @@
 
   <ol class="steps">
     <li><span class="i">1</span><div><b>Reuse gate refusing new-file Writes <span class="muted">— resolved by the redesign</span></b> — historically on by default, silent, and read from the outside as the agent simply declining to do the work. The check never blocks anymore: the reminder (closest matches, firm wording for near-duplicates) rides along with the allowed Write.<span class="ref">reuseGate.ts · session.ts</span></div></li>
-    <li><span class="i">2</span><div><b>Iteration cap at 50 <span class="muted">— resolved by the redesign</span></b> — historically a genuinely long refactor hit this and the turn died mid-flight with <code>⏸</code>. Interactive root turns now run uncapped (<code>MAX_SAFE_INTEGER</code>); the cap survives only for unattended mission runs and explicitly-capped children.<span class="ref">session.ts</span></div></li>
+    <li><span class="i">2</span><div><b>Iteration cap at 50 <span class="muted">— resolved by the redesign</span></b> — historically a genuinely long refactor hit this and the turn died mid-flight with <code>⏸</code>. Interactive root turns now run uncapped (<code>MAX_SAFE_INTEGER</code>); the cap survives only for explicitly-capped children.<span class="ref">session.ts</span></div></li>
     <li><span class="i">3</span><div><b>Nudge cap at 3 <span class="muted">— resolved by the redesign</span></b> — the ladder used to give up after three saves. The signal rungs (length cutoff, failed batch, open tasks) now nudge without limit; <code>MAX_AUTO_NUDGES</code> caps only the wrap-up nudge.<span class="ref">session.ts:72</span></div></li>
     <li><span class="i">4</span><div><b>Plan-first reminder</b> — advisory, but a strong standing instruction toward planning on every empty-task-list turn.<span class="ref">session.ts:972</span></div></li>
     <li><span class="i">5</span><div><b>Read-before-write freshness</b> — refuses Write/Edit on a file not read this session. Not configurable. Usually correct, occasionally a loop when the model doesn't re-read.<span class="ref">fileState.ts:35 · write.ts:31, edit.ts:41</span></div></li>
@@ -514,12 +513,12 @@ const STOPS = [
   { m:"Skill gate — never", loc:"session.ts:1370", tr:"a workspace skill declares an unconditional block", v:"silent", d:"off — no builtin uses it", dis:"deactivate the skill", tags:["silent"] },
   { m:"PreToolUse hook", loc:"session.ts:1402", tr:"a configured hook returns blocked", v:"silent", d:"off unless configured", dis:"remove the hook", tags:["silent"] },
   { m:"Iteration cap", loc:"session.ts", tr:"maxIterationsPerTurn tool rounds in one turn", v:"user", d:"<b>off for interactive root turns (∞); on only for unattended runs &amp; capped children</b>", dis:"n/a for interactive; for capped runs raise <code>maxIterationsPerTurn</code> / <code>MAGENTRA_MAX_ITERATIONS</code>", tags:["user","autonomy"] },
-  { m:"Per-turn token budget", loc:"session.ts", tr:"maxTokensPerTurn billed output tokens in one turn", v:"user", d:"<b>off for interactive root turns (∞); on only for unattended runs &amp; capped children</b>", dis:"n/a for interactive; for capped runs raise <code>maxTokensPerTurn</code> (a mission <code>budget:</code> overrides it)", tags:["user","autonomy"] },
+  { m:"Per-turn token budget", loc:"session.ts", tr:"maxTokensPerTurn billed output tokens in one turn", v:"user", d:"<b>off for interactive root turns (∞); on only for capped children</b>", dis:"n/a for interactive; for capped runs raise <code>maxTokensPerTurn</code>", tags:["user","autonomy"] },
   { m:"Nudge cap exhausted", loc:"session.ts:72", tr:"MAX_AUTO_NUDGES=3 wrap-up nudges spent — the signal rungs (length cutoff, failed batch, open tasks) are now unlimited and unaffected", v:"silent", d:"<b>on — 3, wrap-up nudge only</b>", dis:"raise <code>MAX_AUTO_NUDGES</code> (code constant, not a setting)", tags:["silent","ondefault","autonomy"] },
   { m:"Read-before-write freshness", loc:"fileState.ts:35", tr:"Write/Edit on a file not read this session, or changed on disk since", v:"silent", d:"<b>on — not configurable</b>", dis:"none", tags:["silent","ondefault"] }
 ];
 
-const CORE_EV = ["session_started","turn_started","text_delta","thinking_delta","tool_call_started","tool_call_finished","tool_output_delta","retry_status","agent_spawned","agent_finished","permission_request","question_request","task_list_updated","file_edited","background_notification","overdrive_changed","command_output","session_list","turn_finished","error","skill_draft","skills_updated","modes_updated","session_restored","model_catalog","cwd_changed","missions_updated"];
+const CORE_EV = ["session_started","turn_started","text_delta","thinking_delta","tool_call_started","tool_call_finished","tool_output_delta","retry_status","agent_spawned","agent_finished","permission_request","question_request","task_list_updated","file_edited","background_notification","overdrive_changed","command_output","session_list","turn_finished","error","skill_draft","skills_updated","modes_updated","session_restored","model_catalog","cwd_changed"];
 const CORE_HOT = new Set(["permission_request","question_request"]);
 const FRONT_EV = ["user_message","permission_response","question_response","steer_message","interrupt","set_overdrive","set_deletion_guard","slash_command","bang_command","resume_session","delete_session","stop_background","rename_session","archive_session","list_sessions","set_modes","generate_skill","install_skill"];
 const FRONT_HOT = new Set(["permission_response","question_response","steer_message","interrupt"]);

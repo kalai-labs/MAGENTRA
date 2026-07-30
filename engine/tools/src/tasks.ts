@@ -135,7 +135,7 @@ Mark a task in_progress before starting it and completed the moment it is fully 
         const others = ctx.session.tasks.list().filter((t) => t.id !== task.id && t.status === "in_progress");
         if (others.length > 0) {
           const ids = others.map((t) => `#${t.id}`).join(", ");
-          content += `\nadvisory: task(s) ${ids} are also in_progress — one active task at a time keeps the mission honest; finish or pause them.`;
+          content += `\nadvisory: task(s) ${ids} are also in_progress — one active task at a time keeps the work honest; finish or pause them.`;
         }
       }
 

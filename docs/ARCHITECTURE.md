@@ -102,7 +102,7 @@ Core → frontend events: `session_started` (with the slash-command registry in
 `question_request`, `task_list_updated`, `file_edited` (unified diff),
 `background_notification`, `overdrive_changed`, `command_output`, `session_list`,
 `turn_finished`, `error`, `modes_updated`,
-`session_restored`, `model_catalog`, `cwd_changed`, `missions_updated`.
+`session_restored`, `model_catalog`, `cwd_changed`.
 
 Frontend → core requests: `user_message`, `permission_response`, `question_response`,
 `interrupt`, `set_overdrive`, `set_deletion_guard`, `slash_command`,
@@ -221,7 +221,7 @@ recent tail verbatim. Full JSONL transcript is never rewritten — compaction is
   record per line: `message`, `system_prompt`, `permission`, `compaction`, `meta`),
   `sessions/subagents/` (child-session transcripts), `settings.json`, `tasks/`
   (persisted task lists + background task output), `plans/`, `worktrees/`, `skills/`,
-  `modes/` (workspace styles), `missions/` (+ `missions/out/` run reports and logs),
+  `modes/` (workspace styles),
   `debug/` (repro
   scripts), `tmp/`, `scheduled_tasks.json`, `ATLAS.md`, `LEXICON.md`.
 - `~/.magentra/`: global `settings.json`, global `skills/`.

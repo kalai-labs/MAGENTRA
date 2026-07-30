@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Magentra — Prompt Architecture Review</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font: 10.5pt/1.5 "DejaVu Sans", "Helvetica Neue", Arial, sans-serif; color: #16181d; margin: 0; }
+  h1 { font-size: 25pt; line-height: 1.15; margin: 0 0 14pt; letter-spacing: -0.4pt; }
+  h2 { font-size: 13pt; margin: 22pt 0 7pt; padding-bottom: 4pt; border-bottom: 1.5pt solid #16181d; }
+  h3 { font-size: 11pt; margin: 14pt 0 5pt; }
+  p { margin: 0 0 8pt; }
+  .kicker { font: 700 8.5pt/1 "DejaVu Sans", Arial, sans-serif; letter-spacing: 1.6pt; text-transform: uppercase; color: #8a2f5b; margin-bottom: 10pt; }
+  .lede { font-size: 11.5pt; color: #3d424d; margin-bottom: 16pt; }
+  .meta { width: 100%; border-collapse: collapse; margin: 14pt 0 6pt; font-size: 8.5pt; }
+  .meta td { padding: 3pt 10pt 3pt 0; vertical-align: top; border-top: 0.5pt solid #d7dae0; }
+  .meta td:first-child { font-weight: 700; letter-spacing: 0.7pt; text-transform: uppercase; color: #6b7280; width: 26%; }
+  table.data { width: 100%; border-collapse: collapse; margin: 9pt 0 12pt; font-size: 9pt; }
+  table.data th { text-align: left; font-size: 7.5pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #6b7280; border-bottom: 1pt solid #16181d; padding: 4pt 6pt 4pt 0; }
+  table.data td { padding: 4pt 6pt 4pt 0; border-bottom: 0.5pt solid #e3e6ea; vertical-align: top; }
+  table.data td.n, table.data th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.hi td { background: #fdf2f7; font-weight: 700; }
+  code { font-family: "DejaVu Sans Mono", Consolas, monospace; font-size: 8.5pt; background: #f2f3f5; padding: 0.5pt 3pt; border-radius: 2pt; }
+  .finding { margin: 0 0 4pt; font: 700 7.5pt/1 "DejaVu Sans", Arial, sans-serif; letter-spacing: 1.2pt; text-transform: uppercase; color: #8a2f5b; }
+  .note { border-left: 2.5pt solid #c9ccd2; padding: 2pt 0 2pt 10pt; color: #4b5160; font-size: 9.5pt; margin: 9pt 0 11pt; }
+  .quote { border-left: 2.5pt solid #8a2f5b; padding: 4pt 0 4pt 10pt; margin: 8pt 0 10pt; font-family: "DejaVu Sans Mono", monospace; font-size: 8pt; line-height: 1.45; color: #2c3038; white-space: pre-wrap; }
+  ul { margin: 0 0 9pt; padding-left: 15pt; } li { margin-bottom: 4pt; }
+  .pb { page-break-before: always; }
+  .foot { margin-top: 20pt; padding-top: 6pt; border-top: 0.5pt solid #d7dae0; font-size: 8pt; color: #6b7280; }
+</style>
+</head>
+<body>
+
+<div class="kicker">Prompt Architecture Review · Internal</div>
+<h1>What Magentra&rsquo;s prompts are<br />missing, measured against<br />Claude Code</h1>
+<p class="lede">A re-measurement of Magentra&rsquo;s registered prompts against the leaked Claude Code
+system prompts, after the removal of four unshipped subsystems. The headline finding of the
+previous review has not improved &mdash; it has got worse, and now for a clearer reason.</p>
+
+<table class="meta">
+  <tr><td>Prepared for</td><td>M Ali Ozturk &mdash; Magentra</td></tr>
+  <tr><td>Date</td><td>30 July 2026</td></tr>
+  <tr><td>Subject build</td><td>Magentra 0.12.1.0 &mdash; 75 registered prompts, 27 tools (26 offered)</td></tr>
+  <tr><td>Reference</td><td>claude-code-opus-5, -fable-5, -opus-4.6</td></tr>
+  <tr><td>Source</td><td><code>system_prompts_leaks-main.zip</code></td></tr>
+  <tr><td>Supersedes</td><td>Prompt Architecture Review, 28 July 2026 (Magentra 0.11.1.0)</td></tr>
+</table>
+
+<h2>1 &nbsp;Executive summary</h2>
+
+<p>Since the previous review Magentra has removed four subsystems that were registered but never
+shipped: the hirable crew, CAREFUL MODE, deterministic retrieval, and standing missions. That
+removed <strong>five prompts and two tools</strong> from every request. It did not fix the
+architectural finding &mdash; it isolated it.</p>
+
+<table class="data">
+  <caption style="text-align:left;font-size:7.5pt;letter-spacing:1pt;text-transform:uppercase;color:#6b7280;padding-bottom:5pt;">Fixed cost sent on every request (tokens)</caption>
+  <tr><th>Build</th><th class="n">Instructions</th><th class="n">Tool descriptions</th><th class="n">Total</th><th class="n">Split</th></tr>
+  <tr><td>Claude Code &middot; Opus 5</td><td class="n">2,975</td><td class="n">20,503</td><td class="n">23,478</td><td class="n">13% / 87%</td></tr>
+  <tr><td>Claude Code &middot; Fable 5</td><td class="n">3,295</td><td class="n">20,500</td><td class="n">23,795</td><td class="n">14% / 86%</td></tr>
+  <tr><td>Claude Code &middot; Opus 4.6</td><td class="n">8,185</td><td class="n">24,190</td><td class="n">32,375</td><td class="n">25% / 75%</td></tr>
+  <tr><td>Magentra 0.11.1 <span style="color:#6b7280">(previous review)</span></td><td class="n">4,500</td><td class="n">4,462</td><td class="n">8,962</td><td class="n">50% / 50%</td></tr>
+  <tr class="hi"><td>Magentra 0.12.1 <span style="font-weight:400">(this review)</span></td><td class="n">6,210</td><td class="n">3,821</td><td class="n">10,031</td><td class="n">62% / 38%</td></tr>
+</table>
+
+<p><strong>The ratio moved the wrong way.</strong> Instructions grew 38% while tool descriptions
+shrank 14%. Magentra now spends nearly two-thirds of its fixed budget telling the model how to
+behave, where the reference spends seven-eighths describing what its tools do. Every reference
+build sits between 13% and 25% instructions. Magentra is at 62%.</p>
+
+<div class="note"><strong>Why this is the finding that matters.</strong> Instruction text is
+advice the model may or may not follow. A tool description is read at the moment of choosing that
+tool, and it constrains the call being made. Guidance moved from the first into the second
+converts a hope into a constraint &mdash; and costs nothing extra, because the tool description is
+already being sent.</div>
+
+<h3>The four findings, ranked by impact</h3>
+<table class="data">
+  <tr><th style="width:22%">Area</th><th>Finding</th></tr>
+  <tr><td><strong>Architecture</strong></td><td>62% of fixed cost is instructions vs. 13% in the reference; the gap widened after the removals (&sect;3).</td></tr>
+  <tr><td><strong>Tool surface</strong></td><td>26 tool descriptions average 147 tokens. The reference averages roughly 790 (&sect;4).</td></tr>
+  <tr><td><strong>Concentration</strong></td><td>Six system prompts carry 61% of all instruction tokens; two carry 27% (&sect;5).</td></tr>
+  <tr><td><strong>Hygiene</strong></td><td>Registry and product are now in step: zero prompts for removed features, one tool deliberately disabled (&sect;6).</td></tr>
+</table>
+
+<h2>2 &nbsp;Method and caveats</h2>
+<p>Magentra&rsquo;s column is measured directly from the built engine: the prompt registry is
+enumerated with <code>promptCatalog()</code>, each entry resolved through <code>promptText()</code>,
+and counted with the engine&rsquo;s own <code>estimateTokens()</code>. Tool descriptions are the
+prompts under the <code>tool.</code> namespace. The numbers are therefore what the product actually
+sends, not an estimate from source files.</p>
+<p><strong>Caveat, stated plainly.</strong> The Claude Code column is carried forward unchanged
+from the 28 July review. The reference corpus has not changed, but its instruction/tool split was
+derived by that review&rsquo;s extraction method, which this one did not re-derive. The two columns
+are therefore comparable in magnitude and ratio, not to the token. Nothing in the findings below
+turns on a difference smaller than several hundred tokens.</p>
+<p>Counts exclude conditional sections that are absent on a typical turn (project memory, atlas
+header, standards header) and everything sent only inside a subagent.</p>
+
+<h2 class="pb">3 &nbsp;Finding 1 &mdash; The ratio moved the wrong way</h2>
+<p class="finding">Architecture</p>
+<p>The previous review found Magentra at a 50/50 split and recommended moving guidance into tool
+descriptions. Four subsystems were removed since. Their tools went with them &mdash;
+<code>CrewRun</code> and <code>BackpackSearch</code>, 365 tokens &mdash; and so did their prompts.
+What remained was the instruction layer, which grew.</p>
+
+<table class="data">
+  <tr><th>Layer</th><th class="n">0.11.1</th><th class="n">0.12.1</th><th class="n">Change</th></tr>
+  <tr><td>Instructions (48 prompts)</td><td class="n">4,500</td><td class="n">6,210</td><td class="n">+1,710 &nbsp;(+38%)</td></tr>
+  <tr><td>Tool descriptions (26 sent)</td><td class="n">4,462</td><td class="n">3,821</td><td class="n">&minus;641 &nbsp;(&minus;14%)</td></tr>
+  <tr class="hi"><td>Fixed total</td><td class="n">8,962</td><td class="n">10,031</td><td class="n">+1,069 &nbsp;(+12%)</td></tr>
+</table>
+
+<p>The removals were correct &mdash; they deleted code that never ran. But they cut the cheaper
+half of the budget. The result is a build that sends <em>more</em> fixed context than before while
+offering the model <em>less</em> information about its tools.</p>
+
+<h2>4 &nbsp;Finding 2 &mdash; Tool descriptions are thin</h2>
+<p class="finding">Tool surface</p>
+<p>Magentra registers 27 tools and offers 26. Those 26 descriptions total 3,821 tokens &mdash; an
+average of 147 each. The reference builds spend roughly 20,500 tokens across a comparable tool
+count, averaging near 790.</p>
+
+<table class="data">
+  <tr><th>Magentra tool</th><th class="n">Tokens</th><th>What the description omits</th></tr>
+  <tr><td><code>Bash</code></td><td class="n">534</td><td>The reference devotes several thousand tokens to this one tool: quoting rules, when to prefer a dedicated tool, banned patterns, working-directory discipline.</td></tr>
+  <tr><td><code>Monitor</code></td><td class="n">338</td><td>&mdash;</td></tr>
+  <tr><td><code>GraphQuery</code></td><td class="n">314</td><td>&mdash;</td></tr>
+  <tr><td><code>Read</code></td><td class="n">278</td><td>No guidance on offset/limit for large files, which is where the token cost actually lands.</td></tr>
+  <tr><td><code>Agent</code></td><td class="n">238</td><td>No guidance on when delegation beats doing the work inline &mdash; the decision that governs subagent cost.</td></tr>
+  <tr><td><code>Edit</code></td><td class="n">124</td><td>No worked example of a failing match, the most common error mode.</td></tr>
+  <tr><td colspan="3" style="color:#6b7280">Remaining 20 tools: 2,105 tokens combined.</td></tr>
+</table>
+
+<p>This is where the instruction budget should go. Rules currently stated once in
+<code>system.code-style</code> or <code>system.working-method</code> &mdash; where they apply to
+every turn whether relevant or not &mdash; would bind harder inside the description of the tool
+they govern.</p>
+
+<h2>5 &nbsp;Finding 3 &mdash; Instruction cost is concentrated</h2>
+<p class="finding">Concentration</p>
+<p>Six prompts carry 3,806 of the 6,210 instruction tokens &mdash; 61%. Two carry 1,653 between
+them, 27% of the instruction layer, on every request.</p>
+
+<table class="data">
+  <tr><th>Prompt</th><th class="n">Tokens</th><th class="n">Share of instructions</th></tr>
+  <tr><td><code>system.code-style</code></td><td class="n">904</td><td class="n">14.6%</td></tr>
+  <tr><td><code>system.communication</code></td><td class="n">749</td><td class="n">12.1%</td></tr>
+  <tr><td><code>finishing.runtime-evidence</code></td><td class="n">579</td><td class="n">9.3%</td></tr>
+  <tr><td><code>system.harness</code></td><td class="n">566</td><td class="n">9.1%</td></tr>
+  <tr><td><code>system.working-method</code></td><td class="n">558</td><td class="n">9.0%</td></tr>
+  <tr><td><code>system.autonomy</code></td><td class="n">530</td><td class="n">8.5%</td></tr>
+  <tr class="hi"><td>Six prompts</td><td class="n">3,806</td><td class="n">61.3%</td></tr>
+</table>
+
+<p><code>system.code-style</code> is the clearest candidate to redistribute. Most of what it says
+is about writing and editing files; it would apply more reliably inside <code>Write</code> and
+<code>Edit</code>, which are read precisely when the model is about to write or edit.</p>
+
+<div class="note"><strong>Not a call to shorten.</strong> The reference sends far more total
+context than Magentra does &mdash; 23,478 tokens against 10,031. The problem is not volume; it is
+placement. Magentra can afford to grow its tool layer substantially and still send less than half
+what Claude Code sends.</div>
+
+<h2>6 &nbsp;Finding 4 &mdash; Registry hygiene is now clean</h2>
+<p class="finding">Hygiene</p>
+<p>Every prompt in the registry belongs to a shipping feature. This was not true at the last
+review, and the difference is worth recording:</p>
+<ul>
+  <li><strong>Zero prompts for removed features.</strong> The crew, backpack, CAREFUL MODE,
+      retrieval and mission prompts are gone from the registry along with their code.</li>
+  <li><strong>Zero orphan prompt ids.</strong> Every id the prompt lab references resolves against
+      the live registry, and every live prompt appears in the lab &mdash; verified in both
+      directions.</li>
+  <li><strong><code>Workflow</code> is disabled deliberately.</strong> Its description is emptied,
+      so the registry withholds it: 27 tools registered, 26 offered. This was the largest single
+      tool description in the previous review at 604 tokens.</li>
+</ul>
+<p>The prompt lab is therefore an accurate console again: what it lists is what the product sends.</p>
+
+<h2>7 &nbsp;Where Magentra is ahead</h2>
+<p>Two capabilities in the reference corpus have no equivalent, and they are worth protecting:</p>
+<ul>
+  <li><strong>A live prompt registry.</strong> Every piece of model-facing prose is addressable by
+      id, editable without a rebuild, overridable per workspace, and disableable by emptying it.
+      The leaked builds have no such seam &mdash; their prompts are compiled in.</li>
+  <li><strong>Deterministic end-of-turn rungs.</strong> The runtime-evidence floor and the
+      self-verify check are enforced in code against what the turn actually did &mdash; which files
+      it changed, whether it ever executed anything &mdash; not by asking the model to self-assess.
+      The reference relies on instruction text for the same outcome.</li>
+</ul>
+
+<h2>8 &nbsp;Recommended order of work</h2>
+<table class="data">
+  <tr><th class="n" style="width:6%">#</th><th>Action</th><th class="n">Est. effect</th></tr>
+  <tr><td class="n">1</td><td>Move the file-editing half of <code>system.code-style</code> into the <code>Write</code> and <code>Edit</code> descriptions.</td><td class="n">&minus;450 instr<br />+450 tool</td></tr>
+  <tr><td class="n">2</td><td>Expand <code>Bash</code> toward the reference&rsquo;s depth: quoting, when to prefer <code>Grep</code>/<code>Glob</code>/<code>Read</code>, banned patterns.</td><td class="n">+600 tool</td></tr>
+  <tr><td class="n">3</td><td>Give <code>Agent</code> an explicit delegate-vs-inline rule; give <code>Read</code> an offset/limit rule for large files.</td><td class="n">+300 tool</td></tr>
+  <tr><td class="n">4</td><td>Re-measure. Target a split near 35% / 65% &mdash; still instruction-heavier than the reference, but no longer inverted.</td><td class="n">&mdash;</td></tr>
+</table>
+<p>Steps 1&ndash;3 are net-neutral to slightly positive on total tokens and move guidance to where
+it binds. None of them requires an engine change &mdash; all four are edits in the prompt lab.</p>
+
+<div class="foot">
+  Magentra 0.12.1.0 &middot; 75 prompts &middot; measured 30 July 2026 from the built engine.
+  Reference figures carried forward from the 28 July 2026 review (see &sect;2).
+  Source for this document: <code>docs/prompt-review/report.html</code>.
+</div>
+
+</body>
+</html>

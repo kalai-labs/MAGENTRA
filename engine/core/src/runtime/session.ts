@@ -464,13 +464,6 @@ export class Session {
   readonly stats: SessionStats;
   private busy = false;
   /**
-   * Unattended run (a scheduled/continuous mission fired with nobody at the
-   * keyboard): permission asks auto-deny instead of blocking forever, and
-   * AskUserQuestion fails with a teaching error. Set by the engine around the
-   * run; propagated to every child this session spawns.
-   */
-  private unattended = false;
-  /**
    * OVERDRIVE: the fully-autonomous turn-loop policy. When on, the per-turn
    * iteration/token caps and the auto-nudge ceiling are lifted, the reuse gate
    * only reminds, and a turn may not end until it passes the self-verify rung.
@@ -559,28 +552,6 @@ export class Session {
       new PermissionEngine(
         opts.settings.permissions,
         async (req, approvalSource) => {
-        // Unattended runs never block on a human: deny with a reason instead.
-        // The stance allows everything, so the only calls that reach here are
-        // the two target-shaped guards — deletions and edits to protected
-        // paths (.magentra state, .env). Refusing both is exactly right for a
-        // run with nobody watching.
-        if (this.unattended) {
-          this.transcript.append({
-            kind: "permission",
-            tool: req.tool,
-            ...(subjectOf(req) !== undefined ? { subject: subjectOf(req) } : {}),
-            decision: "deny",
-            source:
-              approvalSource === "deletion-guard" ? "deletion-guard"
-              : approvalSource === "protected-path" ? "protected-path"
-              : "user",
-          });
-          return {
-            decision: "deny",
-            message:
-              "unattended mission run — nobody is available to approve this call. It was denied automatically; find a non-destructive way, or leave it for an attended session.",
-          };
-        }
         const id = `perm_${randomBytes(4).toString("hex")}`;
         const res = await opts.requestApproval({ ...req, id });
         this.transcript.append({
@@ -620,14 +591,7 @@ export class Session {
       tasks: this.tasks,
       background: this.background,
       remind: (t) => this.remind(t),
-      askUser: (questions) => {
-        if (this.unattended) {
-          return Promise.reject(
-            new Error("unattended mission run — the user cannot be asked. Decide autonomously and note the decision in your report."),
-          );
-        }
-        return opts.askUser(`q_${randomBytes(4).toString("hex")}`, questions);
-      },
+      askUser: (questions) => opts.askUser(`q_${randomBytes(4).toString("hex")}`, questions),
       spawnAgent: (o) => this.spawnAgent(o),
       runInference: (o) => this.runInference(o),
       setPromptSection: (k, t) => this.setPromptSection(k, t),
@@ -644,11 +608,6 @@ export class Session {
       worktreeBaseRef: opts.settings.worktree.baseRef,
       ...(opts.skills !== undefined ? { skills: opts.skills } : {}),
     };
-  }
-
-  /** Marks this session (and every child it spawns from now on) as unattended. */
-  setUnattended(value: boolean): void {
-    this.unattended = value;
   }
 
   remind(text: string): void {
@@ -693,8 +652,7 @@ export class Session {
    *  writes outside the workspace all run. Only a user-authored deny rule
    *  still refuses. In exchange the turn self-verifies against the original
    *  query before it may end, which is the rung an attended turn does not run.
-   *  Turn budgets are unaffected (`capped` keys off unattended/child, not
-   *  this). Emits the state change so every frontend can sync its indicator. */
+   *  Turn budgets are unaffected (`capped` keys off child, not this). Emits the state change so every frontend can sync its indicator. */
   setOverdrive(enabled: boolean): void {
     if (this.overdrive === enabled) return;
     this.overdrive = enabled;
@@ -864,13 +822,10 @@ export class Session {
 
     const agentId = `ag_${++Session.agentCounter}`;
     const agentDesc = opts.description;
-    // Interactive children inherit the lifted budgets — a capped child inside
-    // an uncapped run is a hidden stop. An explicit spawn-time iteration cap
-    // (e.g. the atlas pipeline's) still wins, and unattended (mission) runs
-    // keep their configured budgets so a scheduled run stays bounded.
-    const liftedSettings = this.unattended
-      ? this.settings
-      : { ...this.settings, maxIterationsPerTurn: Number.MAX_SAFE_INTEGER, maxTokensPerTurn: Number.MAX_SAFE_INTEGER };
+    // Children inherit the lifted budgets — a capped child inside an uncapped
+    // run is a hidden stop. An explicit spawn-time iteration cap (e.g. the
+    // atlas pipeline's) still wins.
+    const liftedSettings = { ...this.settings, maxIterationsPerTurn: Number.MAX_SAFE_INTEGER, maxTokensPerTurn: Number.MAX_SAFE_INTEGER };
     const childSettings =
       opts.maxIterations !== undefined
         ? { ...liftedSettings, maxIterationsPerTurn: opts.maxIterations }
@@ -908,7 +863,6 @@ export class Session {
       stats: this.stats,
       child: true,
     });
-    child.setUnattended(this.unattended);
 
     // Announce the dispatch before the child's first model turn: without this
     // the frontend hears nothing until the child's first tool call, so a
@@ -1456,7 +1410,7 @@ export class Session {
     // The pre-layers that put questions to the user, in the order they matter.
     //
     let clarification: string | undefined;
-    if (this.settings.clarify && !this.opts.child && !this.unattended) {
+    if (this.settings.clarify && !this.opts.child) {
       clarification = await this.maybeClarify(userText);
     }
 
@@ -1485,10 +1439,9 @@ export class Session {
     let lastBatchHadError = false;
     let nudgeCount = 0;
     // The interactive root turn runs uncapped — the stall detector is the
-    // brake. Only unattended (mission) runs and children keep the numeric
-    // budgets: a mission's budgetTokens must bound a run nobody is watching,
-    // and an explicit spawn-time child cap must still be enforced.
-    const capped = this.unattended || (this.opts.child ?? false);
+    // brake. Only children keep the numeric budgets, so an explicit
+    // spawn-time child cap is still enforced.
+    const capped = this.opts.child ?? false;
     // Once per turn (re-armed when mid-run steering arrives): the end check
     // that gates a clean break on "is the query truly handled".
     let selfVerifyFired = false;

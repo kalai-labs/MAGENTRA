@@ -463,7 +463,7 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
 .sidebar-count { min-width: 17px; padding: 1px 5px; border-radius: 999px; color: var(--accent-hi); background: var(--accent-soft); font-size: max(10px, 0.65rem); letter-spacing: 0; }
 .sidebar-list { display: flex; flex-direction: column; gap: 1px; max-height: 200px; overflow-y: auto; }
 .sidebar-subhead { padding: 6px 8px 2px; color: var(--text-faint); font-size: max(10px, 0.64rem); font-weight: 650; }
-.sidebar-session, .sidebar-mission, .sidebar-workspace-row {
+.sidebar-session, .sidebar-workspace-row {
   min-width: 0;
   display: flex;
   align-items: center;
@@ -477,13 +477,12 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
   color: var(--text-dim);
   text-align: left;
 }
-.sidebar-session:hover, .sidebar-mission:hover, .sidebar-workspace-row:hover { color: var(--text); background: var(--hover); }
+.sidebar-session:hover, .sidebar-workspace-row:hover { color: var(--text); background: var(--hover); }
 .sidebar-session.active, .sidebar-workspace-row.active { color: var(--text-hi); background: var(--raised); }
 .sidebar-session.active:disabled, .sidebar-workspace-row.active:disabled { opacity: 1; }
-.sidebar-session-dot, .sidebar-mission-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--text-faint); }
+.sidebar-session-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--text-faint); }
 .sidebar-session.active .sidebar-session-dot,
 .sidebar-workspace-row.active .sidebar-session-dot { background: var(--accent); box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.7); }
-.sidebar-mission.running .sidebar-mission-dot { border: 2px solid var(--amber); background: transparent; }
 .sidebar-item-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: max(10px, 0.79rem); }
 .sidebar-item-meta { flex: none; color: var(--text-faint); font-size: max(10px, 0.66rem); font-variant-numeric: tabular-nums; }
 .sidebar-item-meta.status-running { color: var(--amber); }
@@ -1135,10 +1134,10 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 #reviewDoneBtn:hover { background: var(--accent-hi); color: var(--accent-ink); }
 
 /* -----------------------------------------------------------------------
-   Full views: changes, sessions, missions, settings
+   Full views: changes, sessions, settings
    ----------------------------------------------------------------------- */
 
-#changesList, #sessionsList, #labList { width: 100%; max-width: 1120px; margin: 0 auto; padding: 14px 26px 36px; overflow-y: auto; }
+#changesList, #sessionsList { width: 100%; max-width: 1120px; margin: 0 auto; padding: 14px 26px 36px; overflow-y: auto; }
 .changes-empty, .sessions-empty, .team-hint { width: 100%; max-width: 1120px; margin: 0 auto; padding: 18px 26px; color: var(--text-faint); font-size: max(10px, 0.8rem); }
 .change-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .change-counts { margin-left: auto; font: 0.72rem var(--mono); }
@@ -1159,18 +1158,6 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .session-rename { color: var(--text-dim); }
 .session-delete:not(:disabled):hover { border-color: currentColor; background: var(--hover); }
 #sessionsSearch { margin-left: auto; width: 180px; padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); }
-
-.lab-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; margin-bottom: 7px; padding: 11px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); }
-.lab-row.running { border-color: rgba(var(--accent-rgb), 0.5); }
-.lab-title { color: var(--text-hi); font-weight: 650; }
-.lab-id { margin-left: 8px; color: var(--text-faint); font: 0.66rem var(--mono); }
-.lab-desc { margin-top: 3px; color: var(--text); font-size: max(10px, 0.79rem); }
-.lab-meta { margin-top: 4px; color: var(--text-faint); font-size: max(10px, 0.7rem); }
-.lab-actions { display: flex; flex-direction: column; gap: 5px; }
-.lab-btn { padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--raised); color: var(--text); font-size: max(10px, 0.68rem); }
-.lab-btn:not(:disabled):hover { border-color: var(--accent); }
-.lab-btn.danger, .lab-warning { color: var(--red); }
-
 
 /* Skills view: discipline + action cards, badges, ? explainers, toggles. */
 #skillsView { overflow-y: auto; }
@@ -1300,7 +1287,7 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
    Modals, setup, failure recovery
    ----------------------------------------------------------------------- */
 
-#deleteModal, #missionModal, #setupWizard, #shortcutSheet, #promptModal, #overdriveDialog, #sessionModal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--scrim); backdrop-filter: blur(4px); }
+#deleteModal, #setupWizard, #shortcutSheet, #promptModal, #overdriveDialog, #sessionModal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--scrim); backdrop-filter: blur(4px); }
 .modal-box, .wiz-box { width: min(560px, 92vw); padding: 19px 20px; border: 1px solid var(--border-hi); border-radius: 13px; background: var(--panel); box-shadow: var(--shadow); }
 .modal-title, .wiz-title { margin-bottom: 6px; color: var(--text-hi); font-size: 0.9rem; font-weight: 700; }
 .modal-sub, .wiz-sub { margin-bottom: 10px; color: var(--text-dim); font-size: max(10px, 0.76rem); line-height: 1.5; }
@@ -1321,23 +1308,7 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .sr-gap { height: 8px; }
 .modal-actions, .wiz-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 13px; }
 .modal-actions button, .wiz-actions button { padding: 8px 12px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); font-size: max(10px, 0.74rem); }
-/* Mission builder form */
-.mission-box { width: min(600px, 94vw); }
-.mission-form { display: flex; flex-direction: column; gap: 11px; max-height: min(62vh, 560px); overflow-y: auto; padding: 2px 3px; }
-.mf-field { display: flex; flex-direction: column; gap: 4px; }
-.mf-label { font-size: max(10px, 0.72rem); color: var(--text-dim); font-weight: 600; }
-.mf-req { color: var(--accent); font-style: normal; }
-.mf-hint { font-size: max(9px, 0.66rem); color: var(--text-faint); line-height: 1.45; }
-.mf-field input, .mf-field textarea, .mf-select { width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); color: var(--text); font: inherit; font-size: max(10px, 0.76rem); }
-.mf-field textarea { resize: vertical; line-height: 1.45; }
-.mf-field input:focus, .mf-field textarea:focus, .mf-select:focus { outline: none; border-color: var(--accent); }
-.mf-row { display: flex; gap: 7px; }
-.mf-row input { flex: 1; }
-.mf-browse { padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); color: var(--text-dim); font-size: max(10px, 0.72rem); white-space: nowrap; }
-.mf-browse:hover { border-color: var(--accent); color: var(--text-hi); }
-.mf-chip { margin-left: 5px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--raised); color: var(--text-dim); font-size: max(9px, 0.66rem); }
-.mf-chip:hover { border-color: var(--accent); color: var(--text-hi); }
-#missionModalStatus { margin-right: auto; font-size: max(10px, 0.72rem); color: var(--text-faint); }
+
 #missionModalStatus.err { color: var(--red); }
 .lab-btn.armed { border-color: var(--red); color: var(--red); font-weight: 700; }
 #allowBtn { color: var(--amber); border-color: var(--amber); } #denyBtn { color: var(--red); }
@@ -1440,7 +1411,7 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
   #transcript { padding: 16px 14px 10px; }
   #composer { padding: 0 14px 12px; }
   .composer-toolbar { flex-wrap: wrap; }
-  .view-head, #changesList, #sessionsList, #labList, .set-grid { padding-left: 14px; padding-right: 14px; }
+  .view-head, #changesList, #sessionsList, .set-grid { padding-left: 14px; padding-right: 14px; }
   .session-row, .lab-row { grid-template-columns: 1fr; }
   .session-actions, .lab-actions { flex-direction: row; }
 }

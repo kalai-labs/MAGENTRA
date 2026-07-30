@@ -114,10 +114,6 @@ export function deriveAlwaysGrant(subject: string): string | undefined {
  * the one thing it does not override — a deny rule refuses rather than asks,
  * and silently ignoring the user's own configuration would be a different
  * feature.
- *
- * Unattended missions do NOT get that bypass. They run with
- * workspaceDeletionBypass instead: provably in-workspace deletions proceed,
- * everything else keeps its guard and is auto-denied by the unattended path.
  */
 export class PermissionEngine {
   /** When true (default), destructive calls always ask the user, in both
@@ -129,13 +125,6 @@ export class PermissionEngine {
    *  protected paths, and writes outside the workspace. It is an explicit
    *  user-thrown switch, so it is allowed to mean what it says. */
   private overdrive = false;
-  /** The narrower carve-out unattended missions run under: a deletion whose
-   *  targets provably resolve inside the workspace skips the guard, so a run
-   *  with nobody watching can still clean up after itself. Everything else —
-   *  out-of-tree paths, unprovable scope, `.magentra`, `.env` — keeps its
-   *  guard and is auto-denied by the unattended path. Deliberately NOT
-   *  OVERDRIVE: a background run never gets the full bypass. */
-  private workspaceDeletionBypass = false;
   private readonly deny: ParsedRule[];
   private readonly allow: ParsedRule[];
   private readonly sessionAllow: ParsedRule[] = [];
@@ -166,11 +155,6 @@ export class PermissionEngine {
 
   setOverdrive(enabled: boolean): void {
     this.overdrive = enabled;
-  }
-
-  /** Unattended missions only — see workspaceDeletionBypass. */
-  setWorkspaceDeletionBypass(enabled: boolean): void {
-    this.workspaceDeletionBypass = enabled;
   }
 
   /** Adds a session-scoped allow rule. Subject "*" or undefined matches any subject. */
@@ -247,31 +231,23 @@ export class PermissionEngine {
     // interactive approval. OVERDRIVE skips it outright — see below. One other
     // exception: an EXPLICIT subject-scoped allow rule in the user's settings
     // (e.g. `Bash(rm -rf ./tmp/*)`) is a deliberate standing decision about
-    // that exact call shape — it beats the guard, so unattended cleanup
-    // missions can delete their own temp files without re-prompting forever.
-    // Broad grants (bare tool, `Tool(*)`, session allows) never do. The guard
+    // that exact call shape — it beats the guard, so a repeated cleanup can
+    // run without re-prompting forever. Broad grants (bare tool, `Tool(*)`, session allows) never do. The guard
     // never adds a session-allow, so it re-fires on every other matching call.
     // Only LITERAL grants may override the guard: a derived command-shape
     // grant ("git push …") from a benign approval must never let a later
     // destructive variant ("git push --force") skip the always-ask.
     const explicitlyAllowed =
       matchesExplicit(this.allow, tool.name, subject) || this.matchesExact(tool.name, subject, true);
-    // The mission carve-out: a deletion whose every target provably resolves
-    // inside the workspace runs without asking, so an unattended run can clean
-    // its own temp files and redo its own work. Only the provable case skips;
-    // "unknown" (out-of-tree paths, history rewrites, substitution, root
-    // wildcards) keeps the always-ask guard, and the unattended path then
-    // auto-denies it.
-    const scopedBypass = this.workspaceDeletionBypass && deletionScope === "workspace";
     // Protected target — a `.magentra` state directory (settings, sessions,
     // transcripts). Deleting it asks in every mode EXCEPT OVERDRIVE: it beats
-    // the "allow deletions" off-switch, explicit allow rules, and the mission
-    // carve-out, but not a switch the user threw by hand.
+    // the "allow deletions" off-switch and explicit allow rules, but not a
+    // switch the user threw by hand.
     const protectedTarget = deletionScope === "protected";
     const deletionSubject =
       // OVERDRIVE means nothing asks — including this, at any scope.
       this.overdrive ? undefined
-      : protectedTarget || (this.deletionGuard && !explicitlyAllowed && !scopedBypass)
+      : protectedTarget || (this.deletionGuard && !explicitlyAllowed)
         ? tool.deletionSubject?.(input)
         : undefined;
     if (deletionSubject !== undefined) {

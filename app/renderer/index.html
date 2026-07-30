@@ -50,17 +50,6 @@
       <div id="sidebarSessionsList" class="sidebar-list"></div>
     </section>
 
-    <section class="sidebar-section" aria-labelledby="missionsSidebarTitle">
-      <div class="sidebar-section-head">
-        <button id="navLab" class="sidebar-section-title hidden" title="Missions">
-          <span id="missionsSidebarTitle">MISSIONS</span>
-          <span id="dockLabCount" class="sidebar-count hidden">0</span>
-        </button>
-        <button id="sidebarMissionNew" class="sidebar-mini hidden" title="New mission" aria-label="New mission">＋</button>
-      </div>
-      <div id="sidebarMissionsList" class="sidebar-list"></div>
-    </section>
-
     <div class="sidebar-spacer"></div>
     <nav id="dock" class="sidebar-tools" aria-label="Workspace tools">
       <button class="dock-btn hidden" id="navMission" title="Task inspector" aria-label="Task inspector">
@@ -235,17 +224,6 @@
       <p id="sessionsEmpty" class="sessions-empty">No saved conversations in this workspace yet.</p>
     </section>
 
-    <section id="labView" class="stage-view hidden">
-      <div class="view-head">
-        <span class="view-title">🧪 MISSIONS</span>
-        <span id="labSub" class="view-sub">standing investigations under .magentra/missions/</span>
-        <button id="labNewBtn" class="view-tool" title="Write a starter mission file" aria-label="Write a starter mission file">＋</button>
-        <button id="labCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
-      </div>
-      <div id="labList"></div>
-      <p id="labEmpty" class="sessions-empty">No missions yet. ＋ writes a starter file you can edit, or ask the agent to draft one.</p>
-    </section>
-
     <section id="settingsView" class="stage-view hidden">
       <div class="view-head">
         <span class="view-title">⚙ SETTINGS</span>
@@ -386,7 +364,6 @@
           <div class="set-card-title">GLOSSARY</div>
           <dl class="glossary">
             <dt>atlas</dt><dd>the whole-design map of this workspace at <code>.magentra/ATLAS.md</code>; <code>/atlas</code> builds or refreshes it.</dd>
-            <dt>mission</dt><dd>a saved directive file under <code>.magentra/missions/</code> that the agent runs on demand, on a loop, or on a cron schedule (MISSIONS in the dock).</dd>
             <dt>task list</dt><dd>the live plan of record in the TASKS rail — the current work items, ending with a verification task.</dd>
             <dt>skills</dt><dd>Markdown files under <code>.magentra/skills/</code> that shape the agent. A <em>discipline</em> applies to every turn while enabled (nothing is locked — all off by default); an <em>action</em> runs on demand. Toggle in the Skills view or with <code>/skills</code>; create your own with ＋ BUILD NEW SKILL.</dd>
             <dt>deletion guard</dt><dd>destructive commands always ask first — even in OVERDRIVE — unless Deletions is set to ALLOW above.</dd>
@@ -503,7 +480,7 @@
         <dt>Esc</dt><dd>close topmost panel · interrupt the running turn</dd>
         <dt><span class="mod-key">Ctrl</span>+L</dt><dd>clear chat (fresh session)</dd>
         <dt><span class="mod-key">Ctrl</span>+K</dt><dd>focus the composer</dd>
-        <dt><span class="mod-key">Ctrl</span>+1…6</dt><dd>console · sessions · missions · changes · settings · skills</dd>
+        <dt><span class="mod-key">Ctrl</span>+1…5</dt><dd>console · sessions · changes · settings · skills</dd>
         <dt>Y / N</dt><dd>allow · deny in the approval dialog</dd>
         <dt>Tab</dt><dd>reach tool rows, diffs, and skill toggles; Enter/Space activates</dd>
         <dt>/</dt><dd>command palette in the composer</dd>
@@ -567,78 +544,6 @@
           <button id="skillWizBack">◂ BACK</button>
           <button id="skillWizInstall" class="wiz-primary">INSTALL ▸</button>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── mission builder ──────────────────────────────────────────────────── -->
-  <div id="missionModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="missionModalTitle">
-    <div class="modal-box mission-box">
-      <div class="modal-title" id="missionModalTitle">🧪 NEW MISSION</div>
-      <p class="modal-sub">Describe the investigation in plain language — Magentra writes the mission file for you. Only a name and what to investigate are required.</p>
-      <div class="mission-form">
-        <label class="mf-field">
-          <span class="mf-label">Name <em class="mf-req">*</em></span>
-          <input id="mfName" type="text" spellcheck="false" placeholder="e.g. Literature scan" />
-        </label>
-        <label class="mf-field">
-          <span class="mf-label">File id</span>
-          <input id="mfId" type="text" spellcheck="false" placeholder="auto from name" />
-          <span class="mf-hint">Becomes <code>.magentra/missions/&lt;id&gt;.md</code> — lowercase letters, digits, - or _.</span>
-        </label>
-        <label class="mf-field">
-          <span class="mf-label">Description</span>
-          <input id="mfDescription" type="text" spellcheck="false" placeholder="One line — what this mission is for (shown in listings)" />
-        </label>
-        <label class="mf-field">
-          <span class="mf-label">What should the agent investigate? <em class="mf-req">*</em></span>
-          <textarea id="mfInvestigate" rows="4" spellcheck="false" placeholder="The question, the scope, and the sources that matter…"></textarea>
-        </label>
-        <label class="mf-field">
-          <span class="mf-label">What counts as done?</span>
-          <textarea id="mfDone" rows="2" spellcheck="false" placeholder="The shape of a good answer — what the report must contain to be complete."></textarea>
-        </label>
-        <label class="mf-field">
-          <span class="mf-label">Keywords to sweep</span>
-          <input id="mfKeywords" type="text" spellcheck="false" placeholder="comma, separated, terms — each is searched on the web every run" />
-        </label>
-        <div class="mf-field">
-          <span class="mf-label">Where to save the report</span>
-          <div class="mf-row">
-            <input id="mfDeliverable" type="text" spellcheck="false" placeholder=".magentra/missions/out/<id>/report.md (default)" />
-            <button type="button" id="mfBrowse" class="mf-browse">Browse…</button>
-          </div>
-        </div>
-        <label class="mf-field">
-          <span class="mf-label">Automation</span>
-          <select id="mfAutomation" class="mf-select">
-            <option value="manual" selected>Only when I run it</option>
-            <option value="continuous">Repeat continuously (loop)</option>
-            <option value="schedule">On a schedule</option>
-          </select>
-        </label>
-        <label class="mf-field hidden" id="mfCooldownField">
-          <span class="mf-label">Pause between runs</span>
-          <input id="mfCooldown" type="text" spellcheck="false" placeholder="e.g. 15m (60s–1h, default 5m)" />
-        </label>
-        <div class="mf-field hidden" id="mfScheduleField">
-          <span class="mf-label">Schedule</span>
-          <input id="mfSchedule" type="text" spellcheck="false" placeholder="5-field cron, e.g. 0 7 * * 1 (Mon 07:00)" />
-          <span class="mf-hint">Presets:
-            <button type="button" class="mf-chip" data-cron="0 * * * *">Hourly</button>
-            <button type="button" class="mf-chip" data-cron="0 9 * * *">Daily 9am</button>
-            <button type="button" class="mf-chip" data-cron="0 9 * * 1">Weekly Mon</button>
-          </span>
-        </div>
-        <label class="mf-field">
-          <span class="mf-label">Token budget per run</span>
-          <input id="mfBudget" type="number" min="0" step="1000" spellcheck="false" placeholder="optional, e.g. 60000" />
-        </label>
-      </div>
-      <div class="modal-actions">
-        <span id="missionModalStatus"></span>
-        <button id="missionModalCancel">CANCEL (Esc)</button>
-        <button id="missionModalCreate" class="wiz-primary">CREATE ▸</button>
       </div>
     </div>
   </div>
@@ -751,7 +656,7 @@
   <script src="modules/markdown.js"></script>
   <script src="modules/views.js"></script>
   <script src="modules/workbench.js"></script>
-  <script src="modules/missions.js"></script>
+  <script src="modules/tasks.js"></script>
   <script src="modules/skills.js"></script>
   <script src="modules/overdrive.js"></script>
   <script src="modules/tour.js"></script>

@@ -1,7 +1,7 @@
 {
   "meta": {
-    "reviewed": "2026-07-29",
-    "build": "0.11.1.0",
+    "reviewed": "2026-07-30",
+    "build": "0.12.1.0",
     "about": "Every registered prompt, reviewed and given a verdict. Reference excerpts are verbatim quotes from the leaked system prompts of two frontier coding agents (the newest two available), machine-verified against those files — they are prior art to synthesise from, not text to copy. Every claim carries the code reference it came from so it can be re-checked.",
     "verdicts": {
       "core": "Load-bearing. Keep it. Any action here is a refinement, not a question about whether it should exist.",
@@ -125,13 +125,6 @@
       "action": "No change.",
       "reviewedHash": "629ace13a503"
     },
-    "system.project-memory-header": {
-      "verdict": "core",
-      "title": "Keep. 25 tokens.",
-      "problem": "Wraps the workspace guide file when one exists.",
-      "action": "No change.",
-      "reviewedHash": "db51a7577bac"
-    },
     "system.skills-block": {
       "verdict": "core",
       "title": "Keep. 27 tokens.",
@@ -223,13 +216,6 @@
       "action": "Empty this prompt. `tool.TaskCreate` covers the decision, and it is read exactly when the decision is being made.",
       "mergeInto": "tool.TaskCreate",
       "reviewedHash": "e0ef4eec45f3"
-    },
-    "reminder.no-atlas": {
-      "verdict": "delete",
-      "title": "Atlas is deferred by decision.",
-      "problem": "Fires once per session whenever no atlas exists and the workspace looks non-trivial — now the normal state. It is the one prompt still promoting a parked feature.",
-      "action": "Already disabled here. To remove it on every machine, delete the call site in `session.ts` — emptying is machine-local.",
-      "reviewedHash": "da39a3ee5e6b"
     },
     "compaction.wrapper": {
       "verdict": "core",
@@ -596,13 +582,6 @@
       "action": "If workflows are not a shipping feature, register this tool conditionally or cut the description hard. This is the single largest tool-side saving available.",
       "reviewedHash": "8f2416700829"
     },
-    "missions.file-format": {
-      "verdict": "optional",
-      "title": "660 tokens, quoted on /mission scaffold.",
-      "problem": "Not sent on a normal turn.",
-      "action": "Leave it.",
-      "reviewedHash": "16cec13396d6"
-    },
     "finishing.double-clause": {
       "verdict": "core",
       "title": "Keep. This is the sharpest argument in the prompt set.",
@@ -696,17 +675,12 @@
           },
           {
             "n": 5,
-            "kind": "merge",
+            "kind": "done",
             "prompts": [
-              "finishing.runtime-evidence",
-              "finishing.double-clause"
+              "finishing.runtime-evidence"
             ],
-            "do": "Fix the evidence rung, then fold the mock case into it",
-            "detail": "Done in code. The two rungs are now one: runtime-evidence carries a `{{doubleNote}}` slot, filled only when the turn's checking leaned on stand-ins it wrote itself. The old rung is deleted, and its trigger folded in — keeping them separate meant disabling either one silently uncovered its half.",
-            "test": {
-              "prompt": "finishing.circular-evidence",
-              "gone": true
-            }
+            "do": "Evidence rung merged",
+            "detail": "Already done: the separate circular-evidence prompt no longer exists — the mock/stand-in case is folded into finishing.runtime-evidence, which is the single rung now."
           },
           {
             "n": 6,
@@ -801,16 +775,10 @@
           },
           {
             "n": 12,
-            "kind": "code",
-            "prompts": [
-              "reminder.no-atlas"
-            ],
-            "do": "Remove the no-atlas call site",
-            "detail": "Emptying it here is machine-local. To have it gone on every machine, delete the rung from `session.ts`. Atlas is deferred by decision, and this is the only prompt still promoting it.",
-            "test": {
-              "prompt": "reminder.no-atlas",
-              "gone": true
-            }
+            "kind": "done",
+            "prompts": [],
+            "do": "no-atlas reminder removed",
+            "detail": "Already done: reminder.no-atlas is no longer in the registry; the call site is gone."
           }
         ]
       },
@@ -861,13 +829,7 @@
     }
   },
   "manualAddressed": {
-    "reminder.no-atlas": {
-      "at": "2026-07-29"
-    },
     "system.environment": {
-      "at": "2026-07-29"
-    },
-    "system.project-memory-header": {
       "at": "2026-07-29"
     },
     "system.skills-block": {

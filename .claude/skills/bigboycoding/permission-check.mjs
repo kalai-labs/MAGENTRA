@@ -127,33 +127,6 @@ await t("a deny rule STILL refuses under OVERDRIVE", async () => {
   eq(r.source, "rule", "source");
 });
 
-console.log("\n-- unattended missions: narrow carve-out, NOT the full bypass --");
-await t("mission bypass runs a provably in-workspace deletion", async () => {
-  const p = mk();
-  p.setWorkspaceDeletionBypass(true);
-  await p.check(rmBash, { command: "rm -rf build" }, "rm -rf build", "rm", "workspace", false, undefined);
-  eq(asked.length, 0, "prompts");
-});
-await t("mission bypass STILL guards an unknown-scope deletion", async () => {
-  const p = mk();
-  p.setWorkspaceDeletionBypass(true);
-  await p.check(rmBash, { command: "rm -rf /etc/x" }, "rm -rf /etc/x", "rm", "unknown", false, undefined);
-  eq(asked.length, 1, "prompts");
-});
-await t("mission bypass STILL guards a .magentra deletion", async () => {
-  const p = mk();
-  p.setWorkspaceDeletionBypass(true);
-  await p.check(rmBash, { command: "rm -rf .magentra" }, "rm -rf .magentra", "rm", "protected", false, undefined);
-  eq(asked.length, 1, "prompts");
-});
-await t("mission bypass STILL guards a .env edit", async () => {
-  const p = mk();
-  p.setWorkspaceDeletionBypass(true);
-  await p.check(write, { file_path: "/w/.env" }, "/w/.env", "Write", undefined, false, "/w/.env");
-  eq(asked.length, 1, "prompts");
-  eq(asked[0].source, "protected-path", "source");
-});
-
 console.log("\n-- still gated: protected paths --");
 for (const path of ["/w/.magentra/settings.json", "/w/.env", "/w/.env.local", "/w/sub/.magentra/team/a.md"]) {
   await t(`Write to ${path} asks`, async () => {

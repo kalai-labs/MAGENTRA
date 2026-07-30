@@ -214,7 +214,7 @@ function appendUserMessage(text) {
 
 // ---------------------------------------------------------------------------
 // "Agent working" group: one collapsible block per work stretch, collecting
-// the turn's tool rows so the transcript reads mission-log style instead of
+// the turn's tool rows so the transcript reads log-style instead of
 // loose rows. Closes when the model starts answering.
 // ---------------------------------------------------------------------------
 

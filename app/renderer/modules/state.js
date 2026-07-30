@@ -77,7 +77,7 @@ let nowDetail = "";
 let nowOverrideText = null;
 let nowOverrideTimeoutId = null;
 
-// mission rail (live task list) state
+// task rail (live task list) state
 let railCollapsed = false; // user preference for the rest of the session
 let taskStatusById = new Map(); // id -> last known status, to detect flips to in_progress
 // id -> { start, done } wall-clock ms, observed from status flips — feeds the

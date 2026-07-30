@@ -271,35 +271,6 @@ function renderSidebarSessions() {
   }
 }
 
-function renderSidebarMissions() {
-  if (!sidebarMissionsListEl) return;
-  sidebarMissionsListEl.textContent = "";
-  if (!workspaceOpen) return;
-  if (labMissions.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "sidebar-empty";
-    empty.textContent = "No missions";
-    sidebarMissionsListEl.appendChild(empty);
-    return;
-  }
-  for (const mission of labMissions.slice(0, 8)) {
-    const row = document.createElement("button");
-    row.className = "sidebar-mission" + (mission.running ? " running" : "");
-    row.title = mission.description || mission.name;
-    const dot = document.createElement("span");
-    dot.className = "sidebar-mission-dot";
-    const label = document.createElement("span");
-    label.className = "sidebar-item-label";
-    label.textContent = mission.name;
-    const meta = document.createElement("span");
-    meta.className =
-      "sidebar-item-meta" + (mission.running ? " status-running" : mission.scheduled ? " status-scheduled" : "");
-    meta.textContent = mission.running ? "Running" : mission.scheduled ? "Scheduled" : "";
-    row.append(dot, label, meta);
-    row.addEventListener("click", () => showView("lab"));
-    sidebarMissionsListEl.appendChild(row);
-  }
-}
 
 function sessionChangeTotals() {
   const files = [...sessionChanges.entries()];
@@ -510,7 +481,6 @@ if (reviewUndoBtnEl) reviewUndoBtnEl.addEventListener("click", () => {
   if (activeReviewPath) void undoFileChange(activeReviewPath);
 });
 if (sidebarSessionsRefreshEl) sidebarSessionsRefreshEl.addEventListener("click", () => requestSessionList());
-if (sidebarMissionNewEl) sidebarMissionNewEl.addEventListener("click", () => labNewBtnEl.click());
 if (attachBtnEl) attachBtnEl.addEventListener("click", () => {
   if (!workspaceOpen || promptInputEl.disabled) return;
   void openAttachPicker(); // defined in composer.js (shared renderer scope)

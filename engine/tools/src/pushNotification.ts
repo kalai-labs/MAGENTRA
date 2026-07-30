@@ -23,8 +23,8 @@ const inputSchema = z.object({
  * Naming disambiguation: this tool is unrelated to the `background_notification`
  * CoreEvent despite the similar name. This one raises a desktop toast for the
  * human (notify-send/osascript/PowerShell) and emits NO CoreEvent; that one is
- * a protocol signal frontends receive when a background job or mission run
- * completes, owned by BackgroundManager and the mission runner in core.
+ * a protocol signal frontends receive when a background job completes,
+ * owned by BackgroundManager in core.
  */
 export const pushNotificationTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "PushNotification",

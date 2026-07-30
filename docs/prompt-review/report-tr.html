@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<title>Magentra — Prompt Mimarisi İncelemesi</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font: 10.5pt/1.5 "DejaVu Sans", "Helvetica Neue", Arial, sans-serif; color: #16181d; margin: 0; }
+  h1 { font-size: 25pt; line-height: 1.15; margin: 0 0 14pt; letter-spacing: -0.4pt; }
+  h2 { font-size: 13pt; margin: 22pt 0 7pt; padding-bottom: 4pt; border-bottom: 1.5pt solid #16181d; }
+  h3 { font-size: 11pt; margin: 14pt 0 5pt; }
+  p { margin: 0 0 8pt; }
+  .kicker { font: 700 8.5pt/1 "DejaVu Sans", Arial, sans-serif; letter-spacing: 1.6pt; text-transform: uppercase; color: #8a2f5b; margin-bottom: 10pt; }
+  .lede { font-size: 11.5pt; color: #3d424d; margin-bottom: 16pt; }
+  .meta { width: 100%; border-collapse: collapse; margin: 14pt 0 6pt; font-size: 8.5pt; }
+  .meta td { padding: 3pt 10pt 3pt 0; vertical-align: top; border-top: 0.5pt solid #d7dae0; }
+  .meta td:first-child { font-weight: 700; letter-spacing: 0.7pt; text-transform: uppercase; color: #6b7280; width: 26%; }
+  table.data { width: 100%; border-collapse: collapse; margin: 9pt 0 12pt; font-size: 9pt; }
+  table.data th { text-align: left; font-size: 7.5pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #6b7280; border-bottom: 1pt solid #16181d; padding: 4pt 6pt 4pt 0; }
+  table.data td { padding: 4pt 6pt 4pt 0; border-bottom: 0.5pt solid #e3e6ea; vertical-align: top; }
+  table.data td.n, table.data th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.hi td { background: #fdf2f7; font-weight: 700; }
+  code { font-family: "DejaVu Sans Mono", Consolas, monospace; font-size: 8.5pt; background: #f2f3f5; padding: 0.5pt 3pt; border-radius: 2pt; }
+  .finding { margin: 0 0 4pt; font: 700 7.5pt/1 "DejaVu Sans", Arial, sans-serif; letter-spacing: 1.2pt; text-transform: uppercase; color: #8a2f5b; }
+  .note { border-left: 2.5pt solid #c9ccd2; padding: 2pt 0 2pt 10pt; color: #4b5160; font-size: 9.5pt; margin: 9pt 0 11pt; }
+  ul { margin: 0 0 9pt; padding-left: 15pt; } li { margin-bottom: 4pt; }
+  .pb { page-break-before: always; }
+  .foot { margin-top: 20pt; padding-top: 6pt; border-top: 0.5pt solid #d7dae0; font-size: 8pt; color: #6b7280; }
+</style>
+</head>
+<body>
+
+<div class="kicker">Prompt Mimarisi İncelemesi · Dahili</div>
+<h1>Magentra&rsquo;nın promptlarında<br />ne eksik? Claude Code ile<br />karşılaştırma</h1>
+<p class="lede">Dört adet hiç yayına girmemiş alt sistem kaldırıldıktan sonra Magentra&rsquo;nın
+kayıtlı promptlarını, sızdırılmış Claude Code system promptlarıyla yeniden ölçtüm. Önceki
+incelemenin ana bulgusu düzelmedi &mdash; daha da kötüleşti, ama artık sebebi çok daha net.</p>
+
+<table class="meta">
+  <tr><td>Hazırlanan</td><td>M Ali Öztürk &mdash; Magentra</td></tr>
+  <tr><td>Tarih</td><td>30 Temmuz 2026</td></tr>
+  <tr><td>İncelenen sürüm</td><td>Magentra 0.12.1.0 &mdash; 75 kayıtlı prompt, 27 araç (26&rsquo;sı gönderiliyor)</td></tr>
+  <tr><td>Referans</td><td>claude-code-opus-5, -fable-5, -opus-4.6</td></tr>
+  <tr><td>Kaynak</td><td><code>system_prompts_leaks-main.zip</code></td></tr>
+  <tr><td>Yerine geçtiği</td><td>Prompt Mimarisi İncelemesi, 28 Temmuz 2026 (Magentra 0.11.1.0)</td></tr>
+</table>
+
+<h2>1 &nbsp;Yönetici özeti</h2>
+
+<p>Önceki incelemeden bu yana Magentra, kayıtlı olduğu hâlde hiç yayına girmemiş dört alt sistemi
+kaldırdı: kiralanabilir ekip (crew), CAREFUL MODE, deterministik retrieval ve sürekli görevler
+(missions). Bu, her istekten <strong>beş prompt ve iki aracı</strong> çıkardı. Mimari bulguyu
+çözmedi &mdash; yalnızca yalıtıp görünür hâle getirdi.</p>
+
+<table class="data">
+  <caption style="text-align:left;font-size:7.5pt;letter-spacing:1pt;text-transform:uppercase;color:#6b7280;padding-bottom:5pt;">Her istekte gönderilen sabit maliyet (token)</caption>
+  <tr><th>Sürüm</th><th class="n">Talimatlar</th><th class="n">Araç açıklamaları</th><th class="n">Toplam</th><th class="n">Oran</th></tr>
+  <tr><td>Claude Code &middot; Opus 5</td><td class="n">2.975</td><td class="n">20.503</td><td class="n">23.478</td><td class="n">%13 / %87</td></tr>
+  <tr><td>Claude Code &middot; Fable 5</td><td class="n">3.295</td><td class="n">20.500</td><td class="n">23.795</td><td class="n">%14 / %86</td></tr>
+  <tr><td>Claude Code &middot; Opus 4.6</td><td class="n">8.185</td><td class="n">24.190</td><td class="n">32.375</td><td class="n">%25 / %75</td></tr>
+  <tr><td>Magentra 0.11.1 <span style="color:#6b7280">(önceki inceleme)</span></td><td class="n">4.500</td><td class="n">4.462</td><td class="n">8.962</td><td class="n">%50 / %50</td></tr>
+  <tr class="hi"><td>Magentra 0.12.1 <span style="font-weight:400">(bu inceleme)</span></td><td class="n">6.210</td><td class="n">3.821</td><td class="n">10.031</td><td class="n">%62 / %38</td></tr>
+</table>
+
+<p><strong>Oran ters yöne gitti.</strong> Talimatlar %38 büyürken araç açıklamaları %14 küçüldü.
+Magentra artık sabit bütçesinin neredeyse üçte ikisini modele nasıl davranacağını anlatmaya
+harcıyor; referans ise sekizde yedisini araçlarının ne yaptığını anlatmaya harcıyor. Referans
+sürümlerin hepsi %13&ndash;%25 aralığında. Magentra %62&rsquo;de.</p>
+
+<div class="note"><strong>Asıl mesele neden bu.</strong> Talimat metni, modelin uyabileceği de
+uymayabileceği bir tavsiyedir. Araç açıklaması ise tam o aracı seçerken okunur ve yapılmakta olan
+çağrıyı kısıtlar. Rehberliği birinciden ikinciye taşımak, bir temenniyi kısıta çevirir &mdash; ve
+ek maliyeti yoktur, çünkü araç açıklaması zaten gönderiliyor.</div>
+
+<h3>Etkiye göre sıralı dört bulgu</h3>
+<table class="data">
+  <tr><th style="width:22%">Alan</th><th>Bulgu</th></tr>
+  <tr><td><strong>Mimari</strong></td><td>Sabit maliyetin %62&rsquo;si talimat; referansta %13. Kaldırmalardan sonra fark açıldı (&sect;3).</td></tr>
+  <tr><td><strong>Araç yüzeyi</strong></td><td>26 araç açıklaması ortalama 147 token. Referans ortalaması yaklaşık 790 (&sect;4).</td></tr>
+  <tr><td><strong>Yoğunlaşma</strong></td><td>Altı system promptu tüm talimat token&rsquo;larının %61&rsquo;ini taşıyor; ikisi %27&rsquo;sini (&sect;5).</td></tr>
+  <tr><td><strong>Hijyen</strong></td><td>Kayıt defteri ile ürün artık uyumlu: kaldırılmış özellik için sıfır prompt, bir araç bilinçli olarak kapalı (&sect;6).</td></tr>
+</table>
+
+<h2>2 &nbsp;Yöntem ve çekinceler</h2>
+<p>Magentra sütunu doğrudan derlenmiş motordan ölçüldü: prompt kayıt defteri
+<code>promptCatalog()</code> ile listelendi, her kayıt <code>promptText()</code> üzerinden
+çözüldü ve motorun kendi <code>estimateTokens()</code> fonksiyonuyla sayıldı. Araç açıklamaları
+<code>tool.</code> ad alanındaki promptlardır. Dolayısıyla bu sayılar ürünün gerçekten gönderdiği
+şeydir; kaynak dosyalardan yapılmış bir tahmin değildir.</p>
+<p><strong>Açıkça belirtilen çekince.</strong> Claude Code sütunu 28 Temmuz incelemesinden
+değiştirilmeden aktarıldı. Referans külliyatı değişmedi; ancak talimat/araç ayrımı o incelemenin
+çıkarım yöntemiyle elde edilmişti ve bu inceleme onu yeniden türetmedi. İki sütun büyüklük ve oran
+olarak karşılaştırılabilir, token düzeyinde değil. Aşağıdaki bulguların hiçbiri birkaç yüz
+token&rsquo;dan küçük bir farka dayanmıyor.</p>
+<p>Tipik bir turda bulunmayan koşullu bölümler (proje hafızası, atlas başlığı, standartlar başlığı)
+ve yalnızca alt ajan içinde gönderilen her şey sayımın dışında.</p>
+
+<h2 class="pb">3 &nbsp;Bulgu 1 &mdash; Oran ters yöne gitti</h2>
+<p class="finding">Mimari</p>
+<p>Önceki inceleme Magentra&rsquo;yı %50/%50&rsquo;de bulmuş ve rehberliğin araç açıklamalarına
+taşınmasını önermişti. O tarihten sonra dört alt sistem kaldırıldı. Araçları da beraberinde gitti
+&mdash; <code>CrewRun</code> ve <code>BackpackSearch</code>, 365 token &mdash; promptları da. Geriye
+kalan talimat katmanı ise büyüdü.</p>
+
+<table class="data">
+  <tr><th>Katman</th><th class="n">0.11.1</th><th class="n">0.12.1</th><th class="n">Değişim</th></tr>
+  <tr><td>Talimatlar (48 prompt)</td><td class="n">4.500</td><td class="n">6.210</td><td class="n">+1.710 &nbsp;(+%38)</td></tr>
+  <tr><td>Araç açıklamaları (26 gönderilen)</td><td class="n">4.462</td><td class="n">3.821</td><td class="n">&minus;641 &nbsp;(&minus;%14)</td></tr>
+  <tr class="hi"><td>Sabit toplam</td><td class="n">8.962</td><td class="n">10.031</td><td class="n">+1.069 &nbsp;(+%12)</td></tr>
+</table>
+
+<p>Kaldırmalar doğruydu &mdash; hiç çalışmayan kodu sildiler. Ama bütçenin ucuz yarısını kestiler.
+Sonuç: eskisinden <em>daha fazla</em> sabit bağlam gönderen, buna karşılık modele araçları hakkında
+<em>daha az</em> bilgi veren bir sürüm.</p>
+
+<h2>4 &nbsp;Bulgu 2 &mdash; Araç açıklamaları zayıf</h2>
+<p class="finding">Araç yüzeyi</p>
+<p>Magentra 27 araç kaydediyor, 26&rsquo;sını sunuyor. Bu 26 açıklama toplam 3.821 token &mdash;
+her biri ortalama 147. Referans sürümler benzer sayıda araç için yaklaşık 20.500 token harcıyor;
+ortalama 790&rsquo;a yakın.</p>
+
+<table class="data">
+  <tr><th>Magentra aracı</th><th class="n">Token</th><th>Açıklamada eksik olan</th></tr>
+  <tr><td><code>Bash</code></td><td class="n">534</td><td>Referans yalnızca bu araca birkaç bin token ayırıyor: tırnaklama kuralları, ne zaman özel bir araç tercih edilmeli, yasak kalıplar, çalışma dizini disiplini.</td></tr>
+  <tr><td><code>Monitor</code></td><td class="n">338</td><td>&mdash;</td></tr>
+  <tr><td><code>GraphQuery</code></td><td class="n">314</td><td>&mdash;</td></tr>
+  <tr><td><code>Read</code></td><td class="n">278</td><td>Büyük dosyalar için offset/limit rehberliği yok &mdash; token maliyetinin asıl oluştuğu yer orası.</td></tr>
+  <tr><td><code>Agent</code></td><td class="n">238</td><td>Devretmenin ne zaman işi kendin yapmaya üstün olduğuna dair kural yok &mdash; alt ajan maliyetini belirleyen karar bu.</td></tr>
+  <tr><td><code>Edit</code></td><td class="n">124</td><td>Eşleşmeyen bir <code>old_string</code> için örnek yok; en sık görülen hata biçimi bu.</td></tr>
+  <tr><td colspan="3" style="color:#6b7280">Kalan 20 araç: toplam 2.105 token.</td></tr>
+</table>
+
+<p>Talimat bütçesinin gitmesi gereken yer burası. Şu anda <code>system.code-style</code> veya
+<code>system.working-method</code> içinde bir kez söylenen &mdash; ve ilgili olsun olmasın her tura
+uygulanan &mdash; kurallar, yönettikleri aracın açıklamasının içinde çok daha güçlü bağlar.</p>
+
+<h2>5 &nbsp;Bulgu 3 &mdash; Talimat maliyeti birkaç promptta yoğunlaşmış</h2>
+<p class="finding">Yoğunlaşma</p>
+<p>Altı prompt, 6.210 talimat token&rsquo;ının 3.806&rsquo;sını taşıyor &mdash; %61. İkisi
+aralarında 1.653 token tutuyor: her istekte talimat katmanının %27&rsquo;si.</p>
+
+<table class="data">
+  <tr><th>Prompt</th><th class="n">Token</th><th class="n">Talimat içindeki payı</th></tr>
+  <tr><td><code>system.code-style</code></td><td class="n">904</td><td class="n">%14,6</td></tr>
+  <tr><td><code>system.communication</code></td><td class="n">749</td><td class="n">%12,1</td></tr>
+  <tr><td><code>finishing.runtime-evidence</code></td><td class="n">579</td><td class="n">%9,3</td></tr>
+  <tr><td><code>system.harness</code></td><td class="n">566</td><td class="n">%9,1</td></tr>
+  <tr><td><code>system.working-method</code></td><td class="n">558</td><td class="n">%9,0</td></tr>
+  <tr><td><code>system.autonomy</code></td><td class="n">530</td><td class="n">%8,5</td></tr>
+  <tr class="hi"><td>Altı prompt</td><td class="n">3.806</td><td class="n">%61,3</td></tr>
+</table>
+
+<p><code>system.code-style</code> yeniden dağıtılmaya en uygun aday. Söylediklerinin çoğu dosya
+yazma ve düzenlemeyle ilgili; bu kurallar <code>Write</code> ve <code>Edit</code> açıklamalarının
+içinde daha güvenilir işler, çünkü o açıklamalar tam da model yazmak ya da düzenlemek üzereyken
+okunur.</p>
+
+<div class="note"><strong>Bu bir &ldquo;kısaltın&rdquo; çağrısı değil.</strong> Referans, Magentra&rsquo;dan
+çok daha fazla toplam bağlam gönderiyor &mdash; 10.031&rsquo;e karşı 23.478 token. Sorun hacim
+değil, yerleşim. Magentra araç katmanını ciddi biçimde büyütse bile Claude Code&rsquo;un
+gönderdiğinin yarısından azını göndermeye devam eder.</div>
+
+<h2>6 &nbsp;Bulgu 4 &mdash; Kayıt defteri hijyeni artık temiz</h2>
+<p class="finding">Hijyen</p>
+<p>Kayıt defterindeki her prompt, yayında olan bir özelliğe ait. Geçen incelemede durum böyle
+değildi; fark kayda değer:</p>
+<ul>
+  <li><strong>Kaldırılmış özellikler için sıfır prompt.</strong> Crew, backpack, CAREFUL MODE,
+      retrieval ve mission promptları kodlarıyla birlikte kayıt defterinden çıktı.</li>
+  <li><strong>Sıfır öksüz prompt kimliği.</strong> Prompt lab&rsquo;ın andığı her kimlik canlı
+      kayıt defterinde karşılık buluyor ve canlı her prompt lab&rsquo;da görünüyor &mdash; iki yönde
+      de doğrulandı.</li>
+  <li><strong><code>Workflow</code> bilinçli olarak kapalı.</strong> Açıklaması boşaltıldığı için
+      kayıt defteri onu modele sunmuyor: 27 araç kayıtlı, 26&rsquo;sı sunuluyor. Önceki incelemede
+      604 token ile en büyük tekil araç açıklamasıydı.</li>
+</ul>
+<p>Böylece prompt lab yeniden doğru bir konsol: listelediği şey, ürünün gönderdiği şeydir.</p>
+
+<h2>7 &nbsp;Magentra&rsquo;nın önde olduğu yerler</h2>
+<p>Referans külliyatında karşılığı bulunmayan ve korunmaya değer iki yetenek var:</p>
+<ul>
+  <li><strong>Canlı prompt kayıt defteri.</strong> Modele giden her metin bir kimlikle
+      adreslenebiliyor, yeniden derlemeden düzenlenebiliyor, çalışma alanı bazında
+      geçersiz kılınabiliyor ve boşaltılarak kapatılabiliyor. Sızdırılmış sürümlerde böyle bir
+      dikiş yeri yok &mdash; promptları derlemeye gömülü.</li>
+  <li><strong>Deterministik tur sonu basamakları.</strong> Çalışma-zamanı kanıt tabanı ve
+      self-verify kontrolü, turun gerçekte ne yaptığına bakılarak kodda uygulanıyor &mdash; hangi
+      dosyaları değiştirdiği, herhangi bir komut çalıştırıp çalıştırmadığı &mdash; modelin kendini
+      değerlendirmesine bırakılmıyor. Referans aynı sonuç için talimat metnine güveniyor.</li>
+</ul>
+
+<h2>8 &nbsp;Önerilen çalışma sırası</h2>
+<table class="data">
+  <tr><th class="n" style="width:6%">#</th><th>Eylem</th><th class="n">Tahmini etki</th></tr>
+  <tr><td class="n">1</td><td><code>system.code-style</code>&rsquo;ın dosya düzenlemeye dair yarısını <code>Write</code> ve <code>Edit</code> açıklamalarına taşı.</td><td class="n">&minus;450 talimat<br />+450 araç</td></tr>
+  <tr><td class="n">2</td><td><code>Bash</code>&rsquo;i referans derinliğine yaklaştır: tırnaklama, ne zaman <code>Grep</code>/<code>Glob</code>/<code>Read</code> tercih edilmeli, yasak kalıplar.</td><td class="n">+600 araç</td></tr>
+  <tr><td class="n">3</td><td><code>Agent</code>&rsquo;a açık bir devret-ya-da-kendin-yap kuralı ekle; <code>Read</code>&rsquo;e büyük dosyalar için offset/limit kuralı ekle.</td><td class="n">+300 araç</td></tr>
+  <tr><td class="n">4</td><td>Yeniden ölç. Hedef %35 / %65 civarı &mdash; referanstan hâlâ talimat ağırlıklı, ama artık ters değil.</td><td class="n">&mdash;</td></tr>
+</table>
+<p>1&ndash;3. adımlar toplam token açısından nötr ya da hafif olumlu ve rehberliği bağladığı yere
+taşıyor. Hiçbiri motor değişikliği gerektirmiyor &mdash; dördü de prompt lab içinde yapılacak
+düzenlemeler.</p>
+
+<div class="foot">
+  Magentra 0.12.1.0 &middot; 75 prompt &middot; 30 Temmuz 2026&rsquo;da derlenmiş motordan ölçüldü.
+  Referans sayıları 28 Temmuz 2026 incelemesinden aktarıldı (bkz. &sect;2).
+  Bu belgenin kaynağı: <code>docs/prompt-review/report-tr.html</code>.
+</div>
+
+</body>
+</html>

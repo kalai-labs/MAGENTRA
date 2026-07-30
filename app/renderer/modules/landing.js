@@ -281,7 +281,6 @@ function syncActivityUi() {
   if (modelSelectEl) modelSelectEl.disabled = busy;
   if (customModelEl) customModelEl.disabled = busy;
   renderSessions();
-  renderMissions();
   renderSidebarWorkspaces(); // keep the focused tab's running badge live
 
   if (!workspaceOpen) return; // landing page: composer stays disabled regardless
@@ -1113,9 +1112,6 @@ function handleEngineEvent(event) {
       break;
     case "skill_export":
       onSkillExport(event);
-      break;
-    case "missions_updated":
-      onMissionsUpdated(event);
       break;
     case "file_edited":
       onFileEdited(event);

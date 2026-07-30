@@ -9,7 +9,6 @@
 const STAGE_VIEWS = {
   console: consoleViewEl,
   sessions: sessionsViewEl,
-  lab: labViewEl,
   changes: changesViewEl,
   settings: settingsViewEl,
   skills: skillsViewEl,
@@ -23,7 +22,6 @@ function showView(name) {
   document.body.dataset.view = name;
   navConsoleEl.classList.toggle("active", name === "console");
   navSessionsEl.classList.toggle("active", name === "sessions");
-  navLabEl.classList.toggle("active", name === "lab");
   navChangesEl.classList.toggle("active", name === "changes");
   navSettingsEl.classList.toggle("active", name === "settings");
   if (navSkillsEl) navSkillsEl.classList.toggle("active", name === "skills");
@@ -71,10 +69,9 @@ const MENU_BAR = [
     items: [
       { label: "Console", hint: "Ctrl+1", action: () => showView("console") },
       { label: "Sessions", hint: "Ctrl+2", needsWorkspace: true, action: () => { showView("sessions"); requestSessionList(); } },
-      { label: "Missions", hint: "Ctrl+3", needsWorkspace: true, action: () => showView("lab") },
-      { label: "Changes", hint: "Ctrl+4", needsWorkspace: true, action: () => showView("changes") },
-      { label: "Settings", hint: "Ctrl+5", action: () => { showView("settings"); void loadConnectionCard(); } },
-      { label: "Skills", hint: "Ctrl+6", needsWorkspace: true, action: () => showView("skills") },
+      { label: "Changes", hint: "Ctrl+3", needsWorkspace: true, action: () => showView("changes") },
+      { label: "Settings", hint: "Ctrl+4", action: () => { showView("settings"); void loadConnectionCard(); } },
+      { label: "Skills", hint: "Ctrl+5", needsWorkspace: true, action: () => showView("skills") },
       { sep: true },
       { label: "Toggle Full Screen", hint: "F11", action: () => toggleFullScreen() },
     ],

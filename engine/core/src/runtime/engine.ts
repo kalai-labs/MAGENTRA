@@ -1,6 +1,6 @@
 import { exec } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import {
   PROTOCOL_VERSION,
   STATE_DIR_NAME,
@@ -9,7 +9,6 @@ import {
   type ConnectionSpec,
   type CoreEvent,
   type FrontendRequest,
-  type MissionDraft,
   type PermissionDecision,
   type RestoredMessage,
   type SessionSummary,
@@ -22,17 +21,6 @@ import { HookRunner } from "../agent/hooks.js";
 import { BUILTIN_SKILL_FILES, loadModes, ModeEngine, parseSkillMd } from "../ma/modes.js";
 import { parseFrontmatter } from "../config/frontmatter.js";
 import { loadSkills } from "../agent/skills.js";
-import {
-  buildMissionFile,
-  buildMissionPrompt,
-  missionFormatExample,
-  loadContinuousState,
-  loadMissions,
-  missionDeliverablePath,
-  missionTemplate,
-  saveContinuousState,
-  type Mission,
-} from "../scheduling/missions.js";
 import {
   createProviderForEndpoint,
   endpointSpecFromSettings,
@@ -187,13 +175,11 @@ export class Engine {
     this.scheduler = new CronScheduler({
       stateDir: join(this.opts.cwd, STATE_DIR_NAME),
       isIdle: () => !this.session.isBusy(),
-      // A scheduled prompt that reads as a slash command routes as one (this is
-      // how a scheduled mission re-reads its file at fire time); anything else
-      // starts a plain user turn. Scheduler-fired work is UNATTENDED: nobody is
-      // at the keyboard, so mission runs must never block on approval prompts.
+      // A scheduled prompt that reads as a slash command routes as one;
+      // anything else starts a plain user turn.
       enqueue: (prompt) => {
         const slash = /^\/([a-z-]+)(?:\s+([\s\S]*))?$/i.exec(prompt.trim());
-        if (slash) this.handleSlash(slash[1]!, slash[2], { unattended: true });
+        if (slash) this.handleSlash(slash[1]!, slash[2]);
         else this.send({ type: "user_message", text: prompt });
       },
     });
@@ -255,10 +241,7 @@ export class Engine {
 
   start(): void {
     this.announceSession();
-    // Boot-only work below: /clear and /resume swap sessions via
-    // announceSession() alone, so they never re-arm mission loops.
     this.publishModelCatalog();
-    this.rearmContinuousMissions();
   }
 
   /**
@@ -303,7 +286,6 @@ export class Engine {
       skills: (this.opts.skills ?? []).map((s) => ({ name: s.name, description: s.description })),
     });
     this.emit({ type: "task_list_updated", tasks: this.session.tasks.list() });
-    this.emitMissionsUpdated();
     // A tiny explicit contextWindow shadowing a model's real one causes
     // constant compaction (the 4096-on-a-160k-model trap). One storage, one
     // resolver — and a loud warning when the override looks like a leftover.
@@ -808,9 +790,6 @@ export class Engine {
       case "export_skill":
         this.exportSkill(request.id);
         break;
-      case "create_mission":
-        this.handleCreateMission(request.draft);
-        break;
       default:
         // The wire accepts any {type: string} object, so an unknown type can
         // arrive at runtime despite the exhaustive union above. Answer it —
@@ -844,9 +823,9 @@ export class Engine {
     return messages;
   }
 
-  private handleSlash(command: string, args?: string, opts?: { unattended?: boolean }): void {
+  private handleSlash(command: string, args?: string): void {
     // Case-insensitive: the scheduler's prompt regex and users both produce
-    // mixed case ("/Mission run x"); the dispatch must not silently no-op.
+    // mixed case ("/Compact"); the dispatch must not silently no-op.
     switch (command.replace(/^\//, "").toLowerCase()) {
       case "help":
         this.emit({ type: "command_output", text: renderHelp() });
@@ -959,9 +938,6 @@ export class Engine {
         break;
       case "settings":
         this.handleSettings(args);
-        break;
-      case "mission":
-        this.handleMission(args, opts?.unattended === true);
         break;
       case "resume":
         if (args) this.resumeSession(args.trim());
@@ -1238,401 +1214,6 @@ export class Engine {
       return;
     }
     delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-  }
-
-  /** The cron prompt a scheduled mission fires with (re-reads the file at fire time). */
-  private static missionRunPrompt(id: string): string {
-    return `/mission run ${id}`;
-  }
-
-  /**
-   * Runs one mission as a full orchestrator turn. Unattended runs (scheduler-
-   * fired, or the /mission start loop) take the OVERDRIVE permission stance
-   * (the deletion guard still fires and is auto-denied via the session's
-   * unattended flag), never block on approvals or questions, honor the
-   * mission's token budget, and end with a notification. Every run appends
-   * to the mission's log; an active continuous mission re-arms its next run.
-   */
-  private runMission(mission: Mission, unattended: boolean): void {
-    this.startExclusive("running a mission", async () => {
-      const cwd = this.opts.cwd;
-      const session = this.session;
-      const settings = this.opts.settings;
-      const savedBudget = settings.maxTokensPerTurn;
-      this.emit({
-        type: "command_output",
-        text: `🧪 mission "${mission.name}" launched${unattended ? " (unattended)" : ""}.`,
-      });
-      let ok = false;
-      try {
-        if (unattended) {
-          // Nobody is present to answer an ask prompt. The stance is already
-          // allow-all, so all the run needs is the narrow deletion carve-out
-          // that lets it clean up after itself; the session's unattended flag
-          // auto-denies whatever still insists on asking (out-of-tree or
-          // unprovable deletions, .magentra/.env edits, questions).
-          // Deliberately NOT setOverdrive: a background run must never inherit
-          // the full nothing-asks bypass. The session's own OVERDRIVE identity
-          // is untouched either way.
-          session.permissions.setWorkspaceDeletionBypass(true);
-          session.setUnattended(true);
-        }
-        if (mission.budgetTokens !== undefined) settings.maxTokensPerTurn = mission.budgetTokens;
-        const previousReport = existsSync(join(cwd, missionDeliverablePath(mission)));
-        await session.runTurn(buildMissionPrompt(mission, { previousReport }));
-        ok = true;
-      } finally {
-        session.setUnattended(false);
-        // Drop the mission carve-out and restore the session's own stance.
-        session.permissions.setWorkspaceDeletionBypass(false);
-        session.permissions.setOverdrive(session.isOverdrive());
-        settings.maxTokensPerTurn = savedBudget;
-        this.appendMissionLog(mission.id, {
-          ts: new Date().toISOString(),
-          unattended,
-          ok,
-          outputTokens: session.lastTurnUsage?.outputTokens ?? 0,
-        });
-        const looping = loadContinuousState(cwd).active[mission.id] !== undefined;
-        // The run just (re)wrote the deliverable — refresh lastRunAt in the UI.
-        this.emitMissionsUpdated();
-        if (unattended) {
-          this.emit({
-            type: "background_notification",
-            taskId: `mission:${mission.id}`,
-            kind: "mission",
-            payload: { id: mission.id, ok },
-          });
-          this.emit({
-            type: "command_output",
-            text: `🧪 mission "${mission.id}" run ${ok ? "finished" : "FAILED"} — report: ${missionDeliverablePath(mission)}${looping ? " · continuous: next run armed" : ""}`,
-          });
-        }
-        if (looping) this.armContinuous(mission);
-      }
-    });
-  }
-
-  /** Append one run record to .magentra/missions/out/<id>/log.jsonl (best-effort). */
-  private appendMissionLog(id: string, entry: Record<string, unknown>): void {
-    try {
-      const path = join(this.opts.cwd, STATE_DIR_NAME, "missions", "out", id, "log.jsonl");
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, `${JSON.stringify(entry)}\n`, { flag: "a" });
-    } catch {
-      // the log is an audit convenience — never fail a run over it
-    }
-  }
-
-  /**
-   * (Re-)arms the single pending wakeup that continues a continuous mission:
-   * any existing wakeup for it is replaced, so there is never more than one
-   * next-run in flight regardless of how the current run was started.
-   */
-  private armContinuous(mission: Mission): void {
-    const prompt = Engine.missionRunPrompt(mission.id);
-    for (const job of this.scheduler.list()) {
-      if (job.source === "wakeup" && job.prompt === prompt) this.scheduler.delete(job.id);
-    }
-    this.scheduler.scheduleWakeup({
-      delaySeconds: mission.cooldownSeconds ?? 300,
-      reason: `continuous mission ${mission.id}`,
-      prompt,
-    });
-  }
-
-  /** Re-arms the continuous-mission loops recorded on disk (called at startup — wakeups are not durable). */
-  private rearmContinuousMissions(): void {
-    const state = loadContinuousState(this.opts.cwd);
-    const ids = Object.keys(state.active);
-    const { missions, warnings } = loadMissions(this.opts.cwd);
-    // A malformed mission file silently never runs; startup is the one moment
-    // the user reliably sees output, so surface loader warnings here — not
-    // only when someone happens to run /mission.
-    for (const warning of warnings) {
-      this.emit({ type: "error", message: `mission file skipped: ${warning}`, fatal: false });
-    }
-    if (ids.length === 0) return;
-    for (const id of ids) {
-      const mission = missions.find((m) => m.id === id);
-      if (mission) {
-        this.armContinuous(mission);
-        this.emit({ type: "command_output", text: `🔁 continuous mission "${id}" re-armed (next run in ~${mission.cooldownSeconds ?? 300}s of idle time). /mission stop ${id} halts it.` });
-      } else {
-        delete state.active[id];
-        saveContinuousState(this.opts.cwd, state);
-        this.emit({ type: "error", message: `continuous mission "${id}" no longer exists — its loop was stopped`, fatal: false });
-      }
-    }
-  }
-
-  /**
-   * `/mission` — the mission command family: list the standing missions,
-   * scaffold a new one, launch one now (a full orchestrator turn built by
-   * {@link buildMissionPrompt}), loop one continuously (start/stop), or put
-   * one on its cron schedule (durable — survives restarts, fires when idle).
-   */
-  /**
-   * The mission list as data: file fields plus live state (armed cron job,
-   * running continuous loop, last deliverable write). Feeds both the /mission
-   * text listing and the missions_updated event, so they can never disagree.
-   */
-  private missionSummaries(): {
-    summaries: Extract<CoreEvent, { type: "missions_updated" }>["missions"];
-    warnings: string[];
-    missions: Mission[];
-  } {
-    const { missions, warnings } = loadMissions(this.opts.cwd);
-    const scheduledIds = new Set(
-      this.scheduler
-        .list()
-        .filter((j) => j.source === "cron")
-        .map((j) => /^\/mission run (\S+)$/.exec(j.prompt)?.[1])
-        .filter(Boolean),
-    );
-    const running = loadContinuousState(this.opts.cwd).active;
-    const summaries = missions.map((m) => {
-      const deliverable = missionDeliverablePath(m);
-      let lastRunAt: string | undefined;
-      try {
-        lastRunAt = statSync(join(this.opts.cwd, deliverable)).mtime.toISOString();
-      } catch {
-        /* never ran (or deliverable moved) — no timestamp */
-      }
-      return {
-        id: m.id,
-        name: m.name,
-        ...(m.description !== undefined ? { description: m.description } : {}),
-        keywords: m.keywords,
-        ...(m.schedule !== undefined ? { schedule: m.schedule } : {}),
-        scheduled: scheduledIds.has(m.id),
-        continuous: m.continuous,
-        running: Boolean(running[m.id]),
-        deliverable,
-        ...(lastRunAt !== undefined ? { lastRunAt } : {}),
-      };
-    });
-    return { summaries, warnings, missions };
-  }
-
-  private emitMissionsUpdated(): void {
-    const { summaries, warnings } = this.missionSummaries();
-    this.emit({ type: "missions_updated", missions: summaries, warnings });
-  }
-
-  private handleMission(args: string | undefined, unattended = false): void {
-    const say = (text: string) => this.emit({ type: "command_output", text });
-    const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
-    const sub = tokens[0]?.toLowerCase();
-    const { summaries, warnings, missions } = this.missionSummaries();
-
-    if (sub === undefined) {
-      const lines: string[] = [];
-      if (missions.length === 0) {
-        lines.push("No missions yet. /mission new <id> writes a starter file at .magentra/missions/<id>.md.");
-      } else {
-        for (const s of summaries) {
-          const source = missions.find((m) => m.id === s.id);
-          const bits = [
-            s.keywords.length > 0 ? `keywords: ${s.keywords.join(", ")}` : "",
-            s.continuous
-              ? s.running
-                ? `🔁 running continuously (cooldown ${source?.cooldownSeconds ?? 300}s)`
-                : "continuous-capable (/mission start)"
-              : "",
-            s.schedule ? `cron ${s.schedule}${s.scheduled ? " (scheduled ✓)" : " (not scheduled)"}` : "",
-            `→ ${s.deliverable}`,
-          ].filter(Boolean);
-          lines.push(`🧪 ${s.id} — ${s.name}${s.description ? `: ${s.description}` : ""}${bits.length ? ` [${bits.join(" · ")}]` : ""}`);
-        }
-        lines.push("");
-        lines.push("Run one now with /mission run <id>; /mission start <id> loops a continuous one; /mission schedule <id> automates by cron.");
-      }
-      lines.push(...warnings.map((w) => `  ✗ ${w}`));
-      say(lines.join("\n"));
-      this.emit({ type: "missions_updated", missions: summaries, warnings });
-      return;
-    }
-
-    if (sub === "new") {
-      const id = tokens[1];
-      if (!id || !/^[a-z0-9_-]+$/.test(id)) {
-        say("Usage: /mission new <id> — the id is lowercase letters, digits, hyphen or underscore (it becomes the file name).");
-        return;
-      }
-      const path = join(this.opts.cwd, STATE_DIR_NAME, "missions", `${id}.md`);
-      if (missions.some((m) => m.id === id) || existsSync(path)) {
-        say(`A mission "${id}" already exists — edit ${path} directly, or pick another id.`);
-        return;
-      }
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, missionTemplate(id));
-      say([`🧪 mission scaffold written → ${path}`, "Edit its keywords and charter, then launch it with /mission run " + id + ".", "", "Format reference:", missionFormatExample()].join("\n"));
-      this.emitMissionsUpdated();
-      return;
-    }
-
-    const id = tokens[1];
-    const mission: Mission | undefined = id ? missions.find((m) => m.id === id) : undefined;
-    const known = missions.map((m) => m.id).join(", ") || "(none — /mission new <id> creates one)";
-
-    if (sub === "run") {
-      if (!mission) {
-        say(id ? `No mission "${id}". Missions here: ${known}.` : "Usage: /mission run <id>");
-        return;
-      }
-      this.runMission(mission, unattended);
-      return;
-    }
-
-    if (sub === "start") {
-      if (!mission) {
-        say(id ? `No mission "${id}". Missions here: ${known}.` : "Usage: /mission start <id>");
-        return;
-      }
-      if (!mission.continuous) {
-        say(`Mission "${mission.id}" is not marked continuous. Add "continuous: true" (and optionally "cooldown: 15m") to ${mission.sourcePath}, then /mission start ${mission.id} again.`);
-        return;
-      }
-      const state = loadContinuousState(this.opts.cwd);
-      if (state.active[mission.id]) {
-        say(`Mission "${mission.id}" is already running continuously. /mission stop ${mission.id} halts it.`);
-        return;
-      }
-      state.active[mission.id] = { startedAt: new Date().toISOString() };
-      saveContinuousState(this.opts.cwd, state);
-      say(
-        `🔁 continuous mission "${mission.id}" started — it runs now, then again after every ~${mission.cooldownSeconds ?? 300}s of idle time until /mission stop ${mission.id}. Runs are unattended: nothing asks, destructive calls auto-denied${mission.budgetTokens ? `, budget ${mission.budgetTokens} output tokens per run` : ""}. The loop survives restarts.`,
-      );
-      // The loop is unattended from run one — it must never depend on a human.
-      this.emitMissionsUpdated();
-      this.runMission(mission, true);
-      return;
-    }
-
-    if (sub === "stop") {
-      if (!id) {
-        say("Usage: /mission stop <id>");
-        return;
-      }
-      const state = loadContinuousState(this.opts.cwd);
-      if (!state.active[id]) {
-        say(`Mission "${id}" is not running continuously.`);
-        return;
-      }
-      delete state.active[id];
-      saveContinuousState(this.opts.cwd, state);
-      const prompt = Engine.missionRunPrompt(id);
-      for (const job of this.scheduler.list()) {
-        if (job.source === "wakeup" && job.prompt === prompt) this.scheduler.delete(job.id);
-      }
-      say(`🔁 continuous mission "${id}" stopped. A run already in flight finishes; no further runs are armed.`);
-      this.emitMissionsUpdated();
-      return;
-    }
-
-    if (sub === "schedule") {
-      if (!mission) {
-        say(id ? `No mission "${id}". Missions here: ${known}.` : "Usage: /mission schedule <id>");
-        return;
-      }
-      if (!mission.schedule) {
-        say(`Mission "${mission.id}" has no schedule. Add a frontmatter line like "schedule: 0 7 * * 1" (5-field cron) to ${mission.sourcePath}, then re-run /mission schedule ${mission.id}.`);
-        return;
-      }
-      const prompt = Engine.missionRunPrompt(mission.id);
-      if (this.scheduler.list().some((j) => j.prompt === prompt)) {
-        say(`Mission "${mission.id}" is already scheduled (${mission.schedule}). /mission unschedule ${mission.id} removes it.`);
-        return;
-      }
-      try {
-        const { nextFire } = this.scheduler.create({ cron: mission.schedule, prompt, recurring: true, durable: true });
-        say(`⏰ mission "${mission.id}" scheduled: ${mission.schedule}${nextFire ? ` — next fire ~${nextFire.toISOString().slice(0, 16)}Z` : ""} (fires when the session is idle; survives restarts). The mission file is re-read at every fire.`);
-        this.emitMissionsUpdated();
-      } catch (err) {
-        say(`Cannot schedule "${mission.id}": ${(err as Error).message}`);
-      }
-      return;
-    }
-
-    if (sub === "unschedule") {
-      if (!id) {
-        say("Usage: /mission unschedule <id>");
-        return;
-      }
-      const prompt = Engine.missionRunPrompt(id);
-      const jobs = this.scheduler.list().filter((j) => j.prompt === prompt);
-      for (const job of jobs) this.scheduler.delete(job.id);
-      say(jobs.length > 0 ? `⏰ mission "${id}" unscheduled.` : `Mission "${id}" was not scheduled.`);
-      if (jobs.length > 0) this.emitMissionsUpdated();
-      return;
-    }
-
-    if (sub === "delete" || sub === "remove") {
-      if (!mission) {
-        say(id ? `No mission "${id}". Missions here: ${known}.` : "Usage: /mission delete <id>");
-        return;
-      }
-      // Halt any continuous loop and drop any scheduled/wakeup jobs first, so
-      // nothing fires for a mission that no longer exists.
-      const state = loadContinuousState(this.opts.cwd);
-      if (state.active[mission.id]) {
-        delete state.active[mission.id];
-        saveContinuousState(this.opts.cwd, state);
-      }
-      const prompt = Engine.missionRunPrompt(mission.id);
-      for (const job of this.scheduler.list()) {
-        if (job.prompt === prompt) this.scheduler.delete(job.id);
-      }
-      try {
-        rmSync(mission.sourcePath, { force: true });
-      } catch (err) {
-        say(`Could not remove "${mission.id}": ${(err as Error).message}`);
-        return;
-      }
-      say(`🗑 mission "${mission.id}" removed. Past reports under .magentra/missions/out/${mission.id}/ are kept.`);
-      this.emitMissionsUpdated();
-      return;
-    }
-
-    say("Usage: /mission | /mission new <id> | /mission run <id> | /mission start|stop <id> | /mission schedule|unschedule <id> | /mission delete <id>");
-  }
-
-  /** Create a mission file from the UI builder's structured inputs (create_mission
-   *  frame). Validates the essentials, writes the assembled .md, and reloads. */
-  private handleCreateMission(draft: MissionDraft | undefined): void {
-    const say = (text: string) => this.emit({ type: "command_output", text });
-    if (!draft || typeof draft !== "object") {
-      this.emit({ type: "error", message: "create_mission requires a draft object", fatal: false });
-      return;
-    }
-    const id = (draft.id ?? "").trim();
-    if (!/^[a-z0-9_-]+$/.test(id)) {
-      say(`Cannot create mission: id "${id}" must be lowercase letters, digits, hyphen or underscore.`);
-      return;
-    }
-    if (!draft.name?.trim()) {
-      say("Cannot create mission: a name is required.");
-      return;
-    }
-    if (!draft.investigate?.trim()) {
-      say("Cannot create mission: describe what the mission should investigate.");
-      return;
-    }
-    const path = join(this.opts.cwd, STATE_DIR_NAME, "missions", `${id}.md`);
-    if (existsSync(path)) {
-      say(`A mission "${id}" already exists — pick another id, or edit ${path}.`);
-      return;
-    }
-    try {
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, buildMissionFile({ ...draft, id }));
-    } catch (err) {
-      say(`Could not write mission "${id}": ${(err as Error).message}`);
-      return;
-    }
-    say(`🧪 mission "${id}" created → ${path}. Launch it with the RUN button in Missions, or /mission run ${id}.`);
-    this.emitMissionsUpdated();
   }
 
   private handleBang(cmd: string): void {
@@ -1946,15 +1527,6 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
   { cmd: "/session", args: "", desc: "this session's usage: tokens per model, API/wall time, code churn, context now" },
   { cmd: "/tasks", args: "", desc: "show the task list" },
   { cmd: "/skills", args: "[on|off <id>]", desc: "list skills (disciplines + on-demand), or toggle a discipline (session only)" },
-  {
-    cmd: "/mission", args: "[new|run|start|stop|schedule|unschedule <id>]", desc: "list the lab's missions (.magentra/missions/*.md)",
-    help: [
-      "  /mission new <id>    write a starter mission file",
-      "  /mission run <id>    send the lab on a mission now (web sweep, tasks, report)",
-      "  /mission start <id>  loop a continuous mission (unattended runs + cooldown) · stop halts",
-      "  /mission schedule <id>    run it on its cron schedule (durable) · unschedule removes",
-    ],
-  },
   { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous stance: nothing asks, self-verified completion" },
   { cmd: "/styles", args: "[on|off <id>]", desc: "deprecated alias for /skills" },
   { cmd: "/settings", args: "[global] [k v]", desc: "show settings, or set one (add global to save to ~/.magentra)" },
@@ -1974,7 +1546,7 @@ function renderHelp(): string {
     "  ! <command>      run a shell command; output lands in the conversation",
     "  Esc              interrupt the current turn",
     "",
-    "Glossary (atlas, mission, skills, deletion guard): SETTINGS → GLOSSARY in the app.",
+    "Glossary (atlas, skills, deletion guard): SETTINGS → GLOSSARY in the app.",
   );
   return lines.join("\n");
 }

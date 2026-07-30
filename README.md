@@ -52,7 +52,7 @@ FEATURES.md        Every feature, and whether it has a real test yet.
 | `config/`       | Layered settings, and the model rate card used for cost.          |
 | `knowledge/`    | How the agent learns a codebase: atlas, import graph, symbols, docs, the reuse gate. |
 | `ma/`           | The discipline-skill system (`.magentra/skills/*.md`) and oracle-script debugging. |
-| `scheduling/`   | Work that runs later: cron, standing missions, background jobs, workflows. |
+| `scheduling/`   | Work that runs later: cron, background jobs, workflows. |
 | `state/`        | What persists: the transcript, the task list.                     |
 | `integrations/` | The outside world (MCP servers).                                  |
 

@@ -537,10 +537,6 @@ window.addEventListener("keydown", (e) => {
     closeSessionModal();
     return;
   }
-  if (missionModalEl && !missionModalEl.classList.contains("hidden")) {
-    closeMissionBuilder();
-    return;
-  }
   if (sharedSlash.isVisible()) {
     // Normally consumed by the composer's own keydown (which stops
     // propagation); this is a safety net if focus wandered.
@@ -577,7 +573,7 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   // A non-console stage view (Settings, Skills, Changes, Sessions,
-  // Missions) is a full-surface "popup tab" — Esc returns to the console, the
+  // Changes) is a full-surface "popup tab" — Esc returns to the console, the
   // same as its ✕. Sits below the modals above and above the stop-work
   // fallback, so Esc closes an open view before it interrupts a running turn.
   if (document.body.dataset.view && document.body.dataset.view !== "console") {
@@ -638,7 +634,7 @@ const isMod = (e) => (IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
 const isTypingTarget = (t) =>
   t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT");
 
-const VIEW_KEYS = { 1: "console", 2: "sessions", 3: "lab", 4: "changes", 5: "settings", 6: "skills" };
+const VIEW_KEYS = { 1: "console", 2: "sessions", 3: "changes", 4: "settings", 5: "skills" };
 
 function toggleShortcutSheet() {
   if (!shortcutSheetEl) return;

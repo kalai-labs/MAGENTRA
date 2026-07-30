@@ -444,40 +444,6 @@ The session's working directory moved (EnterWorktree/ExitWorktree).
 {"type":"cwd_changed","cwd":"/home/me/proj/.magentra/worktrees/wt_1","worktree":true}
 ```
 
-### `missions_updated`
-
-Full repaint of the mission list (`.magentra/missions/*.md`): emitted when missions
-load or their run/schedule state changes.
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `type` | `"missions_updated"` | |
-| `missions` | array | One entry per mission — fields below. |
-| `warnings` | `string[]` | Malformed mission files, reported instead of silently dropped. |
-
-Per mission:
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | string | Mission id (filename stem). |
-| `name` | string | Display name from the frontmatter. |
-| `description` | string? | |
-| `keywords` | `string[]` | The web-sweep keywords. |
-| `schedule` | string? | 5-field cron expression from the mission file, when present. |
-| `scheduled` | boolean | A durable cron job is currently armed for this mission. |
-| `continuous` | boolean | The mission is marked continuous-capable in its file. |
-| `running` | boolean | The continuous loop is currently active. |
-| `deliverable` | string | Workspace-relative report path (explicit deliverable or the default). |
-| `lastRunAt` | string? | Last time the deliverable was written, when it exists. |
-
-```json
-{"type":"missions_updated","missions":[{"id":"radar","name":"Field radar","keywords":["open source agent frameworks"],"schedule":"0 7 * * *","scheduled":true,"continuous":true,"running":false,"deliverable":"radar.md","lastRunAt":"2026-07-15T07:02:11.000Z"}],"warnings":[]}
-```
-
-## Frontend → core requests (`FrontendRequest`)
-
-Every request carries a `type` discriminator.
-
 ### `user_message`
 
 Starts a turn with the user's text.
@@ -558,7 +524,7 @@ Toggles OVERDRIVE, the fully-autonomous stance.
 ### `slash_command`
 
 Runs a built-in command (`help`, `atlas`, `clear`, `compact`, `session`, `tasks`, `skills`,
-`mission`, `mode`, `styles`, `debug`, `settings`, `resume`, `sessions`). The full registry — with argument hints and descriptions — ships to
+`mode`, `styles`, `debug`, `settings`, `resume`, `sessions`). The full registry — with argument hints and descriptions — ships to
 the frontend in `session_started.commands`.
 
 `settings` with no args emits the effective config (each key's value and originating layer) as

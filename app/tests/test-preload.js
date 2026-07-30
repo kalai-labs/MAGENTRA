@@ -27,7 +27,6 @@ contextBridge.exposeInMainWorld("magentra", {
   openWorkspaceFile: (relPath) => api("openWorkspaceFile", relPath),
   revealWorkspace: (tabId) => api("revealWorkspace", tabId),
   pickContextFiles: (opts) => api("pickContextFiles", opts),
-  pickMissionDeliverable: (defaultRel) => api("pickMissionDeliverable", defaultRel),
   undoChanges: (relPath, diffs) => api("undoChanges", relPath, diffs),
   setModel: (model) => api("setModel", model),
   send: (frame) => ipcRenderer.send("test:frame", frame),

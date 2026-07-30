@@ -19,7 +19,6 @@ export * from "./runtime/fileState.js";
 export * from "./state/taskStore.js";
 export * from "./ma/modes.js";
 export * from "./config/providerFactory.js";
-export * from "./scheduling/missions.js";
 export { writeFileAtomic } from "./util/fsAtomic.js";
 export * from "./state/transcript.js";
 export * from "./scheduling/background.js";

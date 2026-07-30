@@ -215,7 +215,7 @@ async function run() {
     assert.ok(frames.some((frame) => frame.type === "delete_session" && frame.id === "older-session"));
   });
 
-  await test("task and mission surfaces remain live without leaving context", async () => {
+  await test("the task rail stays live without leaving context", async () => {
     await evaluate(`document.querySelector('#sessionsCloseBtn').click()`);
     await emit({ type: "task_list_updated", tasks: [
       { id: "t1", subject: "Map current UI", status: "completed" },
@@ -224,74 +224,6 @@ async function run() {
     ] });
     assert.equal(await evaluate(`document.querySelector('#taskProgress').textContent`), "1/3");
     assert.equal(await evaluate(`document.querySelectorAll('#taskList .task-item').length`), 3);
-    await emit({ type: "missions_updated", missions: [{
-      id: "nightly-audit", name: "Nightly audit", description: "Review regressions", keywords: ["ui"],
-      schedule: "0 2 * * *", scheduled: true, continuous: true, running: true, deliverable: "audit.md",
-    }], warnings: [] });
-    assert.equal(await evaluate(`document.querySelectorAll('.sidebar-mission').length`), 1);
-    await evaluate(`document.querySelector('.sidebar-mission').click()`);
-    assert.equal(await evaluate(`document.body.dataset.view`), "lab");
-    await evaluate(`(() => {
-      const buttons = [...document.querySelectorAll('.lab-btn')];
-      buttons.find((button) => button.textContent === 'STOP').click();
-      buttons.find((button) => button.textContent === 'UNSCHEDULE').click();
-      buttons.find((button) => button.textContent === 'RUN').click();
-    })()`);
-    await pause();
-    assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.command === "mission" && frame.args === "run nightly-audit"));
-    assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.args === "stop nightly-audit"));
-    assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.args === "unschedule nightly-audit"));
-    await emit({ type: "missions_updated", missions: [{
-      id: "nightly-audit", name: "Nightly audit", description: "Review regressions", keywords: ["ui"],
-      schedule: "0 2 * * *", scheduled: false, continuous: true, running: false, deliverable: "audit.md",
-    }], warnings: [] });
-    await evaluate(`(() => {
-      const buttons = [...document.querySelectorAll('.lab-btn')];
-      buttons.find((button) => button.textContent === 'START').click();
-      buttons.find((button) => button.textContent === 'SCHEDULE').click();
-    })()`);
-    await pause();
-    assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.args === "start nightly-audit"));
-    assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.args === "schedule nightly-audit"));
-    // Mission builder: name + charter are required; the id auto-derives from the
-    // name; Create sends a create_mission frame (the engine writes the file).
-    await evaluate(`document.querySelector('#sidebarMissionNew').click()`);
-    await pause();
-    // The builder must open as a centered overlay like every other modal — a
-    // missing entry in the shared overlay rule once left it statically at the
-    // document's top-left. Prove it is fixed, full-bleed, and flex-centered.
-    const missionOverlay = await evaluate(`(() => {
-      const m = document.querySelector('#missionModal');
-      const cs = getComputedStyle(m);
-      const box = m.querySelector('.mission-box').getBoundingClientRect();
-      return {
-        position: cs.position, display: cs.display,
-        alignItems: cs.alignItems, justifyContent: cs.justifyContent,
-        top: m.getBoundingClientRect().top,
-        centeredX: Math.abs((box.left + box.right) / 2 - window.innerWidth / 2) < 2,
-        centeredY: Math.abs((box.top + box.bottom) / 2 - window.innerHeight / 2) < 2,
-      };
-    })()`);
-    assert.deepEqual(
-      { position: missionOverlay.position, display: missionOverlay.display,
-        alignItems: missionOverlay.alignItems, justifyContent: missionOverlay.justifyContent,
-        top: missionOverlay.top, centeredX: missionOverlay.centeredX, centeredY: missionOverlay.centeredY },
-      { position: "fixed", display: "flex", alignItems: "center", justifyContent: "center",
-        top: 0, centeredX: true, centeredY: true },
-      "mission builder must be a centered fixed overlay, not top-left static",
-    );
-    await evaluate(`(() => {
-      const name = document.querySelector('#mfName');
-      name.value = 'UI audit'; name.dispatchEvent(new Event('input'));
-      document.querySelector('#mfInvestigate').value = 'Audit the UI for regressions';
-      document.querySelector('#missionModalCreate').click();
-    })()`);
-    await pause();
-    assert.ok(frames.some((frame) => frame.type === "create_mission" && frame.draft
-      && frame.draft.name === "UI audit" && frame.draft.id === "ui-audit"
-      && frame.draft.investigate === "Audit the UI for regressions"));
-    // A running one-off shows STOP, and every row exposes DELETE (two-click arm).
-    assert.ok(await evaluate(`[...document.querySelectorAll('.lab-btn')].some((b) => b.textContent === 'DELETE')`));
   });
 
   await test("attach, model, and composer controls act on runtime state", async () => {

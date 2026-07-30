@@ -15,8 +15,6 @@ function resetWorkspaceState() {
   clearPermissionState();
   resetLocalViewForClear();
   resetChanges();
-  resetTeamView();
-  resetLabView();
   resetSessionMeter();
   sessionSummaries = [];
   currentSessionId = null;
@@ -48,12 +46,10 @@ function enterActiveState(workspace) {
   workspacePathEl.title = workspace;
   workspaceOpen = true;
   navSessionsEl.classList.remove("hidden");
-  navLabEl.classList.remove("hidden");
   navMissionEl.classList.remove("hidden");
   if (navSkillsEl) navSkillsEl.classList.remove("hidden");
   if (navHomeEl) navHomeEl.classList.remove("hidden");
   sidebarSessionsRefreshEl.classList.remove("hidden");
-  sidebarMissionNewEl.classList.remove("hidden");
   inspectorToggleEl.classList.remove("hidden");
   if (revealWorkspaceBtnEl) revealWorkspaceBtnEl.classList.remove("hidden");
   void loadConnectionCard();
@@ -62,7 +58,6 @@ function enterActiveState(workspace) {
   syncActivityUi();
   renderSidebarWorkspaces();
   renderSidebarSessions();
-  renderSidebarMissions();
   syncWorkbenchContext();
   // Multi-tab defaults the inspector closed (the panes need the width); a single
   // workspace opens it on Tasks as before.

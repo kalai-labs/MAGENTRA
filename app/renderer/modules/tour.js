@@ -41,8 +41,8 @@ const TOUR_STEPS = [
   },
   {
     target: "#sidebarSessionsList",
-    title: "Sessions & missions",
-    copy: "Every conversation is saved — resume any of them from here. Missions are standing directives the agent runs on demand or on a schedule.",
+    title: "Sessions",
+    copy: "Every conversation is saved — resume any of them from here.",
   },
   {
     target: null, // centered wrap-up card
