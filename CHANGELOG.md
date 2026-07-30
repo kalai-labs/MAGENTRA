@@ -7,6 +7,14 @@ mean, read [VERSIONING.md](VERSIONING.md).
 
 <!-- new-release -->
 
+## 0.13.0.0 — 2026-07-30
+
+### Features
+
+- rescale of the app ([6a47f44](https://github.com/kalai-labs/MAGENTRA/commit/6a47f449c57442b826106e23f4982f84e546f890))
+
+[Compare with v0.12.1.1](https://github.com/kalai-labs/MAGENTRA/compare/v0.12.1.1...v0.13.0.0)
+
 ## 0.12.1.1 — 2026-07-30
 
 ### Documentation
