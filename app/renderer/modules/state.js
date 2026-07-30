@@ -38,7 +38,7 @@ let toolRows = new Map(); // id -> { rowEl, detailEl, glyphEl }
 let toolCountThisTurn = 0;
 // A turn is running (the model is thinking / calling tools).
 let busy = false;
-// Work that is NOT a turn: a background atlas build, a background job. Tracked
+// Work that is NOT a turn: a background job, a /compact, an addon draft. Tracked
 // by taskId, because the engine can be busy with no turn in flight at all — and
 // the stop button has to know about that, or it would look like nothing to stop.
 // `let` (not const): the per-tab state swap in tabs.js reassigns this to the
@@ -438,16 +438,9 @@ if (setWebSearchEl && window.magentra && window.magentra.getWebSearch) {
   });
 }
 
-// skill chips / Skills view state
-let modes = []; // discipline skills, from modes_updated
-let modesReceived = false; // has the first modes_updated arrived (vs. still session-start)
-let pendingModesNote = false; // set on a set_modes click; consumed by the next modes_updated
-
-// Hero quick-toggle chips promote a discipline to a one-click chip in the top
-// bar. Empty now — the built-in skills were retired for the Addon redesign; give
-// an Addon a hero chip by adding its id here with a label in HERO_MODE_LABELS.
-const HERO_MODE_IDS = [];
-const HERO_MODE_LABELS = {};
+// Addons view state: the installed roster, from session_started / addons_updated.
+// There is no active/inactive state — every installed addon is always invocable.
+let addons = [];
 
 // slash-command palette state. The engine ships its real command registry in
 // session_started (onSessionStarted adopts it), so the palette can never

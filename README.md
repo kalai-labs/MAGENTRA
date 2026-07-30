@@ -38,7 +38,7 @@ app/               The desktop app (Electron). The engine's only frontend.
   renderer/        The UI. modules/ are classic scripts, loaded in order.
   scripts/         Build: bundles the engine + minifies the app for packaging.
 
-docs/              Architecture, protocol, tools, and the skill format.
+docs/              Architecture, protocol, tools, and the addon format.
 tools/version/     The version tool (see VERSIONING.md).
 FEATURES.md        Every feature, and whether it has a real test yet.
 ```
@@ -48,10 +48,9 @@ FEATURES.md        Every feature, and whether it has a real test yet.
 | Folder          | What lives there                                                  |
 | --------------- | ----------------------------------------------------------------- |
 | `runtime/`      | The turn loop (`session`), the protocol endpoint (`engine`), permissions, session accounting. |
-| `agent/`        | What an agent *is*: system prompt, tool contract, subagent types, skills, hooks. |
+| `agent/`        | What an agent *is*: system prompt, tool contract, subagent types, addons, hooks. |
 | `config/`       | Layered settings, and the model rate card used for cost.          |
-| `knowledge/`    | How the agent learns a codebase: atlas, import graph, symbols, docs, the reuse gate. |
-| `ma/`           | The discipline-skill system (`.magentra/skills/*.md`) and oracle-script debugging. |
+| `knowledge/`    | How the agent learns a codebase: import graph, symbols, docs, the reuse gate. |
 | `scheduling/`   | Work that runs later: cron, background jobs, workflows. |
 | `state/`        | What persists: the transcript, the task list.                     |
 | `integrations/` | The outside world (MCP servers).                                  |

@@ -130,48 +130,18 @@ navMissionEl.addEventListener("click", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Skill chips: quick toggles for the hero skills plus a summary chip that
-// opens the full Skills view (where every discipline lives).
+// Addon chip: one summary chip that opens the Addons view. Addons are always
+// available, so there is nothing to toggle here — the chip is a signpost.
 // ---------------------------------------------------------------------------
 
-function renderModeChips() {
+function renderAddonChip() {
   modeChipsEl.textContent = "";
-
-  for (const heroId of HERO_MODE_IDS) {
-    const mode = modes.find((m) => m.id === heroId);
-    if (!mode) continue;
-    const chipEl = document.createElement("button");
-    chipEl.className = "mode-chip hero" + (mode.active ? " active" : "");
-    chipEl.textContent = HERO_MODE_LABELS[heroId];
-    chipEl.title = `${mode.name} — ${mode.description}`;
-    chipEl.addEventListener("click", () => toggleMode(mode.id));
-    modeChipsEl.appendChild(chipEl);
-  }
-
-  const activeCount = modes.filter((m) => m.active).length;
+  if (addons.length === 0) return;
   const summaryEl = document.createElement("button");
-  summaryEl.id = "skillsSummary";
-  summaryEl.className = "mode-chip" + (activeCount > 0 ? " active" : "");
-  summaryEl.textContent = `◈ ${activeCount} skill${activeCount === 1 ? "" : "s"}`;
-  summaryEl.title = "Open the Skills view";
-  summaryEl.addEventListener("click", () => showView("skills"));
+  summaryEl.id = "addonsSummary";
+  summaryEl.className = "mode-chip active";
+  summaryEl.textContent = `◈ ${addons.length} addon${addons.length === 1 ? "" : "s"}`;
+  summaryEl.title = "Open the Addons view";
+  summaryEl.addEventListener("click", () => showView("addons"));
   modeChipsEl.appendChild(summaryEl);
-}
-
-function toggleMode(id) {
-  const mode = modes.find((m) => m.id === id);
-  if (!mode) return;
-  setSkillActive(id, !mode.active);
-}
-
-function onModesUpdated(event) {
-  const isInitial = !modesReceived;
-  modesReceived = true;
-  modes = event.modes || [];
-  renderSkillsSurfaces();
-  if (pendingModesNote && !isInitial) {
-    const activeIds = modes.filter((m) => m.active).map((m) => m.id);
-    appendSysNote(`skills: ${activeIds.length ? activeIds.join(" + ") : "none active"}`);
-  }
-  pendingModesNote = false;
 }

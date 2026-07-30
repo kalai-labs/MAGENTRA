@@ -40,7 +40,7 @@ import type { Settings } from "../config/settings.js";
  */
 /**
  * A per-part estimate of what fills the context now, sourced from the live
- * session (system prompt, tool schemas, skills, message history). It is the
+ * session (system prompt, tool schemas, addons, message history). It is the
  * category-sum form of the input context — the parts are disjoint, so they add.
  * Every field is an estimate; `limit` is the user's auto-compact token limit
  * (0 = none set).
@@ -48,7 +48,7 @@ import type { Settings } from "../config/settings.js";
 export interface ContextBreakdown {
   systemPrompt: number;
   tools: number;
-  skills: number;
+  addons: number;
   messages: number;
   limit: number;
 }
@@ -272,7 +272,7 @@ export class SessionStats {
   /**
    * The context size to display: the measured B(t) when a provider response has
    * reported one, otherwise the per-part estimate (system prompt + tools +
-   * skills + message history). `contextTokens` is 0 before the first response,
+   * addons + message history). `contextTokens` is 0 before the first response,
    * but the window is NOT empty then — the system prompt and tool schemas always
    * occupy it — so showing 0 would be plainly wrong. The estimate keeps the
    * figure honest until a response measures it exactly.
@@ -280,7 +280,7 @@ export class SessionStats {
   private contextNowValue(b?: ContextBreakdown): number {
     if (this.contextTokens > 0) return this.contextTokens;
     if (!b) return 0;
-    return b.systemPrompt + b.tools + b.skills + b.messages;
+    return b.systemPrompt + b.tools + b.addons + b.messages;
   }
 
   /**
@@ -295,7 +295,7 @@ export class SessionStats {
     const pad = (label: string) => `${label}:`.padEnd(16);
     lines.push(`      ${pad("System prompt")}~${formatTokens(b.systemPrompt)} tokens`);
     lines.push(`      ${pad("System tools")}~${formatTokens(b.tools)} tokens`);
-    if (b.skills > 0) lines.push(`      ${pad("Skills")}~${formatTokens(b.skills)} tokens`);
+    if (b.addons > 0) lines.push(`      ${pad("Addons")}~${formatTokens(b.addons)} tokens`);
     lines.push(`      ${pad("Messages")}~${formatTokens(b.messages)} tokens`);
     if (b.limit > 0) {
       // Free space and occupancy against the user's auto-compact limit, with

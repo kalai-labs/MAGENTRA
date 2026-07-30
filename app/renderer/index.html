@@ -56,9 +56,9 @@
         <span class="dock-glyph">✓</span><span class="dock-label">Tasks</span>
         <span id="dockMissionCount" class="dock-badge hidden">0</span>
       </button>
-      <button class="dock-btn hidden" id="navSkills" title="Skills" aria-label="Skills">
-        <span class="dock-glyph">◈</span><span class="dock-label">Skills</span>
-        <span id="dockSkillsCount" class="dock-badge hidden">0</span>
+      <button class="dock-btn hidden" id="navAddons" title="Addons" aria-label="Addons">
+        <span class="dock-glyph">◈</span><span class="dock-label">Addons</span>
+        <span id="dockAddonsCount" class="dock-badge hidden">0</span>
       </button>
       <button class="dock-btn hidden" id="navChanges" title="Changes" aria-label="Changes">
         <span class="dock-glyph">±</span><span class="dock-label">Changes</span>
@@ -84,7 +84,7 @@
       <span id="workTitleText">Start a new conversation</span>
       <span id="workTitleMeta">Magentra agent workbench</span>
     </div>
-    <div id="modeChips" title="Skills"></div>
+    <div id="modeChips" title="Addons"></div>
     <div id="topToast" class="hidden" role="status" aria-live="polite"></div>
     <div id="topbar-right">
       <!-- Multi-workspace only: the input context of every open console added up.
@@ -192,16 +192,15 @@
       </footer>
     </section>
 
-    <section id="skillsView" class="stage-view hidden">
+    <section id="addonsView" class="stage-view hidden">
       <div class="view-head">
-        <span class="view-title">◈ SKILLS</span>
-        <span id="skillsSub" class="view-sub">no skills active</span>
-        <button id="skillsRecommendBtn" class="hidden" title="Enable the recommended discipline set">★ ENABLE RECOMMENDED</button>
-        <button id="skillCreateBtn" title="Describe a skill — Magentra writes the file, you approve it">＋ BUILD NEW SKILL</button>
-        <button id="skillsCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
+        <span class="view-title">◈ ADDONS</span>
+        <span id="addonsSub" class="view-sub">no addons installed</span>
+        <button id="addonCreateBtn" title="Describe an addon — Magentra writes the file, you approve it">＋ BUILD NEW ADDON</button>
+        <button id="addonsCloseBtn" class="view-tool" title="Back to console" aria-label="Back to console">✕</button>
       </div>
-      <div id="skillsList"></div>
-      <p class="team-hint">Skills live in <code>.magentra/skills/*.md</code>. A <em>discipline</em> shapes every turn while it is enabled; an <em>action</em> is a procedure the agent invokes on demand. Nothing is locked — enable only what the work needs. This panel controls the <em>focused</em> workspace; with several open, <strong>right-click a workspace pane's header</strong> to set skills for that one on its own.</p>
+      <div id="addonsList"></div>
+      <p class="team-hint">Addons live in <code>.magentra/addons/</code> — a <code>name.md</code> file, or a folder with an <code>ADDON.md</code> plus any reference notes and scripts it needs. Every installed addon is always available: only its description sits in the prompt, and its full instructions load when the agent invokes it — or when you type <code>/name</code> yourself. Nothing to switch on.</p>
     </section>
 
     <section id="changesView" class="stage-view hidden">
@@ -365,9 +364,8 @@
         <div class="set-card" id="glossaryCard">
           <div class="set-card-title">GLOSSARY</div>
           <dl class="glossary">
-            <dt>atlas</dt><dd>the whole-design map of this workspace at <code>.magentra/ATLAS.md</code>; <code>/atlas</code> builds or refreshes it.</dd>
             <dt>task list</dt><dd>the live plan of record in the TASKS rail — the current work items, ending with a verification task.</dd>
-            <dt>skills</dt><dd>Markdown files under <code>.magentra/skills/</code> that shape the agent. A <em>discipline</em> applies to every turn while enabled (nothing is locked — all off by default); an <em>action</em> runs on demand. Toggle in the Skills view or with <code>/skills</code>; create your own with ＋ BUILD NEW SKILL.</dd>
+            <dt>addons</dt><dd>Markdown procedures under <code>.magentra/addons/</code> that the agent loads on demand. Always available — only the description sits in the prompt until one is invoked, so extra ones cost almost nothing. List them with <code>/addons</code>, run one with <code>/name</code>, or create your own with ＋ BUILD NEW ADDON.</dd>
             <dt>deletion guard</dt><dd>destructive commands always ask first — even in OVERDRIVE — unless Deletions is set to ALLOW above.</dd>
             <dt>session</dt><dd>one conversation with its own transcript, cost ledger, and task list, saved under <code>.magentra/sessions/</code> (SESSIONS in the dock resumes them).</dd>
           </dl>
@@ -492,9 +490,9 @@
         <dt>Esc</dt><dd>close topmost panel · interrupt the running turn</dd>
         <dt><span class="mod-key">Ctrl</span>+L</dt><dd>clear chat (fresh session)</dd>
         <dt><span class="mod-key">Ctrl</span>+K</dt><dd>focus the composer</dd>
-        <dt><span class="mod-key">Ctrl</span>+1…5</dt><dd>console · sessions · changes · settings · skills</dd>
+        <dt><span class="mod-key">Ctrl</span>+1…5</dt><dd>console · sessions · changes · settings · addons</dd>
         <dt>Y / N</dt><dd>allow · deny in the approval dialog</dd>
-        <dt>Tab</dt><dd>reach tool rows, diffs, and skill toggles; Enter/Space activates</dd>
+        <dt>Tab</dt><dd>reach tool rows, diffs, and addon cards; Enter/Space activates</dd>
         <dt>/</dt><dd>command palette in the composer</dd>
         <dt>F11</dt><dd>enter · leave full screen</dd>
         <dt>?</dt><dd>this sheet</dd>
@@ -520,41 +518,37 @@
     </div>
   </div>
 
-  <!-- ── create-skill wizard ────────────────────────────────────────────── -->
-  <div id="skillWizard" class="hidden" role="dialog" aria-modal="true" aria-label="Create a skill">
-    <div class="modal-box skill-wiz-box">
-      <div class="modal-title">◈ CREATE A SKILL</div>
-      <div id="skillWizStep1">
-        <p class="modal-sub">Describe what you want in plain language. Magentra writes the skill file; you review and edit it before anything is installed.</p>
-        <div class="seg skill-kind-seg" id="skillKindSeg">
-          <button class="seg-btn on" data-skillkind="discipline">DISCIPLINE — a standing rule</button>
-          <button class="seg-btn" data-skillkind="action">ACTION — an on-demand recipe</button>
-        </div>
-        <p id="skillKindHint" class="set-note">Always-on while enabled: it shapes <em>every</em> turn — rules the agent follows, reminders it gets, even tool gates the engine enforces. <em>e.g.</em> “investigate before editing,” or “always write a failing test before the fix.”</p>
-        <textarea id="skillDescInput" rows="4" spellcheck="false" placeholder="e.g. Before editing any SQL file, require an EXPLAIN plan in the task notes, and always add a rollback statement alongside every migration."></textarea>
+  <!-- ── create-addon wizard ────────────────────────────────────────────── -->
+  <div id="addonWizard" class="hidden" role="dialog" aria-modal="true" aria-label="Create an addon">
+    <div class="modal-box addon-wiz-box">
+      <div class="modal-title">◈ CREATE AN ADDON</div>
+      <div id="addonWizStep1">
+        <p class="modal-sub">Describe the procedure you want in plain language. Magentra writes the addon file; you review and edit it before anything is installed.</p>
+        <p class="set-note">An addon is a method the agent loads when it needs it — a release checklist, a migration recipe, a review discipline. Its description is what the agent reads to decide whether to reach for it, so say plainly <em>when</em> it applies.</p>
+        <textarea id="addonDescInput" rows="4" spellcheck="false" placeholder="e.g. Before editing any SQL file, require an EXPLAIN plan in the task notes, and always add a rollback statement alongside every migration."></textarea>
 
-        <input id="skillContextInput" class="skill-wiz-field" type="text" spellcheck="false"
+        <input id="addonContextInput" class="addon-wiz-field" type="text" spellcheck="false"
                placeholder="Optional — when should it apply? triggers or an example situation" />
 
-        <div class="skill-wiz-row">
-          <span class="skill-wiz-label">Author with</span>
-          <select id="skillModelSelect" class="skill-wiz-select"></select>
+        <div class="addon-wiz-row">
+          <span class="addon-wiz-label">Author with</span>
+          <select id="addonModelSelect" class="addon-wiz-select"></select>
         </div>
-        <p class="set-note" id="skillModelHint">Uses your workspace connection. Pick a stronger model here if a draft comes out poorly.</p>
+        <p class="set-note" id="addonModelHint">Uses your workspace connection. Pick a stronger model here if a draft comes out poorly.</p>
 
         <div class="modal-actions">
-          <span id="skillWizStatus"></span>
-          <button id="skillWizCancel">CANCEL (Esc)</button>
-          <button id="skillWizGenerate" class="wiz-primary">GENERATE ▸</button>
+          <span id="addonWizStatus"></span>
+          <button id="addonWizCancel">CANCEL (Esc)</button>
+          <button id="addonWizGenerate" class="wiz-primary">GENERATE ▸</button>
         </div>
       </div>
-      <div id="skillWizStep2" class="hidden">
-        <p class="modal-sub">Review and edit the draft. Installing writes <code id="skillWizFile">skill.md</code> into <code>.magentra/skills/</code><span id="skillWizEnableNote"> and enables it</span>.</p>
-        <textarea id="skillDraftText" rows="16" spellcheck="false"></textarea>
+      <div id="addonWizStep2" class="hidden">
+        <p class="modal-sub">Review and edit the draft. Installing writes <code id="addonWizFile">addon.md</code> into <code>.magentra/addons/</code> — available immediately, as <code>/name</code> or to the agent.</p>
+        <textarea id="addonDraftText" rows="16" spellcheck="false"></textarea>
         <div class="modal-actions">
-          <span id="skillWizStatus2"></span>
-          <button id="skillWizBack">◂ BACK</button>
-          <button id="skillWizInstall" class="wiz-primary">INSTALL ▸</button>
+          <span id="addonWizStatus2"></span>
+          <button id="addonWizBack">◂ BACK</button>
+          <button id="addonWizInstall" class="wiz-primary">INSTALL ▸</button>
         </div>
       </div>
     </div>
@@ -669,7 +663,7 @@
   <script src="modules/views.js"></script>
   <script src="modules/workbench.js"></script>
   <script src="modules/tasks.js"></script>
-  <script src="modules/skills.js"></script>
+  <script src="modules/addons.js"></script>
   <script src="modules/overdrive.js"></script>
   <script src="modules/tour.js"></script>
   <script src="modules/stream.js"></script>

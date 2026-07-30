@@ -1,9 +1,8 @@
 /**
  * Slim `---`-delimited frontmatter, parsed by hand — no YAML dependency, no
- * type coercion, every value a string. Used by the skill loaders: action skills
- * read a couple of keys loosely, while discipline skills validate strictly on
- * top of the ordered entry list, which also preserves repeated keys like
- * `gate:` and the line numbers needed for precise error messages.
+ * type coercion, every value a string, one physical line per key. Used by the
+ * addon loader and by the create-addon validator; `entries` preserves order and
+ * repeats so a strict caller can report the exact offending line.
  */
 
 export interface FrontmatterEntry {
@@ -54,7 +53,7 @@ export function parseFrontmatter(text: string): Frontmatter {
     }
     if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
     const colon = line.indexOf(":");
-    if (colon === -1) continue; // tolerated for action skills; strict callers re-check entries
+    if (colon === -1) continue; // tolerated here; strict callers re-check entries
     const key = line.slice(0, colon).trim();
     const value = unquote(line.slice(colon + 1).trim());
     if (key) {

@@ -504,8 +504,8 @@ sendBtnEl.addEventListener("click", sendMessage);
 
 /**
  * HARD STOP — kills everything the engine has in flight: the running turn, every
- * subagent under it, a background atlas build, and any background job. Safe to
- * press when nothing is running (the engine just says so).
+ * subagent under it, and any background job. Safe to press when nothing is
+ * running (the engine just says so).
  *
  * The UI does not clear `busy` / `backgroundJobs` itself: the engine answers with
  * turn_finished and background_notification(exit), and those are what settle the
@@ -519,7 +519,7 @@ function hardStop() {
 stopBtnEl.addEventListener("click", hardStop);
 
 // Escape, one handler, strict priority: dismiss the topmost surface first
-// (palette → skill wizard → tour → setup wizard → permission modal), and only
+// (palette → addon wizard → tour → setup wizard → permission modal), and only
 // interrupt the turn when nothing was open. Two competing listeners here once
 // made a modal deny ALSO hard-kill the running turn.
 window.addEventListener("keydown", (e) => {
@@ -547,8 +547,8 @@ window.addEventListener("keydown", (e) => {
     closeOverdriveDialog();
     return;
   }
-  if (skillWizardEl && !skillWizardEl.classList.contains("hidden")) {
-    closeSkillWizard();
+  if (addonWizardEl && !addonWizardEl.classList.contains("hidden")) {
+    closeAddonWizard();
     return;
   }
   if (tourActive) {
@@ -572,7 +572,7 @@ window.addEventListener("keydown", (e) => {
     resolvePanePermission(focusedTabId, "deny");
     return;
   }
-  // A non-console stage view (Settings, Skills, Changes, Sessions,
+  // A non-console stage view (Settings, Addons, Changes, Sessions,
   // Changes) is a full-surface "popup tab" — Esc returns to the console, the
   // same as its ✕. Sits below the modals above and above the stop-work
   // fallback, so Esc closes an open view before it interrupts a running turn.
@@ -634,7 +634,7 @@ const isMod = (e) => (IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
 const isTypingTarget = (t) =>
   t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT");
 
-const VIEW_KEYS = { 1: "console", 2: "sessions", 3: "changes", 4: "settings", 5: "skills" };
+const VIEW_KEYS = { 1: "console", 2: "sessions", 3: "changes", 4: "settings", 5: "addons" };
 
 function toggleShortcutSheet() {
   if (!shortcutSheetEl) return;

@@ -99,7 +99,8 @@ Emitted once when a session begins (on `start()`, after `/clear`, and after a re
 | `cwd` | string | Absolute working directory. |
 | `model` | string | Configured model id. |
 | `overdrive` | boolean | Whether OVERDRIVE (the fully-autonomous stance) is active for the session. |
-| `commands` | `SlashCommandInfo[]` | The engine's slash-command registry, so the frontend palette can never drift. |
+| `commands` | `SlashCommandInfo[]` | The engine's slash-command registry, so the frontend palette can never drift. Installed addons appear here as `/<name>` alongside the built-ins. |
+| `addons` | `{ name, description, builtin }[]` | The installed addon roster. Every entry is always invocable — there is no active state. |
 | `rateCard` | `Record<string, { input, output, cacheRead?, cacheWrite?, contextWindow }>` | Per-model $/1M rates + context windows — the built-in table with user `pricing` overrides applied. The frontend's single source for model hints; it must keep no pricing copy of its own. |
 
 ```json
@@ -290,14 +291,14 @@ Emitted by `Write` and `Edit` after a successful change.
 ### `background_notification`
 
 Emitted immediately when a background task launches or ends. Every background launch —
-`run_in_background` Bash commands, monitors, background subagents, the atlas build —
-announces itself with `kind: "start"`, so the UI never has to infer background work from
-side effects.
+`run_in_background` Bash commands, monitors, background subagents, `/compact`, an addon
+draft — announces itself with `kind: "start"`, so the UI never has to infer background
+work from side effects.
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `type` | `"background_notification"` | |
-| `taskId` | string | Background task id (also `"atlas"` for the atlas build). |
+| `taskId` | string | Background task id. |
 | `kind` | string | `"start"` on launch, `"exit"` when the task ends or is stopped. |
 | `payload` | unknown | Kind-specific detail — see below. |
 
@@ -379,22 +380,46 @@ running turn's output, and `T_turn` is cumulative billed spend.
 {"type":"error","message":"provider request failed: 503","fatal":false}
 ```
 
-### `modes_updated`
+### `addons_updated`
 
-Full repaint of the discipline-skill surfaces: emitted after a `set_modes` request or a
-`/skills on|off` toggle, carrying every discipline's summary.
+Full repaint of the addon roster, emitted after an `install_addon` writes a new file.
+There is no active/inactive state to report: every installed addon is invocable.
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `type` | `"modes_updated"` | |
-| `modes` | array | One entry per discipline skill: `{ id, name, description, why?, active, builtin, recommended?, conflicts? }`. |
-
-Per entry: `recommended` marks the advisory recommended set (badged in frontends, never forced —
-nothing is locked); `why` powers the per-skill "?" explainers.
+| `type` | `"addons_updated"` | |
+| `addons` | array | One entry per addon: `{ name, description, builtin }`. |
 
 ```json
-{"type":"modes_updated","modes":[{"id":"surgeon","name":"Surgeon","description":"Minimal-diff discipline","why":"Enable for focused fixes in mature code.","active":false,"builtin":true,"recommended":true,"conflicts":[]},{"id":"entropy","name":"Entropy","description":"Strategic over tactical","active":true,"builtin":true,"conflicts":["surgeon"]}]}
+{"type":"addons_updated","addons":[{"name":"magentron","description":"Read before you write — map what a change touches…","builtin":true},{"name":"release-notes","description":"Draft release notes from the commits since the last tag.","builtin":false}]}
 ```
+
+### `addon_draft`
+
+The result of `generate_addon`: a parser-validated draft for the frontend to preview and
+edit, or the failure after three attempts.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `type` | `"addon_draft"` | |
+| `ok` | boolean | |
+| `text` | string? | The authored `.md`, when `ok`. |
+| `suggestedFilename` | string? | `<slug>.md`, derived from the draft's `name:`. |
+| `error` | string? | Why it failed, when not `ok`. |
+
+### `addon_export`
+
+The result of `export_addon`: the addon's source text, so the frontend can save it
+anywhere. Built-ins export too — the engine sources the text either way.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `type` | `"addon_export"` | |
+| `ok` | boolean | |
+| `name` | string | The addon asked for (echoed, so a reply lands on the right button). |
+| `filename` | string? | `<name>.md`, when `ok`. |
+| `text` | string? | The file contents, when `ok`. |
+| `error` | string? | Why it failed, when not `ok`. |
 
 ### `session_restored`
 
@@ -523,19 +548,22 @@ Toggles OVERDRIVE, the fully-autonomous stance.
 
 ### `slash_command`
 
-Runs a built-in command (`help`, `atlas`, `clear`, `compact`, `session`, `tasks`, `skills`,
-`mode`, `styles`, `debug`, `settings`, `resume`, `sessions`). The full registry — with argument hints and descriptions — ships to
-the frontend in `session_started.commands`.
+Runs a built-in command (`help`, `clear`, `compact`, `session`, `tasks`, `addons`,
+`overdrive`, `settings`, `resume`, `sessions`) **or the name of an installed addon**. The
+full registry — built-ins plus one `/<name>` per addon, with argument hints and
+descriptions — ships to the frontend in `session_started.commands`.
 
 `settings` with no args emits the effective config (each key's value and originating layer) as
 `command_output`; `settings <key> <value>` validates the value against the settings schema, persists it
 to the project or global `settings.json`, and applies it live where the running session allows.
 
-`skills` with no args lists every skill as `command_output` — disciplines with their on/off state
-(★ marking the recommended set), then the on-demand actions; `skills on|off <id>` toggles a discipline
-through the same path as the `set_modes` request (nothing is locked; enabling a skill switches off
-anything it `conflicts:` with, with an advisory message), then emits `modes_updated`. `/styles` is a
-deprecated alias. Toggles are session-only and are not persisted to settings.
+`addons` lists every installed addon as `command_output` — its name, description, origin, and
+how many files it bundles. There is nothing to toggle.
+
+A command matching an installed addon's name runs a turn with that addon's instructions
+already loaded, and any argument substituted for `$ARGUMENTS` in its body — the same state
+the agent reaches by calling the `Addon` tool itself. A name no addon claims is reported as
+an unknown command.
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -644,19 +672,48 @@ successful archive emits a refreshed `session_list`.
 {"type":"archive_session","id":"s_lz4k2h_9a1f0c"}
 ```
 
-### `set_modes`
+### `generate_addon`
 
-Sets the active discipline skills (all optional, none locked —
-a request omitting them is refused with a `command_output` message). The engine replies
-with a full `modes_updated` repaint.
+Asks the engine to author an addon `.md` from a plain-language description: one focused
+inference call, validated with the real parser, retried with the error appended up to three
+times. Backgrounded (a `background_notification` marks it) and answered with `addon_draft`.
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `type` | `"set_modes"` | |
-| `active` | `string[]` | The optional style ids that should be active. |
+| `type` | `"generate_addon"` | |
+| `description` | string | What the addon should do, in plain language. |
+| `model` | string? | Override which model authors it (default: the session model). |
+| `context` | string? | Extra detail — when it applies, an example situation. |
+| `connection` | `ConnectionSpec`? | Author with a different provider entirely (a saved profile). `model` is ignored when set. |
 
 ```json
-{"type":"set_modes","active":["entropy"]}
+{"type":"generate_addon","description":"Pair every migration with a rollback","context":"when editing files under db/migrations"}
+```
+
+### `install_addon`
+
+Writes a (re-validated — a draft the user edited is never trusted) addon file into
+`.magentra/addons/` and reloads the roster in place, so the live session can invoke it on
+its very next request. Answered with `addons_updated`.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `type` | `"install_addon"` | |
+| `filename` | string | Must match `<slug>.md`. |
+| `text` | string | The full file contents. |
+
+### `export_addon`
+
+Asks for an addon's source text so the frontend can save it anywhere. A workspace file
+wins over a built-in of the same name. Answered with `addon_export`.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `type` | `"export_addon"` | |
+| `name` | string | The addon name. |
+
+```json
+{"type":"export_addon","name":"magentron"}
 ```
 
 ## Round-trip sequences

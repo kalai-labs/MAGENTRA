@@ -73,10 +73,9 @@ on a clean turn.
 
 ## Agent
 
-- [ ] **System prompt assembly** — env, skills, standards, atlas, skill sections compose in the right order. `pure`
-- [ ] **Subagent types** — each type gets its declared toolset and role; a role override replaces the role without touching the toolset. `pure`
+- [ ] **System prompt assembly** — env, addons, standards sections compose in the right order. `pure`
+- [ ] **Subagent types** — each type gets its declared toolset and role. `pure`
 - [ ] **Subagent spawn** — a child runs, streams tagged events, and returns its final text to the parent. `llm`
-- [ ] **Skills** — a markdown skill in `.magentra/skills/` is discovered and its body reaches the model through the `Skill` tool. `fs` + `llm`
 - [ ] **Hooks** — `SessionStart` / `PreToolUse` / `PostToolUse` / `Stop` fire, and a blocking hook actually blocks. `proc`
 
 ## Tools
@@ -97,20 +96,23 @@ on a clean turn.
 
 ## Knowledge
 
-- [ ] **Codebase atlas** — `/atlas` produces a real `ATLAS.md` that passes its own shape check. **This is the regression that matters**: the build sub-agent must not reach for a tool it does not have. `llm`
-- [ ] **Atlas freshness** — a hand-edited atlas is never clobbered without `force`. `fs`
 - [ ] **Import graph** — built lazily on first query; `blast` finds importers, `deps` finds dependencies. `fs`
 - [ ] **Symbol index** — updates incrementally as files change, with no explicit rebuild. `fs`
 - [ ] **Reuse check** — a new file whose symbols resemble existing code (with no related search/read this session) gets a reminder listing the closest matches — firm wording for near-duplicates — alongside the allowed Write; it never refuses. `fs` + `llm`
 - [ ] **STANDARDS.md** — re-read every turn (not cached at boot), capped at 16 KB with a truncation notice. `fs` + `llm`
 
-## Discipline skills
+## Addons
 
-- [ ] **Mode toggle** — `/styles on|off <id>`; `modes_updated` reflects it. `pure`
-- [ ] **Conflicts** — enabling a skill switches off any active skill it `conflicts:` with (most-recent-wins), with an advisory message. `pure`
-- [ ] **Mode gates** — a mode can forbid a tool outright, or require tasks to exist first. `pure`
-- [ ] **Oracle-script debugging (the `debug` skill)** — edits stay locked until a repro script has been *observed failing*; writes into the debug dir are exempt so the script can be authored; a later pass marks the fix verified. `proc` + `llm`
-- [ ] **Custom skill files** — a user-authored `.magentra/skills/*.md` discipline loads and applies. `fs`
+- [x] **Discovery** — both layouts load: a flat `.magentra/addons/<name>.md` and a `<name>/ADDON.md` directory; a directory without an `ADDON.md` is skipped. `fs` — `addon-check.mjs`
+- [x] **Precedence** — built-in, then `~/.magentra/addons/`, then the workspace; a later tier replaces an earlier addon of the same name. `fs` — `addon-check.mjs`
+- [x] **Cheap until used** — only names and descriptions enter the system prompt; no addon body ever rides in the standing prompt. `pure` — `addon-check.mjs`
+- [x] **On-invoke load** — the `Addon` tool returns the body, substitutes `$ARGUMENTS` (or appends args when there is no placeholder), and errors with the real roster on an unknown name. `pure` — `addon-check.mjs`
+- [x] **Bundled files** — a directory addon advertises its sibling notes and scripts as paths, never inlining their contents. `fs` — `addon-check.mjs`
+- [x] **The `magentron` built-in** — ships present, with its extra-token cost declared in the description. `fs` — `addon-check.mjs`
+- [x] **Discoverable in the palette** — `session_started` carries the roster, and each addon rides in the command registry as `/<name>`. `pure` — `addon-check.mjs`
+- [x] **`/<name>` invocation** — typing an addon's name runs a turn with its instructions loaded; an unclaimed name is still an unknown command. `pure` — `addon-check.mjs`
+- [x] **`/addons` listing** — names each addon, the actual file it came from, and how many files it bundles. `pure` — `addon-check.mjs`
+- [ ] **Create-addon wizard** — describe → `generate_addon` → validated `addon_draft` → edit → `install_addon` writes the file and the live session can invoke it immediately. The UI round-trip is covered by `ui.e2e.js`; the authoring call itself needs a real model. `llm`
 
 ## Scheduling
 
@@ -133,7 +135,7 @@ on a clean turn.
 - [ ] **Wire round-trip** — every `CoreEvent` and `FrontendRequest` survives NDJSON encode → decode. `pure`
 - [ ] **Engine host** — spawns, serves NDJSON over stdio, drains in-flight work on stdin close, and exits cleanly. `proc`
 - [ ] **Single-consumer events** — `Engine.events` has exactly one consumer by design; a second one silently steals events. Either enforce it or document it in a test. `pure`
-- [ ] **Bootstrap** — settings, provider, registry, MCP tools and skills assemble; a missing API key raises `MissingApiKeyError` rather than exiting. `pure`
+- [ ] **Bootstrap** — settings, provider, registry, MCP tools and addons assemble; a missing API key raises `MissingApiKeyError` rather than exiting. `pure`
 
 ## Desktop app
 
@@ -175,7 +177,7 @@ on a clean turn.
 ## Suggested order
 
 1. **`pure` first.** Most of the engine's correctness lives here, it is fast, and
-   it needs no key. Context/usage accounting, permissions, modes, settings, and
+   it needs no key. Context/usage accounting, permissions, addons, settings, and
    the protocol are all in this bucket.
 2. **`fs` next.** A temp workspace and assertions on what lands on disk covers
    most of knowledge/ and state/.

@@ -2,8 +2,7 @@
 
 The import graph only parsed TypeScript, JavaScript and Python, so in a Go,
 Rust, Java or C# repository it came back empty — and an empty graph means
-`GraphQuery slice` returns nothing, `planAtlasAreas` falls back to a bare
-directory walk, and a request has no source for where the work
+`GraphQuery slice` returns nothing and a request has no source for where the work
 lands. We widened it, but not uniformly, because languages genuinely differ in
 whether an import names a file.
 

@@ -18,7 +18,6 @@ contextBridge.exposeInMainWorld("magentra", {
   // A bare frame targets the active tab (unchanged); pass a tabId to route the
   // frame to a specific tab's engine (per-tab requests in multi-tab mode).
   send: (frame, tabId) => ipcRenderer.send("engine:send", tabId ? { frame, tabId } : frame),
-  setModes: (activeIds) => ipcRenderer.send("engine:setModes", activeIds),
   interrupt: () => ipcRenderer.send("engine:interrupt"),
   restartEngine: () => ipcRenderer.send("engine:restart"),
   respondPermission: (id, decision, message, tabId) =>
@@ -32,10 +31,10 @@ contextBridge.exposeInMainWorld("magentra", {
   testConnection: (payload) => ipcRenderer.invoke("setup:testConnection", payload),
   // Which local model servers (Ollama, LM Studio) are present on this machine.
   detectLocalServers: () => ipcRenderer.invoke("connections:detectLocal"),
-  // Skill authoring (main resolves a chosen profile into a connection) and
+  // Addon authoring (main resolves a chosen profile into a connection) and
   // export (main saves the engine-supplied .md via a save dialog).
-  generateSkill: (payload) => ipcRenderer.invoke("skills:generate", payload),
-  saveSkillExport: (payload) => ipcRenderer.invoke("skills:saveExport", payload),
+  generateAddon: (payload) => ipcRenderer.invoke("addons:generate", payload),
+  saveAddonExport: (payload) => ipcRenderer.invoke("addons:saveExport", payload),
   // Global connection profiles (reusable across workspaces).
   listProfiles: () => ipcRenderer.invoke("profiles:list"),
   saveProfile: (payload) => ipcRenderer.invoke("profiles:save", payload),

@@ -123,6 +123,15 @@ invariants directly:
 npm run build && node .claude/skills/bigboycoding/permission-check.mjs
 ```
 
+`addon-check.mjs` covers the addon mechanism the same way — discovery, both
+layouts, workspace-over-builtin precedence, that no addon body ever leaks into
+the standing system prompt, and (against a real `Engine`) that each addon reaches
+the command registry and that `/<name>` runs a turn:
+
+```bash
+npm run build && node .claude/skills/bigboycoding/addon-check.mjs
+```
+
 `finishing-check.mjs` is the same pattern one level up: it drives whole turns
 through a real `Engine` with a scripted provider and asserts the end-of-turn
 ladder — which rung fired, in what order, how many times, and how many provider

@@ -7,7 +7,7 @@ import {
   endpointSpecFromSettings,
   isLocalBaseUrl,
   loadSettings,
-  loadSkills,
+  loadAddons,
   resolveApiKeySource,
 } from "@magentra/core";
 import type { Provider } from "@magentra/providers";
@@ -30,7 +30,7 @@ export class MissingApiKeyError extends Error {}
 /**
  * Builds a ready-to-run Engine for `cwd`: loads `.env` and the layered settings,
  * resolves the API key and provider endpoint, assembles the tool registry
- * (including any configured MCP servers) and the skills.
+ * (including any configured MCP servers) and the addons.
  *
  * Deliberately free of any frontend concern — no argv, no prompts, no I/O to a
  * terminal. The stdio host calls it; so can a test, or an in-process embedder.
@@ -118,7 +118,7 @@ export async function bootstrapEngine(opts: BootstrapOptions): Promise<Bootstrap
     settings,
     provider,
     registry,
-    skills: loadSkills(opts.cwd),
+    addons: loadAddons(opts.cwd),
   });
 
   return { engine, warnings: warnings.map((w) => `[${w.source}] ${w.message}`) };

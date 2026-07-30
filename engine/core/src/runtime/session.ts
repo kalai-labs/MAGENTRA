@@ -29,34 +29,12 @@ import {
   agentToolNames,
   resolveAgentType,
 } from "../agent/agents.js";
-import {
-  ATLAS_AREA_MAX_ITERATIONS,
-  ATLAS_AREA_ROLE,
-  ATLAS_FANOUT_CONCURRENCY,
-  ATLAS_OVERVIEW_SYSTEM,
-  assembleAtlas,
-  atlasAreaPrompt,
-  atlasOverviewPrompt,
-  atlasPromptsDisabled,
-  normalizeAtlasSection,
-  type AtlasArea,
-  atlasIsStale,
-  atlasWasHandEdited,
-  gitCommitsSince,
-  gitHead,
-  loadAtlas,
-  looksLikeAtlas,
-  readAtlasRaw,
-  workspaceLooksNonTrivial,
-  writeAtlas,
-} from "../knowledge/atlas.js";
-import { areaFacts, graphSummary, planAtlasAreas, projectName } from "../knowledge/atlasPlan.js";
+import { projectName, workspaceLooksNonTrivial } from "../knowledge/workspace.js";
 import { graphStats, loadOrBuildGraph, pagerank, type GraphData } from "../knowledge/graph.js";
 import { loadStandards } from "../knowledge/standards.js";
 import { BackgroundManager } from "../scheduling/background.js";
 import { FileState } from "./fileState.js";
 import type { HookRunner } from "../agent/hooks.js";
-import type { ModeEngine } from "../ma/modes.js";
 import { PermissionEngine, type PermissionRequestPayload, protectedEditPath } from "./permissions.js";
 import {
   codeFilesAmong,
@@ -64,14 +42,13 @@ import {
   runtimeEvidenceText,
   selfVerifyText,
 } from "./finishing.js";
-import { buildSystemPrompt, skillsBlock } from "../agent/prompts.js";
-import { DEBUG_DIR, commandRunsRepro, reproScriptRelPath } from "../ma/debug.js";
+import { addonsBlock, buildSystemPrompt } from "../agent/prompts.js";
 import { SearchLog, evaluateReuseGate, type ReuseGateResult } from "../knowledge/reuseGate.js";
 import { buildSymbolIndex, loadOrBuildSymbolIndex, type SymbolIndexData } from "../knowledge/symbols.js";
 import { SessionStats, type ContextBreakdown } from "./sessionStats.js";
 import type { Settings } from "../config/settings.js";
 import { addExactPermission } from "../config/settings.js";
-import type { Skill } from "../agent/skills.js";
+import type { Addon } from "../agent/addons.js";
 import { TaskStore } from "../state/taskStore.js";
 import { isToolDisabled, toolDescriptionText } from "../agent/tool.js";
 import type {
@@ -268,7 +245,7 @@ const CLARIFY_SYSTEM = definePrompt({
     "System prompt of the background call that runs BEFORE an open-ended request and decides whether to ask the user clarifying questions. Adds one inference round at the start of a turn; fails open on any error.",
   text: `You are the clarify pre-layer of an autonomous coding agent. You see ONE incoming user request (plus a snippet of the previous exchange for context) and decide: should the agent ask clarifying questions BEFORE starting, or just start?
 
-You may also be given a "Codebase overview" — a quick, cursory read of the workspace (its design atlas, an import-graph skeleton, or a short peek at README/manifests). It is CONTEXT, not something to confirm with the user. Use it to SHARPEN questions, NOT to silence them:
+You may also be given a "Codebase overview" — a quick, cursory read of the workspace (an import-graph skeleton, or a short peek at README/manifests). It is CONTEXT, not something to confirm with the user. Use it to SHARPEN questions, NOT to silence them:
 - Ground your questions in the project's actual stack, structure, and conventions, so you ask about real, specific choices instead of generic ones — name the concrete options THIS codebase invites.
 - Skip only what the overview answers as FACT — what the app is, its stack, which existing pattern to follow. Never ask the user to restate what the code plainly shows.
 - But the code shows what EXISTS, not what the user now WANTS. For an open-ended change to an existing project ("improve the game", "make it better", "extend this"), the DIRECTION and SCOPE are still the user's to choose — the overview does NOT settle them. Ask that (made specific by the overview), rather than silently picking a direction. Knowing the codebase is a reason to ask a sharper question, not a reason to skip asking.
@@ -336,17 +313,6 @@ const PLAN_FIRST_REMINDER = definePrompt({
   text: "Nothing is on the task board yet. When a request will take several moves to finish, lay it out first with TaskCreate — one entry per move, closing with a check task that names the end state you'll confirm — before you touch any files. A quick one-off needs no board; just handle it.",
 });
 
-const ATLAS_SECTION_HEADER = definePrompt({
-  id: "system.atlas-header",
-  group: "2 · Conditional system sections",
-  label: "Atlas section header",
-  channel: "system-conditional",
-  where:
-    "Prefixes the contents of .magentra/ATLAS.md when it is injected into the system prompt. Only the header is editable; the atlas file follows it verbatim.",
-  text: `# Codebase atlas (.magentra/ATLAS.md)
-The whole-design map of this workspace. Consult it before planning or editing; it is the big picture.`,
-});
-
 const STANDARDS_SECTION_HEADER = definePrompt({
   id: "system.standards-header",
   group: "2 · Conditional system sections",
@@ -397,7 +363,7 @@ export interface SessionOptions {
   initialMessages?: Msg[];
   /** Overrides the assembled system prompt (used by subagents). */
   systemPromptOverride?: string;
-  skills?: Skill[];
+  addons?: Addon[];
   /** Extra prompt sections appended to the system prompt. */
   extraPromptSections?: string[];
   /**
@@ -420,8 +386,6 @@ export interface SessionOptions {
   child?: boolean;
   /** Runs lifecycle hooks; omitted for subagent sessions. */
   hookRunner?: HookRunner;
-  /** The .ma style engine; omitted for subagent sessions (children inherit no modes). */
-  modeEngine?: ModeEngine;
 }
 
 interface PendingToolCall {
@@ -450,8 +414,6 @@ export class Session {
   private readonly registry: ToolRegistry;
   private readonly emit: (event: CoreEvent) => void;
   private readonly reminders: string[] = [];
-  /** Skill turn-start texts already injected into this conversation (cleared on compaction). */
-  private readonly injectedSkillReminders = new Set<string>();
   private readonly dynamicSections = new Map<string, string>();
   private abortController: AbortController | undefined;
   private turnCounter = 0;
@@ -485,19 +447,11 @@ export class Session {
   private autoNameDone = false;
   /** True once the empty-task-list plan-first reminder has fired and the list has stayed empty since. */
   private planReminderFired = false;
-  /** True once the first-turn `/atlas` hint has fired (once per session, never for subagents). */
-  private atlasHintFired = false;
   private readonly hooks: HookRunner | undefined;
   /** Reuse check: tokenized record of related searches/queries made this session. */
   private readonly searchLog = new SearchLog();
   /** Reuse check: the workspace symbol index, loaded once then refreshed incrementally. */
   private symbolIndexCache: SymbolIndexData | undefined;
-  /** debug.ma repro oracle: the designated repro script has been observed exiting nonzero (bug reproduced) — unlocks the repro-failed gate. */
-  private reproFailedObserved = false;
-  /** debug.ma repro oracle: the repro script has been observed exiting zero AFTER a failure (fix verified). */
-  private reproPassedObserved = false;
-  /** debug.ma: true once this turn's "rerun the repro" verify nudge has fired (reset at each turn start, so one nudge per turn). */
-  private debugVerifyNudgeFired = false;
   /**
    * Finishing rungs: what this turn actually did, as observed rather than as
    * claimed. Workspace-relative paths of every file a successful Write/Edit
@@ -521,8 +475,6 @@ export class Session {
   /** Finishing rungs fire at most once per turn each (reset at turn start). */
   private evidenceNudgeFired = false;
   private incompleteTasksNudgeFired = false;
-  /** Set by interrupt(); the background atlas loop checks it and stops taking work. */
-  private atlasCancelled = false;
   private activeChildren = 0;
   /** Foreground child sessions currently running, so interrupt() can propagate.
    *  Background children are deliberately excluded — they detach from the turn
@@ -606,7 +558,7 @@ export class Session {
         this.emit({ type: "cwd_changed", cwd: dir, worktree: dir !== this.opts.cwd });
       },
       worktreeBaseRef: opts.settings.worktree.baseRef,
-      ...(opts.skills !== undefined ? { skills: opts.skills } : {}),
+      ...(opts.addons !== undefined ? { addons: opts.addons } : {}),
     };
   }
 
@@ -823,13 +775,8 @@ export class Session {
     const agentId = `ag_${++Session.agentCounter}`;
     const agentDesc = opts.description;
     // Children inherit the lifted budgets — a capped child inside an uncapped
-    // run is a hidden stop. An explicit spawn-time iteration cap (e.g. the
-    // atlas pipeline's) still wins.
-    const liftedSettings = { ...this.settings, maxIterationsPerTurn: Number.MAX_SAFE_INTEGER, maxTokensPerTurn: Number.MAX_SAFE_INTEGER };
-    const childSettings =
-      opts.maxIterations !== undefined
-        ? { ...liftedSettings, maxIterationsPerTurn: opts.maxIterations }
-        : liftedSettings;
+    // run is a hidden stop.
+    const childSettings = { ...this.settings, maxIterationsPerTurn: Number.MAX_SAFE_INTEGER, maxTokensPerTurn: Number.MAX_SAFE_INTEGER };
 
     const allNames = this.registry.list().map((t) => t.name);
     const childRegistry = this.registry.subset(agentToolNames(def, allNames));
@@ -841,8 +788,8 @@ export class Session {
         model: childSettings.model,
         date: new Date().toISOString().slice(0, 10),
       },
-      skills: [],
-      extraSections: [opts.roleOverride ?? agentRoleText(def), promptText(SUBAGENT_RESULT_ID)],
+      addons: [],
+      extraSections: [agentRoleText(def), promptText(SUBAGENT_RESULT_ID)],
     });
     const child = new Session({
       cwd: this.cwd,
@@ -921,21 +868,18 @@ export class Session {
   /**
    * HARD STOP — everything this session started, stopped now.
    *
-   * "Stop" only means something if it reaches all the way. Three kinds of work
+   * "Stop" only means something if it reaches all the way. Two kinds of work
    * outlive a naive abort, and each is cut here:
    *
    *   1. the current turn, and every subagent under it (they run their own
    *      controllers, so aborting only this session would leave them burning
    *      tokens while the parent waits on their results);
-   *   2. a background atlas build, whose loop would otherwise catch the abort of
-   *      one area agent, wait, and cheerfully spawn the next one;
-   *   3. background jobs (bash, monitors) — detached from any turn, so nothing
+   *   2. background jobs (bash, monitors) — detached from any turn, so nothing
    *      else would ever kill them.
    *
    * Idempotent and safe when idle.
    */
   interrupt(): void {
-    this.atlasCancelled = true;
     this.abortController?.abort(new Error("interrupted by user"));
     for (const child of this.liveChildren) child.interrupt();
     this.stopBackgroundTasks();
@@ -964,7 +908,6 @@ export class Session {
 
   buildSystemPrompt(): string {
     if (this.opts.systemPromptOverride) return this.opts.systemPromptOverride;
-    const atlas = loadAtlas(this.cwd);
     const standards = loadStandards(this.cwd);
     return buildSystemPrompt({
       env: {
@@ -974,16 +917,14 @@ export class Session {
         model: this.settings.model,
         date: new Date().toISOString().slice(0, 10),
       },
-      skills: this.opts.skills ?? [],
+      addons: this.opts.addons ?? [],
       extraSections: [
         ...this.extraPromptSections,
         ...this.dynamicSections.values(),
-        ...(this.opts.modeEngine?.promptSections() ?? []),
         // A disabled header drops the whole section, body and all. Injecting the
         // file's contents with no header would hand the model an unlabelled wall
         // of text — worse than not sending it, and not what emptying a section
         // means anywhere else in the registry.
-        ...(atlas ? Session.section(ATLAS_SECTION_HEADER, atlas) : []),
         ...(standards ? Session.section(STANDARDS_SECTION_HEADER, standards) : []),
       ],
     });
@@ -996,190 +937,6 @@ export class Session {
   private static section(headerId: string, body: string): string[] {
     const header = promptTextIfEnabled(headerId);
     return header === undefined ? [] : [`${header}\n\n${body}`];
-  }
-
-  /**
-   * The `/atlas` build, as an orchestrator over three stages: derive the facts
-   * (no model), map every area in parallel (one agent each), then synthesize the
-   * overview and assemble the document. See the ATLAS BUILD note in atlas.ts for
-   * why it is shaped this way.
-   *
-   * Best-effort throughout: a failure emits a notice, leaves any existing atlas
-   * alone, and the missing-atlas nudge still fires. A hand-edited atlas is never
-   * clobbered without `force`. Subagents opt out entirely.
-   */
-  async buildAtlas(force = false): Promise<void> {
-    // Subagents (which always run with an overridden system prompt) never
-    // auto-explore: it would recurse via spawnAgent, and a child cannot own the
-    // workspace atlas anyway.
-    if (this.opts.systemPromptOverride !== undefined) return;
-
-    // Emptying any of the four prompts this build depends on switches the whole
-    // feature off. Say so and stop: a build that runs one fan-out agent per area
-    // with no role, or synthesizes with no system prompt, spends real money to
-    // write a document nobody should trust.
-    if (atlasPromptsDisabled()) {
-      this.emit({
-        type: "command_output",
-        text: "🗺 atlas is switched off — its prompts are empty in the prompt registry. Nothing was built.",
-      });
-      return;
-    }
-
-    // A stop from a previous build must not kill this one before it starts.
-    this.atlasCancelled = false;
-
-    // If a human edited the atlas since the engine wrote it (its body hash no
-    // longer matches the stamp), never clobber that work unless forced.
-    const raw = readAtlasRaw(this.cwd);
-    if (raw !== undefined && atlasWasHandEdited(raw) && !force) {
-      this.emit({
-        type: "command_output",
-        text: "🗺 atlas was hand-edited — keeping your version (run /atlas force to overwrite)",
-      });
-      return;
-    }
-
-    try {
-      // ── 1. Facts. Costs nothing, and spares every agent the grepping. ──────
-      const graph = loadOrBuildGraph(this.cwd);
-      const symbols = loadOrBuildSymbolIndex(this.cwd);
-      const areas = planAtlasAreas(graph, undefined, this.cwd);
-      if (areas.length === 0) throw new Error("no source files to map");
-
-      const project = projectName(this.cwd);
-      this.emit({
-        type: "command_output",
-        text: `🗺 mapping ${project}: ${graphSummary(graph, areas)} — ${areas.length} agent${areas.length === 1 ? "" : "s"} in parallel…`,
-      });
-
-      // ── 2. Fan out. Each agent maps one area and returns one compact section. ─
-      const sections = await this.mapAreasInParallel(areas, graph, symbols);
-      // A stopped build writes nothing: half a map, silently saved, is worse
-      // than no map — the next session would trust it.
-      if (this.atlasCancelled) {
-        this.emit({ type: "command_output", text: "🗺 atlas build stopped — nothing written." });
-        return;
-      }
-      if (sections.length === 0) throw new Error("no area could be mapped");
-
-      // ── 3. Synthesize. One cheap, tool-free call opens the document. ────────
-      const overview = await this.runInference({
-        system: promptText(ATLAS_OVERVIEW_SYSTEM),
-        user: atlasOverviewPrompt(project, sections, graphSummary(graph, areas)),
-        maxTokens: 400,
-      });
-
-      const atlas = assembleAtlas(project, overview, sections);
-      if (!looksLikeAtlas(atlas)) throw new Error("assembled atlas failed its shape check");
-
-      writeAtlas(this.cwd, atlas, gitHead(this.cwd));
-      this.emit({
-        type: "command_output",
-        text: `🗺 design atlas ready — .magentra/ATLAS.md (${sections.length}/${areas.length} areas mapped)`,
-      });
-    } catch (err) {
-      this.emit({
-        type: "command_output",
-        text: `🗺 atlas build failed (${(err as Error).message}) — continuing without it`,
-      });
-    }
-  }
-
-  /**
-   * Runs one agent per area, ATLAS_FANOUT_CONCURRENCY at a time. A failed or
-   * empty area is dropped rather than failing the build — a partial atlas beats
-   * none. Sections come back in area order regardless of completion order, so
-   * the document is stable across runs.
-   */
-  private async mapAreasInParallel(
-    areas: AtlasArea[],
-    graph: GraphData,
-    symbols: SymbolIndexData,
-  ): Promise<string[]> {
-    const results: (string | undefined)[] = new Array(areas.length).fill(undefined);
-    let next = 0;
-
-    const mapOne = async (area: AtlasArea): Promise<string | undefined> => {
-      const section = await this.spawnAgent({
-        agentType: "explore",
-        description: `map ${area.name}`,
-        prompt: atlasAreaPrompt(area, areaFacts(area, areas, graph, symbols)),
-        // The explore role ("return concise conclusions — file paths with line
-        // numbers") is the wrong persona for authoring a section.
-        roleOverride: promptText(ATLAS_AREA_ROLE),
-        maxIterations: ATLAS_AREA_MAX_ITERATIONS,
-      });
-      const text = section.trim();
-      if (!text || text === NO_SUBAGENT_TEXT) return undefined;
-      return normalizeAtlasSection(text, area.name);
-    };
-
-    const worker = async (): Promise<void> => {
-      for (;;) {
-        // A hard stop must actually stop: check before taking new work, and
-        // again before retrying, or the loop would happily out-live the abort it
-        // just caught.
-        if (this.atlasCancelled) return;
-        const index = next++;
-        const area = areas[index];
-        if (!area) return;
-        try {
-          results[index] = await mapOne(area);
-        } catch {
-          if (this.atlasCancelled) return;
-          // The build runs in the background, so the user's own turn may be
-          // spawning agents at the same time and briefly exhaust the subagent
-          // slots. That is transient — back off once and retry, rather than
-          // silently shipping an atlas with a hole in it.
-          await new Promise((r) => setTimeout(r, 2_000));
-          if (this.atlasCancelled) return;
-          try {
-            results[index] = await mapOne(area);
-          } catch {
-            // Genuinely failed. One missing area beats no atlas.
-          }
-        }
-      }
-    };
-
-    await Promise.all(
-      Array.from({ length: Math.min(ATLAS_FANOUT_CONCURRENCY, areas.length) }, () => worker()),
-    );
-    return results.filter((s): s is string => s !== undefined);
-  }
-
-  /**
-   * Zero-cost first-turn nudge toward `/atlas`. Fires at most once per session
-   * and never for a subagent. Emits a hint when a non-trivial workspace has no
-   * atlas, or when its machine-owned atlas has gone git-stale; a hand-edited
-   * atlas is left alone. Cheap (one file read + at most one git call) and never
-   * throws — atlas building is now an explicit command, so this is only a signpost.
-   */
-  private maybeHintAtlas(): void {
-    if (this.atlasHintFired) return;
-    if (this.opts.systemPromptOverride !== undefined) return;
-    this.atlasHintFired = true;
-    try {
-      const raw = readAtlasRaw(this.cwd);
-      if (raw === undefined) {
-        if (workspaceLooksNonTrivial(this.cwd)) {
-          this.emit({
-            type: "command_output",
-            text: "🗺 no design atlas — run /atlas to map this codebase (speeds up every future session)",
-          });
-        }
-        return;
-      }
-      if (atlasIsStale(raw, (commit) => gitCommitsSince(this.cwd, commit)) && !atlasWasHandEdited(raw)) {
-        this.emit({
-          type: "command_output",
-          text: "🗺 the design atlas looks stale — run /atlas to rebuild it",
-        });
-      }
-    } catch {
-      // A signpost must never break a turn.
-    }
   }
 
   /**
@@ -1270,28 +1027,22 @@ export class Session {
    * A quick, cursory read of the workspace for the clarify pre-layer, so its
    * questions are grounded in what the code actually is. Layered by cost, richest
    * first, and fail-open — any error yields no skim and the clarify proceeds as
-   * before. All sources are deterministic reads (no model call):
-   *   1. the prebuilt design atlas, if present (the richest map, a free read);
-   *   2. else an import-graph skeleton (top files + scale) — cheap on a warm
-   *      cache, a one-time build if cold;
-   *   3. else a bounded peek at the working dir (README/manifests + layout), so
-   *      even an unmapped project still gets an overview before we ask.
+   * before. Both sources are deterministic reads (no model call):
+   *   1. an import-graph skeleton (top files + scale) — cheap on a warm cache,
+   *      a one-time build if cold;
+   *   2. else a bounded peek at the working dir (README/manifests + layout), so
+   *      even a project the graph cannot parse still gets an overview.
    * The result is capped so it stays a cursory glance, never a context dump.
    */
   private buildClarifySkim(): string | undefined {
     let digest: string | undefined;
     try {
-      const atlas = loadAtlas(this.cwd);
-      if (atlas) {
-        digest = `Design atlas (.magentra/ATLAS.md):\n${atlas}`;
-      } else {
-        // workspaceLooksNonTrivial is a depth-1 check — cheap enough to gate the
-        // graph load, which the user opted to allow to build once when cold.
-        const skeleton = workspaceLooksNonTrivial(this.cwd)
-          ? graphSkeleton(loadOrBuildGraph(this.cwd), projectName(this.cwd))
-          : undefined;
-        digest = skeleton ?? this.peekWorkspaceOverview();
-      }
+      // workspaceLooksNonTrivial is a depth-1 check — cheap enough to gate the
+      // graph load, which the user opted to allow to build once when cold.
+      const skeleton = workspaceLooksNonTrivial(this.cwd)
+        ? graphSkeleton(loadOrBuildGraph(this.cwd), projectName(this.cwd))
+        : undefined;
+      digest = skeleton ?? this.peekWorkspaceOverview();
     } catch {
       return undefined; // fail-open — the question must never wait on the skim
     }
@@ -1370,20 +1121,6 @@ export class Session {
       this.planReminderFired = false;
     }
 
-    // Skill turn-start injections fire ONCE per conversation, not every turn —
-    // repeating them each turn duplicated the same text into history forever
-    // (~140 tokens/turn with several skills on). The set tracks which texts
-    // are already in context: a skill enabled mid-session injects on the next
-    // turn, and compaction clears the set so the surviving conversation gets
-    // the reminders re-established after the originals were summarized away.
-    for (const text of this.opts.modeEngine?.turnStartInjections() ?? []) {
-      if (this.injectedSkillReminders.has(text)) continue;
-      this.remind(text);
-      this.injectedSkillReminders.add(text);
-    }
-
-    // debug.ma: at most one "rerun the repro" verify nudge per turn.
-    this.debugVerifyNudgeFired = false;
     // Finishing rungs: both the evidence they judge and their once-per-turn
     // fuses are about THIS turn's work, so they all reset together.
     this.filesChangedThisTurn.clear();
@@ -1419,12 +1156,6 @@ export class Session {
     // deletion later removes stays recoverable. Root sessions only — children
     // share the same tree.
     if (this.overdrive && !this.opts.child) await this.snapshotForOverdrive();
-
-    // Zero-cost first-turn hint: point the user at `/atlas` when this workspace
-    // has no atlas (or a stale machine-owned one). Fires once per session, never
-    // for subagents, and is cheap (one file read + at most one git call) — it
-    // must not throw, so any failure is swallowed.
-    this.maybeHintAtlas();
 
     this.pushMessage({
       role: "user",
@@ -1566,25 +1297,6 @@ export class Session {
             continue;
           }
 
-          // DEBUG VERIFY: debug.ma's repro oracle saw the script fail but never
-          // observed it pass again — the fix (if any) is unverified. Force one
-          // more iteration demanding a rerun, guarded by its own once-per-turn
-          // flag (not the nudge cap) so the oracle is always checked.
-          if (
-            this.opts.modeEngine?.requiresReproOracle() &&
-            this.reproFailedObserved &&
-            !this.reproPassedObserved &&
-            !this.debugVerifyNudgeFired
-          ) {
-            this.debugVerifyNudgeFired = true;
-            this.emit({ type: "command_output", text: "↻ debug: repro not yet observed passing — verify" });
-            this.pushMessage({
-              role: "user",
-              content: [{ type: "text", text: debugVerifyNudgeText(reproScriptRelPath()) }],
-            });
-            continue;
-          }
-
           // LAYER 2: the previous tool-result batch had a failure and the
           // turn is ending regardless of what the final text says — weak
           // models sometimes bury a failure under a long non-answer. Nudge
@@ -1722,17 +1434,15 @@ export class Session {
           ) {
             nudgeCount++;
             this.emit({ type: "command_output", text: "↻ requesting a work summary" });
-            const checklist = this.opts.modeEngine?.wrapupChecklist() ?? "";
             // Whether anything was actually written, from the same observation
             // the finishing rungs use: a Write that was refused or that failed
             // its freshness check changed no module, so it must not pull in the
-            // atlas and standards reminders.
+            // standards reminder.
             const wroteOrEdited = this.filesChangedThisTurn.size > 0;
-            const mentionAtlas = wroteOrEdited && loadAtlas(this.cwd) !== undefined;
             const mentionStandards = wroteOrEdited && loadStandards(this.cwd) !== undefined;
             this.pushMessage({
               role: "user",
-              content: [{ type: "text", text: wrapupNudgeText(checklist, mentionAtlas, mentionStandards) }],
+              content: [{ type: "text", text: wrapupNudgeText(mentionStandards) }],
             });
             continue;
           }
@@ -1752,7 +1462,6 @@ export class Session {
         lastBatchHadError = results.some((r) => r.type === "tool_result" && r.isError === true);
         if (lastBatchHadError) {
           this.remind(promptText(ERROR_BATCH_REMINDER));
-          for (const text of this.opts.modeEngine?.afterErrorInjections() ?? []) this.remind(text);
         }
         // Stall detector: a round that exactly repeats the previous one (same
         // calls, same results) produced nothing new. Three in a row is a
@@ -1778,7 +1487,7 @@ export class Session {
         // streams before the cap breaks the loop is cap-1. Warn the model ON
         // that final round (teaching, not enforcement): a weak model that
         // over-explores otherwise ends the turn cut off mid-exploration with
-        // no final answer — the atlas build was the canonical casualty.
+        // no final answer.
         if (capped && iteration === this.settings.maxIterationsPerTurn - 2) {
           this.remind(
             "Final tool round: the per-turn iteration cap is reached after this response. Give your complete final answer now — further tool calls will be cut off.",
@@ -2092,25 +1801,6 @@ export class Session {
               // evidence logging must never break the call it observes
             }
           }
-          const gateHit = this.opts.modeEngine?.gateFor(tool.name);
-          if (gateHit) {
-            if (gateHit.gate.require === "never") {
-              return { content: gateHit.gate.message, isError: true };
-            }
-            if (gateHit.gate.require === "tasks-exist" && this.tasks.list().length === 0) {
-              return { content: gateHit.gate.message, isError: true };
-            }
-            // debug.ma repro oracle: edits stay locked until the repro script has
-            // been observed failing — except a Write/Edit into the debug dir
-            // itself, so the model can create and refine that very script.
-            if (
-              gateHit.gate.require === "repro-failed" &&
-              !this.reproFailedObserved &&
-              !this.isDebugScriptWrite(tool.name, input)
-            ) {
-              return { content: gateHit.gate.message, isError: true };
-            }
-          }
           if (tool.name === "Write") {
             const gate = this.evaluateWriteReuseGate(input);
             // The reuse check never blocks the flow — the reminder rides
@@ -2173,7 +1863,6 @@ export class Session {
           });
           try {
             const result = await tool.execute(input, { ...this.toolContext(), callId: call.id }, signal);
-            this.observeReproRun(tool.name, input, result.isError === true);
             this.observeTurnWork(tool.name, input, result.isError === true);
             const truncated = truncateResult(result, tool.outputByteLimit ?? DEFAULT_OUTPUT_LIMIT);
             if (this.hooks?.has("PostToolUse")) {
@@ -2241,23 +1930,6 @@ export class Session {
   }
 
   /**
-   * debug.ma repro oracle. Watches Bash calls that run the designated repro
-   * script (matched structurally on the command string): a nonzero exit marks
-   * the bug reproduced — unlocking edits via the repro-failed gate — while a
-   * zero exit AFTER a prior failure marks the fix verified. A pass is credited
-   * only once a failure has been seen: the fail→pass sequence is what validates
-   * the oracle, so a green run before any red is not a proof.
-   */
-  private observeReproRun(toolName: string, input: unknown, isError: boolean): void {
-    if (toolName !== "Bash") return;
-    if (typeof input !== "object" || input === null) return;
-    const command = (input as Record<string, unknown>).command;
-    if (typeof command !== "string" || !commandRunsRepro(command)) return;
-    if (isError) this.reproFailedObserved = true;
-    else if (this.reproFailedObserved) this.reproPassedObserved = true;
-  }
-
-  /**
    * Finishing rungs: what this turn did, watched at the one place a tool has
    * actually finished running. A Write or an Edit records the file it changed;
    * any Bash call records that something was executed at all.
@@ -2291,22 +1963,6 @@ export class Session {
     // contained mocks before the turn started is not this turn's assumption.
     const written = (input as Record<string, unknown>)[toolName === "Write" ? "content" : "new_string"];
     if (typeof written === "string" && looksLikeTestDouble(written)) this.doubleFilesThisTurn.add(named);
-  }
-
-  /**
-   * True when a Write/Edit targets the debug workspace (<cwd>/.magentra/debug/).
-   * The repro-failed gate lets these through before any failing run so the model
-   * can create and refine the oracle script itself. Reads `file_path`
-   * structurally (this module must not depend on @magentra/tools).
-   */
-  private isDebugScriptWrite(toolName: string, input: unknown): boolean {
-    if (toolName !== "Write" && toolName !== "Edit") return false;
-    if (typeof input !== "object" || input === null) return false;
-    const filePath = (input as Record<string, unknown>).file_path;
-    if (typeof filePath !== "string") return false;
-    const debugRoot = resolve(this.cwd, DEBUG_DIR);
-    const target = resolve(this.cwd, filePath);
-    return target === debugRoot || target.startsWith(debugRoot + sep);
   }
 
   /**
@@ -2479,30 +2135,30 @@ export class Session {
    * /session report: the input context broken into its disjoint parts. Each part
    * is an ESTIMATE of its own size — the measured total (`stats.contextTokens`,
    * from provider usage) is the source of truth and will not sum to these
-   * exactly. Skills physically live inside the system string; they are broken
-   * out (and subtracted from it) so their weight is visible on its own without
-   * being counted twice. `limit` is the user's auto-compact limit (0 = none
+   * exactly. Addon names/descriptions physically live inside the system string; they
+   * are broken out (and subtracted from it) so their weight is visible on its own
+   * without being counted twice. `limit` is the user's auto-compact limit (0 = none
    * set), used to show free space; without a limit there is no window to compute
    * free space against.
    */
   contextBreakdown(): ContextBreakdown {
-    const skillsText = skillsBlock(this.opts.skills ?? []) ?? "";
-    const skills = estimateTokens(skillsText);
-    // System prompt without the skills block, so the two don't double-count.
-    const systemPrompt = Math.max(0, estimateTokens(this.buildSystemPrompt()) - skills);
+    const addonsText = addonsBlock(this.opts.addons ?? []) ?? "";
+    const addons = estimateTokens(addonsText);
+    // System prompt without the addons block, so the two don't double-count.
+    const systemPrompt = Math.max(0, estimateTokens(this.buildSystemPrompt()) - addons);
     const tools = estimateTokens(JSON.stringify(this.toolSchemas()));
     const messages = this.estimateContextTokens();
-    return { systemPrompt, tools, skills, messages, limit: this.autoCompactLimit };
+    return { systemPrompt, tools, addons, messages, limit: this.autoCompactLimit };
   }
 
   /** An estimate of the whole context right now — system prompt + tool schemas +
-   * skills + surviving message history — used to seed `contextTokens` after a
+   * addons + surviving message history — used to seed `contextTokens` after a
    * compaction (before the next response measures it exactly) so the meter never
    * reads a misleading ~0 for a window that still holds the system prompt and
    * the summary. */
   private estimateContextNow(): number {
     const b = this.contextBreakdown();
-    return b.systemPrompt + b.tools + b.skills + b.messages;
+    return b.systemPrompt + b.tools + b.addons + b.messages;
   }
 
   /** Set the auto-compact token limit. 0 (or invalid) disables auto-compaction.
@@ -2565,16 +2221,13 @@ export class Session {
     this.messages = [{ role: "user", content: [{ type: "text", text: summaryMessage }] }, ...tail];
     this.transcript.append({ kind: "compaction", replacedCount: head.length, summary: summaryMessage });
     // Reset the measured size to a fresh ESTIMATE of the compacted window
-    // (system prompt + tools + skills + summary + surviving tail) — NOT zero.
+    // (system prompt + tools + addons + summary + surviving tail) — NOT zero.
     // The window is far from empty, and a ~0 reading would both misinform the
     // context meter and disarm the compaction safety until the next response
     // re-measures. (Cost/usage totals stay — compaction does not un-bill spend.)
     // Root only: the shared figure describes the root's window, and a child
     // compacting its own history says nothing about how full that one is.
     if (!this.opts.child) this.stats.contextTokens = this.estimateContextNow();
-    // The original skill reminders likely lived in the summarized span — let
-    // the next turn re-establish them in the surviving conversation.
-    this.injectedSkillReminders.clear();
     // A manual /compact runs outside any turn, so no turn_finished will carry
     // the new size — push it now so the frontend's context meter updates.
     this.emit({
@@ -2838,34 +2491,9 @@ function incompleteTasksNudgeText(tasks: TaskItem[]): string {
   });
 }
 
-/** debug.ma: the verify nudge fired when the repro failed but was never seen passing again this turn. */
-const DEBUG_VERIFY_NUDGE = definePrompt({
-  id: "reminder.debug-verify",
-  group: "3 · In-turn reminders",
-  label: "Repro not seen passing",
-  channel: "reminder",
-  where:
-    "Fires when a discipline skill enforces the repro-failed oracle and the repro script failed but was never observed passing again this turn.",
-  placeholders: ["reproPath"],
-  text: `<system-reminder>The repro script has not been observed passing since it failed. Rerun {{reproPath}} now and report the result — or state plainly that the fix is UNVERIFIED.</system-reminder>`,
-});
-
-function debugVerifyNudgeText(reproPath: string): string {
-  return renderPrompt(DEBUG_VERIFY_NUDGE, { reproPath });
-}
-
-/** Folds an active mode's wrap-up checklist and the atlas/standards nudges into the wrap-up nudge. */
-function wrapupNudgeText(checklist: string, mentionAtlas = false, mentionStandards = false): string {
+/** Folds the standards nudge into the wrap-up nudge. */
+function wrapupNudgeText(mentionStandards = false): string {
   let text = promptText(WRAPUP_NUDGE_TEXT);
-  if (checklist) {
-    text = text.replace("</system-reminder>", `\nAlso check:\n${checklist}</system-reminder>`);
-  }
-  if (mentionAtlas) {
-    text = text.replace(
-      "</system-reminder>",
-      `\nIf any module or public interface changed, update .magentra/ATLAS.md to match.</system-reminder>`,
-    );
-  }
   if (mentionStandards) {
     text = text.replace(
       "</system-reminder>",

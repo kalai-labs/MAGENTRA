@@ -11,7 +11,7 @@ const STAGE_VIEWS = {
   sessions: sessionsViewEl,
   changes: changesViewEl,
   settings: settingsViewEl,
-  skills: skillsViewEl,
+  addons: addonsViewEl,
 };
 
 function showView(name) {
@@ -24,7 +24,7 @@ function showView(name) {
   navSessionsEl.classList.toggle("active", name === "sessions");
   navChangesEl.classList.toggle("active", name === "changes");
   navSettingsEl.classList.toggle("active", name === "settings");
-  if (navSkillsEl) navSkillsEl.classList.toggle("active", name === "skills");
+  if (navAddonsEl) navAddonsEl.classList.toggle("active", name === "addons");
   // The UI-scale field can be moved out from under us by the native zoom
   // accelerators, so it re-reads the real factor each time it becomes visible.
   if (name === "settings") adoptExternalZoom();
@@ -71,7 +71,7 @@ const MENU_BAR = [
       { label: "Sessions", hint: "Ctrl+2", needsWorkspace: true, action: () => { showView("sessions"); requestSessionList(); } },
       { label: "Changes", hint: "Ctrl+3", needsWorkspace: true, action: () => showView("changes") },
       { label: "Settings", hint: "Ctrl+4", action: () => { showView("settings"); void loadConnectionCard(); } },
-      { label: "Skills", hint: "Ctrl+5", needsWorkspace: true, action: () => showView("skills") },
+      { label: "Addons", hint: "Ctrl+5", needsWorkspace: true, action: () => showView("addons") },
       { sep: true },
       { label: "Toggle Full Screen", hint: "F11", action: () => toggleFullScreen() },
     ],

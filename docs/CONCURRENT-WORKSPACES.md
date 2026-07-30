@@ -125,7 +125,7 @@ within one top-level turn** (parent stays `busy`), which is not two independent 
   behaviour can regress from this feature — the whole change is confined to `app/`.
 - **Parallel turns are free.** Independent processes already run in parallel; a crash in one
   Tab cannot take down another.
-- **Memory cost.** Up to four engines, each loading its graph/symbols/atlas/tools/MCP. The
+- **Memory cost.** Up to four engines, each loading its graph/symbols/tools/MCP. The
   hard cap of 4 bounds this deliberately.
 - **The main process becomes a router.** It gains a pool, `tabId` tagging on the way out,
   and `tabId` routing on the way in — the bulk of the non-UI work.
@@ -242,6 +242,6 @@ an unstyled grid, seam, or pane border. The grid, pane chrome, the active-pane r
   picker shows and edits the **focused** Tab's model; `set_model` targets that Tab's engine.
   `currentConfig.model` in main is only the *default* a newly-opened Tab starts on.
 - **Every user→engine frame carries its Tab's id.** `user_message`, `steer_message`,
-  `interrupt`, `slash_command`, `set_modes`, `set_deletion_guard`, `set_overdrive`,
+  `interrupt`, `slash_command`, `set_deletion_guard`, `set_overdrive`,
   `set_compact_limit`, `resume_session`, etc. route to the intended Tab's engine — the focused
   Tab for composer actions, the owning Tab for a per-pane control in Split view.

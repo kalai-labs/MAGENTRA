@@ -177,16 +177,6 @@ export const settingsSchema = z
      * control: it disables man-in-the-middle protection process-wide.
      */
     allowInsecureTls: z.boolean().default(false),
-    modes: z
-      .object({
-        /**
-         * Discipline skills to activate at session start. Every skill is
-         * optional and OFF unless listed here (or toggled in-session) — there
-         * are no locked always-on skills.
-         */
-        active: z.array(z.string()).default([]),
-      })
-      .default({ active: [] }),
   })
   .passthrough();
 

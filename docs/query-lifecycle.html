@@ -288,18 +288,16 @@
     <li><span class="i">1</span><div><b>behaviorCore()</b> — ten static sections joined<span class="ref">prompts.ts:89 · identity, harness, communication, action-care, git, code-style, tasks, working-method, autonomy, plan-mode</span></div></li>
     <li><span class="i">2</span><div><b>environmentBlock</b> — cwd, is-git-repo, platform, model, date<span class="ref">prompts.ts:112 · values gathered session.ts:714</span></div></li>
     <li><span class="i">3</span><div><b>projectMemoryBlock</b> — the project guide file from cwd<span class="ref">prompts.ts:121</span></div></li>
-    <li><span class="i">4</span><div><b>skillsBlock</b> — action-skill <em>names and descriptions only</em>, never bodies<span class="ref">prompts.ts:139 · loaded once at boot, bootstrap.ts:114</span></div></li>
-    <li><span class="i">5</span><div><b>extraSections</b>, in order: static sections, tool-mutated <code>dynamicSections</code>, active discipline skills, ATLAS.md, standards<span class="ref">session.ts:722 · modeEngine.promptSections() at ma/modes.ts:508</span></div></li>
+    <li><span class="i">4</span><div><b>addonsBlock</b> — addon <em>names and descriptions only</em>, never bodies<span class="ref">prompts.ts · loaded once at boot, bootstrap.ts</span></div></li>
+    <li><span class="i">5</span><div><b>extraSections</b>, in order: static sections, tool-mutated <code>dynamicSections</code>, standards<span class="ref">session.ts:722</span></div></li>
   </ol>
 
   <h3>Reminders — queued, flushed once, drained</h3>
   <p>Queued via <code>remind()</code> (<code>:375</code>), flushed by <code>withReminders()</code> (<code>:1563</code>) as one wrapped block appended to the next user message.</p>
   <ol class="steps">
     <li><span class="i">A</span><div><b>Plan-first reminder</b> — fires when the task list is empty<span class="ref">session.ts:972 · "first create a plan with TaskCreate … before making any edits"</span></div></li>
-    <li><span class="i">B</span><div><b>Skill turn-start injections</b> — once per <em>conversation</em>, not per turn<span class="ref">session.ts:985 · guarded by injectedSkillReminders; ~140 tokens/turn saved</span></div></li>
-    <li><span class="i">C</span><div><b>No-atlas nudge</b> — once per session<span class="ref">session.ts:1010</span></div></li>
-    <li><span class="i">D</span><div><b>Error-batch reminder</b> + skill after-error injections, mid-loop<span class="ref">session.ts:1162</span></div></li>
-    <li><span class="i">E</span><div><b>Final-round cap warning</b> — capped runs only, at <code>iteration === max - 2</code>; interactive root turns are uncapped and never see it<span class="ref">session.ts:1170</span></div></li>
+    <li><span class="i">C</span><div><b>Error-batch reminder</b>, mid-loop<span class="ref">session.ts:1162</span></div></li>
+    <li><span class="i">D</span><div><b>Final-round cap warning</b> — capped runs only, at <code>iteration === max - 2</code>; interactive root turns are uncapped and never see it<span class="ref">session.ts:1170</span></div></li>
   </ol>
 
   <h3>Compaction</h3>
@@ -352,11 +350,10 @@
       <div><span>OVERDRIVE off</span><span>commands ask · edits free</span></div>
       <div><span>Deletion guard</span><span class="pill on">still active</span></div>
     </div></div>
-    <div class="card"><h4>Active discipline skills</h4><div class="kv">
-      <div><span>lexicon</span><span class="pill off">no gate</span></div>
-      <div><span>prover</span><span class="pill off">no gate</span></div>
-      <div><span>sentinel</span><span class="pill off">no gate</span></div>
-      <div><span>grill / reshape / debug</span><span class="pill off">off</span></div>
+    <div class="card"><h4>Addons</h4><div class="kv">
+      <div><span>magentron</span><span class="pill off">on demand</span></div>
+      <div><span>Always injected?</span><span class="pill off">never</span></div>
+      <div><span>Tool gates</span><span class="pill off">none exist</span></div>
     </div></div>
     <div class="card"><h4>Loop budgets</h4><div class="kv">
       <div><span>Interactive root turns</span><span class="mono">uncapped</span></div>
@@ -372,13 +369,13 @@
   </div>
 
   <div class="note go">
-    <b>The gated skills are off — planning gates are not what's stopping you</b>
-    <code>grill</code> carries <code>gate: Write, Edit requires tasks-exist</code> and instructs relentless <code>AskUserQuestion</code> interviewing. It is <em>not</em> active in any observed session. Same for <code>reshape</code> and <code>debug</code>. The Grill hypothesis is ruled out by evidence.
+    <b>No addon can gate a tool — the mechanism has no enforcement half</b>
+    Addons are loaded on demand and never block a call. There is no tool-gate grammar and no always-on injection, so an addon cannot be what is stopping a turn.
   </div>
 
   <div class="note warn">
     <b>The plan-first reminder fires on every turn with an empty task list</b>
-    <code>session.ts:972</code> injects <em>"If this request needs more than a couple of steps, first create a plan with TaskCreate — one task per step … before making any edits."</em> Paired with <code>prover.ma</code>'s "every code change owes a verdict" and a small fast model, this is a standing push toward planning over acting. It is advisory text with no enforcement behind it — but a weak model can take it literally and loop.
+    <code>session.ts:972</code> injects <em>"If this request needs more than a couple of steps, first create a plan with TaskCreate — one task per step … before making any edits."</em> Paired with a small fast model, this is a standing push toward planning over acting. It is advisory text with no enforcement behind it — but a weak model can take it literally and loop.
   </div>
 
   <div class="note stop">
@@ -440,7 +437,7 @@ const STAGES = [
   { id:"host", n:"Stage 3", t:"Engine host", w:"serve.ts", h:"Frame dispatch",
     steps:[
       ["<b>main()</b> parses argv, bootstraps, calls <code>runServe</code>","host/main.ts:70"],
-      ["Registry, MCP tools and provider are constructed","bootstrap.ts:87 · createDefaultRegistry() :99, loadSkills() :114"],
+      ["Registry, MCP tools and provider are constructed","bootstrap.ts:87 · createDefaultRegistry(), loadAddons()"],
       ["<code>engine.start()</code>, then a concurrent pump writes every CoreEvent to stdout","serve.ts:12"],
       ["stdin is decoded into frames, each forwarded to <code>engine.send(frame)</code>","serve.ts:39 · ndjson.ts:12"],
       ["stdin EOF or SIGTERM triggers interrupt, drain, close","serve.ts:26"]
@@ -453,7 +450,7 @@ const STAGES = [
       ["<b>startExclusive</b> refuses overlap and chains onto <code>turnPromise</code> so <code>idle()</code> never forgets in-flight work","engine.ts:590"],
       ["Busy latch set — a second turn throws \"session is already processing a turn\"","session.ts:938"],
       ["<b>UserPromptSubmit hook</b> — the one thing that can kill a turn before it starts","session.ts:949"],
-      ["Reminders queued: plan-first, skill turn-start injections, atlas hints","session.ts:970, :985, :1005"],
+      ["Reminders queued: plan-first","session.ts:970"],
       ["Prompt enters history <em>with reminders appended</em>","session.ts:1014 · withReminders() :1563"],
       ["<code>turn_started</code> emitted, loop begins","session.ts:999 → :1023"]
     ],
@@ -476,7 +473,6 @@ const STAGES = [
       ["Zod validation via <code>inputSchema.safeParse</code>","session.ts:1338"],
       ["Parallelism decided: <code>permissionClass === \"read\" || parallelSafe</code>","session.ts:1357"],
       ["Search-evidence logged for the reuse gate","session.ts:1361"],
-      ["<b>Skill gates</b> — never / tasks-exist / repro-failed","session.ts:1368"],
       ["<b>Reuse check</b> on Write — reminder only, never blocks","session.ts"],
       ["<b>PreToolUse hook</b> — can block","session.ts:1402"],
       ["<b>permissions.check()</b> — deletion guard, allow rules, stance default","session.ts:1406"],
@@ -486,7 +482,7 @@ const STAGES = [
       ["Read-only calls run concurrently; mutating calls strictly sequential so prompts can't race","session.ts:1457"],
       ["<code>tool_call_finished</code> per call; results returned in original call order","session.ts:1472"]
     ],
-    note:["Note the ordering — <b>gates run before permissions</b>. A skill gate or reuse-gate refusal never reaches the permission system at all, which is why OVERDRIVE's allow-all stance doesn't lift them.",""] },
+    note:["Note the ordering — <b>the reuse check runs before permissions</b>. Its refusal would never reach the permission system at all, which is why OVERDRIVE's allow-all stance would not lift it (it only ever reminds today).",""] },
 
   { id:"back", n:"Stage 7", t:"Render", w:"landing.js", h:"Events → DOM",
     steps:[
@@ -508,9 +504,6 @@ const STOPS = [
   { m:"Deletion guard", loc:"permissions.ts:123", tr:"tool.deletionSubject() returns a string — Bash destructive patterns, Worktree remove", v:"user", d:"<b>on in both stances, OVERDRIVE included</b>", dis:"the app's \"allow deletions\" toggle, or an exact subject-scoped allow rule — except a folder named .magentra (deletionScope \"protected\"), which always asks in both stances and cannot be waived", tags:["user","ondefault","autonomy"] },
   { m:"AskUserQuestion", loc:"askUserQuestion.ts:31", tr:"the model calls it", v:"user", d:"tool always registered", dis:"no config switch — only unattended mode short-circuits it", tags:["user","autonomy"] },
   { m:"UserPromptSubmit hook", loc:"session.ts:949", tr:"a configured hook returns blocked", v:"user", d:"off unless configured", dis:"remove the hook", tags:["user"] },
-  { m:"Skill gate — tasks-exist", loc:"session.ts:1373", tr:"an active skill gates Write/Edit until the task list is non-empty", v:"silent", d:"off — grill &amp; reshape inactive", dis:"deactivate the skill", tags:["silent","autonomy"] },
-  { m:"Skill gate — repro-failed", loc:"session.ts:1379", tr:"debug.ma: edits locked until the repro script is seen failing", v:"silent", d:"off — debug inactive", dis:"deactivate the skill", tags:["silent","autonomy"] },
-  { m:"Skill gate — never", loc:"session.ts:1370", tr:"a workspace skill declares an unconditional block", v:"silent", d:"off — no builtin uses it", dis:"deactivate the skill", tags:["silent"] },
   { m:"PreToolUse hook", loc:"session.ts:1402", tr:"a configured hook returns blocked", v:"silent", d:"off unless configured", dis:"remove the hook", tags:["silent"] },
   { m:"Iteration cap", loc:"session.ts", tr:"maxIterationsPerTurn tool rounds in one turn", v:"user", d:"<b>off for interactive root turns (∞); on only for unattended runs &amp; capped children</b>", dis:"n/a for interactive; for capped runs raise <code>maxIterationsPerTurn</code> / <code>MAGENTRA_MAX_ITERATIONS</code>", tags:["user","autonomy"] },
   { m:"Per-turn token budget", loc:"session.ts", tr:"maxTokensPerTurn billed output tokens in one turn", v:"user", d:"<b>off for interactive root turns (∞); on only for capped children</b>", dis:"n/a for interactive; for capped runs raise <code>maxTokensPerTurn</code>", tags:["user","autonomy"] },
@@ -518,9 +511,9 @@ const STOPS = [
   { m:"Read-before-write freshness", loc:"fileState.ts:35", tr:"Write/Edit on a file not read this session, or changed on disk since", v:"silent", d:"<b>on — not configurable</b>", dis:"none", tags:["silent","ondefault"] }
 ];
 
-const CORE_EV = ["session_started","turn_started","text_delta","thinking_delta","tool_call_started","tool_call_finished","tool_output_delta","retry_status","agent_spawned","agent_finished","permission_request","question_request","task_list_updated","file_edited","background_notification","overdrive_changed","command_output","session_list","turn_finished","error","skill_draft","skills_updated","modes_updated","session_restored","model_catalog","cwd_changed"];
+const CORE_EV = ["session_started","turn_started","text_delta","thinking_delta","tool_call_started","tool_call_finished","tool_output_delta","retry_status","agent_spawned","agent_finished","permission_request","question_request","task_list_updated","file_edited","background_notification","overdrive_changed","command_output","session_list","turn_finished","error","addon_draft","addon_export","addons_updated","session_restored","model_catalog","cwd_changed"];
 const CORE_HOT = new Set(["permission_request","question_request"]);
-const FRONT_EV = ["user_message","permission_response","question_response","steer_message","interrupt","set_overdrive","set_deletion_guard","slash_command","bang_command","resume_session","delete_session","stop_background","rename_session","archive_session","list_sessions","set_modes","generate_skill","install_skill"];
+const FRONT_EV = ["user_message","permission_response","question_response","steer_message","interrupt","set_overdrive","set_deletion_guard","slash_command","bang_command","resume_session","delete_session","stop_background","rename_session","archive_session","list_sessions","generate_addon","install_addon","export_addon"];
 const FRONT_HOT = new Set(["permission_response","question_response","steer_message","interrupt"]);
 
 // tabs

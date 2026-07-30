@@ -123,7 +123,7 @@ function systemPreview() {
       model: "<the configured model>",
       date: "<today>",
     },
-    skills: [],
+    addons: [],
   });
 }
 

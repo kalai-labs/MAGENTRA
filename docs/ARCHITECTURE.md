@@ -101,13 +101,14 @@ Core → frontend events: `session_started` (with the slash-command registry in
 `tool_call_finished`, `agent_spawned`, `agent_finished`, `permission_request`,
 `question_request`, `task_list_updated`, `file_edited` (unified diff),
 `background_notification`, `overdrive_changed`, `command_output`, `session_list`,
-`turn_finished`, `error`, `modes_updated`,
+`turn_finished`, `error`, `addons_updated`, `addon_draft`, `addon_export`,
 `session_restored`, `model_catalog`, `cwd_changed`.
 
 Frontend → core requests: `user_message`, `permission_response`, `question_response`,
 `interrupt`, `set_overdrive`, `set_deletion_guard`, `slash_command`,
 `bang_command`, `resume_session`, `delete_session`, `stop_background`,
-`rename_session`, `archive_session`, `list_sessions`, `set_modes`.
+`rename_session`, `archive_session`, `list_sessions`, `generate_addon`,
+`install_addon`, `export_addon`.
 
 ## Core concepts
 
@@ -149,63 +150,30 @@ logged to the transcript.
 
 Composed at runtime from exported prose sections (one string per section, swappable by
 an embedding IDE): identity/behavior core (original text implementing the reference
-behaviors), environment block, skills list. Per-project instruction files are not read
+behaviors), environment block, addon roster. Per-project instruction files are not read
 yet — that is a deferred feature. Harness-injected `<system-reminder>` blocks carry task-list
 changes, background completions, plan-mode entry, and hook feedback; the prompt tells
 the model these come from the harness, not the user.
 
-### Skills: disciplines and actions
+### Addons
 
-Skills are Markdown files under `.magentra/skills/` (full format:
-`docs/SKILLS.md`). A **discipline** shapes every turn while enabled —
-directives, shared vocab, once-per-conversation injections, tool gates,
-checklists; an **action** is an on-demand procedure invoked via the Skill tool.
-Eleven disciplines ship built in; **all are off by default and none are
-locked**. Seven — `headlights`, `prover`, `deepmodule`, `surgeon`, `sentinel`,
-`obvious`, `lexicon` — are badged **Recommended** (`RECOMMENDED_SKILL_IDS` in
-`engine/core/src/ma/modes.ts`) and the desktop offers a one-click enable of the
-set; advisory only. Disciplines are toggled per session via
-`settings.modes.active` (default `[]`), the `set_modes` request, or `/skills
-on|off <id>`. `ModeEngine` resolves `conflicts:` most-recent-wins (enabling a
-skill switches off what it conflicts with, with an advisory message);
-`ModeSummary.recommended`/`why` power the desktop's badges and "?" explainers.
+An **addon** is a procedure the agent loads on demand — a Markdown file whose
+frontmatter says when to reach for it and whose body says what to do (full
+format: `docs/ADDONS.md`). Loaded from built-ins, then `~/.magentra/addons/`,
+then `<cwd>/.magentra/addons/`, later tiers replacing earlier ones by name.
+Layouts: a flat `<name>.md`, or a `<name>/ADDON.md` directory whose sibling
+files (reference notes, scripts) are advertised as paths on invocation and
+fetched only if the body calls for them.
 
-### Design atlas (first-visit auto-exploration)
-
-The workspace's whole-design map lives at `.magentra/ATLAS.md` and is injected into
-the system prompt whenever present. First-visit auto-exploration is an unconditional
-killer feature — it cannot be disabled. On a session's first user turn, if either no
-atlas exists in a non-trivial workspace **or** the existing atlas has drifted
-materially, the engine dispatches the read-only `explore` subagent to map the codebase
-and writes its report back to `ATLAS.md` — the subagent stays read-only, the Session
-persists the file. (Subagents themselves never auto-explore: it would recurse and a
-child cannot own the workspace atlas.) Each build appends a freshness stamp
-(`<!-- magentra-atlas commit=<hash> built=<iso> sha=<sha256-of-body> -->`);
-`parseAtlasStamp`/`atlasStampLine` are the single source of truth for the format.
-Staleness = `git rev-list <stamp>..HEAD --count` ≥ 20 (an unknown stamp after a rebase
-also counts as stale, a non-git build never does). Progress is surfaced as
-`command_output` notices (exploring… / ready / failed).
-
-Three guards keep the feature safe against weak-model output and against destroying
-user work:
-
-- **Validation** — the explore report is written only if `looksLikeAtlas` passes: the
-  first non-blank line must be an H1 and the body must carry a real module map
-  (≥ 2 `## ` sections or ≥ 10 non-blank lines). A refusal, apology, or one-line ramble
-  from a weak subagent is rejected, so garbage never lands on disk or in future system
-  prompts.
-- **Hand-edit protection** — the stamp's `sha` fingerprints the atlas body. Before a
-  staleness rebuild, `atlasWasHandEdited` recomputes that hash; a mismatch means the
-  user edited the file, so the engine skips the rebuild (emitting a one-line
-  `atlas was hand-edited` notice) rather than clobbering their work. Old-format stamps
-  without a `sha` are treated as machine-owned and remain eligible for rebuild.
-- **Bounded build** — the build blocks the first message, so the explore spawn runs
-  with a reduced iteration budget (`ATLAS_BUILD_MAX_ITERATIONS = 15`, applied via the
-  `spawnAgent` `maxIterations` option). If the child hits the cap, whatever it produced
-  still goes through validation — a partial-but-valid atlas is kept.
-
-Exploration is best-effort: any failure (empty output, non-atlas output, or an error)
-emits a notice and falls back to the one-time missing-atlas `<system-reminder>` nudge.
+Two invariants shape the design. **Always available** — there is no enabled
+state, no toggle, and nothing is ever injected into a turn automatically.
+**Cheap until used** — only `name` and `description` ride in the system prompt
+(`addonsBlock`, `engine/core/src/agent/prompts.ts`); the body is loaded exactly
+once, when the `Addon` tool invokes it. The description is therefore a routing
+condition rather than a summary, and it is where an expensive addon declares its
+cost. One built-in ships (`magentron`, the read-before-you-write discipline).
+Users invoke an addon directly with `/<name>`, which the engine dispatches
+through the same path as the tool.
 
 ### Context management
 
@@ -220,11 +188,9 @@ recent tail verbatim. Full JSONL transcript is never rewritten — compaction is
 - `.magentra/` in the workspace: `sessions/*.jsonl` (append-only transcripts, one
   record per line: `message`, `system_prompt`, `permission`, `compaction`, `meta`),
   `sessions/subagents/` (child-session transcripts), `settings.json`, `tasks/`
-  (persisted task lists + background task output), `plans/`, `worktrees/`, `skills/`,
-  `modes/` (workspace styles),
-  `debug/` (repro
-  scripts), `tmp/`, `scheduled_tasks.json`, `ATLAS.md`, `LEXICON.md`.
-- `~/.magentra/`: global `settings.json`, global `skills/`.
+  (persisted task lists + background task output), `plans/`, `worktrees/`,
+  `addons/`, `tmp/`, `scheduled_tasks.json`.
+- `~/.magentra/`: global `settings.json`, global `addons/`.
 - Env vars override file config; project settings override global; zod-validated with
   warn-on-unknown-keys.
 
@@ -245,7 +211,7 @@ everything below except the team tools. Per-tool field tables and behavior live 
 - **Phase 2** (shipped): Agent (subagents: `general-purpose`, `explore`, `plan`; no
   recursion in v1), WebFetch, WebSearch, Monitor,
   TaskStop/TaskOutput.
-- **Phase 3** (shipped): Skill (+ skills loader + built-in slash commands), hooks
+- **Phase 3** (shipped): Addon (+ addon loader + built-in slash commands), hooks
   (PreToolUse/PostToolUse/UserPromptSubmit/SessionStart/Stop), MCP stdio client
   (`mcp__<server>__<tool>`, wired in `engine/core/src/integrations/mcp.ts`),
   EnterWorktree/ExitWorktree, CronCreate/Delete/List, ScheduleWakeup, PushNotification.
@@ -283,8 +249,8 @@ gaps are documented, not engineered around.
 2. **Serious agent** — subagents end-to-end (read-only enforcement proven by
    test), WebFetch/WebSearch, Monitor, background notifications. Gate: explore → plan →
    approve → execute flow.
-3. **Product** — skills/slash commands, hooks, MCP client, worktrees, cron/wakeups,
-   push notifications. Gate: skill invocation alters behavior; PreToolUse hook blocks
+3. **Product** — addons/slash commands, hooks, MCP client, worktrees, cron/wakeups,
+   push notifications. Gate: addon invocation alters behavior; PreToolUse hook blocks
    with stderr fed back; MCP tools appear; worktree round-trip; idle cron fires.
 4. **Stretch** — Workflow engine (sandboxed scripts, deterministic resume via run
    journal), team tools.

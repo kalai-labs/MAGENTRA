@@ -30,7 +30,6 @@ contextBridge.exposeInMainWorld("magentra", {
   undoChanges: (relPath, diffs) => api("undoChanges", relPath, diffs),
   setModel: (model) => api("setModel", model),
   send: (frame) => ipcRenderer.send("test:frame", frame),
-  setModes: (activeIds) => ipcRenderer.send("test:modes", activeIds),
   interrupt: () => ipcRenderer.send("test:interrupt"),
   restartEngine: () => ipcRenderer.send("test:restart"),
   respondPermission: (id, decision, message) =>
@@ -38,8 +37,8 @@ contextBridge.exposeInMainWorld("magentra", {
   writeEnv: (payload) => api("writeEnv", payload),
   testConnection: (payload) => api("testConnection", payload),
   detectLocalServers: () => api("detectLocalServers"),
-  generateSkill: (payload) => api("generateSkill", payload),
-  saveSkillExport: (payload) => api("saveSkillExport", payload),
+  generateAddon: (payload) => api("generateAddon", payload),
+  saveAddonExport: (payload) => api("saveAddonExport", payload),
   listProfiles: () => api("listProfiles"),
   saveProfile: (payload) => api("saveProfile", payload),
   deleteProfile: (id) => api("deleteProfile", id),

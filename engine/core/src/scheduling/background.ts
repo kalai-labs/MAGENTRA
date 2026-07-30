@@ -43,7 +43,7 @@ export class BackgroundManager implements BackgroundApi {
       status: "running",
     };
     // Announce the launch: without this the UI can only infer background work
-    // from side effects (only the atlas build announced itself before).
+    // from side effects.
     this.emit({
       type: "background_notification",
       taskId: id,

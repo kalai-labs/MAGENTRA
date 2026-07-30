@@ -182,7 +182,7 @@ const CORE_SECTIONS = [
       group: GROUP,
       label: "Working method",
       channel: "system",
-      where: `The longest section: decomposition, the act-verify loop, confirming contracts instead of guessing them, the atlas, and the wrap-up. The main lever on how many rounds a task takes. ${EVERY_REQUEST}`,
+      where: `The longest section: decomposition, the act-verify loop, confirming contracts instead of guessing them, and the wrap-up. The main lever on how many rounds a task takes. ${EVERY_REQUEST}`,
       text: SECTION_WORKING_METHOD,
     }),
   },
@@ -239,35 +239,36 @@ export function environmentBlock(env: PromptEnvironment): string {
   });
 }
 
-export interface SkillSummary {
+export interface AddonSummary {
   name: string;
   description: string;
 }
 
-const SKILLS_BLOCK = definePrompt({
-  id: "system.skills-block",
+const ADDONS_BLOCK = definePrompt({
+  id: "system.addons-block",
   group: GROUP,
-  label: "Available skills header",
+  label: "Available addons header",
   channel: "system",
-  where: "Appended when the workspace has at least one on-demand skill. `{{list}}` is the generated `- name: description` roster.",
+  where:
+    "Appended when at least one addon is installed. Names and descriptions only — the body is loaded by the Addon tool on invocation. `{{list}}` is the generated `- name: description` roster.",
   placeholders: ["list"],
-  text: `Available skills (invoke with the Skill tool; never invent names not in this list):
+  text: `Available addons — procedures you can load on demand with the Addon tool. Only the names and descriptions below are in context; invoking one loads its full instructions. Read each description as the condition for reaching for it, and never invent a name that is not in this list.
 {{list}}`,
 });
 
-export function skillsBlock(skills: SkillSummary[]): string | undefined {
-  if (skills.length === 0) return undefined;
-  return renderPrompt(SKILLS_BLOCK, { list: skills.map((s) => `- ${s.name}: ${s.description}`).join("\n") });
+export function addonsBlock(addons: AddonSummary[]): string | undefined {
+  if (addons.length === 0) return undefined;
+  return renderPrompt(ADDONS_BLOCK, { list: addons.map((a) => `- ${a.name}: ${a.description}`).join("\n") });
 }
 
 export function buildSystemPrompt(opts: {
   env: PromptEnvironment;
-  skills?: SkillSummary[];
+  addons?: AddonSummary[];
   extraSections?: string[];
 }): string {
   const parts = [behaviorCore(), environmentBlock(opts.env)];
-  const skills = skillsBlock(opts.skills ?? []);
-  if (skills) parts.push(skills);
+  const addons = addonsBlock(opts.addons ?? []);
+  if (addons) parts.push(addons);
   parts.push(...(opts.extraSections ?? []));
   return parts.map((p) => p.trim()).filter((p) => p !== "").join("\n\n");
 }

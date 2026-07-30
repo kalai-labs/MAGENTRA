@@ -47,7 +47,7 @@ function enterActiveState(workspace) {
   workspaceOpen = true;
   navSessionsEl.classList.remove("hidden");
   navMissionEl.classList.remove("hidden");
-  if (navSkillsEl) navSkillsEl.classList.remove("hidden");
+  if (navAddonsEl) navAddonsEl.classList.remove("hidden");
   if (navHomeEl) navHomeEl.classList.remove("hidden");
   sidebarSessionsRefreshEl.classList.remove("hidden");
   inspectorToggleEl.classList.remove("hidden");

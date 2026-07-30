@@ -15,7 +15,7 @@ import { monitorTool } from "./monitor.js";
 import { enterWorktreeTool, exitWorktreeTool } from "./worktree.js";
 import { pushNotificationTool } from "./pushNotification.js";
 import { cronCreateTool, cronDeleteTool, cronListTool, scheduleWakeupTool } from "./cron.js";
-import { skillTool } from "./skill.js";
+import { addonTool } from "./addon.js";
 import { workflowTool } from "./workflow.js";
 import { graphQueryTool } from "./graphQuery.js";
 
@@ -44,7 +44,7 @@ export {
   cronDeleteTool,
   cronListTool,
   scheduleWakeupTool,
-  skillTool,
+  addonTool,
   workflowTool,
   graphQueryTool,
 };
@@ -87,7 +87,7 @@ export function createDefaultRegistry(): ToolRegistry {
     cronDeleteTool,
     cronListTool,
     scheduleWakeupTool,
-    skillTool,
+    addonTool,
     workflowTool,
     graphQueryTool,
   ]) {

@@ -1,6 +1,6 @@
 import { exec } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, relative } from "node:path";
 import {
   PROTOCOL_VERSION,
   STATE_DIR_NAME,
@@ -18,9 +18,9 @@ import type { ContentBlock, Msg, Provider } from "@magentra/providers";
 import { AsyncQueue } from "../util/asyncQueue.js";
 import { CronScheduler } from "../scheduling/cron.js";
 import { HookRunner } from "../agent/hooks.js";
-import { BUILTIN_SKILL_FILES, loadModes, ModeEngine, parseSkillMd } from "../ma/modes.js";
 import { parseFrontmatter } from "../config/frontmatter.js";
-import { loadSkills } from "../agent/skills.js";
+import { ADDON_ENTRY, ADDONS_DIR, loadAddons } from "../agent/addons.js";
+import { BUILTIN_ADDONS } from "../agent/builtinAddons.js";
 import {
   createProviderForEndpoint,
   endpointSpecFromSettings,
@@ -38,7 +38,7 @@ import {
   type Settings,
 } from "../config/settings.js";
 import { MODEL_PRICING, contextWindowFor, pricingFor } from "../config/pricing.js";
-import type { Skill } from "../agent/skills.js";
+import type { Addon } from "../agent/addons.js";
 import type { ToolRegistry } from "../agent/tool.js";
 import { Transcript, stripSystemReminders } from "../state/transcript.js";
 
@@ -90,7 +90,6 @@ export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTi
   mcpServers: "restart",
   worktree: "clear",
   search: "nextTurn",
-  modes: "clear",
   allowInsecureTls: "session",
   reuseCheck: "clear",
 };
@@ -113,7 +112,7 @@ export interface EngineOptions {
   settings: Settings;
   provider: Provider;
   registry: ToolRegistry;
-  skills?: Skill[];
+  addons?: Addon[];
   /**
    * Constructs the Provider for a resolved endpoint. Defaults to the real
    * factory; injectable so tests hand out FakeProviders without touching the
@@ -156,12 +155,8 @@ export class Engine {
   private turnPromise: Promise<void> = Promise.resolve();
   /** True while exclusive session work is in flight — set synchronously so a same-tick send is refused. */
   private busy = false;
-  /** True while a background atlas build is in flight; a second /atlas is refused, not queued. */
-  private atlasBuilding = false;
   private readonly scheduler: CronScheduler;
   private readonly hookRunner: HookRunner;
-  private modeEngine!: ModeEngine;
-  private modeWarnings: string[] = [];
   /**
    * Engine-level memory of the OVERDRIVE toggle so a /clear-created fresh
    * session inherits it — the UI persists the state and re-sends it on link,
@@ -196,12 +191,6 @@ export class Engine {
     initialMessages?: Session["messages"],
     stats?: SessionStats,
   ): Session {
-    // SETTING_TIMING.modes says "clear": rebuild the ModeEngine per session so
-    // a modes.active change (or an edited .ma file) actually lands on the next
-    // /clear instead of silently requiring a restart.
-    const { modes, warnings } = loadModes(this.opts.cwd);
-    this.modeWarnings = warnings;
-    this.modeEngine = new ModeEngine(modes, this.opts.settings.modes.active);
     const session = new Session({
       cwd: this.opts.cwd,
       settings: this.opts.settings,
@@ -228,8 +217,7 @@ export class Engine {
           this.emit({ type: "question_request", id, questions: questions as never });
         }),
       hookRunner: this.hookRunner,
-      modeEngine: this.modeEngine,
-      ...(this.opts.skills ? { skills: this.opts.skills } : {}),
+      ...(this.opts.addons ? { addons: this.opts.addons } : {}),
       ...(sessionId ? { sessionId } : {}),
       ...(initialMessages ? { initialMessages } : {}),
       ...(stats ? { stats } : {}),
@@ -277,13 +265,15 @@ export class Engine {
     this.emit({
       type: "session_started",
       v: PROTOCOL_VERSION,
-      commands: SLASH_COMMANDS.map(({ cmd, args, desc }) => ({ cmd, args, desc })),
+      // Addons ride in the command list as `/<name>`, so the frontend's slash
+      // popup lists them next to the built-ins with no extra wiring.
+      commands: [...SLASH_COMMANDS.map(({ cmd, args, desc }) => ({ cmd, args, desc })), ...this.addonCommands()],
       rateCard: buildRateCard(this.opts.settings),
       sessionId: this.session.id,
       cwd: this.opts.cwd,
       model: this.opts.settings.model,
       overdrive: this.session.isOverdrive(),
-      skills: (this.opts.skills ?? []).map((s) => ({ name: s.name, description: s.description })),
+      addons: this.addonSummaries(),
     });
     this.emit({ type: "task_list_updated", tasks: this.session.tasks.list() });
     // A tiny explicit contextWindow shadowing a model's real one causes
@@ -300,10 +290,6 @@ export class Engine {
         });
       }
     }
-    for (const warning of this.modeWarnings) {
-      this.emit({ type: "error", message: warning, fatal: false });
-    }
-    this.emitModesUpdated();
     if (this.hookRunner.has("SessionStart")) {
       const session = this.session;
       void this.hookRunner
@@ -335,100 +321,120 @@ export class Engine {
     this.session.background.stopAll();
   }
 
-  /**
-   * `/atlas` runs in the BACKGROUND, deliberately unlike /compact.
-   * Mapping a codebase is a long fan-out of read-only agents, and it touches
-   * nothing the session owns — it never appends to the conversation, it only
-   * reads files and writes ATLAS.md at the end. So there is no reason to hold
-   * the session hostage while it runs, and every reason not to: the whole point
-   * of an atlas is to have one, and a user who must sit and wait will just stop
-   * asking for it.
-   *
-   * Not chained onto {@link turnPromise}: idle() must not wait for it either, or
-   * a frontend that disconnects would hang until the map finished. A second
-   * /atlas while one is in flight is refused rather than queued — two builds
-   * would race for the same file.
-   */
-  private startAtlasBuild(force: boolean): void {
-    if (this.atlasBuilding) {
-      this.emit({ type: "command_output", text: "🗺 an atlas build is already running." });
-      return;
-    }
-    this.atlasBuilding = true;
-    // Tell the frontend work has begun that is NOT tied to a turn, so it can
-    // offer a stop for it. Without this the UI has no way to know the engine is
-    // busy at all — turn_started never fires for a background build.
-    this.emit({
-      type: "background_notification",
-      taskId: "atlas",
-      kind: "start",
-      payload: { description: "atlas build" },
-    });
-    const session = this.session;
-    void session
-      .buildAtlas(force)
-      .catch((err: Error) => this.emit({ type: "error", message: `atlas build: ${err.message}`, fatal: false }))
-      .finally(() => {
-        this.atlasBuilding = false;
-        // The build outlives the turn that started it, so the frontend needs a
-        // signal that is not tied to a turn ending.
-        this.emit({
-          type: "background_notification",
-          taskId: "atlas",
-          kind: "exit",
-          payload: { description: "atlas build" },
-        });
-      });
+  // ── Addons ─────────────────────────────────────────────────────────────────
+
+  /** The installed roster, in the shape the wire and the UI both want. */
+  private addonSummaries(): { name: string; description: string; builtin: boolean }[] {
+    return (this.opts.addons ?? []).map((a) => ({
+      name: a.name,
+      description: a.description,
+      builtin: a.source === "builtin",
+    }));
   }
 
-  // ── Create-skill wizard ────────────────────────────────────────────────────
+  /** Installed addons as slash commands, so `/<name>` invokes one from the composer. */
+  private addonCommands(): SlashCommandInfo[] {
+    return (this.opts.addons ?? []).map((a) => ({
+      cmd: `/${a.name}`,
+      args: "[args]",
+      desc: a.description,
+    }));
+  }
+
+  private emitAddonsUpdated(): void {
+    this.emit({ type: "addons_updated", addons: this.addonSummaries() });
+  }
 
   /**
-   * generate_skill: author a skill .md from the user's plain-language
-   * description with a one-shot subagent, validate it with the real parser,
-   * and retry with the error appended (up to 3 attempts) before giving up.
-   * Emits skill_draft either way — the frontend previews the text or shows
-   * the failure. Runs like the atlas build: backgrounded, stoppable, never
-   * tied to a turn.
+   * Reloads the roster from disk in place. The array is mutated rather than
+   * replaced because the live Session captured this exact reference at
+   * construction — reassigning it would leave the running session on the old
+   * list until the next /clear.
    */
-  private skillGenBusy = false;
+  private reloadAddons(): Addon[] {
+    const loaded = loadAddons(this.opts.cwd);
+    if (this.opts.addons) {
+      this.opts.addons.length = 0;
+      this.opts.addons.push(...loaded);
+    } else {
+      this.opts.addons = loaded;
+    }
+    return loaded;
+  }
 
-  private startSkillGeneration(description: string, kind: "discipline" | "action", opts: SkillGenOptions = {}): void {
-    if (this.skillGenBusy) {
-      this.emit({ type: "command_output", text: "🧩 a skill generation is already running." });
+  /**
+   * `/<addon-name>` — the same invocation path the model's Addon tool takes,
+   * reached by the user typing a slash command. The addon's instructions enter
+   * the conversation and the turn runs, so "/magentron refactor the loader"
+   * behaves exactly like asking for the work with that addon already loaded.
+   *
+   * Returns false when no addon owns the name, letting the caller fall through
+   * to the unknown-command message.
+   */
+  private handleAddonCommand(name: string, args?: string): boolean {
+    const addon = (this.opts.addons ?? []).find((a) => a.name === name);
+    if (!addon) return false;
+    const trimmed = args?.trim() ?? "";
+    const body = addon.body.includes("$ARGUMENTS")
+      ? addon.body.replaceAll("$ARGUMENTS", trimmed)
+      : addon.body + (trimmed ? `\nARGUMENTS: ${trimmed}` : "");
+    this.emit({ type: "command_output", text: `🧩 ${addon.name} loaded — following its instructions.` });
+    this.startExclusive(`running /${addon.name}`, () =>
+      this.session.runTurn(
+        `<system-reminder>The "${addon.name}" addon was invoked. Follow its instructions below now; they take priority over general guidance for this task.</system-reminder>\n` +
+          `<command-name>/${addon.name}</command-name>\n` +
+          body,
+      ),
+    );
+    return true;
+  }
+
+  // ── Create-addon wizard ────────────────────────────────────────────────────
+
+  /**
+   * generate_addon: author an addon .md from the user's plain-language
+   * description with one focused inference call, validate it, and retry with the
+   * error appended (up to 3 attempts) before giving up. Emits addon_draft either
+   * way — the frontend previews the text or shows the failure. Backgrounded and
+   * stoppable, never tied to a turn.
+   */
+  private addonGenBusy = false;
+
+  private startAddonGeneration(description: string, opts: AddonGenOptions = {}): void {
+    if (this.addonGenBusy) {
+      this.emit({ type: "command_output", text: "🧩 an addon generation is already running." });
       return;
     }
     if (typeof description !== "string" || description.trim().length === 0) {
-      this.emit({ type: "skill_draft", ok: false, error: "Describe the skill first — the description was empty." });
+      this.emit({ type: "addon_draft", ok: false, error: "Describe the addon first — the description was empty." });
       return;
     }
-    this.skillGenBusy = true;
+    this.addonGenBusy = true;
     this.emit({
       type: "background_notification",
-      taskId: "skill-gen",
+      taskId: "addon-gen",
       kind: "start",
-      payload: { description: "generating skill" },
+      payload: { description: "generating addon" },
     });
-    void this.generateSkill(description.trim(), kind, opts)
-      .then((draft) => this.emit({ type: "skill_draft", ...draft }))
-      .catch((err: Error) => this.emit({ type: "skill_draft", ok: false, error: err.message }))
+    void this.generateAddon(description.trim(), opts)
+      .then((draft) => this.emit({ type: "addon_draft", ...draft }))
+      .catch((err: Error) => this.emit({ type: "addon_draft", ok: false, error: err.message }))
       .finally(() => {
-        this.skillGenBusy = false;
+        this.addonGenBusy = false;
         this.emit({
           type: "background_notification",
-          taskId: "skill-gen",
+          taskId: "addon-gen",
           kind: "exit",
-          payload: { description: "generating skill" },
+          payload: { description: "generating addon" },
         });
       });
   }
 
-  private async generateSkill(
+  private async generateAddon(
     description: string,
-    kind: "discipline" | "action",
-    opts: SkillGenOptions = {},
+    opts: AddonGenOptions = {},
   ): Promise<{ ok: boolean; text?: string; suggestedFilename?: string; error?: string }> {
-    const takenIds = this.modeEngine.list().map((m) => m.id);
+    const takenNames = (this.opts.addons ?? []).map((a) => a.name);
     // Author with a different provider entirely when a profile connection was
     // passed (the app resolved it); otherwise use the session's own provider and
     // the chosen/default model.
@@ -446,23 +452,25 @@ export class Engine {
     let lastError = "";
     for (let attempt = 0; attempt < 3; attempt++) {
       // A single completion — NOT an agentic explore loop. Authoring one small
-      // file needs no tools; the old explore agent could spend minutes reading
-      // workspace files and still return prose instead of a file. runInference
-      // is one focused call, on the chosen model (defaulting to the session's
-      // main model — skill authoring wants the capable model, not smallModel).
-      const authorRole = promptTextIfEnabled(SKILL_AUTHOR_ROLE);
+      // file needs no tools, and runInference is one focused call on the chosen
+      // model (defaulting to the session's main model — addon authoring wants
+      // the capable model, not smallModel).
+      const authorRole = promptTextIfEnabled(ADDON_AUTHOR_ROLE);
       if (authorRole === undefined) {
-        return { ok: false, error: "Skill authoring is switched off — skill-author.role is empty in the prompt registry." };
+        return {
+          ok: false,
+          error: "Addon authoring is switched off — addon-author.role is empty in the prompt registry.",
+        };
       }
       const raw = await this.session.runInference({
         system: authorRole,
-        user: buildSkillPrompt(description, kind, takenIds, opts) + feedback,
+        user: buildAddonPrompt(description, takenNames, opts) + feedback,
         maxTokens: 4096,
         model: authorModel,
         ...(authorProvider ? { provider: authorProvider } : {}),
       });
-      const text = repairSkillText(raw);
-      const check = this.validateSkillText(text, kind);
+      const text = repairAddonText(raw);
+      const check = validateAddonText(text);
       if (check.ok) return { ok: true, text, suggestedFilename: check.filename };
       lastError = check.error;
       feedback = `\n\nYour previous attempt was rejected by the validator:\n${check.error}\nReturn ONLY the corrected file, starting with the "---" line — no sentence before it.`;
@@ -470,119 +478,63 @@ export class Engine {
     return { ok: false, error: `Generation failed validation after 3 attempts: ${lastError}` };
   }
 
-  /** Validates a candidate skill text for its kind; returns the suggested filename on success. */
-  private validateSkillText(
-    text: string,
-    kind: "discipline" | "action",
-  ): { ok: true; filename: string } | { ok: false; error: string } {
-    const fm = parseFrontmatter(text);
-    if (!fm.present) return { ok: false, error: "the file must open with --- frontmatter" };
-    const declaredKind = (fm.map.kind ?? "action").trim();
-    if (kind === "discipline" && declaredKind !== "discipline") {
-      return { ok: false, error: 'a discipline skill must declare "kind: discipline" in the frontmatter' };
-    }
-    if (kind === "action" && declaredKind === "discipline") {
-      return { ok: false, error: 'an action skill must not declare "kind: discipline"' };
-    }
-    const slugSource = fm.map.id ?? fm.map.name ?? "";
-    const slug = slugSource
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    if (!slug || !/^[a-z]/.test(slug)) {
-      return { ok: false, error: "frontmatter needs a name: (or id:) that yields a [a-z][a-z0-9_-]* slug" };
-    }
-    if (kind === "discipline") {
-      try {
-        parseSkillMd(text, "workspace", slug);
-      } catch (err) {
-        return { ok: false, error: (err as Error).message };
-      }
-    } else {
-      if (!fm.map.name || !fm.map.description) {
-        return { ok: false, error: "an action skill needs name: and description: frontmatter keys" };
-      }
-      if (fm.body.trim().length === 0) return { ok: false, error: "the Markdown body (the procedure) is empty" };
-    }
-    return { ok: true, filename: `${slug}.md` };
-  }
-
   /**
-   * install_skill: re-validate (never trust a stale draft), write into
-   * .magentra/skills/, reload both skill kinds in place so the live session
-   * sees them, auto-enable a discipline, and re-emit the updated lists.
+   * install_addon: re-validate (never trust a stale draft), write into
+   * .magentra/addons/, and reload the roster in place so the live session can
+   * invoke the new addon on its very next request.
    */
-  private installSkill(filename: string, text: string): void {
+  private installAddon(filename: string, text: string): void {
     if (!/^[a-z][a-z0-9_-]*\.md$/.test(filename)) {
-      this.emit({ type: "error", message: `install_skill: filename "${filename}" must match <slug>.md`, fatal: false });
+      this.emit({ type: "error", message: `install_addon: filename "${filename}" must match <slug>.md`, fatal: false });
       return;
     }
-    const kind = (parseFrontmatter(text).map.kind ?? "action").trim() === "discipline" ? "discipline" : "action";
-    const check = this.validateSkillText(text, kind);
+    const check = validateAddonText(text);
     if (!check.ok) {
-      this.emit({ type: "error", message: `install_skill: ${check.error}`, fatal: false });
+      this.emit({ type: "error", message: `install_addon: ${check.error}`, fatal: false });
       return;
     }
-    const dir = join(this.opts.cwd, ".magentra", "skills");
+    const dir = join(this.opts.cwd, ".magentra", ADDONS_DIR);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, filename), text.endsWith("\n") ? text : text + "\n");
 
-    // Reload both kinds. The action-skill array mutates in place so the live
-    // session's captured reference picks the new skill up on its next request.
-    const reloaded = loadModes(this.opts.cwd);
-    for (const warning of reloaded.warnings) {
-      this.emit({ type: "command_output", text: `⚠ ${warning}` });
-    }
-    this.modeEngine.replaceModes(reloaded.modes);
-    const actions = loadSkills(this.opts.cwd);
-    if (this.opts.skills) {
-      this.opts.skills.length = 0;
-      this.opts.skills.push(...actions);
-    } else {
-      this.opts.skills = actions;
-    }
-    this.emit({ type: "skills_updated", skills: actions.map((s) => ({ name: s.name, description: s.description })) });
-
-    const id = filename.slice(0, -3);
-    if (kind === "discipline") {
-      const active = this.modeEngine.list().filter((m) => m.active).map((m) => m.id);
-      this.applyModes([...new Set([...active, id])]);
-      this.emit({ type: "command_output", text: `🧩 installed and enabled the ${id} skill (.magentra/skills/${filename})` });
-    } else {
-      this.emitModesUpdated();
-      this.emit({ type: "command_output", text: `🧩 installed the ${id} skill (.magentra/skills/${filename}) — the agent can now invoke it on demand` });
-    }
+    this.reloadAddons();
+    this.emitAddonsUpdated();
+    const name = filename.slice(0, -3);
+    this.emit({
+      type: "command_output",
+      text: `🧩 installed the ${name} addon (.magentra/${ADDONS_DIR}/${filename}) — invoke it with /${name} or let the agent reach for it`,
+    });
   }
 
   /**
-   * export_skill: hand the app a skill's .md text so it can save it anywhere.
+   * export_addon: hand the app an addon's .md text so it can save it anywhere.
    * A workspace file wins (it may be a customized override); otherwise the
-   * built-in's shipped text — so every skill in the list can be exported, not
+   * built-in's shipped text — so every addon in the list can be exported, not
    * just user-authored ones.
    */
-  private exportSkill(id: string): void {
-    if (typeof id !== "string" || !/^[a-z0-9][a-z0-9_-]*$/.test(id)) {
-      this.emit({ type: "skill_export", ok: false, id: String(id), error: "invalid skill id" });
+  private exportAddon(name: string): void {
+    if (typeof name !== "string" || !/^[a-z0-9][a-z0-9_-]*$/.test(name)) {
+      this.emit({ type: "addon_export", ok: false, name: String(name), error: "invalid addon name" });
       return;
     }
-    const dir = join(this.opts.cwd, ".magentra", "skills");
-    for (const rel of [`${id}.md`, join(id, "SKILL.md")]) {
+    const dir = join(this.opts.cwd, ".magentra", ADDONS_DIR);
+    for (const rel of [`${name}.md`, join(name, ADDON_ENTRY)]) {
       const p = join(dir, rel);
       try {
         if (statSync(p).isFile()) {
-          this.emit({ type: "skill_export", ok: true, id, filename: `${id}.md`, text: readFileSync(p, "utf8") });
+          this.emit({ type: "addon_export", ok: true, name, filename: `${name}.md`, text: readFileSync(p, "utf8") });
           return;
         }
       } catch {
         // not this candidate — try the next / fall through to built-ins
       }
     }
-    const builtin = BUILTIN_SKILL_FILES.find((b) => b.id === id);
+    const builtin = BUILTIN_ADDONS.find((b) => b.name === name);
     if (builtin) {
-      this.emit({ type: "skill_export", ok: true, id, filename: `${id}.md`, text: builtin.text });
+      this.emit({ type: "addon_export", ok: true, name, filename: `${name}.md`, text: builtin.text });
       return;
     }
-    this.emit({ type: "skill_export", ok: false, id, error: `no source found for skill "${id}"` });
+    this.emit({ type: "addon_export", ok: false, name, error: `no source found for addon "${name}"` });
   }
 
   /**
@@ -686,10 +638,8 @@ export class Engine {
       }
       case "interrupt": {
         // HARD STOP. Everything in flight, not just the turn: the session cuts
-        // the turn, every subagent, any background atlas build, and every
-        // background job.
+        // the turn, every subagent, and every background job.
         const wasBusy = this.busy || this.session.isBusy();
-        const wasMapping = this.atlasBuilding;
         this.session.interrupt();
         // A half-answered question round would otherwise wait forever for the
         // cards the user is no longer going to fill in. Settle it with whatever
@@ -700,7 +650,7 @@ export class Engine {
         }
         // Say what was actually stopped — a stop button that reports nothing
         // leaves the user unsure whether it worked.
-        const stopped = [wasBusy ? "turn" : "", wasMapping ? "atlas build" : ""].filter(Boolean);
+        const stopped = [wasBusy ? "turn" : ""].filter(Boolean);
         this.emit({
           type: "command_output",
           text: stopped.length > 0 ? `⏹ stopped: ${stopped.join(", ")}.` : "⏹ nothing was running.",
@@ -773,22 +723,18 @@ export class Engine {
         });
         break;
       }
-      case "set_modes":
-        this.applyModes(request.active);
-        break;
-      case "generate_skill":
-        this.startSkillGeneration(request.description, request.kind, {
+      case "generate_addon":
+        this.startAddonGeneration(request.description, {
           ...(request.model ? { model: request.model } : {}),
           ...(request.context ? { context: request.context } : {}),
-          ...(request.enforce ? { enforce: request.enforce } : {}),
           ...(request.connection ? { connection: request.connection } : {}),
         });
         break;
-      case "install_skill":
-        this.installSkill(request.filename, request.text);
+      case "install_addon":
+        this.installAddon(request.filename, request.text);
         break;
-      case "export_skill":
-        this.exportSkill(request.id);
+      case "export_addon":
+        this.exportAddon(request.name);
         break;
       default:
         // The wire accepts any {type: string} object, so an unknown type can
@@ -803,26 +749,6 @@ export class Engine {
     }
   }
 
-  private emitModesUpdated(): void {
-    this.emit({ type: "modes_updated", modes: this.modeEngine.list() });
-  }
-
-  /**
-   * The single toggle path for discipline skills, shared by the desktop's
-   * `set_modes` request and the terminal's `/skills` command. Applies the
-   * desired active set through the ModeEngine (nothing is locked; `conflicts:`
-   * resolved most-recent-wins), surfaces every advisory message as
-   * command_output, and re-emits modes_updated so all frontends stay in sync.
-   * Session-only: the active set lives in memory and is never written to
-   * settings.
-   */
-  private applyModes(active: string[]): string[] {
-    const { messages } = this.modeEngine.setActive(active);
-    for (const text of messages) this.emit({ type: "command_output", text });
-    this.emitModesUpdated();
-    return messages;
-  }
-
   private handleSlash(command: string, args?: string): void {
     // Case-insensitive: the scheduler's prompt regex and users both produce
     // mixed case ("/Compact"); the dispatch must not silently no-op.
@@ -830,8 +756,8 @@ export class Engine {
       case "help":
         this.emit({ type: "command_output", text: renderHelp() });
         break;
-      case "skills":
-        this.handleSkills(args);
+      case "addons":
+        this.emit({ type: "command_output", text: this.renderAddons() });
         break;
       case "clear":
         // Swapping the session mid-turn would leave the old turn streaming
@@ -847,9 +773,6 @@ export class Engine {
         this.session = this.createSession();
         this.announceSession();
         this.emit({ type: "command_output", text: "Started a fresh session." });
-        break;
-      case "atlas":
-        this.startAtlasBuild(args?.trim() === "force");
         break;
       case "compact":
         // Wrapped in a background_notification so the frontend shows a "working"
@@ -933,9 +856,6 @@ export class Engine {
               .join("\n") || "No saved sessions.",
         });
         break;
-      case "styles": // deprecated alias for /skills
-        this.handleSkills(args);
-        break;
       case "settings":
         this.handleSettings(args);
         break;
@@ -943,86 +863,49 @@ export class Engine {
         if (args) this.resumeSession(args.trim());
         else this.emit({ type: "command_output", text: "Usage: /resume <session-id>" });
         break;
-      default:
+      default: {
+        // An installed addon owns its own `/<name>`; only a name no addon
+        // claims is an unknown command.
+        const name = command.replace(/^\//, "").toLowerCase();
+        if (this.handleAddonCommand(name, args)) break;
         this.emit({ type: "command_output", text: `Unknown command: /${command}. Try /help.` });
+      }
     }
   }
 
   /**
-   * The `/skills` listing: every skill in the workspace — discipline skills
-   * (always-on once enabled, freely toggleable, none locked) with their on/off
-   * state, then on-demand action skills, then the loaded-extension summary.
-   * Extension points must be discoverable in-product, not only in docs.
+   * The `/addons` listing: every installed addon and how to invoke it. Nothing
+   * to toggle — an addon is always available, and only its description is in
+   * context until it is invoked. Extension points must be discoverable
+   * in-product, not only in docs.
    */
-  private renderSkills(): string {
-    const lines = ["Skills (.magentra/skills/) — disciplines shape every turn once enabled; actions run on demand:"];
-    for (const m of this.modeEngine.list()) {
-      const badge = m.recommended ? " ★recommended" : "";
-      lines.push(`  ${m.active ? "[on] " : "[off]"} ${m.id} — ${m.name}${badge} — ${m.description}`);
+  private renderAddons(): string {
+    const addons = this.opts.addons ?? [];
+    if (addons.length === 0) {
+      return `No addons installed. Drop a Markdown file in .magentra/${ADDONS_DIR}/ (or a directory with an ${ADDON_ENTRY}) and it loads on the next /clear.`;
     }
-    const actions = this.opts.skills ?? [];
-    if (actions.length > 0) {
-      lines.push("  On-demand:");
-      for (const skill of actions) lines.push(`    /${skill.name.padEnd(18)} ${skill.description}`);
+    const lines = [
+      `Addons (.magentra/${ADDONS_DIR}/) — procedures the agent loads on demand; invoke one yourself with /<name>:`,
+    ];
+    for (const addon of addons) {
+      lines.push(`  /${addon.name.padEnd(18)} ${addon.description}`);
+      // Name the actual file, not just the tier: the next thing a user wants
+      // after reading this list is to open the one they mean to edit.
+      const origin = addon.path ? relative(this.opts.cwd, addon.path) : "built-in";
+      const extras = addon.resources.length > 0 ? `, ${addon.resources.length} bundled file(s)` : "";
+      lines.push(`   ${" ".repeat(18)} (${origin}${extras})`);
     }
-    lines.push("");
-    lines.push("Toggle a discipline with /skills on <id> or /skills off <id> (this session only — not saved to settings).");
     lines.push("", this.extensionLines());
     return lines.join("\n");
   }
 
-  /** Loaded-extension summary lines, shared by /skills and /session. Only
+  /** Loaded-extension summary lines, shared by /addons and /session. Only
    * user-facing features are reported here — hooks and MCP servers are internal
    * plumbing that isn't surfaced as a product feature yet, so they get no stats
    * line (a "0 configured" readout for a feature the user has no way to use only
    * misinforms). Add them back here if/when they ship as real features. */
   private extensionLines(): string {
-    const disciplines = this.modeEngine.list();
-    const activeDisciplines = disciplines.filter((m) => m.active).length;
-    return [
-      `  Skills loaded:         ${(this.opts.skills ?? []).length}`,
-      `  Disciplines active:    ${activeDisciplines} of ${disciplines.length}`,
-    ].join("\n");
-  }
-
-  /**
-   * `/skills`: list every skill, or toggle a discipline (the desktop uses
-   * set_modes / the Skills view). `/skills on|off <id>` builds the desired
-   * active set and routes it through {@link applyModes} — the exact path a
-   * desktop toggle takes. Nothing is locked; a conflict simply switches the
-   * conflicting skill off with an advisory message. Toggles are session-only
-   * (not persisted). `/styles` is a deprecated alias.
-   */
-  private handleSkills(args?: string): void {
-    const tokens = args?.trim().split(/\s+/).filter(Boolean) ?? [];
-    if (tokens.length === 0) {
-      this.emit({ type: "command_output", text: this.renderSkills() });
-      return;
-    }
-    const [verb, id] = tokens;
-    if ((verb !== "on" && verb !== "off") || !id) {
-      this.emit({
-        type: "command_output",
-        text: "Usage: /skills [on|off <id>] — run /skills alone to list every skill.",
-      });
-      return;
-    }
-    const summary = this.modeEngine.list().find((m) => m.id === id);
-    if (!summary) {
-      const ids = this.modeEngine.list().map((m) => m.id).join(", ");
-      this.emit({ type: "command_output", text: `Unknown skill "${id}". Disciplines: ${ids}.` });
-      return;
-    }
-    const active = this.modeEngine.list().filter((m) => m.active).map((m) => m.id);
-    const desired = verb === "on" ? [...new Set([...active, id])] : active.filter((x) => x !== id);
-    this.applyModes(desired);
-    this.emit({
-      type: "command_output",
-      text:
-        verb === "on"
-          ? `${id} on — ${summary.name} skill active`
-          : `${id} off — ${summary.name} skill disabled`,
-    });
+    return `  Addons installed:      ${(this.opts.addons ?? []).length}`;
   }
 
   /** `/settings` lists the effective config; `/settings <key> <value>` persists and applies one. */
@@ -1521,14 +1404,12 @@ export class Engine {
  */
 const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
   { cmd: "/help", args: "", desc: "show this help" },
-  { cmd: "/atlas", args: "[force]", desc: "map the codebase into .magentra/ATLAS.md (force overwrites hand edits)" },
   { cmd: "/clear", args: "", desc: "start a fresh session (history cleared)" },
   { cmd: "/compact", args: "", desc: "compact the conversation now" },
   { cmd: "/session", args: "", desc: "this session's usage: tokens per model, API/wall time, code churn, context now" },
   { cmd: "/tasks", args: "", desc: "show the task list" },
-  { cmd: "/skills", args: "[on|off <id>]", desc: "list skills (disciplines + on-demand), or toggle a discipline (session only)" },
+  { cmd: "/addons", args: "", desc: "list installed addons; invoke one with /<name>" },
   { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous stance: nothing asks, self-verified completion" },
-  { cmd: "/styles", args: "[on|off <id>]", desc: "deprecated alias for /skills" },
   { cmd: "/settings", args: "[global] [k v]", desc: "show settings, or set one (add global to save to ~/.magentra)" },
   { cmd: "/resume", args: "<session-id>", desc: "resume a previous session" },
   { cmd: "/sessions", args: "", desc: "list saved sessions" },
@@ -1546,7 +1427,7 @@ function renderHelp(): string {
     "  ! <command>      run a shell command; output lands in the conversation",
     "  Esc              interrupt the current turn",
     "",
-    "Glossary (atlas, skills, deletion guard): SETTINGS → GLOSSARY in the app.",
+    "Glossary (addons, deletion guard): SETTINGS → GLOSSARY in the app.",
   );
   return lines.join("\n");
 }
@@ -1641,102 +1522,88 @@ export function reconstructForDisplay(messages: Msg[]): RestoredMessage[] {
   return out;
 }
 
-// ── Create-skill wizard: authoring prompt ────────────────────────────────────
+// ── Create-addon wizard: authoring prompt ────────────────────────────────────
 
-/** The subagent persona for generate_skill: it writes exactly one file, no commentary. */
-const SKILL_AUTHOR_ROLE = definePrompt({
-  id: "skill-author.role",
+/** The persona behind generate_addon: it writes exactly one file, no commentary. */
+const ADDON_AUTHOR_ROLE = definePrompt({
+  id: "addon-author.role",
   group: "5 · Background inference calls",
-  label: "Skill author role",
+  label: "Addon author role",
   channel: "subagent",
   where:
-    "Role of the subagent behind the create-skill wizard (generate_skill). Its entire reply is written straight to a .md file, so any commentary corrupts the output.",
-  text: `You are a skill author for the MAGENTRA agent workbench. Your entire final
-response must be EXACTLY the content of one skill .md file — no code fences, no
-commentary before or after it. You may read a few workspace files first if the
-skill should reference real project conventions, but keep it brief.`,
+    "Role of the call behind the create-addon wizard (generate_addon). Its entire reply is written straight to a .md file, so any commentary corrupts the output.",
+  text: `You are an addon author for the MAGENTRA agent workbench. An addon is a
+procedure a coding agent loads on demand: its description decides WHEN the agent
+reaches for it, and its body is the method the agent then follows.
+
+Your entire final response must be EXACTLY the content of one addon .md file —
+no code fences, no commentary before or after it.`,
 });
 
-/** Optional knobs the wizard passes into skill authoring. */
-type SkillGenOptions = {
+/** Optional knobs the wizard passes into addon authoring. */
+type AddonGenOptions = {
   model?: string;
   context?: string;
-  enforce?: "remind" | "block";
   connection?: { provider: "anthropic" | "openai-compat"; baseUrl?: string; apiKey: string; model: string };
 };
 
-/** The format the generator must produce, per kind — kept in one place so the wizard and validator agree. */
-function buildSkillPrompt(
-  description: string,
-  kind: "discipline" | "action",
-  takenIds: string[],
-  opts: SkillGenOptions = {},
-): string {
-  const contextLine = opts.context && opts.context.trim()
-    ? `\n\nWhen it should apply / extra detail from the user:\n"""\n${opts.context.trim()}\n"""`
-    : "";
-  const enforceLine =
-    kind === "discipline" && opts.enforce === "block"
-      ? `\n\nThe user wants this ENFORCED, not just advisory: include a "gate:" frontmatter line that blocks the relevant tools (e.g. Write, Edit) until the condition holds, with a short, specific refusal message.`
-      : kind === "discipline"
-        ? `\n\nThe user wants a REMINDER, not a hard block: rely on the directive and a short "## On turn start" reminder — do NOT add a gate: line.`
-        : "";
+/** The format the generator must produce — one place, so the wizard and the validator agree. */
+function buildAddonPrompt(description: string, takenNames: string[], opts: AddonGenOptions = {}): string {
+  const contextLine =
+    opts.context && opts.context.trim()
+      ? `\n\nWhen it should apply / extra detail from the user:\n"""\n${opts.context.trim()}\n"""`
+      : "";
 
-  const common = `The user wants a new ${kind} skill. Their description:
+  return `The user wants a new addon. Their description:
 """
 ${description}
-"""${contextLine}${enforceLine}
+"""${contextLine}
 
-Already-taken skill ids (choose a DIFFERENT short kebab-case id): ${takenIds.join(", ")}.`;
+Already-taken addon names (choose a DIFFERENT short kebab-case name): ${takenNames.join(", ") || "(none)"}.
 
-  if (kind === "action") {
-    return `${common}
-
-Produce a Markdown file in this exact shape — slim frontmatter, then the
-procedure as a well-structured Markdown body the agent will follow when the
-skill is invoked:
+Produce a Markdown file in this exact shape — frontmatter with exactly these two
+keys, then the procedure as the body:
 
 ---
-name: <short-kebab-case-id>
-description: <one line: when the agent should reach for this skill>
+name: <short-kebab-case-name>
+description: <one line, on ONE physical line: the CONDITION for reaching for this addon — what kind of task, and what trigger words. This is the only text the agent sees before invoking, so it must be enough to decide. Say so plainly if following it costs noticeably more tokens.>
 ---
 
-<the procedure: clear steps, headings and bullet lists welcome>`;
+<the procedure the agent follows once this addon is loaded: concrete steps,
+headings and bullet lists welcome. Write instructions to the agent, not prose
+about the addon.>
+
+Hard rules:
+- The frontmatter has ONLY \`name:\` and \`description:\`, each on ONE line. No
+  YAML block scalars, no other keys — the parser is line-based and will not
+  understand them.
+- Never write a colon-space inside the description value; it would be parsed as
+  another key.
+- The body must be non-empty and must stand on its own: an agent reading only
+  this file has to know what to do.
+- Use \`$ARGUMENTS\` in the body if the addon should accept an argument from the
+  user; it is substituted at invocation.`;
+}
+
+/**
+ * Validates a candidate addon text; returns the suggested filename on success.
+ * Shared by generation (each attempt) and installation (never trust a draft the
+ * user may have edited), so both agree on what a loadable addon is.
+ */
+function validateAddonText(text: string): { ok: true; filename: string } | { ok: false; error: string } {
+  const fm = parseFrontmatter(text);
+  if (!fm.present) return { ok: false, error: "the file must open with --- frontmatter" };
+  if (!fm.map.name) return { ok: false, error: "frontmatter needs a name: key" };
+  if (!fm.map.description) return { ok: false, error: "frontmatter needs a description: key" };
+  const slug = fm.map.name
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!slug || !/^[a-z]/.test(slug)) {
+    return { ok: false, error: "name: must yield a [a-z][a-z0-9_-]* slug" };
   }
-
-  return `${common}
-
-Produce a Markdown file in this exact shape — slim frontmatter (only the keys
-shown; strings only, no YAML nesting), then Markdown sections. Only the section
-headings listed are allowed at the "## " level (use ### or deeper inside text).
-
----
-kind: discipline
-name: <Display Name>
-description: <one line: what this discipline changes about how the agent works>
-why: <one line: why/when a user should enable it>
-auto: <comma, separated, trigger, keywords>            (optional)
-conflicts: <comma-separated skill ids>                 (optional)
-gate: <Tool[, Tool]> requires <tasks-exist|never|repro-failed>: <refusal message>   (optional, repeatable)
----
-
-<the directive: the rules the agent must follow while this skill is active —
-this is the main body, before any "## " heading>
-
-## Vocabulary
-- <term>: <definition>          (optional section)
-
-## On turn start
-<a SHORT reminder (2-4 lines) injected once per conversation>   (optional section)
-
-## After an error
-<a SHORT nudge injected when a tool batch fails>                (optional section)
-
-## Planning checklist
-- <item>                        (optional section)
-
-## Wrap-up checklist
-- <item>                        (optional section)`;
+  if (fm.body.trim().length === 0) return { ok: false, error: "the Markdown body (the procedure) is empty" };
+  return { ok: true, filename: `${slug}.md` };
 }
 
 /** Models love to wrap file output in a fence despite instructions — unwrap one if present. */
@@ -1750,9 +1617,9 @@ function stripCodeFence(raw: string): string {
  * Coax a model's reply into the exact file the validator expects: unwrap a code
  * fence, then — the common failure — drop any preamble sentence the model wrote
  * before the actual `---` frontmatter, so a chatty-but-correct draft validates
- * instead of being thrown away over a leading "Here's your skill:".
+ * instead of being thrown away over a leading "Here's your addon:".
  */
-function repairSkillText(raw: string): string {
+function repairAddonText(raw: string): string {
   const text = stripCodeFence(raw).trim();
   const lines = text.split("\n");
   const start = lines.findIndex((l) => l.trim() === "---");

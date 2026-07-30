@@ -268,7 +268,7 @@ function stopAllEngines() {
 }
 
 // Frames that represent an explicit user action: dropping one silently reads
-// as "the app ignored me". State-sync frames (set_modes,
+// as "the app ignored me". State-sync frames (
 // set_deletion_guard) are re-sent on session start, so their
 // drops stay quiet by design — the renderer fires them before any engine runs.
 const USER_ACTION_FRAMES = new Set([
@@ -291,7 +291,7 @@ const USER_ACTION_FRAMES = new Set([
   "set_connection",
 ]);
 
-// The generate_skill frame can carry a resolved profile's API key (to author
+// The generate_addon frame can carry a resolved profile's API key (to author
 // with a different provider). It must reach the engine over stdin but must NOT
 // land in the log — redact it in the logged copy only.
 function redactFrameForLog(frame) {
@@ -1210,16 +1210,16 @@ async function detectLocalServers() {
 
 ipcMain.handle("connections:detectLocal", () => detectLocalServers());
 
-// Skill generation, routed through main so it can resolve a chosen connection
+// Addon generation, routed through main so it can resolve a chosen connection
 // profile into a full connection (the renderer never holds a profile's key).
-// Without a profileId it is a plain passthrough to the engine's generate_skill.
-ipcMain.handle("skills:generate", (evt, payload) => {
+// Without a profileId it is a plain passthrough to the engine's generate_addon.
+ipcMain.handle("addons:generate", (evt, payload) => {
   if (!payload || typeof payload !== "object") return { ok: false, error: "invalid payload" };
   const genTab = activeTab(winOf(evt));
   if (!genTab || !genTab.child) return { ok: false, error: "Open a workspace and connect an engine first." };
   const description = typeof payload.description === "string" ? payload.description.trim() : "";
-  if (!description) return { ok: false, error: "Describe the skill first." };
-  const frame = { type: "generate_skill", description, kind: payload.kind === "action" ? "action" : "discipline" };
+  if (!description) return { ok: false, error: "Describe the addon first." };
+  const frame = { type: "generate_addon", description };
   if (typeof payload.context === "string" && payload.context.trim()) frame.context = payload.context.trim();
   if (typeof payload.profileId === "string" && payload.profileId) {
     const profile = findProfile(payload.profileId);
@@ -1237,10 +1237,10 @@ ipcMain.handle("skills:generate", (evt, payload) => {
   return { ok: true };
 });
 
-// Save a skill's .md (text supplied by the engine's skill_export) to a chosen
-// location. The engine sources the text — including built-ins — so every skill
+// Save an addon's .md (text supplied by the engine's addon_export) to a chosen
+// location. The engine sources the text — including built-ins — so every addon
 // exports, not only on-disk ones.
-ipcMain.handle("skills:saveExport", async (_evt, payload) => {
+ipcMain.handle("addons:saveExport", async (_evt, payload) => {
   const filename = payload && typeof payload.filename === "string" ? payload.filename : "";
   const text = payload && typeof payload.text === "string" ? payload.text : "";
   if (!/^[a-z0-9][a-z0-9_-]*\.md$/.test(filename) || text.length === 0) {
@@ -1248,7 +1248,7 @@ ipcMain.handle("skills:saveExport", async (_evt, payload) => {
   }
   if (!mainWindow) return { ok: false, error: "no window" };
   const result = await dialog.showSaveDialog(mainWindow, {
-    title: "Export skill",
+    title: "Export addon",
     defaultPath: filename,
     filters: [{ name: "Markdown", extensions: ["md"] }],
   });
@@ -1258,7 +1258,7 @@ ipcMain.handle("skills:saveExport", async (_evt, payload) => {
   } catch (err) {
     return { ok: false, error: `failed to write: ${err && err.message ? err.message : String(err)}` };
   }
-  logEvent("sys", { ev: "skill-exported" });
+  logEvent("sys", { ev: "addon-exported" });
   return { ok: true, path: result.filePath };
 });
 
@@ -1697,10 +1697,6 @@ ipcMain.on("engine:send", (evt, payload) => {
     return;
   }
   writeToEngine(frame, tabId);
-});
-
-ipcMain.on("engine:setModes", (evt, activeIds) => {
-  writeToEngine({ type: "set_modes", active: activeIds }, activeTab(winOf(evt))?.id);
 });
 
 ipcMain.on("engine:interrupt", (evt) => {

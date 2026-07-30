@@ -22,19 +22,6 @@ export interface SpawnAgentOptions {
   prompt: string;
   description: string;
   runInBackground?: boolean;
-  /**
-   * Override the child's per-turn iteration budget (maxIterationsPerTurn) for
-   * this one spawn. Used to bound the blocking first-turn atlas build; omitted
-   * spawns inherit the parent's settings unchanged.
-   */
-  maxIterations?: number;
-  /**
-   * Replace the agent type's role prompt for this one spawn (the toolset is
-   * unchanged). Used when a task needs the type's tool restrictions but a
-   * different persona — e.g. the atlas build runs on `explore` tools but must
-   * author a full document, which the explore role explicitly discourages.
-   */
-  roleOverride?: string;
 }
 
 /** Services a tool can reach through its context. */
@@ -65,8 +52,8 @@ export interface SessionServices {
   setCwd?(dir: string): void;
   /** Phase 3: settings.worktree.baseRef, consumed by EnterWorktree. */
   worktreeBaseRef?: "fresh" | "head";
-  /** Phase 3b: skills loaded from .magentra/skills, consumed by the Skill tool. */
-  skills?: { name: string; description: string; body: string }[];
+  /** Addons loaded from .magentra/addons (plus built-ins), consumed by the Addon tool. */
+  addons?: { name: string; description: string; body: string; resources: string[] }[];
 }
 
 export interface ToolContext {

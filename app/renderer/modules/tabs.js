@@ -72,11 +72,8 @@ const TAB_ACCESSORS = [
   ["contextWarn", () => contextWarn, (v) => { contextWarn = v; }, () => false],
   ["sessionModel", () => sessionModel, (v) => { sessionModel = v; }, () => ""],
   ["activeModel", () => activeModel, (v) => { activeModel = v; }, () => null],
-  // skills / modes
-  ["modes", () => modes, (v) => { modes = v; }, () => []],
-  ["modesReceived", () => modesReceived, (v) => { modesReceived = v; }, () => false],
-  ["pendingModesNote", () => pendingModesNote, (v) => { pendingModesNote = v; }, () => false],
-  ["actionSkills", () => actionSkills, (v) => { actionSkills = v; }, () => []],
+  // addons
+  ["addons", () => addons, (v) => { addons = v; }, () => []],
   // changes review
   ["sessionChanges", () => sessionChanges, (v) => { sessionChanges = v; }, () => new Map()],
   ["activeReviewPath", () => activeReviewPath, (v) => { activeReviewPath = v; }, () => null],
@@ -835,7 +832,7 @@ function toggleTabOverdrive(tabId) {
 }
 
 /** Right-click a pane's header: move it to the big (bottom) slot in the 3-pane
- * layout, and pick this workspace's OWN skills (checkboxes) without leaving the
+ * layout, set this workspace's own connection, or close it — without leaving the
  * pane you're in. Reuses the shared ctx-menu machinery (util.js). */
 function openPaneCtxMenu(e, tabId) {
   e.preventDefault();
@@ -886,41 +883,6 @@ function openPaneCtxMenu(e, tabId) {
       closeCtxMenu();
     });
     menuEl.appendChild(close);
-  }
-
-  // This workspace's skills as checkboxes — routed to THIS tab's engine, so each
-  // session can run its own set. (The sidebar Skills view stays the overall one.)
-  const tabModes = tabId === focusedTabId ? modes : (tabs.get(tabId) && tabs.get(tabId).modes) || [];
-  if (Array.isArray(tabModes) && tabModes.length > 0) {
-    if (menuEl.children.length > 0) {
-      const sep = document.createElement("div");
-      sep.className = "ctx-sep";
-      menuEl.appendChild(sep);
-    }
-    const hint = document.createElement("div");
-    hint.className = "ctx-hint";
-    hint.textContent = "Skills — this workspace only";
-    menuEl.appendChild(hint);
-    const send = () => {
-      const active = [];
-      menuEl.querySelectorAll("input[data-skill]").forEach((c) => {
-        if (c.checked) active.push(c.dataset.skill);
-      });
-      window.magentra.send({ type: "set_modes", active }, tabId);
-    };
-    for (const m of tabModes) {
-      const row = document.createElement("label");
-      row.className = "ctx-check";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = !!m.active;
-      cb.dataset.skill = m.id;
-      cb.addEventListener("change", send);
-      const label = document.createElement("span");
-      label.textContent = m.name || m.id;
-      row.append(cb, label);
-      menuEl.appendChild(row);
-    }
   }
 
   if (menuEl.children.length === 0) return; // nothing to offer here

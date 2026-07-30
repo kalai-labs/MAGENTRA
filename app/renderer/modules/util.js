@@ -193,7 +193,7 @@ function mountCtxMenu(menuEl, at) {
   menuEl.style.top = `${Math.max(4, top)}px`;
 
   openCtxMenuEl = menuEl;
-  // Clicks INSIDE the menu (toggling a skill checkbox) keep it open; only an
+  // Clicks INSIDE the menu keep it open; only an
   // outside click or Escape closes it.
   const onDocClick = (ev) => {
     if (!menuEl.contains(ev.target)) closeCtxMenu();

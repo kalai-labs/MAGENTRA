@@ -231,10 +231,10 @@ function onSessionStarted(event) {
   // after a wizard IGNITE, a /clear, or a resume, the user must never have to
   // re-select what they already configured.
   if (event.model) applyModel(event.model);
-  // The on-demand action skills discovered in this workspace ride along here.
-  if (Array.isArray(event.skills)) {
-    actionSkills = event.skills;
-    renderSkillsSurfaces();
+  // The addons available in this workspace ride along here.
+  if (Array.isArray(event.addons)) {
+    addons = event.addons;
+    renderAddonsSurfaces();
   }
   // A fresh session (boot, or /clear) is a fresh bill and an empty window.
   sessionModel = event.model;
@@ -260,8 +260,8 @@ function onSessionStarted(event) {
  * running. Two kinds of work, and they are NOT the same:
  *
  *   - a TURN owns the conversation, so the composer is locked while it runs;
- *   - BACKGROUND work (an atlas build) owns nothing — you can keep typing while
- *     it maps, so only the stop button appears.
+ *   - BACKGROUND work (a bash job, an addon draft) owns nothing — you can keep
+ *     typing while it runs, so only the stop button appears.
  *
  * The stop button is shown for either. It is a hard stop: it kills whatever is
  * in flight, turn or not.
@@ -320,9 +320,9 @@ function onTurnStarted() {
 }
 
 /**
- * Work that is not a turn, starting or ending (currently the atlas build). It is
- * the only way the UI learns the engine is busy without a turn — turn_started
- * never fires for it.
+ * Work that is not a turn, starting or ending (a background job, a /compact, an
+ * addon draft). It is the only way the UI learns the engine is busy without a
+ * turn — turn_started never fires for it.
  */
 let backgroundJobMeta = new Map(); // taskId -> { description, stoppable }; let: reassigned by the per-tab state swap (tabs.js)
 
@@ -341,7 +341,7 @@ function onBackgroundNotification(event) {
   } else if (starting) {
     const p = event.payload || {};
     const description = typeof p.description === "string" ? p.description : event.taskId;
-    // Default stoppable (the atlas build is); a job opts out with stoppable:false
+    // Default stoppable; a job opts out with stoppable:false
     // when aborting it mid-flight would corrupt state.
     backgroundJobMeta.set(event.taskId, { description, stoppable: p.stoppable !== false });
   } else {
@@ -1100,18 +1100,15 @@ function handleEngineEvent(event) {
     case "overdrive_changed":
       onOverdriveChanged(event);
       break;
-    case "modes_updated":
-      onModesUpdated(event);
+    case "addons_updated":
+      addons = Array.isArray(event.addons) ? event.addons : [];
+      renderAddonsSurfaces();
       break;
-    case "skills_updated":
-      actionSkills = Array.isArray(event.skills) ? event.skills : [];
-      renderSkillsSurfaces();
+    case "addon_draft":
+      onAddonDraft(event);
       break;
-    case "skill_draft":
-      onSkillDraft(event);
-      break;
-    case "skill_export":
-      onSkillExport(event);
+    case "addon_export":
+      onAddonExport(event);
       break;
     case "file_edited":
       onFileEdited(event);

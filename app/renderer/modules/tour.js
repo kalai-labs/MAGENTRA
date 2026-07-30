@@ -30,9 +30,9 @@ const TOUR_STEPS = [
     copy: "Each entry shows its price per million tokens (in / out). Switching models restarts the session on the new one.",
   },
   {
-    target: "#navSkills",
-    title: "Skills",
-    copy: "Skills shape how the agent works — all off by default, nothing locked. Enable the ★ Recommended set with one click, read each skill's ? to see why it helps, or create your own from a plain-language description.",
+    target: "#navAddons",
+    title: "Addons",
+    copy: "Addons are procedures the agent loads on demand — always available, never in the way. Only their descriptions sit in context, so the agent picks the right one and pays for its body only when it uses it. Type /<name> to run one yourself, or build your own from a plain-language description.",
   },
   {
     target: "#taskRail",

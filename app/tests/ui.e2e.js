@@ -9,7 +9,6 @@ const WORKSPACE = "/tmp/magentra-ui-workspace";
 const MODEL = "deepseek-ai/DeepSeek-V4-Flash";
 const frames = [];
 const calls = [];
-const modes = [];
 const permissions = [];
 const signals = [];
 const rendererErrors = [];
@@ -105,7 +104,6 @@ function apiResult(name, args) {
 function wireTestIpc() {
   ipcMain.handle("test:api", (_event, payload) => apiResult(payload.name, payload.args || []));
   ipcMain.on("test:frame", (_event, frame) => frames.push(frame));
-  ipcMain.on("test:modes", (_event, active) => modes.push(active));
   ipcMain.on("test:permission", (_event, value) => permissions.push(value));
   for (const name of ["interrupt", "restart", "external", "titlebar", "window-control"]) {
     ipcMain.on(`test:${name}`, (_event, value) => signals.push({ name, value }));
@@ -423,12 +421,12 @@ async function run() {
     await pause();
     assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.command === "help"));
 
-    await emit({ type: "background_notification", taskId: "atlas-1", kind: "start", payload: { description: "Mapping workspace" } });
+    await emit({ type: "background_notification", taskId: "job-1", kind: "start", payload: { description: "Running a script" } });
     assert.equal(await evaluate(`document.querySelector('#jobsChip').classList.contains('hidden')`), false);
     await evaluate(`document.querySelector('.job-stop').click()`);
     await pause();
-    assert.ok(frames.some((frame) => frame.type === "stop_background" && frame.taskId === "atlas-1"));
-    await emit({ type: "background_notification", taskId: "atlas-1", kind: "exit" });
+    assert.ok(frames.some((frame) => frame.type === "stop_background" && frame.taskId === "job-1"));
+    await emit({ type: "background_notification", taskId: "job-1", kind: "exit" });
     assert.equal(await evaluate(`document.querySelector('#jobsChip').classList.contains('hidden')`), true);
 
     await evaluate(`document.querySelector('.menu-root').click()`);
@@ -951,82 +949,60 @@ async function run() {
     assert.match(prices.text, /\$5, not \$7/);
   });
 
-  await test("skills view, chips, recommended set, and create-skill wizard are functional", async () => {
-    await emit({ type: "modes_updated", modes: [
-      { id: "reshape", name: "Reshape", description: "Deliberate restructuring", why: "Enable for large refactors", active: false, recommended: false, conflicts: [] },
-      { id: "prover", name: "Prover", description: "Prove every change", why: "Enable when correctness matters", active: false, recommended: true, conflicts: [] },
+  await test("addons view, chip, export, and create-addon wizard are functional", async () => {
+    await emit({ type: "addons_updated", addons: [
+      { name: "magentron", description: "Read before you write", builtin: true },
+      { name: "sql-review", description: "Review SQL before it runs", builtin: false },
     ] });
-    // No hero quick-toggle chips ship by default now (the built-in skills were
-    // retired for the Addon redesign) — only the summary chip renders.
-    assert.equal(await evaluate(`document.querySelectorAll('.mode-chip.hero').length`), 0);
-    // The summary chip opens the Skills view; both fixture cards render with badges + why.
-    await evaluate(`document.querySelector('#skillsSummary').click()`);
+    // No toggles exist: an addon is always available, so the view is a
+    // catalogue. Only the summary chip renders, and it opens the Addons view.
+    assert.equal(await evaluate(`document.querySelectorAll('#modeChips [role="switch"]').length`), 0);
+    await evaluate(`document.querySelector('#addonsSummary').click()`);
     await pause();
     let state = await evaluate(`(() => ({
       view: document.body.dataset.view,
-      cards: document.querySelectorAll('.skill-card').length,
-      badges: document.querySelectorAll('.skill-badge').length,
-      whyHidden: document.querySelectorAll('.skill-why.hidden').length,
+      cards: document.querySelectorAll('.addon-card').length,
+      builtinBadges: document.querySelectorAll('.addon-badge').length,
+      names: [...document.querySelectorAll('.addon-name')].map((n) => n.textContent).join(","),
     }))()`);
-    assert.deepEqual(state, { view: "skills", cards: 2, badges: 1, whyHidden: 2 });
-    // The ? explainer reveals the why copy.
-    await evaluate(`document.querySelectorAll('.skill-why-btn')[0].click()`);
-    assert.equal(await evaluate(`document.querySelectorAll('.skill-why:not(.hidden)').length`), 1);
+    assert.deepEqual(state, { view: "addons", cards: 2, builtinBadges: 1, names: "/magentron,/sql-review" });
     // Every card has an export button. It asks the engine for the .md
-    // (export_skill), and on the reply saves it via main (saveSkillExport) — so
-    // built-ins export too, not only on-disk skills.
-    assert.equal(await evaluate(`document.querySelectorAll('.skill-export-btn').length`), 2);
-    await evaluate(`[...document.querySelectorAll('.skill-card')].find((c) => c.querySelector('.skill-name').textContent === 'Prover').querySelector('.skill-export-btn').click()`);
+    // (export_addon), and on the reply saves it via main (saveAddonExport) — so
+    // built-ins export too, not only on-disk addons.
+    assert.equal(await evaluate(`document.querySelectorAll('.addon-export-btn').length`), 2);
+    await evaluate(`[...document.querySelectorAll('.addon-card')].find((c) => c.querySelector('.addon-name').textContent === '/magentron').querySelector('.addon-export-btn').click()`);
     await pause();
-    assert.ok(frames.some((frame) => frame.type === "export_skill" && frame.id === "prover"));
-    await emit({ type: "skill_export", ok: true, id: "prover", filename: "prover.md", text: "---\\nkind: discipline\\nname: Prover\\n---\\n\\nProve it." });
+    assert.ok(frames.some((frame) => frame.type === "export_addon" && frame.name === "magentron"));
+    await emit({ type: "addon_export", ok: true, name: "magentron", filename: "magentron.md", text: "---\\nname: magentron\\ndescription: d\\n---\\n\\nRead before you write." });
     await pause();
-    assert.ok(calls.some((call) => call.name === "saveSkillExport" && call.args[0].filename === "prover.md"));
-    // A card toggle flips the discipline via set_modes.
-    modes.length = 0;
-    await evaluate(`[...document.querySelectorAll('.skill-card')].find((c) => c.querySelector('.skill-name').textContent === 'Prover').querySelector('.skill-toggle').click()`);
-    await pause();
-    assert.ok(modes.some((active) => active.includes("prover")));
-    // Enable-recommended enables every badged skill at once.
-    await emit({ type: "modes_updated", modes: [
-      { id: "grill", name: "Grill", description: "Challenge assumptions", why: "", active: false, recommended: false, conflicts: [] },
-      { id: "prover", name: "Prover", description: "Prove every change", why: "", active: false, recommended: true, conflicts: [] },
-    ] });
-    modes.length = 0;
-    await evaluate(`document.querySelector('#skillsRecommendBtn').click()`);
-    await pause();
-    assert.ok(modes.some((active) => active.includes("prover")));
-    // Create-skill wizard: describe → generateSkill (main resolves any profile)
-    // → draft preview → install_skill frame. Reachable from Settings too.
-    await evaluate(`document.querySelector('#skillCreateBtn').click()`);
-    assert.equal(await evaluate(`document.querySelector('#skillWizard').classList.contains('hidden')`), false);
-    // The "author with" model picker is populated (no enforcement UI any more).
-    assert.ok(await evaluate(`document.querySelectorAll('#skillModelSelect option').length > 0`), "the author-with model picker is populated");
+    assert.ok(calls.some((call) => call.name === "saveAddonExport" && call.args[0].filename === "magentron.md"));
+    // Create-addon wizard: describe → generateAddon (main resolves any profile)
+    // → draft preview → install_addon frame. One kind, so no kind picker.
+    await evaluate(`document.querySelector('#addonCreateBtn').click()`);
+    assert.equal(await evaluate(`document.querySelector('#addonWizard').classList.contains('hidden')`), false);
+    assert.ok(await evaluate(`document.querySelectorAll('#addonModelSelect option').length > 0`), "the author-with model picker is populated");
     await evaluate(`(() => {
-      document.querySelector('#skillDescInput').value = 'Always write rollback SQL beside every migration';
-      document.querySelector('#skillContextInput').value = 'when editing files under db/migrations';
-      document.querySelector('#skillWizGenerate').click();
+      document.querySelector('#addonDescInput').value = 'Always write rollback SQL beside every migration';
+      document.querySelector('#addonContextInput').value = 'when editing files under db/migrations';
+      document.querySelector('#addonWizGenerate').click();
     })()`);
     await pause();
-    const genCall = calls.filter((call) => call.name === "generateSkill").pop();
-    assert.equal(genCall.args[0].kind, "discipline");
+    const genCall = calls.filter((call) => call.name === "generateAddon").pop();
+    assert.equal(genCall.args[0].kind, undefined, "there is only one kind of addon now");
     assert.equal(genCall.args[0].context, "when editing files under db/migrations");
     assert.ok(genCall.args[0].model, "the chosen author model rides along");
-    await emit({ type: "skill_draft", ok: true, suggestedFilename: "sql-rollback.md", text: "---\\nkind: discipline\\nname: SQL Rollback\\n---\\n\\nAlways pair migrations with rollbacks." });
+    await emit({ type: "addon_draft", ok: true, suggestedFilename: "sql-rollback.md", text: "---\\nname: sql-rollback\\ndescription: Pair every migration with a rollback\\n---\\n\\nAlways pair migrations with rollbacks." });
     state = await evaluate(`(() => ({
-      step2: !document.querySelector('#skillWizStep2').classList.contains('hidden'),
-      file: document.querySelector('#skillWizFile').textContent,
-      hasText: document.querySelector('#skillDraftText').value.includes('rollbacks'),
+      step2: !document.querySelector('#addonWizStep2').classList.contains('hidden'),
+      file: document.querySelector('#addonWizFile').textContent,
+      hasText: document.querySelector('#addonDraftText').value.includes('rollbacks'),
     }))()`);
     assert.deepEqual(state, { step2: true, file: "sql-rollback.md", hasText: true });
-    await evaluate(`document.querySelector('#skillWizInstall').click()`);
+    await evaluate(`document.querySelector('#addonWizInstall').click()`);
     await pause();
-    assert.ok(frames.some((frame) => frame.type === "install_skill" && frame.filename === "sql-rollback.md"));
-    assert.equal(await evaluate(`document.querySelector('#skillWizard').classList.contains('hidden')`), true);
-    // Action skills from skills_updated render as on-demand cards.
-    await emit({ type: "skills_updated", skills: [{ name: "sql-review", description: "Review SQL before it runs" }] });
-    assert.equal(await evaluate(`document.querySelectorAll('.skill-card.action').length`), 1);
-    await evaluate(`document.querySelector('#skillsCloseBtn').click()`);
+    assert.ok(frames.some((frame) => frame.type === "install_addon" && frame.filename === "sql-rollback.md"));
+    assert.equal(await evaluate(`document.querySelector('#addonWizard').classList.contains('hidden')`), true);
+    await evaluate(`document.querySelector('#addonsCloseBtn').click()`);
   });
 
   await test("the teaching tour walks all eight steps and is replayable", async () => {
@@ -1287,8 +1263,7 @@ async function run() {
       "  Context breakdown (~estimated):\n" +
       "      System prompt:  ~3.3k tokens\n" +
       "      Free space:     ~53.3k tokens (until auto-compact at ~64.0k)\n" +
-      "  Skills loaded:         0\n" +
-      "  Disciplines active:    0 of 9";
+      "  Addons installed:      1";
     await emit({ type: "session_report", text: report });
     const state = await evaluate(`(() => ({
       open: !document.querySelector('#sessionModal').classList.contains('hidden'),
@@ -1501,8 +1476,6 @@ async function run() {
     tabEvt("test:tab-opened", { tabId: "tC", workspace: "/tmp/ws-c" });
     await emit({ type: "workspace_changed", workspace: "/tmp/ws-c", tabId: "tC" });
     await emit(started("sC", "/tmp/ws-c", "tC"));
-    // Give the focused tab (tC) some skills so the pane menu can list them.
-    await emit({ type: "modes_updated", modes: [{ id: "grill", name: "The Grill", description: "d", active: false, builtin: true }], tabId: "tC" });
     await pause(40);
     const three = await evaluate(`(() => ({
       panes: document.querySelector('#transcript').getAttribute('data-panes'),
@@ -1512,7 +1485,7 @@ async function run() {
     assert.equal(three.panes, "3", "three tabs → 3-pane layout");
     assert.ok(three.cBig, "the big bottom pane defaults to the 3rd/last-opened tab");
     assert.ok(!three.aBig, "a top pane is not big by default");
-    // Right-click tab C's header (it is the focused tab, so it has the skills).
+    // Right-click tab C's header.
     await evaluate(`(() => {
       const head = tabs.get('tC').paneEl.querySelector('.console-pane-head');
       head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 200, clientY: 200 }));
@@ -1521,12 +1494,10 @@ async function run() {
     const menu = await evaluate(`(() => ({
       open: !!document.querySelector('.ctx-menu'),
       hasClose: [...document.querySelectorAll('.ctx-item')].some(b => b.textContent.includes('CLOSE TAB')),
-      hasSkillCheckbox: !!document.querySelector('.ctx-menu .ctx-check input[data-skill="grill"]'),
       hasMoveToBottom: [...document.querySelectorAll('.ctx-item')].some(b => b.textContent.includes('MOVE TO BOTTOM')),
     }))()`);
     assert.ok(menu.open, "right-click a pane header opens its menu");
     assert.ok(menu.hasClose, "the pane menu offers Close Tab");
-    assert.ok(menu.hasSkillCheckbox, "the pane menu lists this workspace's skills as checkboxes");
     // tC is already the big pane, so it offers no "move to bottom"; right-click a TOP pane.
     assert.ok(!menu.hasMoveToBottom, "the big pane has no move-to-bottom");
     await evaluate(`document.querySelector('.ctx-menu') && document.body.click()`); // close menu

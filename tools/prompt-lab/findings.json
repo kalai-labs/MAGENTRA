@@ -125,12 +125,12 @@
       "action": "No change.",
       "reviewedHash": "629ace13a503"
     },
-    "system.skills-block": {
+    "system.addons-block": {
       "verdict": "core",
-      "title": "Keep. 27 tokens.",
-      "problem": "The on-demand skill roster. Currently omitted entirely because no skills ship.",
-      "action": "No change to the text. The gap is that you ship zero skills — see the Optional group.",
-      "reviewedHash": "74e29202ba61"
+      "title": "Keep — it is the whole discoverability surface.",
+      "problem": "The addon roster: names and descriptions only, one line each. This is the only text that decides whether the agent ever reaches for an addon, so its framing matters more than its length.",
+      "action": "No change to the text. The lever is the addon descriptions themselves, not this header.",
+      "reviewedHash": "pending"
     },
     "system.overdrive": {
       "verdict": "optional",
@@ -143,13 +143,6 @@
         "text": "You are operating autonomously. The user is not watching in real time and cannot answer questions mid-task, so asking 'Want me to…?' or 'Shall I…?' will block the work. For reversible actions that follow from the original request, proceed without asking. Stop only for destructive actions or genuine scope changes the user must decide. Offering follow-ups after the task is done is fine; asking permission before doing the work is not."
       },
       "reviewedHash": "2b8e3b2d9126"
-    },
-    "system.atlas-header": {
-      "verdict": "optional",
-      "title": "Atlas is deferred.",
-      "problem": "Conditional on the file existing, so it stays silent on its own while the feature is parked.",
-      "action": "Leave it. It cannot fire until an atlas exists.",
-      "reviewedHash": "a4645032ea50"
     },
     "system.standards-header": {
       "verdict": "core",
@@ -231,13 +224,6 @@
       "action": "No further change to the text. It is also the safety net for your completion goal: it is what catches a turn trying to end with work still on the board. Keep it — just make sure the task tools give the agent a way to close the loop honestly, or this rung becomes a nag it cannot satisfy.",
       "reviewedHash": "addressed"
     },
-    "reminder.debug-verify": {
-      "verdict": "optional",
-      "title": "Needs a skill you do not ship.",
-      "problem": "Only fires when a discipline skill enforces the repro-failed oracle. `BUILTIN_SKILL_FILES` is empty, so nothing can trigger it today.",
-      "action": "Leave it. Harmless and free until you ship the debug discipline.",
-      "reviewedHash": "e7bdafb845c1"
-    },
     "finishing.runtime-evidence": {
       "verdict": "core",
       "title": "Keep — but it lies about the engine, and it is your largest reminder.",
@@ -273,34 +259,6 @@
       "action": "No change.",
       "reviewedHash": "7a989fb1f504"
     },
-    "atlas.area-role": {
-      "verdict": "optional",
-      "title": "Atlas is deferred.",
-      "problem": "Runs only on an explicit /atlas command. Free until then.",
-      "action": "Leave it. Revisit when the atlas feature comes back.",
-      "reviewedHash": "9d1f06a15c3e"
-    },
-    "atlas.area-task": {
-      "verdict": "optional",
-      "title": "Atlas is deferred.",
-      "problem": "Runs only on an explicit /atlas command. Free until then.",
-      "action": "Leave it. Revisit when the atlas feature comes back.",
-      "reviewedHash": "51fe53e0b984"
-    },
-    "atlas.overview-system": {
-      "verdict": "optional",
-      "title": "Atlas is deferred.",
-      "problem": "Runs only on an explicit /atlas command. Free until then.",
-      "action": "Leave it. Revisit when the atlas feature comes back.",
-      "reviewedHash": "7bf489ea03f0"
-    },
-    "atlas.overview-task": {
-      "verdict": "optional",
-      "title": "Atlas is deferred.",
-      "problem": "Runs only on an explicit /atlas command. Free until then.",
-      "action": "Leave it. Revisit when the atlas feature comes back.",
-      "reviewedHash": "123d86f84aca"
-    },
     "session.auto-name.role": {
       "verdict": "merge",
       "title": "Two prompts for one call.",
@@ -335,12 +293,12 @@
       "action": "No change.",
       "reviewedHash": "2c0b86d3ee50"
     },
-    "skill-author.role": {
+    "addon-author.role": {
       "verdict": "optional",
-      "title": "Only fires in the create-skill wizard.",
-      "problem": "86 tokens, never sent on a normal turn.",
+      "title": "Only fires in the create-addon wizard.",
+      "problem": "Never sent on a normal turn — one focused authoring call.",
       "action": "Leave it.",
-      "reviewedHash": "527f3c42b442"
+      "reviewedHash": "pending"
     },
     "subagent.result-contract": {
       "verdict": "core",
@@ -560,12 +518,12 @@
       "action": "No change.",
       "reviewedHash": "9619d5a0eb10"
     },
-    "tool.Skill": {
+    "tool.Addon": {
       "verdict": "core",
       "title": "Keep.",
-      "problem": "Loads a skill's instructions. Currently inert — you ship zero skills.",
-      "action": "No change to the text. See the Optional group about shipping skills.",
-      "reviewedHash": "5477a818e769"
+      "problem": "Loads an addon's instructions on demand. One built-in ships (magentron), so it is live rather than inert.",
+      "action": "No change to the text.",
+      "reviewedHash": "pending"
     },
     "tool.GraphQuery": {
       "verdict": "core",
@@ -832,7 +790,7 @@
     "system.environment": {
       "at": "2026-07-29"
     },
-    "system.skills-block": {
+    "system.addons-block": {
       "at": "2026-07-29"
     },
     "subagent.result-contract": {
@@ -949,19 +907,13 @@
     "tool.ScheduleWakeup": {
       "at": "2026-07-29"
     },
-    "tool.Skill": {
-      "at": "2026-07-29"
-    },
-    "atlas.area-role": {
+    "tool.Addon": {
       "at": "2026-07-29"
     },
     "tool.GraphQuery": {
       "at": "2026-07-29"
     },
     "reminder.wrapup-nudge": {
-      "at": "2026-07-29"
-    },
-    "system.atlas-header": {
       "at": "2026-07-29"
     }
   }

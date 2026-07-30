@@ -121,11 +121,11 @@ that still says `"gate"` loads as `"remind"`.)
 | `reuseCheck.blockThreshold` | `0.75` | Similarity at/above which the reminder is worded firmly (near-duplicate). |
 | `reuseCheck.remindThreshold` | `0.5` | Similarity at/above which a reminder is queued. |
 
-## Skills
+## Addons
 
-| Key | Default | Effect |
-| --- | --- | --- |
-| `modes.active` | `[]` | Discipline skills to activate at session start (e.g. `prover`, `sentinel`, `grill`). Every skill is optional and OFF unless listed here or toggled in-session — nothing is locked on. See `docs/SKILLS.md`. |
+Addons have no settings. Every installed addon is always available and nothing is
+injected automatically, so there is nothing to switch on — drop files in
+`.magentra/addons/` and they load. See `docs/ADDONS.md`.
 
 ## Environment variable overrides
 
@@ -168,15 +168,10 @@ Everything the engine persists in a workspace lives under `.magentra/`:
 | `sessions/subagents/` | Transcripts of subagent child sessions. |
 | `tasks/` | Persisted task lists (per session) and background-task output. |
 | `worktrees/` | Git worktrees created by EnterWorktree. |
-| `skills/` | Workspace skills (global ones live in `~/.magentra/skills/`). |
-| `skills/` | Workspace skill files — disciplines and on-demand actions (`docs/SKILLS.md`). |
-| `debug/` | The `/debug` repro oracle scripts (`repro.sh` / `repro.ps1`). |
+| `addons/` | Workspace addons — a `name.md` or a `name/ADDON.md` folder (`docs/ADDONS.md`). Global ones live in `~/.magentra/addons/`. |
 | `tmp/` | Engine scratch space. |
 | `logs/` | Desktop-app launch logs (secrets redacted, old logs pruned). |
 | `scheduled_tasks.json` | Durable cron jobs. |
-| `ATLAS.md` | The whole-design codebase map (auto-built on first visit). |
-| `LEXICON.md` | The shared-vocabulary file the `lexicon` style maintains. |
-| `DECISIONS.md` | The decision log the `grill` style appends to. |
 | `graph.json`, `symbols.json` | The import graph and symbol index behind GraphQuery. |
 
-`~/.magentra/` holds the global `settings.json` and global `skills/`.
+`~/.magentra/` holds the global `settings.json` and global `addons/`.

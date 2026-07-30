@@ -98,8 +98,8 @@ export type CoreEvent =
         string,
         { input: number; output: number; cacheRead?: number; cacheWrite?: number; contextWindow: number }
       >;
-      /** On-demand action skills discovered in .magentra/skills/ (disciplines arrive via modes_updated). */
-      skills?: { name: string; description: string }[];
+      /** Installed addons — built-ins plus anything under .magentra/addons/. Always invocable; there is no enabled state. */
+      addons?: { name: string; description: string; builtin: boolean }[];
     }
   | { type: "turn_started"; turnId: string }
   | {
@@ -247,27 +247,12 @@ export type CoreEvent =
       contextWarn?: boolean;
     }
   | { type: "error"; message: string; fatal: boolean }
-  /** The generate_skill result: a validated draft to preview/edit, or the failure after retries. */
-  | { type: "skill_draft"; ok: boolean; text?: string; suggestedFilename?: string; error?: string }
-  /** The export_skill result: the skill's .md text + suggested filename, for the app to save. */
-  | { type: "skill_export"; ok: boolean; id: string; filename?: string; text?: string; error?: string }
-  /** On-demand action skills changed (e.g. after install_skill); disciplines re-arrive via modes_updated. */
-  | { type: "skills_updated"; skills: { name: string; description: string }[] }
-  | {
-      type: "modes_updated";
-      modes: {
-        id: string;
-        name: string;
-        description: string;
-        /** Why a user would enable this skill — powers the "?" explainers. */
-        why?: string;
-        active: boolean;
-        builtin: boolean;
-        /** Badged "Recommended" in frontends; advisory only, never forced on. */
-        recommended?: boolean;
-        conflicts?: string[];
-      }[];
-    }
+  /** The generate_addon result: a validated draft to preview/edit, or the failure after retries. */
+  | { type: "addon_draft"; ok: boolean; text?: string; suggestedFilename?: string; error?: string }
+  /** The export_addon result: the addon's .md text + suggested filename, for the app to save. */
+  | { type: "addon_export"; ok: boolean; name: string; filename?: string; text?: string; error?: string }
+  /** The installed-addon roster changed (e.g. after install_addon). */
+  | { type: "addons_updated"; addons: { name: string; description: string; builtin: boolean }[] }
   /**
    * The full prior conversation, render-ready, sent once on /resume so the
    * frontend can repaint the chat. Flat by design: the frontend cannot read the
@@ -385,21 +370,17 @@ export type FrontendRequest =
   | { type: "rename_session"; id: string; label: string }
   | { type: "archive_session"; id: string }
   | { type: "list_sessions" }
-  | { type: "set_modes"; active: string[] }
   /**
-   * Ask the engine to author a skill .md from a plain-language description
+   * Ask the engine to author an addon .md from a plain-language description
    * (LLM-generated, parser-validated). `model` overrides which model authors it
    * (defaults to the session model); `context` is optional extra detail (when it
-   * should apply, examples); `enforce` asks a discipline to hard-gate edits
-   * ("block") rather than only remind ("remind", the default).
+   * should apply, examples).
    */
   | {
-      type: "generate_skill";
+      type: "generate_addon";
       description: string;
-      kind: "discipline" | "action";
       model?: string;
       context?: string;
-      enforce?: "remind" | "block";
       /**
        * Author with a different provider entirely (a saved connection profile),
        * not just a different model on the current one. The app resolves the
@@ -408,10 +389,10 @@ export type FrontendRequest =
        */
       connection?: ConnectionSpec;
     }
-  /** Export a skill's .md text (built-in or workspace file) for the app to save. */
-  | { type: "export_skill"; id: string }
-  /** Write a (re-validated) skill file into .magentra/skills/ and reload both skill kinds. */
-  | { type: "install_skill"; filename: string; text: string };
+  /** Export an addon's .md text (built-in or workspace file) for the app to save. */
+  | { type: "export_addon"; name: string }
+  /** Write a (re-validated) addon file into .magentra/addons/ and reload the roster. */
+  | { type: "install_addon"; filename: string; text: string };
 
 export type Frame =
   | ({ kind: "event" } & CoreEvent)

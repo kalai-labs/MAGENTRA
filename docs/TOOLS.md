@@ -10,7 +10,7 @@ Currently registered (see `createDefaultRegistry()` for the authoritative list):
 Write, Edit, Glob, Grep, Bash, TaskCreate, TaskUpdate, TaskList, TaskGet, AskUserQuestion,
 Agent, TaskStop, TaskOutput, WebFetch, WebSearch, Monitor,
 EnterWorktree, ExitWorktree, PushNotification, CronCreate, CronDelete, CronList,
-ScheduleWakeup, Skill, Workflow, GraphQuery** — plus any
+ScheduleWakeup, Addon, Workflow, GraphQuery** — plus any
 `mcp__<server>__<tool>` entries wired in from configured MCP servers at startup.
 
 The reference sections below cover the original core set (Read through AskUserQuestion) in
