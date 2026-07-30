@@ -122,23 +122,7 @@ function openWorkspaceCtxMenu(e, opts) {
     item("＋ OPEN AS NEW TAB", false, () => window.magentra.openWorkspace(opts.workspace));
     if (window.magentra.openInNewWindow) item("⊞ OPEN IN NEW WINDOW", false, () => window.magentra.openInNewWindow(opts.workspace));
   }
-  document.body.appendChild(menuEl);
-  const rect = menuEl.getBoundingClientRect();
-  let left = e.clientX || 8;
-  let top = e.clientY || 8;
-  if (left + rect.width > window.innerWidth) left = window.innerWidth - rect.width - 4;
-  if (top + rect.height > window.innerHeight) top = window.innerHeight - rect.height - 4;
-  menuEl.style.left = `${Math.max(4, left)}px`;
-  menuEl.style.top = `${Math.max(4, top)}px`;
-  openCtxMenuEl = menuEl;
-  const onDocClick = (ev) => { if (!menuEl.contains(ev.target)) closeCtxMenu(); };
-  const onKeydown = (ev) => { if (ev.key === "Escape") closeCtxMenu(); };
-  document.addEventListener("click", onDocClick, true);
-  document.addEventListener("keydown", onKeydown);
-  closeOpenCtxMenuListeners = () => {
-    document.removeEventListener("click", onDocClick, true);
-    document.removeEventListener("keydown", onKeydown);
-  };
+  mountCtxMenu(menuEl, e);
 }
 
 function renderSidebarWorkspaces() {

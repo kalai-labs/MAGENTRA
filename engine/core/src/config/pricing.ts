@@ -1,4 +1,3 @@
-import { formatTokens, type Usage } from "@magentra/protocol";
 import type { Settings } from "./settings.js";
 
 /**
@@ -70,47 +69,6 @@ export function contextWindowFor(model: string, settings?: Settings): number {
     if (model.toLowerCase().includes(pattern.toLowerCase())) return tokens;
   }
   return 128_000;
-}
-
-/**
- * C = Σ (p_in·T_uncached + p_cw·T_cache write + p_cr·T_cache read + p_out·T_out)
- * for one usage record — the cache-aware cost formula, each of the four token
- * classes billed at its own rate. Returns undefined when the model has no rate
- * card, so callers can print counts without inventing a number.
- */
-export function estimateCost(usage: Usage, pricing: ModelPricing | undefined): number | undefined {
-  if (!pricing) return undefined;
-  const perToken = (ratePerMillion: number): number => ratePerMillion / 1_000_000;
-  return (
-    usage.inputTokens * perToken(pricing.input) +
-    usage.outputTokens * perToken(pricing.output) +
-    usage.cacheReadTokens * perToken(pricing.cacheRead ?? pricing.input) +
-    usage.cacheWriteTokens * perToken(pricing.cacheWrite ?? pricing.input)
-  );
-}
-
-/** "$5.92" / "$0.0008" — cents-precision for real money, 4dp for sub-cent runs. */
-export function formatUsd(dollars: number): string {
-  if (dollars === 0) return "$0.00";
-  if (dollars < 0.01) return `$${dollars.toFixed(4)}`;
-  return `$${dollars.toFixed(2)}`;
-}
-
-/**
- * One turn's billed tokens, all four classes, with the cost when the model is
- * priced: "1.2k in · 40.2k cache read · 300 out ($0.0041)".
- *
- * Cache classes are shown, not folded away: in a cached conversation they carry
- * most of the tokens (and most of the bill), so an "in/out only" line understates
- * real spend by an order of magnitude.
- */
-export function formatTurnUsage(usage: Usage, model?: string, settings?: Settings): string {
-  const parts = [`${formatTokens(usage.inputTokens)} in`];
-  if (usage.cacheReadTokens > 0) parts.push(`${formatTokens(usage.cacheReadTokens)} cache read`);
-  if (usage.cacheWriteTokens > 0) parts.push(`${formatTokens(usage.cacheWriteTokens)} cache write`);
-  parts.push(`${formatTokens(usage.outputTokens)} out`);
-  const cost = model === undefined ? undefined : estimateCost(usage, pricingFor(model, settings));
-  return `${parts.join(" · ")}${cost === undefined ? "" : ` (${formatUsd(cost)})`}`;
 }
 
 /** "18m 36s" / "45s" — durations in the session summary. */

@@ -162,3 +162,49 @@ function closeCtxMenu() {
   if (openCtxMenuEl.parentNode) openCtxMenuEl.parentNode.removeChild(openCtxMenuEl);
   openCtxMenuEl = null;
 }
+
+/**
+ * Mount a built `.ctx-menu`: place it, register it as THE open menu, and wire
+ * its dismissal. Each caller builds its own items — the menus offer different
+ * things — but placement and dismissal are identical, so they live here once.
+ *
+ * `at` is either a pointer event (sit at the cursor, clamped into the viewport;
+ * a keyboard-activated menu reports 0,0 and falls back to the top-left) or
+ * `{ anchor }` (sit above the element with right edges aligned, flipping below
+ * when there is no room above).
+ */
+function mountCtxMenu(menuEl, at) {
+  document.body.appendChild(menuEl);
+  const m = menuEl.getBoundingClientRect();
+  let left;
+  let top;
+  if (at && at.anchor) {
+    const r = at.anchor.getBoundingClientRect();
+    left = r.right - m.width;
+    top = r.top - m.height - 4;
+    if (top < 4) top = r.bottom + 4;
+  } else {
+    left = (at && at.clientX) || 8;
+    top = (at && at.clientY) || 8;
+    if (left + m.width > window.innerWidth) left = window.innerWidth - m.width - 4;
+    if (top + m.height > window.innerHeight) top = window.innerHeight - m.height - 4;
+  }
+  menuEl.style.left = `${Math.max(4, left)}px`;
+  menuEl.style.top = `${Math.max(4, top)}px`;
+
+  openCtxMenuEl = menuEl;
+  // Clicks INSIDE the menu (toggling a skill checkbox) keep it open; only an
+  // outside click or Escape closes it.
+  const onDocClick = (ev) => {
+    if (!menuEl.contains(ev.target)) closeCtxMenu();
+  };
+  const onKeydown = (ev) => {
+    if (ev.key === "Escape") closeCtxMenu();
+  };
+  document.addEventListener("click", onDocClick, true);
+  document.addEventListener("keydown", onKeydown);
+  closeOpenCtxMenuListeners = () => {
+    document.removeEventListener("click", onDocClick, true);
+    document.removeEventListener("keydown", onKeydown);
+  };
+}

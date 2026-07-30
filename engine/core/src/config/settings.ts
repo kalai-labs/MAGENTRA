@@ -196,7 +196,6 @@ export type Settings = z.infer<typeof settingsSchema>;
 export type Hooks = Settings["hooks"];
 export type HookEvent = "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "SessionStart";
 export type HookMatcherEntry = NonNullable<Hooks[HookEvent]>[number];
-export type HookCommand = HookMatcherEntry["hooks"][number];
 
 export interface SettingsWarning {
   source: string;

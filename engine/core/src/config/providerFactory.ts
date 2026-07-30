@@ -80,11 +80,6 @@ export function endpointSpecFromSettings(settings: Settings, apiKey: string | un
   };
 }
 
-/** Stable cache key so one Provider instance is shared per distinct endpoint. */
-export function endpointKey(spec: EndpointSpec): string {
-  return JSON.stringify([spec.provider, spec.baseUrl ?? "", spec.apiKey, spec.numCtx ?? 0]);
-}
-
 /** Constructs the concrete Provider for a resolved endpoint. */
 export function createProviderForEndpoint(spec: EndpointSpec): Provider {
   if (spec.provider === "anthropic") return new AnthropicProvider({ apiKey: spec.apiKey });
