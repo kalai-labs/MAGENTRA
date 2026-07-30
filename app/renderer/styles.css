@@ -460,7 +460,6 @@ body.platform-mac .sidebar-brand { padding-top: 16px; height: 60px; }
 button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
 .sidebar-mini { width: 24px; height: 24px; border-radius: 6px; font-size: 0.85rem; }
 .sidebar-mini:hover { background: var(--hover); }
-.sidebar-count { min-width: 17px; padding: 1px 5px; border-radius: 999px; color: var(--accent-hi); background: var(--accent-soft); font-size: max(10px, 0.65rem); letter-spacing: 0; }
 .sidebar-list { display: flex; flex-direction: column; gap: 1px; max-height: 200px; overflow-y: auto; }
 .sidebar-subhead { padding: 6px 8px 2px; color: var(--text-faint); font-size: max(10px, 0.64rem); font-weight: 650; }
 .sidebar-session, .sidebar-workspace-row {
@@ -485,8 +484,6 @@ button.sidebar-section-title:hover, .sidebar-mini:hover { color: var(--text); }
 .sidebar-workspace-row.active .sidebar-session-dot { background: var(--accent); box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.7); }
 .sidebar-item-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: max(10px, 0.79rem); }
 .sidebar-item-meta { flex: none; color: var(--text-faint); font-size: max(10px, 0.66rem); font-variant-numeric: tabular-nums; }
-.sidebar-item-meta.status-running { color: var(--amber); }
-.sidebar-item-meta.status-scheduled { color: var(--text-dim); }
 .sidebar-item-meta.worktree { color: var(--amber); }
 .sidebar-empty { padding: 4px 8px; color: var(--text-faint); font-size: max(10px, 0.74rem); }
 .sidebar-spacer { flex: 1; min-height: 14px; }
@@ -1310,7 +1307,6 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .modal-actions button, .wiz-actions button { padding: 8px 12px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); font-size: max(10px, 0.74rem); }
 
 #missionModalStatus.err { color: var(--red); }
-.lab-btn.armed { border-color: var(--red); color: var(--red); font-weight: 700; }
 #allowBtn { color: var(--amber); border-color: var(--amber); } #denyBtn { color: var(--red); }
 /* The durable grant sits between deny and allow-once: available, not the
    default reach. Quieter than #allowBtn so one click never feels like the
@@ -1412,8 +1408,8 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
   #composer { padding: 0 14px 12px; }
   .composer-toolbar { flex-wrap: wrap; }
   .view-head, #changesList, #sessionsList, .set-grid { padding-left: 14px; padding-right: 14px; }
-  .session-row, .lab-row { grid-template-columns: 1fr; }
-  .session-actions, .lab-actions { flex-direction: row; }
+  .session-row { grid-template-columns: 1fr; }
+  .session-actions { flex-direction: row; }
 }
 
 html[data-motion="calm"] *,

@@ -179,11 +179,6 @@ function unmountFocusedStream() {
   if (streamEl && streamEl.parentNode === transcriptEl) transcriptEl.removeChild(streamEl);
 }
 
-/** Mount the (already swapped-in) focused tab's transcript into the view. */
-function mountFocusedStream() {
-  if (streamEl && streamEl.parentNode !== transcriptEl) transcriptEl.appendChild(streamEl);
-}
-
 // --- Split layout: automatic tiling of multiple open workspaces --------------
 // One tab: a single focused console with the shared bottom composer. Two or more:
 // every tab tiles into a grid, and each pane carries ITS OWN transcript AND its
