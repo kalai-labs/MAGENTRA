@@ -1,5 +1,5 @@
 import { AnthropicProvider, OpenAICompatProvider, type Provider } from "@magentra/providers";
-import { DEFAULT_OPENAI_BASE_URL, type Settings } from "./settings.js";
+import { DEFAULT_OPENAI_BASE_URL } from "./settings.js";
 
 /**
  * Per-endpoint provider construction: the ONE place that turns resolved
@@ -55,17 +55,30 @@ export function isLocalBaseUrl(url: string): boolean {
 }
 
 /**
- * The ONE mapping from resolved settings to an inference endpoint. Boot
- * (bootstrapEngine) and the live connection swap (set_connection) both go
- * through it, so a session that switched provider mid-conversation is
- * constructed exactly like one that booted on that provider.
- *
- * `settings.baseUrl` is deliberately NOT passed to the Anthropic provider: for
- * an Anthropic session that key names an OpenAI-compatible host, not an
- * Anthropic gateway. Handing it to the Anthropic client would silently point
- * chat at the wrong server.
+ * The connection-shaped fields of a settings layer. The top-level `Settings`
+ * satisfies this structurally, and so does `settings.visionConnection` — which
+ * is why the main endpoint and the vision endpoint are resolved by the SAME
+ * function instead of a near-copy that would drift the first time one of them
+ * learned something (a path quirk, a keyless-local rule).
  */
-export function endpointSpecFromSettings(settings: Settings, apiKey: string | undefined): EndpointSpec {
+export interface ConnectionSettings {
+  provider: ProviderKind;
+  baseUrl?: string | undefined;
+  contextWindow?: number | undefined;
+}
+
+/**
+ * The ONE mapping from a resolved connection to an inference endpoint. Boot
+ * (bootstrapEngine), the live connection swap (set_connection) and the vision
+ * side-call all go through it, so a session that switched provider
+ * mid-conversation is constructed exactly like one that booted on that provider.
+ *
+ * `baseUrl` is deliberately NOT passed to the Anthropic provider: for an
+ * Anthropic session that key names an OpenAI-compatible host, not an Anthropic
+ * gateway. Handing it to the Anthropic client would silently point chat at the
+ * wrong server.
+ */
+export function endpointSpecFromSettings(settings: ConnectionSettings, apiKey: string | undefined): EndpointSpec {
   if (settings.provider === "anthropic") return { provider: "anthropic", apiKey: apiKey ?? "" };
   const baseUrl = settings.baseUrl ?? DEFAULT_OPENAI_BASE_URL;
   return {

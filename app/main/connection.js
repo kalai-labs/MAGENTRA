@@ -17,7 +17,16 @@
 //   4. Self-signed HTTPS (a home-lab gateway) works via the explicit
 //      insecureTls opt-in — the equivalent of `verify=False` in a script.
 
-const { DEFAULT_MODEL, isLocalBaseUrl, normalizeBaseUrl } = require("./config.js");
+const fs = require("node:fs");
+const path = require("node:path");
+const {
+  DEFAULT_MODEL,
+  VISION_API_KEY_ENV,
+  isLocalBaseUrl,
+  normalizeBaseUrl,
+  readEffectiveWorkspaceSettings,
+} = require("./config.js");
+const { findProfile } = require("./profiles.js");
 
 const HOSTED_TIMEOUT_MS = 8000;
 // Local servers can pause the HTTP loop while (un)loading a model.
@@ -371,4 +380,184 @@ async function modelIds(res) {
   return [];
 }
 
-module.exports = { validateCredentialPayload, testEndpoint, candidateBaseUrls };
+// ---------------------------------------------------------------------------
+// Workspace credential storage: the .env the app owns, and the vision endpoint
+// resolved out of a saved profile. Kept beside the validator above because they
+// answer one question between them — what this workspace will connect with —
+// and, like everything else in this file, they touch no Electron API, so the
+// tests drive them directly.
+// ---------------------------------------------------------------------------
+
+/**
+ * The API-key lines of a workspace .env, parsed into { VAR: value }. The
+ * workspace .env is the source of truth the app itself manages: startEngine
+ * overlays these onto the child env so a stale key exported in the user's
+ * shell can never shadow the key they just saved (the engine's own .env
+ * loader deliberately lets real env vars win).
+ */
+function readWorkspaceEnvKeys(workspace) {
+  const keys = {};
+  if (!workspace) return keys;
+  try {
+    const content = fs.readFileSync(path.join(workspace, ".env"), "utf8");
+    for (const rawLine of content.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (line === "" || line.startsWith("#")) continue;
+      const eq = line.indexOf("=");
+      if (eq === -1) continue;
+      const name = line.slice(0, eq).replace(/^export\s+/, "").trim();
+      if (!/^[A-Z0-9_]*API_KEY$/.test(name)) continue;
+      let value = line.slice(eq + 1).trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      if (value) keys[name] = value;
+    }
+  } catch {
+    // missing/unreadable .env — nothing to overlay
+  }
+  return keys;
+}
+
+/**
+ * Rewrite key lines in a workspace .env, in ONE pass. `entries` is
+ * `[{ name, value, alsoRemove?, removeWhenEmpty? }]`:
+ *
+ *   - a non-empty value replaces (or adds) that line;
+ *   - `alsoRemove` names variables that must not survive the rewrite — a legacy
+ *     name for the same endpoint, whose leftover line the engine might resolve
+ *     first;
+ *   - an empty value LEAVES the existing line alone unless `removeWhenEmpty`,
+ *     because a keyless save is usually "this endpoint needs no key", not
+ *     "throw away the key I may switch back to".
+ *
+ * One writer, so the file's owner-only mode and the crash-safety of every key
+ * the app stores cannot drift apart. Returns an error message, or null.
+ */
+function writeWorkspaceEnvKeys(workspace, entries) {
+  const applicable = entries.filter((e) => e.value !== "" || e.removeWhenEmpty || (e.alsoRemove ?? []).length > 0);
+  if (applicable.length === 0) return null;
+  try {
+    const envPath = path.join(workspace, ".env");
+    let lines = [];
+    try {
+      lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
+    } catch {
+      lines = [];
+    }
+    const dropped = applicable.flatMap((e) =>
+      e.value !== "" || e.removeWhenEmpty ? [e.name, ...(e.alsoRemove ?? [])] : (e.alsoRemove ?? []),
+    );
+    if (dropped.length > 0) {
+      const keyLineRe = new RegExp(`^\\s*(?:export\\s+)?(?:${dropped.join("|")})\\s*=`);
+      lines = lines.filter((line) => !keyLineRe.test(line));
+    }
+    while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+    for (const entry of applicable) {
+      if (entry.value !== "") lines.push(`${entry.name}=${entry.value}`);
+    }
+    // Holds API keys: owner-only. mode applies only on create, so chmod fixes
+    // up a pre-existing world-readable file too (no-op on Windows).
+    fs.writeFileSync(envPath, lines.join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
+    try {
+      fs.chmodSync(envPath, 0o600);
+    } catch {
+      // best-effort — never fail the write over permissions polish
+    }
+    return null;
+  } catch (err) {
+    return `failed to write .env: ${err && err.message ? err.message : String(err)}`;
+  }
+}
+
+/**
+ * The vision endpoint a save should land, resolved from what the card sent.
+ *
+ * `selection` is `{ profileId, enabled }` from the connection card, where an
+ * empty `profileId` means "no vision model". OMITTING it entirely means "leave
+ * the workspace's current vision setup alone" — which is what applying a
+ * profile to the MAIN connection must do, or choosing a new chat endpoint
+ * would silently drop the user's vision model.
+ *
+ * Returns `{ connection, enabled }` — connection null when there is none — or
+ * `{ error }`. The connection carries the app's own vocabulary
+ * ("openai-compat"); the engine's spelling is applied when it is written out.
+ */
+function resolveVisionSelection(workspace, selection) {
+  if (selection === undefined) return currentVisionConnection(workspace);
+
+  // `{ keep: true, enabled }` — the Vision toggle: the same endpoint, a
+  // different switch position. It cannot go through the profile lookup below,
+  // because a workspace may hold a vision connection that no longer names a
+  // saved profile (the profile was deleted, or the settings file was written by
+  // hand), and flipping a switch must never delete a working setup.
+  if (selection.keep === true) {
+    const current = currentVisionConnection(workspace);
+    if (!current.connection) return { connection: null, enabled: false };
+    return { connection: current.connection, enabled: selection.enabled !== false };
+  }
+
+  const profileId = typeof selection.profileId === "string" ? selection.profileId.trim() : "";
+  if (!profileId) return { connection: null, enabled: false };
+
+  const profile = findProfile(profileId);
+  if (!profile) return { error: "the chosen vision model is no longer saved — pick another" };
+  const validated = validateCredentialPayload({
+    baseUrl: profile.baseUrl,
+    apiKey: typeof profile.apiKey === "string" ? profile.apiKey : "",
+    model: profile.model,
+    provider: profile.provider,
+    contextWindow: profile.contextWindow,
+    insecureTls: profile.insecureTls === true,
+  });
+  if (!validated.ok) return { error: `vision model "${profile.name}": ${validated.error}` };
+  return {
+    connection: {
+      provider: validated.provider,
+      baseUrl: validated.baseUrl,
+      apiKey: validated.apiKey,
+      model: validated.model,
+      contextWindow: validated.contextWindow,
+      insecureTls: validated.insecureTls,
+      profileId,
+    },
+    // A vision model is chosen so it can be used; the toggle only has to say
+    // otherwise explicitly.
+    enabled: selection.enabled !== false,
+  };
+}
+
+/** The vision endpoint a workspace already has, in the same shape
+ *  {@link resolveVisionSelection} returns. The key comes from the .env the app
+ *  wrote (falling back to a key stored in settings, which is where a
+ *  hand-edited setup would keep it). */
+function currentVisionConnection(workspace) {
+  const settings = readEffectiveWorkspaceSettings(workspace);
+  const saved = settings.visionConnection;
+  if (!saved || typeof saved !== "object" || typeof saved.model !== "string" || saved.model.trim() === "") {
+    return { connection: null, enabled: false };
+  }
+  const storedKey = typeof saved.apiKey === "string" ? saved.apiKey : "";
+  return {
+    connection: {
+      provider: saved.provider === "anthropic" ? "anthropic" : "openai-compat",
+      baseUrl: typeof saved.baseUrl === "string" ? saved.baseUrl : "",
+      apiKey: readWorkspaceEnvKeys(workspace)[VISION_API_KEY_ENV] || storedKey,
+      model: saved.model.trim(),
+      contextWindow: Number.isFinite(saved.contextWindow) ? saved.contextWindow : undefined,
+      insecureTls: saved.allowInsecureTls === true,
+      profileId: typeof saved.profileId === "string" ? saved.profileId : "",
+    },
+    enabled: settings.vision === true,
+  };
+}
+
+module.exports = {
+  validateCredentialPayload,
+  testEndpoint,
+  candidateBaseUrls,
+  readWorkspaceEnvKeys,
+  writeWorkspaceEnvKeys,
+  resolveVisionSelection,
+  currentVisionConnection,
+};

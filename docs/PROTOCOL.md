@@ -473,13 +473,18 @@ The session's working directory moved (EnterWorktree/ExitWorktree).
 
 Starts a turn with the user's text.
 
-| Field | Type |
-| --- | --- |
-| `type` | `"user_message"` |
-| `text` | string |
+| Field | Type | Notes |
+| --- | --- | --- |
+| `type` | `"user_message"` | |
+| `text` | string | |
+| `images` | `ImageAttachment[]`? | Images attached to this turn: `{ name, mediaType, data }`, `data` base64. Each is sent to the configured vision endpoint (`settings.visionConnection`) and enters the conversation as that model's **description** — the main model is never handed an image. Attaching one while vision is off is answered with a non-fatal `error` frame, and the typed text still runs. Max 8 per message. |
 
 ```json
 {"type":"user_message","text":"Rename getUser to fetchUser across the repo."}
+```
+
+```json
+{"type":"user_message","text":"why does this dialog look wrong?","images":[{"name":"bug.png","mediaType":"image/png","data":"iVBORw0KG…"}]}
 ```
 
 ### `permission_response`

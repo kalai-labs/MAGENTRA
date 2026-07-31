@@ -9,6 +9,7 @@ import {
   type ConnectionSpec,
   type CoreEvent,
   type FrontendRequest,
+  type ImageAttachment,
   type PermissionDecision,
   type RestoredMessage,
   type SessionSummary,
@@ -42,6 +43,14 @@ import type { Addon } from "../agent/addons.js";
 import type { ToolRegistry } from "../agent/tool.js";
 import { Transcript, stripSystemReminders } from "../state/transcript.js";
 
+/** Ceilings on the images one user message may carry. The desktop app enforces
+ *  its own, smaller caps at the picker; these exist because the engine must not
+ *  trust a frontend — an unbounded batch of base64 would be paid for in vision
+ *  calls before anything noticed. */
+const MAX_IMAGES_PER_MESSAGE = 8;
+/** ~9 MB of base64, i.e. roughly a 6.5 MB image. */
+const MAX_IMAGE_DATA_CHARS = 9_000_000;
+
 /** When a just-persisted setting takes effect, relative to the running session. */
 type SettingTiming = "session" | "nextTurn" | "restart" | "clear";
 
@@ -73,6 +82,10 @@ export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTi
   model: "nextTurn",
   smallModel: "nextTurn",
   vision: "nextTurn",
+  // The vision endpoint is resolved per describe call, from a client cached on
+  // the connection itself — so a change is live the next time an image is
+  // looked at, with no provider rebuild to schedule.
+  visionConnection: "session",
   baseUrl: "session",
   apiKeyEnv: "session",
   apiKey: "session",
@@ -602,13 +615,19 @@ export class Engine {
   send(request: FrontendRequest): void {
     switch (request.type) {
       case "user_message":
-        this.startExclusive("sending another message", () => this.session.runTurn(request.text));
+        this.startExclusive("sending another message", async () =>
+          this.session.runTurn(await this.withImageDescriptions(request.text, request.images)),
+        );
         break;
       case "steer_message":
         // The frontend saw a busy turn; if it ended in the meantime, the
-        // steering text is just the next user message.
-        if (this.session.isBusy()) this.session.steer(request.text);
-        else this.startExclusive("sending another message", () => this.session.runTurn(request.text));
+        // steering text is just the next user message. Either way the images
+        // are described first — a running turn must not be steered by a
+        // reference to a picture nothing has looked at yet.
+        void this.withImageDescriptions(request.text, request.images).then((text) => {
+          if (this.session.isBusy()) this.session.steer(text);
+          else this.startExclusive("sending another message", () => this.session.runTurn(text));
+        });
         break;
       case "permission_response": {
         const resolve = this.pendingPermissions.get(request.id);
@@ -960,10 +979,74 @@ export class Engine {
   }
 
   /**
-   * Mirror a just-persisted setting into the in-memory {@link Settings} (shared with the
-   * live session, so a fresh session via /clear always sees it) and report when it takes
-   * effect. Returns the human-readable timing note for the command output.
+   * Turn a user turn's attached images into text before it reaches the session.
+   *
+   * The main model is never handed a picture: each image goes to the configured
+   * vision endpoint and its DESCRIPTION is folded into the message, ahead of
+   * what the user typed. So the conversation — and the transcript, and any later
+   * compaction — holds words that can be checked, not bytes that only one
+   * endpoint could read.
+   *
+   * Nothing here can fail the turn. An image that cannot be looked at becomes a
+   * plain note saying so, and the typed text still runs: losing the message
+   * because a vision server was down would be the worse outcome.
    */
+  private async withImageDescriptions(text: string, images: ImageAttachment[] | undefined): Promise<string> {
+    if (!images || images.length === 0) return text;
+
+    const rejected = (reason: string): string => {
+      this.emit({ type: "error", message: `Image attachment: ${reason}`, fatal: false });
+      return [
+        `[The user attached ${images.length} image(s) to this message, but they could not be read: ${reason}. ` +
+          `You have NOT seen them — do not describe them or draw conclusions from them; say what happened and ask the user how to proceed.]`,
+        text,
+      ]
+        .filter((part) => part.trim() !== "")
+        .join("\n\n");
+    };
+
+    const unusable = this.session.visionUnavailableReason();
+    if (unusable) return rejected(unusable);
+    if (images.length > MAX_IMAGES_PER_MESSAGE) {
+      return rejected(`too many images (${images.length}; the limit is ${MAX_IMAGES_PER_MESSAGE} per message)`);
+    }
+
+    const blocks: string[] = [];
+    for (const image of images) {
+      const label = typeof image.name === "string" && image.name.trim() !== "" ? image.name.trim() : "attached image";
+      if (typeof image.data !== "string" || image.data === "" || typeof image.mediaType !== "string") {
+        blocks.push(`[The user attached "${label}", but it arrived malformed and was not read. You have NOT seen it.]`);
+        continue;
+      }
+      if (image.data.length > MAX_IMAGE_DATA_CHARS) {
+        blocks.push(
+          `[The user attached "${label}", but it is too large to send to the vision model. You have NOT seen it.]`,
+        );
+        continue;
+      }
+      // Announced BEFORE the call, not after: describing runs inside the turn
+      // lock and can take seconds, and an interface that shows nothing at all
+      // while it happens reads as a message that was swallowed.
+      this.emit({
+        type: "command_output",
+        text: `🖼 looking at ${label} with ${this.opts.settings.visionConnection?.model ?? "the vision model"}…`,
+      });
+      try {
+        blocks.push(
+          await this.session.describeImageForContext({ data: image.data, mediaType: image.mediaType, label }),
+        );
+      } catch (err) {
+        const message = (err as Error).message;
+        this.emit({ type: "error", message: `Could not look at ${label}: ${message}`, fatal: false });
+        blocks.push(
+          `[The user attached "${label}", but the vision model could not look at it: ${message}. ` +
+            `You have NOT seen it — do not describe it or draw conclusions from it.]`,
+        );
+      }
+    }
+    return [...blocks, text].filter((part) => part.trim() !== "").join("\n\n");
+  }
+
   /**
    * Live model swap (set_model frame): persist it and push it into the running
    * session so the NEXT turn uses it — no engine restart, so the conversation
@@ -981,6 +1064,11 @@ export class Engine {
     }
   }
 
+  /**
+   * Mirror a just-persisted setting into the in-memory {@link Settings} (shared with the
+   * live session, so a fresh session via /clear always sees it) and report when it takes
+   * effect. Returns the human-readable timing note for the command output.
+   */
   private applySettingLive(key: string, value: string | number | boolean): string {
     setSettingPath(this.opts.settings as unknown as Record<string, unknown>, key, value);
     const topKey = key.split(".")[0] as keyof typeof settingsSchema.shape;
@@ -1055,7 +1143,36 @@ export class Engine {
       delete settings.apiKey;
     }
 
-    const insecure = connection.insecureTls === true && connection.provider !== "anthropic";
+    // The vision endpoint travels with the connection because it is saved with
+    // it. ABSENT MEANS CLEARED — leaving a previous vision model in place would
+    // keep describing images through an endpoint the user removed, and would
+    // leave `vision` switched on with nothing behind it.
+    if (connection.vision && typeof connection.vision.model === "string" && connection.vision.model.trim() !== "") {
+      const vision = connection.vision;
+      settings.visionConnection = {
+        provider: vision.provider === "anthropic" ? "anthropic" : "openai-compatible",
+        model: vision.model.trim(),
+        ...(typeof vision.baseUrl === "string" && vision.baseUrl.trim() !== ""
+          ? { baseUrl: vision.baseUrl.replace(/\/+$/, "") }
+          : {}),
+        ...(typeof vision.apiKey === "string" && vision.apiKey.trim() !== "" ? { apiKey: vision.apiKey.trim() } : {}),
+        ...(typeof vision.contextWindow === "number" && Number.isInteger(vision.contextWindow)
+          ? { contextWindow: vision.contextWindow }
+          : {}),
+        ...(vision.insecureTls === true ? { allowInsecureTls: true } : {}),
+      };
+      settings.vision = vision.enabled === true;
+    } else {
+      delete settings.visionConnection;
+      settings.vision = false;
+    }
+
+    // Process-wide, so it is the OR of both endpoints: Node reads this per TLS
+    // connection, and a self-signed vision box needs it as much as a
+    // self-signed main one.
+    const insecure =
+      (connection.insecureTls === true && connection.provider !== "anthropic") ||
+      (connection.vision?.insecureTls === true && connection.vision.provider !== "anthropic");
     settings.allowInsecureTls = insecure;
     this.applyInsecureTls(insecure);
 

@@ -2,6 +2,16 @@ import type { Usage } from "@magentra/protocol";
 
 export type ContentBlock =
   | { type: "text"; text: string }
+  /**
+   * An image in a user message — base64 payload plus its media type.
+   *
+   * Distinct from the image a {@link ToolResultPart} carries: a tool result is
+   * addressed to a tool_call_id, which the OpenAI wire format serializes as a
+   * `role: "tool"` message that cannot hold anything but text. A user-role image
+   * is the shape every multimodal API does accept, and it is how the vision
+   * side-call hands its picture to the model that can see one.
+   */
+  | { type: "image"; data: string; mediaType: string }
   | { type: "thinking"; thinking: string }
   | { type: "tool_use"; id: string; name: string; input: unknown }
   | {

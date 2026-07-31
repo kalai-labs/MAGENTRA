@@ -1266,6 +1266,9 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .seg-btn { padding: 6px 10px; border: 0; border-left: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: max(10px, 0.68rem); }
 .seg-btn:first-child { border-left: 0; }
 .seg-btn.on { color: var(--accent-hi); background: var(--accent-soft); }
+/* A switch with nothing behind it — Vision before a vision model is saved. It
+   still shows its position, it just cannot be moved. */
+.seg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .key-wrap { min-width: 0; flex: 1; display: flex; gap: 5px; }
 #setKeyReveal { width: 32px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); }
 .set-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; }
@@ -1326,7 +1329,7 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .wiz-preset:disabled:hover, .wiz-preset-off:hover { background: var(--raised); color: var(--text-dim); }
 .wiz-field { display: block; margin-bottom: 9px; }
 .wiz-field > span { display: block; margin-bottom: 4px; color: var(--text-faint); font-size: max(10px, 0.65rem); font-weight: 700; letter-spacing: 0.08em; }
-.wiz-field input { width: 100%; padding: 8px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); }
+.wiz-field input, .wiz-field select { width: 100%; padding: 8px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); color-scheme: var(--color-scheme); }
 .wiz-key-hint { margin-top: 4px; border: 0; background: none; color: var(--accent-hi); font-size: max(10px, 0.68rem); }
 .wiz-field-hint { display: block; margin-top: 4px; color: var(--text-faint); font-size: max(10px, 0.68rem); font-weight: 400; letter-spacing: 0; line-height: 1.45; }
 .wiz-check { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 9px; color: var(--text); font-size: max(10px, 0.76rem); cursor: pointer; }

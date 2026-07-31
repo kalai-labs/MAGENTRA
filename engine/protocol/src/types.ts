@@ -311,11 +311,51 @@ export interface ConnectionSpec {
   contextWindow?: number;
   /** Skip TLS verification for this endpoint (self-signed home-lab gateway). */
   insecureTls?: boolean;
+  /**
+   * The endpoint that looks at images, and whether it is switched on. The main
+   * model is never sent a picture: a vision model describes it and the
+   * DESCRIPTION enters the conversation.
+   *
+   * ABSENT MEANS CLEARED — the same rule `baseUrl` follows. A connection saved
+   * with no vision model chosen must leave none behind, or the workspace keeps
+   * describing images through an endpoint the user just removed.
+   */
+  vision?: VisionConnectionSpec;
+}
+
+/** The vision endpoint of a {@link ConnectionSpec}. `enabled` is the user-facing
+ *  toggle; it cannot be true without the rest of this object existing. */
+export interface VisionConnectionSpec {
+  enabled: boolean;
+  provider: "anthropic" | "openai-compat";
+  baseUrl?: string;
+  /** Empty string for a keyless local server. */
+  apiKey: string;
+  model: string;
+  contextWindow?: number;
+  insecureTls?: boolean;
+}
+
+/** An image attached to a user message. Base64, because it comes from the
+ *  frontend over a line-delimited JSON protocol. */
+export interface ImageAttachment {
+  /** File name as the user knows it — used to label the description. */
+  name: string;
+  /** "image/png", "image/jpeg", "image/gif", "image/webp". */
+  mediaType: string;
+  data: string;
 }
 
 /** Frontend -> core. */
 export type FrontendRequest =
-  | { type: "user_message"; text: string }
+  /**
+   * A user turn. `images` are attachments the user added to it: each is sent to
+   * the configured vision endpoint and enters the conversation as a
+   * description, never as an image (see settings.visionConnection). Attaching
+   * one while vision is off is refused with an error frame, and the text of the
+   * message still runs.
+   */
+  | { type: "user_message"; text: string; images?: ImageAttachment[] }
   | {
       type: "permission_response";
       id: string;
@@ -361,7 +401,7 @@ export type FrontendRequest =
    * frontends while a turn is busy; falls back to a normal user turn when
    * the session turns out to be idle (the busy check races the turn end).
    */
-  | { type: "steer_message"; text: string }
+  | { type: "steer_message"; text: string; images?: ImageAttachment[] }
   | { type: "slash_command"; command: string; args?: string }
   | { type: "bang_command"; cmd: string }
   | { type: "resume_session"; id: string }

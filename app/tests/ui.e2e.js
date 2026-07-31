@@ -16,6 +16,9 @@ const rendererErrors = [];
 // sanitized records (never a raw key — only hasKey), exactly what the IPC returns.
 const profiles = [];
 let profileSeq = 0;
+// The workspace's vision endpoint, as connection:info reports it. Starts unset:
+// a workspace cannot look at an image until someone chooses a model for it.
+let visionState = { profileId: "", model: "", enabled: false };
 let windowRef = null;
 let passed = 0;
 
@@ -51,9 +54,29 @@ function apiResult(name, args) {
     // The update state the renderer starts from. The scenario drives the rest by
     // pushing states over test:update-state, as main/updates.js broadcasts them.
     case "updateState": return { ...updateStateNow };
-    case "connectionInfo": return { baseUrl: "https://api.test/v1", model: MODEL, hasKey: true, contextWindow: 65536 };
+    case "connectionInfo": return {
+      baseUrl: "https://api.test/v1",
+      model: MODEL,
+      hasKey: true,
+      contextWindow: 65536,
+      // The vision endpoint, exactly as main reports it: which saved profile
+      // describes images, and whether the switch is on.
+      visionProfileId: visionState.profileId,
+      visionModel: visionState.model,
+      visionEnabled: visionState.enabled,
+    };
     case "revealKey": return { key: "test-key" };
     case "getWebSearch": return true;
+    case "getVision": return { ...visionState };
+    // Refused without a vision model — the switch has nothing to turn on. Same
+    // rule as settings:setVision in the main process.
+    case "setVision": {
+      if (args[0] === true && !visionState.profileId) {
+        return { ok: false, error: "choose a vision model first — there is nothing to send images to" };
+      }
+      visionState = { ...visionState, enabled: args[0] === true };
+      return { ok: true, enabled: visionState.enabled };
+    }
     case "testConnection": {
       // Echo the normalized base like the real main process (a pasted
       // ".../chat/completions" reduces to the base) so the wizard's
@@ -97,6 +120,18 @@ function apiResult(name, args) {
       return { ok: true, profiles: profiles.map((p) => ({ ...p })) };
     }
     case "applyProfile": return { ok: true };
+    // Saving the connection is what LANDS the vision model, so the stub does
+    // what main does: an empty profileId clears it, a chosen one arrives on.
+    case "writeEnv": {
+      const chosen = args[0] && args[0].vision ? args[0].vision : null;
+      if (chosen) {
+        const profile = profiles.find((p) => p.id === chosen.profileId);
+        visionState = chosen.profileId
+          ? { profileId: chosen.profileId, model: profile ? profile.model : "", enabled: chosen.enabled !== false }
+          : { profileId: "", model: "", enabled: false };
+      }
+      return { ok: true, live: true, model: MODEL };
+    }
     default: return { ok: true };
   }
 }
@@ -1090,6 +1125,74 @@ async function run() {
     assert.equal(savedProfile.args[0].name, "My Endpoint");
     assert.ok(calls.some((call) => call.name === "applyProfile"));
     assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
+  });
+
+  await test("vision: a saved profile becomes the image describer, and the switch follows it", async () => {
+    // The main model is never sent an image, so this picker is the whole gate:
+    // no vision model → the switch cannot move, and images cannot be attached.
+    await evaluate(`document.querySelector('#navSettings').click()`);
+    await pause(80);
+    const before = await evaluate(`(() => ({
+      options: [...document.querySelectorAll('#setVisionProfile option')].map((o) => o.value),
+      selected: document.querySelector('#setVisionProfile').value,
+      offOn: document.querySelector('#setVision [data-vision="off"]').classList.contains('on'),
+      disabled: document.querySelector('#setVision [data-vision="on"]').disabled,
+    }))()`);
+    assert.equal(before.selected, "", "a workspace starts with no vision model");
+    assert.equal(before.offOn, true, "the switch rests at OFF");
+    assert.equal(before.disabled, true, "with nothing to send images to, ON cannot be chosen");
+    assert.ok(before.options.length > 1, "the saved profiles are offered as vision models");
+
+    // Clicking a disabled switch must not reach the main process — a UI that
+    // says ON while the engine has no endpoint fails every image at the wall.
+    await evaluate(`document.querySelector('#setVision [data-vision="on"]').click()`);
+    await pause();
+    assert.ok(!calls.some((call) => call.name === "setVision"), "a dead switch sends nothing");
+
+    // Choosing one and saving: the picker rides along with the connection, and
+    // a newly chosen model arrives switched on.
+    const profileId = before.options.find((value) => value !== "");
+    await evaluate(`(() => {
+      const sel = document.querySelector('#setVisionProfile');
+      sel.value = ${JSON.stringify(profileId)};
+      sel.dispatchEvent(new Event('change'));
+      document.querySelector('#setSaveBtn').click();
+    })()`);
+    await pause(80);
+    const saved = calls.filter((call) => call.name === "writeEnv").pop();
+    assert.equal(saved.args[0].vision.profileId, profileId, "SAVE carries the chosen vision model");
+    assert.equal(saved.args[0].vision.enabled, true, "picking a vision model switches it on");
+
+    // Now the switch is live, and it moves the same setting on its own.
+    assert.equal(
+      await evaluate(`document.querySelector('#setVision [data-vision="on"]').disabled`),
+      false,
+      "a saved vision model unlocks the switch",
+    );
+    await evaluate(`document.querySelector('#setVision [data-vision="off"]').click()`);
+    await pause();
+    assert.ok(
+      calls.some((call) => call.name === "setVision" && call.args[0] === false),
+      "the switch turns vision off through the same setting",
+    );
+    assert.equal(
+      await evaluate(`document.querySelector('#setVision [data-vision="off"]').classList.contains('on')`),
+      true,
+    );
+
+    // Clearing the picker removes the endpoint rather than leaving the last one.
+    await evaluate(`(() => {
+      const sel = document.querySelector('#setVisionProfile');
+      sel.value = '';
+      sel.dispatchEvent(new Event('change'));
+      document.querySelector('#setSaveBtn').click();
+    })()`);
+    await pause(80);
+    const cleared = calls.filter((call) => call.name === "writeEnv").pop();
+    assert.equal(cleared.args[0].vision.profileId, "", '"None" clears the vision model');
+    assert.equal(cleared.args[0].vision.enabled, false);
+    await evaluate(`document.querySelector('#navConsole').click()`);
+    await pause();
   });
 
   await test("custom endpoint wizard: pasted URL normalizes, keyless + self-signed works, model stays aligned", async () => {

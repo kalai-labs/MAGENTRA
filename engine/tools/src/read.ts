@@ -6,9 +6,16 @@ import { extractDocumentText, type ToolDefinition } from "@magentra/core";
 const MAX_LINES_DEFAULT = 2000;
 const MAX_LINE_LENGTH = 2000;
 const MAX_DOC_BYTES = 20 * 1024 * 1024; // 20 MB cap for document extraction
+/** Cap on an image sent to the vision endpoint. Base64 inflates by a third, and
+ *  a screenshot that matters is far under this; the limit is here so a stray
+ *  20 MB render fails fast instead of after the upload. */
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 const DOC_EXTS = new Set([".pdf", ".docx", ".pptx", ".xlsx", ".rtf", ".odt", ".epub"]);
 
+/** Extensions the vision endpoint is asked to look at, and the media type each
+ *  is sent as. MIRRORED in app/main.js (same name), which decides what the
+ *  composer's attach picker offers — see the note there. */
 const IMAGE_TYPES: Record<string, string> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -59,7 +66,7 @@ export const readTool: ToolDefinition<z.infer<typeof inputSchema>> = {
 - file_path must be an absolute path.
 - Reads up to {{maxLines}} lines by default; use offset/limit for larger files, and read only the part you need when you already know where it is.
 - Output uses cat -n format: line number, a tab, then the line content, starting at line 1.
-- Image files (png/jpg/gif/webp) are returned visually when vision is enabled for this workspace; when it is off, reading one is refused rather than returning content you cannot see.
+- Image files (png/jpg/gif/webp) come back as a written description produced by a separate vision model — you never see the image itself, so treat that text as your only account of it. When no vision model is configured, reading an image is refused rather than returning content you cannot see.
 - Document files (PDF, DOCX, PPTX, XLSX, RTF, ODT, EPUB) are text-extracted (best-effort, for text-based documents); the output is line-numbered and prefixed with an extraction header. Scanned or encrypted documents are not supported and return an error.
 - Reading a directory, a missing file, or an empty file returns an explanatory error instead of content.
 - Do not re-read a file you just edited to verify the change — Edit/Write fail loudly when they cannot apply.`,
@@ -85,19 +92,42 @@ export const readTool: ToolDefinition<z.infer<typeof inputSchema>> = {
     const imageType = IMAGE_TYPES[extname(path).toLowerCase()];
     if (imageType) {
       // Handing an image to a model that cannot see one is worse than refusing:
-      // it produces confident commentary on a picture that was never read.
-      if (!ctx.session.settings.vision) {
+      // it produces confident commentary on a picture that was never read. So
+      // the image goes to the configured vision model instead, and what comes
+      // back here is that model's description — text, in the transcript.
+      const unavailable = ctx.session.visionUnavailableReason();
+      if (unavailable) {
         return {
           content:
-            `${basename(path)} is an image, and vision is off for this workspace — you cannot see it. ` +
-            `Do not describe or draw conclusions from it. Verify this change some other way, or say plainly that it stays unverified. ` +
-            `(The user can enable it with /settings vision true if their model supports images.)`,
+            `${basename(path)} is an image and you cannot see it — ${unavailable}. ` +
+            `Do not describe or draw conclusions from it. Verify this change some other way, or say plainly that it stays unverified.`,
+          isError: true,
+        };
+      }
+      if (stat.size > MAX_IMAGE_BYTES) {
+        return {
+          content: `${basename(path)} is ${stat.size} bytes, over the ${MAX_IMAGE_BYTES}-byte limit for an image the vision model will accept.`,
           isError: true,
         };
       }
       const data = readFileSync(path).toString("base64");
+      let described: string;
+      try {
+        described = await ctx.session.describeImageForContext({
+          data,
+          mediaType: imageType,
+          label: basename(path),
+        });
+      } catch (err) {
+        return {
+          content:
+            `Could not look at ${basename(path)}: ${(err as Error).message}. ` +
+            `You have NOT seen this image — do not describe it or draw conclusions from it.`,
+          isError: true,
+        };
+      }
       ctx.session.fileState.recordRead(path);
-      return { content: [{ type: "image", data, mediaType: imageType }] };
+      return { content: described };
     }
 
     const ext = extname(path).toLowerCase();

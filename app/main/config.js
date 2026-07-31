@@ -27,6 +27,12 @@ const DEFAULT_API_KEY_ENV = "MAGENTRA_API_KEY";
 // keeps working with or without a re-save.
 const LEGACY_API_KEY_ENV_VARS = ["DEEPINFRA_API_KEY"];
 
+// The vision endpoint's key (mirrors VISION_API_KEY_ENV in
+// engine/core/src/config/settings.ts). Its OWN variable, never the main one:
+// the two endpoints are usually different services, and one name for two keys
+// is how a key gets sent to the wrong host.
+const VISION_API_KEY_ENV = "MAGENTRA_VISION_API_KEY";
+
 // The renderer owns the theme choice (it lives in localStorage with the rest of
 // the UI settings), but main needs the *name* one launch early: the window's
 // pre-paint backgroundColor and the native titlebar overlay are both set before
@@ -276,6 +282,7 @@ module.exports = {
   DEFAULT_BASE_URL,
   DEFAULT_API_KEY_ENV,
   LEGACY_API_KEY_ENV_VARS,
+  VISION_API_KEY_ENV,
   DEFAULT_THEME,
   THEMES,
   MAX_RECENT_WORKSPACES,

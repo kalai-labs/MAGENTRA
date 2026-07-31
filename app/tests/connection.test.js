@@ -9,9 +9,18 @@ const http = require("node:http");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { testEndpoint, candidateBaseUrls, validateCredentialPayload } = require("../main/connection.js");
+const {
+  testEndpoint,
+  candidateBaseUrls,
+  validateCredentialPayload,
+  readWorkspaceEnvKeys,
+  writeWorkspaceEnvKeys,
+  resolveVisionSelection,
+  currentVisionConnection,
+} = require("../main/connection.js");
 const {
   DEFAULT_API_KEY_ENV,
+  VISION_API_KEY_ENV,
   isLocalBaseUrl,
   normalizeBaseUrl,
   apiKeyEnvVarFor,
@@ -19,6 +28,7 @@ const {
   readWorkspaceSettings,
   updateWorkspaceSettings,
 } = require("../main/config.js");
+const { upsertProfile, deleteProfile } = require("../main/profiles.js");
 
 function listen(server) {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server.address().port)));
@@ -296,8 +306,108 @@ async function main() {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 
+  // ── the vision endpoint: chosen from a profile, kept, or cleared ─────────
+  // The main model is never sent an image, so this second connection is what
+  // decides whether images can be used at all. Each case below is one the app
+  // gets wrong in a different, silent way: keeping a removed model, dropping a
+  // working one, or leaving `vision` on with nothing behind it.
+  {
+    // $HOME points at a temp dir: profiles.json and the global settings layer
+    // both live there, so this block cannot read (or write) the real ones.
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "magentra-home-"));
+    const prevHome = process.env.HOME;
+    const prevUserProfile = process.env.USERPROFILE;
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), "magentra-vision-ws-"));
+    try {
+      assert.deepEqual(
+        currentVisionConnection(ws),
+        { connection: null, enabled: false },
+        "a workspace with no vision model has none",
+      );
+
+      const { id } = upsertProfile({
+        name: "vision box",
+        baseUrl: "http://127.0.0.1:11434/v1",
+        apiKey: "",
+        model: "llava",
+        provider: "openai-compat",
+      });
+
+      const chosen = resolveVisionSelection(ws, { profileId: id });
+      assert.equal(chosen.connection.model, "llava");
+      assert.equal(chosen.connection.baseUrl, "http://127.0.0.1:11434/v1");
+      assert.equal(chosen.enabled, true, "choosing a vision model switches it on");
+      // A local endpoint needs no key — the same rule the main connection uses.
+      assert.equal(chosen.connection.apiKey, "");
+
+      assert.equal(resolveVisionSelection(ws, { profileId: "" }).connection, null, '"None" clears the endpoint');
+      assert.ok(
+        resolveVisionSelection(ws, { profileId: "no-such-profile" }).error,
+        "an unknown profile is an error, never a silent clear",
+      );
+
+      // What the app writes on save, as the engine will read it back.
+      updateWorkspaceSettings(ws, (s) => {
+        s.visionConnection = {
+          provider: "openai-compatible",
+          model: "llava",
+          baseUrl: "http://127.0.0.1:11434/v1",
+          profileId: id,
+        };
+        s.vision = true;
+      });
+
+      // Omitting the selection means "leave it alone" — this is the path an
+      // applied profile takes, and it must not drop the vision model with it.
+      const kept = resolveVisionSelection(ws, undefined);
+      assert.equal(kept.connection.model, "llava", "a main-connection change keeps the vision model");
+      assert.equal(kept.enabled, true);
+
+      // The toggle works off what is SAVED, not off a profile lookup: deleting
+      // the profile must not make the switch delete a working setup.
+      deleteProfile(id);
+      const toggledOff = resolveVisionSelection(ws, { keep: true, enabled: false });
+      assert.equal(toggledOff.connection.model, "llava", "the endpoint survives its profile");
+      assert.equal(toggledOff.enabled, false);
+      assert.ok(
+        resolveVisionSelection(ws, { profileId: id }).error,
+        "re-selecting a deleted profile is refused rather than half-applied",
+      );
+
+      // ── .env: both keys in one rewrite ────────────────────────────────────
+      writeWorkspaceEnvKeys(ws, [
+        { name: DEFAULT_API_KEY_ENV, value: "main-key", alsoRemove: ["DEEPINFRA_API_KEY"] },
+        { name: VISION_API_KEY_ENV, value: "vision-key", removeWhenEmpty: true },
+      ]);
+      let keys = readWorkspaceEnvKeys(ws);
+      assert.equal(keys[DEFAULT_API_KEY_ENV], "main-key");
+      assert.equal(keys[VISION_API_KEY_ENV], "vision-key", "the vision key has its OWN variable");
+
+      // The saved key is what the live connection frame carries.
+      assert.equal(currentVisionConnection(ws).connection.apiKey, "vision-key");
+
+      writeWorkspaceEnvKeys(ws, [
+        { name: DEFAULT_API_KEY_ENV, value: "" },
+        { name: VISION_API_KEY_ENV, value: "", removeWhenEmpty: true },
+      ]);
+      keys = readWorkspaceEnvKeys(ws);
+      assert.equal(keys[DEFAULT_API_KEY_ENV], "main-key", "a keyless save keeps the key it may switch back to");
+      assert.equal(keys[VISION_API_KEY_ENV], undefined, "removing the vision model drops its key");
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = prevUserProfile;
+      fs.rmSync(home, { recursive: true, force: true });
+      fs.rmSync(ws, { recursive: true, force: true });
+    }
+  }
+
   process.stdout.write("✓ connection test walks localhost candidates, tolerates missing /models, and reports real causes\n");
   process.stdout.write("✓ provider-aware key vars, atomic workspace settings\n");
+  process.stdout.write("✓ vision endpoint resolves from a profile, survives its deletion, and clears its own key\n");
 }
 
 main().catch((err) => {

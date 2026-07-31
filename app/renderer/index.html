@@ -353,6 +353,20 @@
             <span>Allow self-signed certificate <small>— only for https servers you own</small></span>
           </label>
           <p class="set-note">Leave empty: the engine uses the model's real window automatically. Set a number ONLY for local servers (it becomes <code>num_ctx</code>); saving with the field empty clears any old override.</p>
+          <div class="set-row">
+            <span class="set-label">Vision model</span>
+            <select id="setVisionProfile">
+              <option value="">None — images cannot be read</option>
+            </select>
+          </div>
+          <div class="set-row">
+            <span class="set-label">Vision</span>
+            <div class="seg" id="setVision">
+              <button class="seg-btn" data-vision="on">ON</button>
+              <button class="seg-btn on" data-vision="off">OFF</button>
+            </div>
+          </div>
+          <p class="set-note">The main model is never shown an image. Pick a saved connection that can see one: it describes the picture and the agent works from that description. Without one, images cannot be attached and <code>Read</code> refuses them. Saved with the connection below.</p>
           <div class="set-actions">
             <span id="setConnStatus"></span>
             <button id="setTestBtn">TEST</button>
@@ -632,6 +646,12 @@
       </label>
       <label class="wiz-field" id="wizContextField" hidden><span>CONTEXT SIZE</span>
         <input id="wizContext" type="number" min="256" step="256" placeholder="auto — set e.g. 8192 for local servers" spellcheck="false" />
+      </label>
+      <label class="wiz-field" id="wizVisionField"><span>VISION MODEL <small>— optional</small></span>
+        <select id="wizVisionProfile">
+          <option value="">None — images cannot be read</option>
+        </select>
+        <span class="wiz-field-hint">Another saved profile, one that can see images. The model above is never shown a picture: the vision model describes it and the agent works from that description. Save this profile first if the vision model is not in the list yet.</span>
       </label>
 
       <div class="wiz-actions">

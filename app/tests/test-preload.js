@@ -45,6 +45,8 @@ contextBridge.exposeInMainWorld("magentra", {
   applyProfile: (id) => api("applyProfile", id),
   getWebSearch: () => api("getWebSearch"),
   setWebSearch: (enabled) => api("setWebSearch", enabled),
+  getVision: () => api("getVision"),
+  setVision: (enabled) => api("setVision", enabled),
   getAppInfo: () => api("getAppInfo"),
   updateState: () => api("updateState"),
   checkUpdates: () => api("checkUpdates"),

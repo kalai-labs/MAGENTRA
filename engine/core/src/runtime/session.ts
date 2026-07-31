@@ -19,7 +19,7 @@ import {
   type TaskItem,
   type Usage,
 } from "@magentra/protocol";
-import type { ContentBlock, Msg, Provider, StopReason, ToolSchema } from "@magentra/providers";
+import type { ContentBlock, Msg, Provider, StopReason, ToolResultPart, ToolSchema } from "@magentra/providers";
 import { friendlyProviderError } from "@magentra/providers";
 import { zodToJsonSchema } from "../util/zodToJsonSchema.js";
 import {
@@ -47,7 +47,8 @@ import { SearchLog, evaluateReuseGate, type ReuseGateResult } from "../knowledge
 import { buildSymbolIndex, loadOrBuildSymbolIndex, type SymbolIndexData } from "../knowledge/symbols.js";
 import { SessionStats, type ContextBreakdown } from "./sessionStats.js";
 import type { Settings } from "../config/settings.js";
-import { addExactPermission } from "../config/settings.js";
+import { addExactPermission, resolveVisionApiKey } from "../config/settings.js";
+import { createProviderForEndpoint, endpointSpecFromSettings } from "../config/providerFactory.js";
 import type { Addon } from "../agent/addons.js";
 import { TaskStore } from "../state/taskStore.js";
 import { isToolDisabled, toolDescriptionText } from "../agent/tool.js";
@@ -349,6 +350,45 @@ const COMPACTION_WRAPPER = definePrompt({
 Continue the work; do not wrap up early on account of the compaction.</system-reminder>`,
 });
 
+/** Output ceiling for one image description. Generous on purpose: a screenshot
+ *  of a stack trace or a settings panel is mostly transcription, and a truncated
+ *  description silently loses the line the user cared about. */
+const VISION_DESCRIBE_MAX_TOKENS = 4_000;
+
+const VISION_DESCRIBE_SYSTEM = definePrompt({
+  id: "vision.describe",
+  group: "5 · Background inference calls",
+  label: "Image describer",
+  channel: "side-call",
+  where:
+    "System prompt of the call that looks at an image on settings.visionConnection — the attached-image path and the Read tool both use it. Its output is the ONLY thing the main model ever learns about the picture, so it is written to transcribe rather than to interpret.",
+  text: `You are describing an image for another model that cannot see it. Your description is the only account it will ever have, so it must be complete enough to work from and free of anything you did not actually see.
+
+- Transcribe every piece of text verbatim — code, error messages, labels, menu items, URLs, numbers. Keep the original line breaks and spelling, including mistakes.
+- Describe the layout and what kind of thing this is (screenshot, photo, diagram, chart, UI mockup), then its parts in reading order.
+- For a UI: name the visible components, their state (focused, disabled, checked, highlighted), and anything that reads as an error or a warning.
+- For a diagram or chart: state the axes, labels, series, and the values you can read off it.
+- Report what is visible, not what it means. Do not guess at intent, do not offer fixes, do not add anything the picture does not show.
+- If part of the image is unreadable — too small, blurred, cut off — say so plainly for that part instead of filling it in.
+
+Answer with the description alone. No preamble, no closing remark.`,
+});
+
+const VISION_DESCRIPTION_WRAPPER = definePrompt({
+  id: "vision.description-wrapper",
+  group: "3 · In-turn reminders",
+  label: "Image description wrapper",
+  channel: "reminder",
+  where:
+    "Wraps a vision model's description before it enters the conversation. `{{label}}` names the image, `{{description}}` is what the vision model returned. The wrapper is what stops the main model from claiming it looked at the picture itself.",
+  placeholders: ["label", "description"],
+  text: `<image-description source="{{label}}">
+A separate vision model looked at this image and wrote the description below. You did NOT see the image and cannot see it — this text is all you have. Work from it, quote it if you need to, and never claim to have viewed the image yourself. If the description is missing something you need, say so and ask.
+
+{{description}}
+</image-description>`,
+});
+
 export interface SessionOptions {
   cwd: string;
   settings: Settings;
@@ -546,6 +586,8 @@ export class Session {
       askUser: (questions) => opts.askUser(`q_${randomBytes(4).toString("hex")}`, questions),
       spawnAgent: (o) => this.spawnAgent(o),
       runInference: (o) => this.runInference(o),
+      describeImageForContext: (image) => this.describeImageForContext(image),
+      visionUnavailableReason: () => this.visionUnavailableReason(),
       setPromptSection: (k, t) => this.setPromptSection(k, t),
       addSessionAllow: (tool, subject) => this.permissions.addSessionAllow(tool, subject),
       settings: this.settings,
@@ -682,6 +724,13 @@ export class Session {
     model?: string;
     provider?: Provider;
     /**
+     * Images to send alongside `user`, in the same message. Only the vision
+     * side-call uses this, and only against the endpoint configured to see
+     * them — the conversation itself never carries an image (see
+     * {@link describeImage}).
+     */
+    images?: { data: string; mediaType: string }[];
+    /**
      * Why the reply ended. Optional because most callers do not care — but a
      * caller that parses the reply as JSON does: `max_tokens` means the text is
      * TRUNCATED, not malformed, and the two need different handling. Without
@@ -697,7 +746,19 @@ export class Session {
     const stream = (opts.provider ?? this.provider).stream({
       model,
       system: opts.system,
-      messages: [{ role: "user", content: [{ type: "text", text: opts.user }] }],
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: opts.user },
+            ...(opts.images ?? []).map((img) => ({
+              type: "image" as const,
+              data: img.data,
+              mediaType: img.mediaType,
+            })),
+          ],
+        },
+      ],
       tools: [],
       maxTokens: opts.maxTokens,
       signal: new AbortController().signal,
@@ -717,6 +778,93 @@ export class Session {
       this.stats.recordResponse(model, usage, Date.now() - startedAt, false);
     }
     return text;
+  }
+
+  /**
+   * The vision endpoint's Provider, rebuilt whenever the configured connection
+   * changes. Keyed by the connection itself rather than invalidated by hand:
+   * a set_connection swap or a /settings edit changes the key, so the next call
+   * builds a fresh client without anything having to remember to clear a cache.
+   */
+  private visionProviderCache: { key: string; provider: Provider } | undefined;
+
+  /** Why an image cannot be looked at right now, or undefined when it can.
+   *  The one answer to "is vision usable" — the flag alone never is, because a
+   *  switched-on flag with no endpoint behind it can look at nothing. */
+  visionUnavailableReason(): string | undefined {
+    if (!this.settings.visionConnection) {
+      return "no vision model is configured for this workspace (Settings → Connection → Vision model)";
+    }
+    if (!this.settings.vision) {
+      return "vision is off for this workspace (Settings → Connection → Vision)";
+    }
+    return undefined;
+  }
+
+  /**
+   * Look at an image and return what a vision model saw in it, as text.
+   *
+   * The image goes to `settings.visionConnection` — never to the session's own
+   * model, which is treated as unable to see one whatever it claims to support.
+   * The description is what enters the conversation, so every later claim about
+   * the picture rests on text that is in the transcript and can be checked.
+   *
+   * The call is banked like any other inference (runInference records it), so a
+   * described image shows up in the session's token ledger.
+   *
+   * Throws when vision is off or unconfigured, or when the vision endpoint
+   * fails — callers turn that into something the user or the agent can act on.
+   *
+   * Private: everything outside goes through {@link describeImageForContext},
+   * so no caller can put a bare description into the conversation without the
+   * framing that says the main model did not see the picture.
+   */
+  private async describeImage(image: { data: string; mediaType: string; label?: string }): Promise<string> {
+    const unavailable = this.visionUnavailableReason();
+    if (unavailable) throw new Error(unavailable);
+    const connection = this.settings.visionConnection!;
+
+    // The key is part of the cache key because it is BAKED INTO the provider
+    // instance: rotating the credential on an otherwise unchanged endpoint
+    // would otherwise keep sending the old one until the engine restarted, and
+    // present as an endpoint that suddenly rejects a key the user just fixed.
+    // (The model is not — it travels per call.)
+    const apiKey = resolveVisionApiKey(this.settings);
+    const key = JSON.stringify([connection.provider, connection.baseUrl, connection.contextWindow, apiKey]);
+    if (this.visionProviderCache?.key !== key) {
+      this.visionProviderCache = {
+        key,
+        provider: createProviderForEndpoint(endpointSpecFromSettings(connection, apiKey)),
+      };
+    }
+
+    const label = image.label ?? "attached image";
+    const description = await this.runInference({
+      system: promptText(VISION_DESCRIBE_SYSTEM),
+      user: `Describe this image (${label}).`,
+      maxTokens: VISION_DESCRIBE_MAX_TOKENS,
+      model: connection.model,
+      provider: this.visionProviderCache.provider,
+      images: [{ data: image.data, mediaType: image.mediaType }],
+    });
+    if (description.trim() === "") {
+      throw new Error(`the vision model (${connection.model}) returned an empty description`);
+    }
+    return description.trim();
+  }
+
+  /**
+   * A described image as it enters the conversation: the description wrapped in
+   * the text that keeps the main model honest about what it did and did not
+   * see. Shared by the attached-image path and the Read tool, so the framing
+   * cannot drift between them.
+   */
+  async describeImageForContext(image: { data: string; mediaType: string; label?: string }): Promise<string> {
+    const description = await this.describeImage(image);
+    return renderPrompt(VISION_DESCRIPTION_WRAPPER, {
+      label: image.label ?? "attached image",
+      description,
+    });
   }
 
   /**
@@ -1384,7 +1532,15 @@ export class Session {
               });
               this.pushMessage({
                 role: "user",
-                content: [{ type: "text", text: runtimeEvidenceText(changedCode, this.settings.vision, doubles) }],
+                // "Vision is on" for the agent means an image can actually be
+                // looked at — the flag alone is not enough without an endpoint
+                // to send it to.
+                content: [
+                  {
+                    type: "text",
+                    text: runtimeEvidenceText(changedCode, this.visionUnavailableReason() === undefined, doubles),
+                  },
+                ],
               });
               continue;
             }
@@ -1907,22 +2063,74 @@ export class Session {
     }
     await parallelPromise;
 
-    return calls.map((call) => {
-      const result = results.get(call.id) ?? { content: "Tool did not run.", isError: true };
-      this.emit({
-        type: "tool_call_finished",
-        id: call.id,
-        tool: call.name,
-        resultPreview: preview(result),
-        isError: result.isError ?? false,
-      });
-      return {
-        type: "tool_result",
-        toolUseId: call.id,
-        content: result.content,
-        ...(result.isError ? { isError: true } : {}),
-      };
-    });
+    return Promise.all(
+      calls.map(async (call) => {
+        const result = results.get(call.id) ?? { content: "Tool did not run.", isError: true };
+        this.emit({
+          type: "tool_call_finished",
+          id: call.id,
+          tool: call.name,
+          resultPreview: preview(result),
+          isError: result.isError ?? false,
+        });
+        return {
+          type: "tool_result" as const,
+          toolUseId: call.id,
+          content: await this.describeToolImages(result.content),
+          ...(result.isError ? { isError: true } : {}),
+        };
+      }),
+    );
+  }
+
+  /**
+   * Tool-result content with every image turned into words.
+   *
+   * This is the catch-all for tools the engine does not own — an MCP server is
+   * free to answer with a screenshot. The rule is the same one the Read tool and
+   * the attached-image path follow, applied at the single point where a result
+   * becomes a message: the session's model is never handed an image, so either
+   * the vision endpoint describes it or the agent is told plainly that
+   * something was returned it cannot see.
+   *
+   * (It also settles a wire-format problem. An OpenAI-compatible tool result is
+   * a `role: "tool"` message, which cannot carry an image at all — that path
+   * silently replaced it with "[image omitted]". A description is text, so it
+   * survives both dialects intact.)
+   */
+  private async describeToolImages(content: string | ToolResultPart[]): Promise<string | ToolResultPart[]> {
+    if (typeof content === "string" || !content.some((part) => part.type === "image")) return content;
+    const out: ToolResultPart[] = [];
+    for (const part of content) {
+      if (part.type !== "image") {
+        out.push(part);
+        continue;
+      }
+      const unavailable = this.visionUnavailableReason();
+      if (unavailable) {
+        out.push({
+          type: "text",
+          text: `[This tool returned an image. You have NOT seen it — ${unavailable}. Do not describe it or draw conclusions from it.]`,
+        });
+        continue;
+      }
+      try {
+        out.push({
+          type: "text",
+          text: await this.describeImageForContext({
+            data: part.data ?? "",
+            mediaType: part.mediaType ?? "image/png",
+            label: "an image returned by a tool",
+          }),
+        });
+      } catch (err) {
+        out.push({
+          type: "text",
+          text: `[This tool returned an image, but the vision model could not look at it: ${(err as Error).message}. You have NOT seen it.]`,
+        });
+      }
+    }
+    return out;
   }
 
   private toolContext(): ToolContext {
@@ -2566,6 +2774,11 @@ function serializeForSummary(messages: Msg[]): string {
         switch (b.type) {
           case "text":
             return b.text;
+          case "image":
+            // Only a vision side-call carries one, and those are not part of the
+            // conversation being summarized — named rather than dropped so a
+            // future path that does put one here is visible in the summary.
+            return "[image]";
           case "thinking":
             return "";
           case "tool_use":

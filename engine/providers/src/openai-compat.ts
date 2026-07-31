@@ -20,9 +20,16 @@ export interface OpenAICompatOptions {
   numCtx?: number;
 }
 
+/** Multimodal user content: the array form of `content`, sent only when a
+ *  message actually carries an image (a plain string is what every server
+ *  accepts, including the ones that never learned the array form). */
+type WireContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
 interface WireMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string | null;
+  content: string | WireContentPart[] | null;
   tool_call_id?: string;
   tool_calls?: {
     id: string;
@@ -419,7 +426,24 @@ function toWireMessages(system: string, messages: Msg[]): WireMessage[] {
         }
       }
       const text = joinText(msg.content);
-      if (text) wire.push({ role: "user", content: text });
+      // Images ride in the same user message as the text that introduces them —
+      // a separate message would let a server interleave them wrongly, and some
+      // reject an image-only user turn outright.
+      const images = msg.content.filter((b): b is Extract<ContentBlock, { type: "image" }> => b.type === "image");
+      if (images.length > 0) {
+        wire.push({
+          role: "user",
+          content: [
+            ...(text ? [{ type: "text" as const, text }] : []),
+            ...images.map((b) => ({
+              type: "image_url" as const,
+              image_url: { url: `data:${b.mediaType};base64,${b.data}` },
+            })),
+          ],
+        });
+      } else if (text) {
+        wire.push({ role: "user", content: text });
+      }
     }
   }
   return wire;

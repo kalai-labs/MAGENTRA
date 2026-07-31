@@ -42,6 +42,10 @@ contextBridge.exposeInMainWorld("magentra", {
   applyProfile: (id) => ipcRenderer.invoke("profiles:apply", { id }),
   getWebSearch: () => ipcRenderer.invoke("settings:getWebSearch"),
   setWebSearch: (enabled) => ipcRenderer.invoke("settings:setWebSearch", enabled),
+  // Vision: whether images can be attached/read, and through which model.
+  // Enabling is refused while no vision model is chosen.
+  getVision: () => ipcRenderer.invoke("settings:getVision"),
+  setVision: (enabled) => ipcRenderer.invoke("settings:setVision", enabled),
   getAppInfo: () => ipcRenderer.invoke("app:info"),
   // Updates. `updateState` is the state now, for a window that just opened;
   // `onUpdateState` is every change after that. An update is app-global, so the

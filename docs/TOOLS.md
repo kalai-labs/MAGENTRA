@@ -81,7 +81,11 @@ Reads a file from the local filesystem. **Permission class:** `read`. Output byt
 number, a tab, then the line, starting at line 1 (or at `offset+1`). Lines longer than 2000
 characters are clipped with a `[line truncated]` marker. When more lines remain past the
 window, a trailing notice tells the model the next `offset` to use. Image files (`.png`,
-`.jpg`/`.jpeg`, `.gif`, `.webp`) are returned as an image content block rather than text. A
+`.jpg`/`.jpeg`, `.gif`, `.webp`) are sent to the configured vision endpoint
+(`settings.visionConnection`) and come back as that model's written **description** — the
+agent never receives the image itself, and the description says so. With no vision model
+configured, reading an image is refused with an explanation rather than returning content
+the model cannot see; an image over 8 MB is refused before it is uploaded. A
 file whose head contains a NUL byte is refused as binary with an explanatory error (naming
 what Read does handle and pointing at Bash tooling — `file`, `strings`, `unzip -l` — for
 the rest) instead of returning a page of mojibake. A successful read records the file for

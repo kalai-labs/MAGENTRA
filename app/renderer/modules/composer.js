@@ -246,7 +246,9 @@ function renderAttachChips(list = pendingAttachments, container = attachChipsEl)
     const chip = document.createElement("span");
     chip.className = "attach-chip";
     const label = document.createElement("span");
-    label.textContent = `📎 ${att.name} · ${formatBytes(att.bytes)}`;
+    // An image is marked apart because it travels differently: the vision model
+    // reads it and its description is what the agent gets.
+    label.textContent = `${att.kind === "image" ? "🖼" : "📎"} ${att.name} · ${formatBytes(att.bytes)}`;
     const x = document.createElement("button");
     x.type = "button";
     x.className = "attach-x";
@@ -272,14 +274,17 @@ function clearAttachments(list = pendingAttachments, container = attachChipsEl) 
  *  filename (an attached file is a snapshot, not a workspace path). Returns `raw`
  *  unchanged when nothing is attached. */
 function composeWithAttachments(raw, list = pendingAttachments) {
-  if (list.length === 0) return raw;
-  const n = list.length;
+  // Images are NOT inlined here: they leave as `images` on the frame, and the
+  // engine puts the vision model's description into the message instead.
+  const files = list.filter((a) => a.kind !== "image");
+  if (files.length === 0) return raw;
+  const n = files.length;
   const preamble =
     `[The user attached ${n} file${n === 1 ? "" : "s"} to this message; the full ` +
     "contents are inlined below. These are snapshots pasted into the message — they " +
     "are NOT saved in the workspace or anywhere on disk, so do not use Read, Glob, " +
     "Bash, or any tool to open or locate them; work from the text provided here.]";
-  const blocks = list
+  const blocks = files
     .map(
       (a) =>
         `===== BEGIN ATTACHED FILE: ${a.name} (${formatBytes(a.bytes)}) =====\n` +
@@ -289,6 +294,22 @@ function composeWithAttachments(raw, list = pendingAttachments) {
     .join("\n\n");
   const prompt = raw.trim();
   return prompt ? `${preamble}\n\n${blocks}\n\n${prompt}` : `${preamble}\n\n${blocks}`;
+}
+
+/** The image attachments of `list` as the frame carries them: bytes, not text.
+ *  Spread into a user_message/steer_message frame — empty when nothing is
+ *  attached, so a plain turn is byte-for-byte what it always was. */
+function imageFrameParts(list = pendingAttachments) {
+  const images = list
+    .filter((a) => a.kind === "image")
+    .map((a) => ({ name: a.name, mediaType: a.mediaType, data: a.data }));
+  return images.length > 0 ? { images } : {};
+}
+
+/** What the transcript says was attached — the same icons as the chips, so an
+ *  image reads as an image in the history too. */
+function attachmentSummary(list = pendingAttachments) {
+  return list.map((a) => `${a.kind === "image" ? "🖼" : "📎"} ${a.name}`).join(", ");
 }
 
 /** Open the OS file picker and stash the readable results into `list` (rendered
@@ -312,7 +333,11 @@ async function openAttachPicker(list = pendingAttachments, container = attachChi
   let skipped = 0;
   for (const f of res.files) {
     if (f && f.ok) {
-      list.push({ name: f.name, bytes: f.bytes, text: f.text });
+      list.push(
+        f.kind === "image"
+          ? { name: f.name, bytes: f.bytes, kind: "image", mediaType: f.mediaType, data: f.data }
+          : { name: f.name, bytes: f.bytes, text: f.text },
+      );
       added += 1;
     } else if (f) {
       // Per-file reason (main spells out which cap was hit: 15-file, 2 MB total,
@@ -404,11 +429,11 @@ function dispatch(text) {
 
   // The transcript shows the typed text (plus a note of what was attached) — not
   // the full inlined file bodies, which the model receives via `outgoing`.
-  appendUserMessage(trimmed ? text : `📎 ${pendingAttachments.map((a) => a.name).join(", ")}`);
+  appendUserMessage(trimmed ? text : attachmentSummary());
   if (pendingAttachments.length > 0) {
-    appendSysNote(`📎 attached ${pendingAttachments.map((a) => a.name).join(", ")}`);
+    appendSysNote(`attached ${attachmentSummary()}`);
   }
-  window.magentra.send({ type: "user_message", text: outgoing });
+  window.magentra.send({ type: "user_message", text: outgoing, ...imageFrameParts() });
   clearAttachments();
   return true;
 }
@@ -451,10 +476,8 @@ function sendMessage() {
     // Available in every stance now, not only OVERDRIVE.
     const outgoing = composeWithAttachments(text);
     if (messageOverCap(outgoing)) return; // leave draft + attachments in place
-    const steerLabel = trimmed
-      ? text.replace(/\s+/g, " ").trim().slice(0, 80)
-      : `📎 ${pendingAttachments.map((a) => a.name).join(", ")}`;
-    window.magentra.send({ type: "steer_message", text: outgoing });
+    const steerLabel = trimmed ? text.replace(/\s+/g, " ").trim().slice(0, 80) : attachmentSummary();
+    window.magentra.send({ type: "steer_message", text: outgoing, ...imageFrameParts() });
     appendSysNote(`↳ steering — "${steerLabel}"`);
     clearAttachments();
     promptInputEl.value = "";

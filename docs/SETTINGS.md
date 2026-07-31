@@ -37,6 +37,33 @@ file — never the shareable project file — and the file is written mode `0600
 | `apiKey` | *(unset)* | The key itself, stored in `~/.magentra/settings.json`. A **secret**: never printed by `/settings`, and any matching env var always wins over it. |
 | `allowInsecureTls` | `false` | Skip TLS certificate verification for provider requests — the `verify=False` escape hatch for self-signed certificates on servers you own. The engine warns loudly at boot while this is on; never enable it for endpoints you don't control. Set via the wizard/Settings "Allow self-signed certificate" checkbox. |
 
+## Vision
+
+The model above is **never** sent an image. Images go to a second endpoint — the
+vision model — which describes them; that description, plain text, is what enters
+the conversation. So the account the agent works from is in the transcript and can
+be checked, and the main endpoint never has to accept image parts at all.
+
+Without `visionConnection` there is nothing to send an image to, so `vision`
+cannot be switched on: attaching an image is refused, and `Read` on a `.png`
+refuses with an explanation rather than returning content the model cannot see.
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `vision` | `false` | Whether images can be used at all. Ignored (treated as off) while `visionConnection` is unset. Set it from Settings → Connection → Vision. |
+| `visionConnection.provider` | `"openai-compatible"` | API dialect of the vision endpoint. |
+| `visionConnection.model` | *(required)* | The model that looks at images, e.g. a vision-capable local model under Ollama. |
+| `visionConnection.baseUrl` | *(unset)* | Endpoint of the vision model; same rules as `baseUrl`. |
+| `visionConnection.apiKey` | *(unset)* | Its key. A **secret**, redacted by `/settings`. `MAGENTRA_VISION_API_KEY` always wins over it — that is where the desktop app puts the key (in the workspace `.env`). |
+| `visionConnection.contextWindow` | *(unset)* | Context-size hint, forwarded as `num_ctx` to a local server. |
+| `visionConnection.allowInsecureTls` | `false` | Self-signed certificate opt-in for the vision endpoint. TLS verification is process-wide, so enabling it here relaxes it for every provider request. |
+| `visionConnection.profileId` | *(unset)* | Which saved app profile it came from. Written and read by the desktop app's picker; the engine ignores it. |
+
+The desktop app writes this whole block from Settings → Connection → **Vision
+model**, choosing one of the saved connection profiles. The key lands in the
+workspace `.env` as `MAGENTRA_VISION_API_KEY`, never in the shareable project
+settings file.
+
 ## Turn and context limits
 
 | Key | Default | Effect |
@@ -139,8 +166,13 @@ Env vars override both settings files (single source of truth: `ENV_OVERRIDES` i
 | `MAGENTRA_SMALL_MODEL` | `smallModel` |
 | `MAGENTRA_BASE_URL` | `baseUrl` |
 | `MAGENTRA_API_KEY_ENV` | `apiKeyEnv` |
+| `MAGENTRA_VISION` | `vision` |
 | `MAGENTRA_MAX_ITERATIONS` | `maxIterationsPerTurn` |
 | `MAGENTRA_MAX_TOKENS_PER_TURN` | `maxTokensPerTurn` |
+
+`MAGENTRA_VISION_API_KEY` is not in that table — it is not a settings override
+but the vision endpoint's key, resolved the way `MAGENTRA_API_KEY` is for the
+main one (env first, then the value stored in `visionConnection.apiKey`).
 
 `contextWindow` deliberately has **no** env override: the window has exactly one
 storage (the `contextWindow` settings key) and one resolver, so a stale value in a

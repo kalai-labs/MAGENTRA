@@ -251,17 +251,22 @@ function buildPaneComposer(tabId) {
     // shows only the typed text + a note of what was attached. Echoed into THIS
     // tab's transcript (runInTab makes the target tab's stream live even for a
     // background pane), then routed to that engine.
-    const names = ts.attachments.map((a) => a.name).join(", ");
+    const names = typeof attachmentSummary === "function"
+      ? attachmentSummary(ts.attachments)
+      : ts.attachments.map((a) => a.name).join(", ");
     const outgoing = typeof composeWithAttachments === "function" ? composeWithAttachments(text, ts.attachments) : text;
+    // Images leave as bytes on the frame (the engine describes them through the
+    // vision model); only file text is folded into `outgoing`.
+    const imageParts = typeof imageFrameParts === "function" ? imageFrameParts(ts.attachments) : {};
     runInTab(tabId, () => {
       if (isBusy) {
-        if (typeof appendSysNote === "function") appendSysNote(`↳ steering — "${(text || `📎 ${names}`).replace(/\s+/g, " ").slice(0, 80)}"`);
+        if (typeof appendSysNote === "function") appendSysNote(`↳ steering — "${(text || names).replace(/\s+/g, " ").slice(0, 80)}"`);
       } else if (typeof appendUserMessage === "function") {
-        appendUserMessage(text || `📎 ${names}`);
-        if (ts.attachments.length && typeof appendSysNote === "function") appendSysNote(`📎 attached ${names}`);
+        appendUserMessage(text || names);
+        if (ts.attachments.length && typeof appendSysNote === "function") appendSysNote(`attached ${names}`);
       }
     });
-    window.magentra.send({ type: isBusy ? "steer_message" : "user_message", text: outgoing }, tabId);
+    window.magentra.send({ type: isBusy ? "steer_message" : "user_message", text: outgoing, ...imageParts }, tabId);
     if (typeof clearAttachments === "function") clearAttachments(ts.attachments, attachEl());
     ta.value = "";
     autoGrowInput(ta);

@@ -38,6 +38,17 @@ export interface SessionServices {
   spawnAgent(opts: SpawnAgentOptions): Promise<string>;
   /** One-shot model call (small model) used by WebFetch to digest a page. */
   runInference(opts: { system: string; user: string; maxTokens: number }): Promise<string>;
+  /**
+   * Send an image to the configured vision endpoint and get back a description,
+   * wrapped in the framing that tells the main model it did not see the picture
+   * itself. Rejects when vision is off or unconfigured, or when that endpoint
+   * fails. The main model is never handed an image.
+   */
+  describeImageForContext(image: { data: string; mediaType: string; label?: string }): Promise<string>;
+  /** Why an image cannot be looked at right now, or undefined when it can — the
+   *  one answer to that question, so a tool never re-derives it from the flag
+   *  (which is meaningless without an endpoint behind it). */
+  visionUnavailableReason(): string | undefined;
   /** Add or (with undefined text) remove a keyed dynamic system-prompt section. */
   setPromptSection(key: string, text: string | undefined): void;
   /** Add a session-scoped allow rule (subject "*" or undefined allows any subject). */

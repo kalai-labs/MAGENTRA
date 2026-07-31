@@ -257,7 +257,11 @@ async function openConnectionsWizard(mode) {
   wizMode = mode || (activeWorkspace ? "apply" : "manage");
   resetWizForm();
   applyWizModeUi();
-  await refreshWizProfiles();
+  // Loads the saved profiles AND this workspace's saved vision model. The
+  // wizard's vision picker must open showing what the workspace already uses:
+  // opening it on "None" would quietly remove that model on SAVE & CONNECT.
+  await loadConnectionCard(); // also refreshes the saved-profile list both pickers read
+  renderVisionOptions(wizVisionProfileEl, savedVision.profileId, savedVision.model);
   await refreshLocalDetection();
   if (wizStatusEl) {
     wizStatusEl.textContent = "";
@@ -409,6 +413,10 @@ function wizPayload() {
   };
   if (meta.local && wizContextEl && wizContextEl.value) payload.contextWindow = wizContextEl.value;
   if (currentWizPreset === "custom" && wizInsecureEl && wizInsecureEl.checked) payload.insecureTls = true;
+  // The vision model is a property of the WORKSPACE, not of the profile being
+  // built — it rides along so SAVE & CONNECT lands both at once. Ignored by
+  // TEST and by profiles:save, which read only the fields above.
+  if (wizVisionProfileEl) payload.vision = visionSelectionFrom(wizVisionProfileEl);
   return payload;
 }
 
@@ -558,8 +566,124 @@ if (navSettingsEl) {
 // field then mean "keep/use the saved key", never "wipe it".
 let savedKeyExists = false;
 
-/** Fill the connection card from what is actually saved for this workspace. */
+// ---------------------------------------------------------------------------
+// Vision: which saved profile describes images, and whether it is switched on.
+//
+// The picker is part of the CONNECTION card and is written by SAVE, like every
+// other field there. The ON/OFF switch is different — it moves the same
+// `vision` setting on its own, immediately, because it is the control a user
+// reaches for mid-task ("stop spending calls on images"). Both end up in the
+// same place; see settings:setVision in the main process.
+// ---------------------------------------------------------------------------
+
+/** The workspace's SAVED vision state, as connection:info last reported it —
+ *  never what the picker currently shows. The switch acts on what is saved. */
+let savedVision = { profileId: "", model: "", enabled: false };
+
+/**
+ * Fill a vision-model `<select>` from the saved profiles. `selected` is the id
+ * to keep chosen; `missingLabel` names a profile that is configured for the
+ * workspace but no longer saved — it stays listed and marked, because silently
+ * showing "None" for a workspace that is still describing images through it
+ * would be a lie the user cannot see.
+ */
+function renderVisionOptions(selectEl, selected, missingLabel) {
+  if (!selectEl) return;
+  const keep = selected !== undefined ? selected : selectEl.value;
+  selectEl.textContent = "";
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "None — images cannot be read";
+  selectEl.appendChild(none);
+  for (const profile of wizProfiles) {
+    const opt = document.createElement("option");
+    opt.value = profile.id;
+    opt.textContent = profile.model ? `${profile.name} · ${profile.model}` : profile.name;
+    selectEl.appendChild(opt);
+  }
+  if (keep && !wizProfiles.some((p) => p.id === keep)) {
+    const orphan = document.createElement("option");
+    orphan.value = keep;
+    orphan.textContent = `${missingLabel || "saved vision model"} — profile deleted`;
+    selectEl.appendChild(orphan);
+  }
+  selectEl.value = keep || "";
+}
+
+/**
+ * What a save should land for vision, read off one of the two pickers.
+ *
+ * The switch position is carried over only when the model is unchanged. A newly
+ * chosen model arrives ON — picking one is asking to use it — and "None" is OFF,
+ * because there is then nothing to be on. Written once here so the card, the
+ * wizard and the state the card keeps afterwards cannot disagree about it.
+ */
+function visionSelectionFrom(selectEl) {
+  const profileId = selectEl ? selectEl.value : "";
+  return {
+    profileId,
+    enabled: profileId !== "" && (profileId === savedVision.profileId ? savedVision.enabled : true),
+  };
+}
+
+/** Paint the ON/OFF switch, and disable it while the workspace has no saved
+ *  vision model — there would be nothing to switch on. */
+function renderVisionToggle() {
+  if (!setVisionEl) return;
+  const usable = savedVision.profileId !== "" || savedVision.model !== "";
+  setVisionEl.querySelectorAll(".seg-btn").forEach((btn) => {
+    btn.classList.toggle("on", (btn.dataset.vision === "on") === savedVision.enabled);
+    btn.disabled = !usable;
+  });
+  setVisionEl.title = usable ? "" : "Choose a vision model and save the connection first";
+}
+
+if (setVisionEl) {
+  setVisionEl.querySelectorAll(".seg-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (btn.disabled || !window.magentra.setVision) return;
+      const enabled = btn.dataset.vision === "on";
+      if (enabled === savedVision.enabled) return;
+      const previous = savedVision.enabled;
+      savedVision = { ...savedVision, enabled };
+      renderVisionToggle();
+      let res = null;
+      try {
+        res = await window.magentra.setVision(enabled);
+      } catch (err) {
+        res = { ok: false, error: (err && err.message) || "failed to change vision" };
+      }
+      if (res && res.ok) {
+        setConnStatusEl.textContent = enabled
+          ? `vision ON — images go to ${savedVision.model || "the vision model"}`
+          : "vision OFF — images cannot be attached or read";
+        setConnStatusEl.className = "ok";
+        return;
+      }
+      // Rejected (no vision model saved, or the write failed): put the switch
+      // back where it was rather than showing a state the engine does not have.
+      savedVision = { ...savedVision, enabled: previous };
+      renderVisionToggle();
+      setConnStatusEl.textContent = (res && res.error) || "failed to change vision";
+      setConnStatusEl.className = "err";
+    });
+  });
+}
+
+if (setVisionProfileEl) {
+  setVisionProfileEl.addEventListener("change", () => {
+    if (setVisionProfileEl.value === savedVision.profileId) return;
+    setConnStatusEl.textContent = "vision model changed — SAVE TO WORKSPACE to apply";
+    setConnStatusEl.className = "";
+  });
+}
+
+/** Fill the connection card from what is actually saved for this workspace.
+ *  Loads the saved profiles first — both vision pickers list them, and the
+ *  wizard opens on the back of this call, so they must be there even if the
+ *  connection info below cannot be read. */
 async function loadConnectionCard() {
+  await refreshWizProfiles();
   if (!window.magentra.connectionInfo || !setBaseUrlEl) return;
   let info = null;
   try {
@@ -578,6 +702,13 @@ async function loadConnectionCard() {
   if (setContextEl) setContextEl.value = info.contextWindow || "";
   if (setInsecureEl) setInsecureEl.checked = info.allowInsecureTls === true;
   setApiKeyEl.placeholder = savedKeyExists ? "●●●●●●●● saved — ◉ reveals" : "no key saved yet";
+  savedVision = {
+    profileId: info.visionProfileId || "",
+    model: info.visionModel || "",
+    enabled: info.visionEnabled === true,
+  };
+  renderVisionOptions(setVisionProfileEl, savedVision.profileId, savedVision.model);
+  renderVisionToggle();
 }
 
 if (setKeyRevealEl) {
@@ -663,6 +794,9 @@ if (setSaveBtnEl) {
         ...(setInsecureEl && setInsecureEl.checked ? { insecureTls: true } : {}),
         ...(keepSaved ? { useSavedKey: true } : {}),
         ...(setContextEl && setContextEl.value ? { contextWindow: setContextEl.value } : {}),
+        // Always sent, so clearing the picker to "None" removes the vision
+        // model rather than leaving the last one in place.
+        vision: setVisionProfileEl ? visionSelectionFrom(setVisionProfileEl) : undefined,
       });
     } catch (err) {
       setConnStatusEl.textContent = (err && err.message) || "failed to save connection";
@@ -673,6 +807,15 @@ if (setSaveBtnEl) {
       markConnectionApplied(result);
       setApiKeyEl.value = "";
       setApiKeyEl.type = "password";
+      // What was just written IS the saved state now — the switch must act on
+      // it, not on what the card was showing before the save.
+      const landed = visionSelectionFrom(setVisionProfileEl);
+      const chosen = wizProfiles.find((p) => p.id === landed.profileId);
+      savedVision = {
+        ...landed,
+        model: chosen ? chosen.model || "" : landed.profileId ? savedVision.model : "",
+      };
+      renderVisionToggle();
       // A key only lands in .env when one was typed; keyless saves (local or
       // custom endpoints) live entirely in settings.json.
       savedKeyExists = savedKeyExists || apiKey !== "";

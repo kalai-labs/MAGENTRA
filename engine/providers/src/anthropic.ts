@@ -168,10 +168,25 @@ function toAnthropicMessage(msg: Msg): Anthropic.MessageParam {
   };
 }
 
+/** The base64 image block, in the one shape the SDK's types accept. Shared by a
+ *  user-role image and an image returned inside a tool result. */
+function toAnthropicImage(data: string | undefined, mediaType: string | undefined): Anthropic.ImageBlockParam {
+  return {
+    type: "image",
+    source: {
+      type: "base64",
+      media_type: (mediaType ?? "image/png") as "image/png" | "image/jpeg" | "image/gif" | "image/webp",
+      data: data ?? "",
+    },
+  };
+}
+
 function toAnthropicBlock(block: ContentBlock): Anthropic.ContentBlockParam {
   switch (block.type) {
     case "text":
       return { type: "text", text: block.text };
+    case "image":
+      return toAnthropicImage(block.data, block.mediaType);
     case "thinking":
       return { type: "text", text: block.thinking };
     case "tool_use":
@@ -191,18 +206,7 @@ function toAnthropicBlock(block: ContentBlock): Anthropic.ContentBlockParam {
             : block.content.map((p) =>
                 p.type === "text"
                   ? { type: "text" as const, text: p.text ?? "" }
-                  : {
-                      type: "image" as const,
-                      source: {
-                        type: "base64" as const,
-                        media_type: (p.mediaType ?? "image/png") as
-                          | "image/png"
-                          | "image/jpeg"
-                          | "image/gif"
-                          | "image/webp",
-                        data: p.data ?? "",
-                      },
-                    },
+                  : toAnthropicImage(p.data, p.mediaType),
               ),
         ...(block.isError ? { is_error: true } : {}),
       };

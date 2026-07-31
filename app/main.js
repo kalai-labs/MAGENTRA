@@ -10,6 +10,7 @@ const {
   DEFAULT_MODEL,
   DEFAULT_BASE_URL,
   LEGACY_API_KEY_ENV_VARS,
+  VISION_API_KEY_ENV,
   DEFAULT_THEME,
   THEMES,
   readConfig,
@@ -27,7 +28,14 @@ const {
 } = require("./main/config.js");
 const { logEvent, setLogWorkspace, flushLog, initFallbackLog, activeLogsDir } = require("./main/logging.js");
 const { resolveWorkspaceFile, undoWorkspaceDiffs } = require("./main/changes.js");
-const { testEndpoint, validateCredentialPayload } = require("./main/connection.js");
+const {
+  testEndpoint,
+  validateCredentialPayload,
+  readWorkspaceEnvKeys,
+  writeWorkspaceEnvKeys,
+  resolveVisionSelection,
+  currentVisionConnection,
+} = require("./main/connection.js");
 const { readProfiles, upsertProfile, deleteProfile, findProfile, sanitizeProfile } = require("./main/profiles.js");
 const { initUpdates, updateState, checkNow, startUpdate, installNow } = require("./main/updates.js");
 
@@ -295,8 +303,28 @@ const USER_ACTION_FRAMES = new Set([
 // with a different provider). It must reach the engine over stdin but must NOT
 // land in the log — redact it in the logged copy only.
 function redactFrameForLog(frame) {
-  if (frame && typeof frame === "object" && frame.connection && typeof frame.connection === "object" && "apiKey" in frame.connection) {
-    return { ...frame, connection: { ...frame.connection, apiKey: frame.connection.apiKey ? "<redacted>" : "" } };
+  if (!frame || typeof frame !== "object") return frame;
+  if (frame.connection && typeof frame.connection === "object" && "apiKey" in frame.connection) {
+    const connection = { ...frame.connection, apiKey: frame.connection.apiKey ? "<redacted>" : "" };
+    // The vision endpoint carries its own key, and it is a secret for the same
+    // reason the main one is.
+    if (connection.vision && typeof connection.vision === "object") {
+      connection.vision = { ...connection.vision, apiKey: connection.vision.apiKey ? "<redacted>" : "" };
+    }
+    return { ...frame, connection };
+  }
+  // Attached images are megabytes of base64. Logging them verbatim would bury
+  // the session log (and every frame around it) under one screenshot; the name
+  // and size are what a log is read for anyway.
+  if (Array.isArray(frame.images)) {
+    return {
+      ...frame,
+      images: frame.images.map((img) => ({
+        name: img && img.name,
+        mediaType: img && img.mediaType,
+        bytes: img && typeof img.data === "string" ? img.data.length : 0,
+      })),
+    };
   }
   return frame;
 }
@@ -319,36 +347,6 @@ function writeToEngine(frame, tabId) {
   }
 }
 
-/**
- * The API-key lines of a workspace .env, parsed into { VAR: value }. The
- * workspace .env is the source of truth the app itself manages: startEngine
- * overlays these onto the child env so a stale key exported in the user's
- * shell can never shadow the key they just saved (the engine's own .env
- * loader deliberately lets real env vars win).
- */
-function readWorkspaceEnvKeys(workspace) {
-  const keys = {};
-  if (!workspace) return keys;
-  try {
-    const content = fs.readFileSync(path.join(workspace, ".env"), "utf8");
-    for (const rawLine of content.split(/\r?\n/)) {
-      const line = rawLine.trim();
-      if (line === "" || line.startsWith("#")) continue;
-      const eq = line.indexOf("=");
-      if (eq === -1) continue;
-      const name = line.slice(0, eq).replace(/^export\s+/, "").trim();
-      if (!/^[A-Z0-9_]*API_KEY$/.test(name)) continue;
-      let value = line.slice(eq + 1).trim();
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1);
-      }
-      if (value) keys[name] = value;
-    }
-  } catch {
-    // missing/unreadable .env — nothing to overlay
-  }
-  return keys;
-}
 
 /**
  * Whether a workspace is configured well enough for the engine to boot, so we
@@ -598,6 +596,22 @@ function startEngine(workspace, model, tabId) {
 const MAX_ATTACH_FILES = 15;
 const MAX_ATTACH_TOTAL_BYTES = 2 * 1024 * 1024;
 const DOC_EXTS = new Set([".pdf", ".docx", ".pptx", ".xlsx", ".rtf", ".odt", ".epub"]);
+// Images are not text-extracted: they travel to the engine as bytes, which
+// sends them to the configured vision model and folds ITS DESCRIPTION into the
+// message. The picker only offers them when this workspace has such a model —
+// otherwise an attached image is a file nothing can read.
+//
+// MIRRORED in engine/tools/src/read.ts (IMAGE_TYPES), which answers the same
+// question for the Read tool. The app cannot import from the engine — it ships
+// as a bundled child process — so an extension added here must be added there
+// too, or a file the composer accepts is one Read still refuses.
+const IMAGE_TYPES = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
 // Text/code extensions the picker offers (no leading dot — dialog filter form).
 const TEXT_EXTS = [
   "txt", "md", "markdown", "js", "mjs", "cjs", "ts", "tsx", "jsx", "json", "jsonc",
@@ -639,9 +653,11 @@ function formatBytes(n) {
 
 /** Read one attachment for the composer. `remainingBudget` is how many bytes are
  *  still free in the total 2 MB allowance; a file bigger than that is rejected
- *  before it is read (memory-safe). Returns a plain record and never throws, so
- *  one unreadable pick doesn't sink the whole selection. */
-async function readAttachment(filePath, remainingBudget) {
+ *  before it is read (memory-safe). `visionReady` says whether an image can be
+ *  looked at at all — the dialog hides them otherwise, but "All Files" is one
+ *  click away. Returns a plain record and never throws, so one unreadable pick
+ *  doesn't sink the whole selection. */
+async function readAttachment(filePath, remainingBudget, visionReady) {
   const name = path.basename(filePath);
   let stat;
   try {
@@ -665,6 +681,26 @@ async function readAttachment(filePath, remainingBudget) {
     return { name, ok: false, error: "could not read file" };
   }
   const ext = path.extname(filePath).toLowerCase();
+
+  // An image is passed through as base64 — the engine describes it through the
+  // vision model, so nothing is extracted here.
+  if (IMAGE_TYPES[ext]) {
+    if (!visionReady) {
+      return {
+        name,
+        ok: false,
+        error: "images need a vision model — choose one in Settings → Connection and switch Vision on",
+      };
+    }
+    return {
+      name,
+      ok: true,
+      bytes: stat.size,
+      kind: "image",
+      mediaType: IMAGE_TYPES[ext],
+      data: buf.toString("base64"),
+    };
+  }
 
   if (DOC_EXTS.has(ext)) {
     const extractor = await loadDocExtractor();
@@ -692,6 +728,11 @@ async function readAttachment(filePath, remainingBudget) {
 
 ipcMain.handle("context:pickFiles", async (_evt, opts = {}) => {
   try {
+    // Images are offered only when this workspace can actually look at one.
+    // Listing them otherwise invites a pick that can only be turned away.
+    const vision = currentVisionConnection(currentConfig.workspace);
+    const visionReady = Boolean(vision.connection) && vision.enabled;
+    const imageExts = visionReady ? Object.keys(IMAGE_TYPES).map((e) => e.slice(1)) : [];
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "Attach context",
       properties: ["openFile", "multiSelections"],
@@ -700,7 +741,8 @@ ipcMain.handle("context:pickFiles", async (_evt, opts = {}) => {
       // switches the filter dropdown. The narrower filters and "All Files"
       // follow for when someone wants to restrict the view.
       filters: [
-        { name: "Attachable files", extensions: [...TEXT_EXTS, ...DOC_EXTS_LIST] },
+        { name: "Attachable files", extensions: [...TEXT_EXTS, ...DOC_EXTS_LIST, ...imageExts] },
+        ...(visionReady ? [{ name: "Images", extensions: imageExts }] : []),
         { name: "Documents", extensions: DOC_EXTS_LIST },
         { name: "Text & code", extensions: TEXT_EXTS },
         { name: "All Files", extensions: ["*"] },
@@ -718,7 +760,7 @@ ipcMain.handle("context:pickFiles", async (_evt, opts = {}) => {
         files.push({ name: path.basename(fp), ok: false, error: `attachment limit reached (max ${MAX_ATTACH_FILES} files)` });
         continue;
       }
-      const rec = await readAttachment(fp, MAX_ATTACH_TOTAL_BYTES - bytes);
+      const rec = await readAttachment(fp, MAX_ATTACH_TOTAL_BYTES - bytes, visionReady);
       if (rec.ok) {
         count += 1;
         bytes += rec.bytes;
@@ -1018,7 +1060,13 @@ ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
 
   const workspace = currentConfig.workspace;
   if (!workspace) return { ok: false, error: "no workspace" };
-  return applyValidatedConnection(workspace, validated);
+  // The card always sends its vision picker's state, so an empty profileId
+  // clears the vision model. A payload without the key at all leaves the
+  // workspace's current one alone (see resolveVisionSelection).
+  const vision = payload && typeof payload === "object" && payload.vision && typeof payload.vision === "object"
+    ? { profileId: payload.vision.profileId, enabled: payload.vision.enabled }
+    : undefined;
+  return applyValidatedConnection(workspace, validated, vision);
 });
 
 /**
@@ -1036,45 +1084,38 @@ ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
  * Returns `{ ok: true, live }` — `live` true when the running session was
  * re-pointed, false when an engine was started.
  */
-function applyValidatedConnection(workspace, validated) {
+function applyValidatedConnection(workspace, validated, visionSelection) {
   const { apiKey, model, provider, baseUrl, contextWindow, insecureTls } = validated;
+
+  // The vision endpoint, resolved before anything is written: a bad selection
+  // must not leave the main connection half-saved.
+  const vision = resolveVisionSelection(workspace, visionSelection);
+  if (vision.error) return { ok: false, error: vision.error };
 
   const envVarName = apiKeyEnvVarFor(provider);
 
-  // Keyless local endpoints (Ollama, LM Studio) get no .env key line — the
-  // config lives entirely in settings.json below.
-  if (apiKey.length > 0) {
-    try {
-      const envPath = path.join(workspace, ".env");
-      let existingLines = [];
-      try {
-        existingLines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
-      } catch {
-        existingLines = [];
-      }
-      // Drop the line we are about to rewrite, plus any legacy-named key line
-      // an older build left behind — two keys for one endpoint would leave the
-      // engine resolving whichever name it checks first, not the one saved here.
-      const replacedNames = provider === "anthropic" ? [envVarName] : [envVarName, ...LEGACY_API_KEY_ENV_VARS];
-      const keyLineRe = new RegExp(`^\\s*(?:export\\s+)?(?:${replacedNames.join("|")})\\s*=`);
-      const keptLines = existingLines.filter((line) => !keyLineRe.test(line));
-      while (keptLines.length > 0 && keptLines[keptLines.length - 1] === "") {
-        keptLines.pop();
-      }
-      keptLines.push(`${envVarName}=${apiKey}`);
-      // Holds the API key: owner-only. mode applies only on create, so chmod
-      // fixes up a pre-existing world-readable file too (no-op on Windows).
-      fs.writeFileSync(envPath, keptLines.join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
-      try {
-        fs.chmodSync(envPath, 0o600);
-      } catch {
-        // best-effort — never fail the write over permissions polish
-      }
-    } catch (err) {
-      const message = err && err.message ? err.message : String(err);
-      return { ok: false, error: `failed to write .env: ${message}` };
-    }
-  }
+  // Both keys in one rewrite. Keyless endpoints (Ollama, LM Studio, and a
+  // vision box on the LAN) contribute no line — their config lives entirely in
+  // settings.json below.
+  const envError = writeWorkspaceEnvKeys(workspace, [
+    // Any legacy-named line an older build left behind goes with it: two keys
+    // for one endpoint would leave the engine resolving whichever name it
+    // checks first, not the one saved here.
+    {
+      name: envVarName,
+      value: apiKey,
+      alsoRemove: provider === "anthropic" ? [] : LEGACY_API_KEY_ENV_VARS,
+    },
+    // Removed (not just skipped) when there is no vision endpoint: unlike the
+    // main key there is nothing to switch back to — the endpoint itself is
+    // gone — and a stored secret with no use for it is one to drop.
+    {
+      name: VISION_API_KEY_ENV,
+      value: vision.connection ? vision.connection.apiKey : "",
+      removeWhenEmpty: true,
+    },
+  ]);
+  if (envError) return { ok: false, error: envError };
 
   // The endpoint as it will be STORED: the default hosted URL is left out, so the
   // engine falls back to it by itself. Computed once and used for both the file
@@ -1086,6 +1127,11 @@ function applyValidatedConnection(workspace, validated) {
   // there wins straight back.
   const staleGlobalKeys = ["apiKeyEnv"];
 
+  // Cleared globally as well, for the same reason as apiKeyEnv: the engine
+  // merges project settings OVER global, so a vision model configured up there
+  // would win straight back over a workspace that just removed one.
+  if (!vision.connection) staleGlobalKeys.push("visionConnection", "vision");
+
   const settingsError = updateWorkspaceSettings(workspace, (settings) => {
     // The engine's settings schema names the provider "openai-compatible".
     settings.provider = provider === "anthropic" ? "anthropic" : "openai-compatible";
@@ -1093,8 +1139,14 @@ function applyValidatedConnection(workspace, validated) {
     else delete settings.baseUrl;
     settings.model = model;
     // Self-signed TLS opt-in (the `verify=False` equivalent). Stored only
-    // while true so a later un-check fully clears it.
-    if (insecureTls && provider !== "anthropic") settings.allowInsecureTls = true;
+    // while true so a later un-check fully clears it. It is the OR of both
+    // endpoints because Node applies it per TLS connection, process-wide: a
+    // self-signed vision box needs it as much as a self-signed main one, and
+    // the engine's live swap computes the same OR.
+    const insecureAnywhere =
+      (insecureTls && provider !== "anthropic") ||
+      Boolean(vision.connection && vision.connection.insecureTls && vision.connection.provider !== "anthropic");
+    if (insecureAnywhere) settings.allowInsecureTls = true;
     else delete settings.allowInsecureTls;
     // Context size: engine compaction window + `num_ctx` for local servers.
     // An EMPTY field must clear a previous override — a stale tiny window
@@ -1113,6 +1165,26 @@ function applyValidatedConnection(workspace, validated) {
     // one provider's key sent to another's URL, reported as a rejected key.
     // Saving a connection is the moment that pin stops being true.
     delete settings.apiKeyEnv;
+
+    // The vision endpoint. Its key stays in .env like the main one, so nothing
+    // secret lands in the shareable project settings file. `vision` (the
+    // toggle) cannot outlive the connection it switches on — a true flag with
+    // no endpoint behind it would just make every image fail at the wall.
+    if (vision.connection) {
+      const { provider: vProvider, baseUrl: vBaseUrl, model: vModel, contextWindow: vCtx, insecureTls: vInsecure, profileId } = vision.connection;
+      settings.visionConnection = {
+        provider: vProvider === "anthropic" ? "anthropic" : "openai-compatible",
+        model: vModel,
+        ...(vProvider === "openai-compat" && vBaseUrl && vBaseUrl !== DEFAULT_BASE_URL ? { baseUrl: vBaseUrl } : {}),
+        ...(vCtx !== undefined ? { contextWindow: vCtx } : {}),
+        ...(vInsecure && vProvider !== "anthropic" ? { allowInsecureTls: true } : {}),
+        ...(profileId ? { profileId } : {}),
+      };
+      settings.vision = vision.enabled === true;
+    } else {
+      delete settings.visionConnection;
+      delete settings.vision;
+    }
   });
   if (settingsError) return { ok: false, error: `failed to write settings: ${settingsError}` };
   clearGlobalSettingsKeys(staleGlobalKeys);
@@ -1138,11 +1210,29 @@ function applyValidatedConnection(workspace, validated) {
           model,
           ...(contextWindow !== undefined ? { contextWindow } : {}),
           ...(insecureTls ? { insecureTls: true } : {}),
+          // Absent means cleared, on purpose — the engine drops its vision
+          // endpoint when this key is missing, matching what was just written
+          // to settings.json.
+          ...(vision.connection
+            ? {
+                vision: {
+                  enabled: vision.enabled === true,
+                  provider: vision.connection.provider,
+                  ...(vision.connection.baseUrl ? { baseUrl: vision.connection.baseUrl } : {}),
+                  apiKey: vision.connection.apiKey,
+                  model: vision.connection.model,
+                  ...(vision.connection.contextWindow !== undefined
+                    ? { contextWindow: vision.connection.contextWindow }
+                    : {}),
+                  ...(vision.connection.insecureTls ? { insecureTls: true } : {}),
+                },
+              }
+            : {}),
         },
       },
       tab.id,
     );
-    logEvent("sys", { ev: "connection-swapped", provider, live: true });
+    logEvent("sys", { ev: "connection-swapped", provider, live: true, vision: vision.connection ? vision.enabled === true : false });
     return { ok: true, live: true, model };
   }
   startEngine(workspace, model);
@@ -1391,6 +1481,14 @@ ipcMain.handle("connection:info", () => {
   // Asked for THIS workspace's provider, so a leftover key line for the other
   // one cannot make the card claim a key it would never send.
   info.hasKey = savedWorkspaceKey(workspace, info.provider) !== "";
+  // The vision endpoint, as the picker needs it: which saved profile it came
+  // from, what it runs, and whether the toggle is on. `visionEnabled` is only
+  // ever true alongside a connection — the card has nothing to switch on
+  // otherwise (see resolveVisionSelection).
+  const vision = currentVisionConnection(workspace);
+  info.visionProfileId = vision.connection ? vision.connection.profileId : "";
+  info.visionModel = vision.connection ? vision.connection.model : "";
+  info.visionEnabled = vision.connection ? vision.enabled : false;
   return info;
 });
 
@@ -1553,6 +1651,68 @@ ipcMain.handle("config:setModel", (evt, model) => {
     sendToRenderer("engine:restarted", { model: trimmed }, win);
   }
   return currentConfig;
+});
+
+/**
+ * The workspace's main connection as a credential payload — what
+ * {@link applyValidatedConnection} needs to re-apply the connection it is
+ * already on.
+ *
+ * Reads the EFFECTIVE (global + project) layer, because that is what the engine
+ * resolves: a connection configured once globally must not come back as an
+ * empty payload the moment a workspace re-saves it.
+ */
+function savedConnectionPayload(workspace) {
+  const settings = readEffectiveWorkspaceSettings(workspace);
+  const provider = settings.provider === "anthropic" ? "anthropic" : "openai-compat";
+  return {
+    provider,
+    baseUrl: typeof settings.baseUrl === "string" ? settings.baseUrl : "",
+    apiKey: savedWorkspaceKey(workspace, provider),
+    model: typeof settings.model === "string" && settings.model ? settings.model : currentConfig.model,
+    ...(Number.isFinite(settings.contextWindow) ? { contextWindow: settings.contextWindow } : {}),
+    insecureTls: settings.allowInsecureTls === true,
+  };
+}
+
+ipcMain.handle("settings:getVision", () => {
+  const workspace = currentConfig.workspace;
+  if (!workspace) return { enabled: false, model: "", profileId: "" };
+  const vision = currentVisionConnection(workspace);
+  return {
+    enabled: vision.connection ? vision.enabled : false,
+    model: vision.connection ? vision.connection.model : "",
+    profileId: vision.connection ? vision.connection.profileId : "",
+  };
+});
+
+/**
+ * The Vision toggle. It moves the SAME `vision` setting the connection card
+ * writes, through the same save path — so the switch, a re-saved connection and
+ * an applied profile can never leave three different ideas of whether images
+ * are readable.
+ *
+ * Turning it on without a vision model is refused rather than written: the flag
+ * alone can look at nothing, and a live engine would fail every image at the
+ * wall with the switch showing ON.
+ */
+ipcMain.handle("settings:setVision", (_evt, enabled) => {
+  if (typeof enabled !== "boolean") return { ok: false, error: "invalid value" };
+
+  const workspace = currentConfig.workspace;
+  if (!workspace) return { ok: false, error: "no workspace" };
+
+  const vision = currentVisionConnection(workspace);
+  if (enabled && !vision.connection) {
+    return { ok: false, error: "choose a vision model first — there is nothing to send images to" };
+  }
+  if (!vision.connection) return { ok: true, enabled: false };
+
+  const validated = validateCredentialPayload(savedConnectionPayload(workspace));
+  if (!validated.ok) return validated;
+  const result = applyValidatedConnection(workspace, validated, { keep: true, enabled });
+  if (result.ok) logEvent("sys", { ev: "vision-changed", enabled });
+  return result.ok ? { ok: true, enabled } : result;
 });
 
 ipcMain.handle("settings:getWebSearch", () => {

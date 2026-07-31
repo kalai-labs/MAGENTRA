@@ -145,6 +145,7 @@ const setRainOpacityEl = document.getElementById("setRainOpacity");
 const setDetailEl = document.getElementById("setDetail");
 const setDeletionsEl = document.getElementById("setDeletions");
 const setWebSearchEl = document.getElementById("setWebSearch");
+const setVisionEl = document.getElementById("setVision");
 const hintAutoEl = document.getElementById("hintAuto");
 const hintUsageEl = document.getElementById("hintUsage");
 
@@ -193,6 +194,11 @@ const setInsecureEl = document.getElementById("setInsecure");
 
 // connection settings: context size
 const setContextEl = document.getElementById("setContext");
+
+// vision: which saved profile describes images, in the settings card and in the
+// wizard. Both pick from the same profile list; both save with the connection.
+const setVisionProfileEl = document.getElementById("setVisionProfile");
+const wizVisionProfileEl = document.getElementById("wizVisionProfile");
 
 // startup landing: recent folders
 const recentListEl = document.getElementById("recentList");

@@ -46,15 +46,44 @@ export const settingsSchema = z
     /** Cheap model for WebFetch digestion and compaction summaries. */
     smallModel: z.string().optional(),
     /**
-     * Whether the configured model can actually SEE images.
+     * Whether this workspace can look at images at all.
      *
-     * Off by default, because most models cannot and a wrong "yes" is the
-     * expensive direction: the agent captures a screenshot, receives content it
-     * cannot interpret, and reports on a picture it never saw. With this off the
-     * Read tool refuses image files outright and the evidence rung tells the
-     * agent so, rather than leaving it to guess.
+     * Off by default, and it cannot be turned on without a {@link visionConnection}:
+     * the main model is never handed a picture, so with no second endpoint to send
+     * one to there is nothing behind the switch. A wrong "yes" is the expensive
+     * direction — the agent receives content it cannot interpret and reports on a
+     * picture it never saw — so with this off the Read tool refuses image files
+     * outright and the evidence rung tells the agent so.
      */
     vision: z.boolean().default(false),
+    /**
+     * The separate endpoint that actually looks at images.
+     *
+     * Images never reach the main model. A vision model is called with the
+     * picture, and its DESCRIPTION — plain text — is what enters the
+     * conversation. That keeps a coding model on an endpoint that may not accept
+     * image parts at all, and makes the one thing the agent "saw" auditable in
+     * the transcript.
+     *
+     * Written by the desktop app from a saved connection profile (`profileId`
+     * remembers which, so the card can re-select it). Its key resolves like the
+     * main one: an env var first, then the value stored here.
+     */
+    visionConnection: z
+      .object({
+        provider: z.enum(["anthropic", "openai-compatible"]).default("openai-compatible"),
+        model: z.string().min(1),
+        baseUrl: z.string().optional(),
+        /** The API key itself. A SECRET — redacted by /settings, like `apiKey`. */
+        apiKey: z.string().optional(),
+        /** Context window hint, forwarded as `num_ctx` to a local server. */
+        contextWindow: z.number().int().positive().optional(),
+        /** Self-signed certificate opt-in for THIS endpoint (see allowInsecureTls). */
+        allowInsecureTls: z.boolean().optional(),
+        /** Which saved app profile this came from; the engine never reads it. */
+        profileId: z.string().optional(),
+      })
+      .optional(),
     baseUrl: z.string().optional(),
     /** Name of the env var holding the API key. */
     apiKeyEnv: z.string().optional(),
@@ -300,8 +329,15 @@ export interface EffectiveSetting {
   source: SettingSourceKind;
 }
 
-/** Leaf keys whose value is a secret and must be masked before any display. */
-const SECRET_KEYS = new Set(["apiKey"]);
+/**
+ * Is this dot-path a stored credential? Judged by the LEAF name, so every
+ * connection block that holds a key — the top-level one, `visionConnection` —
+ * is covered by the same rule, and a future one is covered the day it is added
+ * rather than the day someone remembers to extend a list.
+ */
+function isSecretPath(dotPath: string): boolean {
+  return dotPath.split(".").pop() === "apiKey";
+}
 
 /**
  * Mask a secret for display: first 3 + last 4 chars, e.g. `sk-…f3ab (redacted)`;
@@ -345,7 +381,7 @@ export function describeSettings(cwd: string): EffectiveSetting[] {
     else if (projectLeaves.has(key)) source = "project";
     else if (globalLeaves.has(key)) source = "global";
     else source = "default";
-    const shown = SECRET_KEYS.has(key) && typeof value === "string" ? redactSecret(value) : value;
+    const shown = isSecretPath(key) && typeof value === "string" ? redactSecret(value) : value;
     out.push({ key, value: shown, source });
   }
   return out;
@@ -416,7 +452,7 @@ export function setSetting(
 
   const value = coerceSettingValue(rawValue);
   const file =
-    target === "global" || SECRET_KEYS.has(topKey) || !existsSync(join(cwd, STATE_DIR_NAME))
+    target === "global" || isSecretPath(dotPath) || !existsSync(join(cwd, STATE_DIR_NAME))
       ? globalSettingsPath()
       : projectSettingsPath(cwd);
   const discard: SettingsWarning[] = [];
@@ -439,7 +475,7 @@ export function setSetting(
   }
 
   const parsed = settingsSchema.safeParse(candidate);
-  if (!parsed.success) {
+  if (!parsed.success && !mergedLayersAreValid(cwd, file, candidate)) {
     const issue = parsed.error.issues.find((i) => i.path.join(".") === dotPath) ?? parsed.error.issues[0];
     const where = issue && issue.path.length ? `"${issue.path.join(".")}"` : `"${dotPath}"`;
     throw new Error(`Invalid value for ${where}: ${issue?.message ?? "does not match the settings schema"}`);
@@ -447,6 +483,32 @@ export function setSetting(
 
   writeSettingsFile(file, candidate);
   return { file, key: dotPath, value };
+}
+
+/**
+ * Second chance for a layer that does not parse ON ITS OWN: is what the engine
+ * will actually LOAD — the two layers merged — valid?
+ *
+ * A nested key can be split across layers by design. `visionConnection.apiKey`
+ * is a credential, so it goes to the global file, while the rest of that block
+ * (its required `model`) sits in the project file. Neither half is a valid
+ * settings object alone; the merge is, and the merge is what runs.
+ *
+ * Deliberately the fallback rather than the primary check: judging a file by
+ * the merge alone would mean a broken value in ONE layer blocks every write to
+ * the other, and fixing a settings file must never require fixing a different
+ * one first.
+ */
+function mergedLayersAreValid(cwd: string, file: string, candidate: Record<string, unknown>): boolean {
+  const discard: SettingsWarning[] = [];
+  const merged: Record<string, unknown> = {};
+  // Global first, then project — the precedence loadSettings applies, with the
+  // pending write standing in for whichever file it targets.
+  for (const layer of [globalSettingsPath(), projectSettingsPath(cwd)]) {
+    const contents = layer === file ? candidate : readJson(layer, discard);
+    if (contents) deepMerge(merged, structuredClone(contents));
+  }
+  return settingsSchema.safeParse(merged).success;
 }
 
 /**
@@ -564,4 +626,24 @@ export function resolveApiKeySource(settings: Settings): ApiKeySource {
 /** The resolved API key. See {@link resolveApiKeySource} for provenance. */
 export function resolveApiKey(settings: Settings): string | undefined {
   return resolveApiKeySource(settings).key;
+}
+
+/**
+ * Env var the app writes for the vision endpoint's key, and the engine reads
+ * back. Separate from the main connection's variable on purpose: the two
+ * endpoints are usually different services, and one name for two keys is how a
+ * key gets sent to the wrong host.
+ */
+export const VISION_API_KEY_ENV = "MAGENTRA_VISION_API_KEY";
+
+/**
+ * The API key for the vision endpoint: the env var first, then the key stored
+ * in `visionConnection`. Same precedence as the main connection — an
+ * environment wins, so a container can override a file it does not own.
+ *
+ * Undefined is a legitimate answer: a vision model on the LAN (llava under
+ * Ollama) needs no key at all.
+ */
+export function resolveVisionApiKey(settings: Settings): string | undefined {
+  return envKey(VISION_API_KEY_ENV) ?? (settings.visionConnection?.apiKey?.trim() ? settings.visionConnection.apiKey : undefined);
 }
