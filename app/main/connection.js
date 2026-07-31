@@ -1,8 +1,8 @@
 "use strict";
 
-// Credential validation + connection testing for the setup wizard and the
-// Settings → Connection card. Pure I/O over fetch — no Electron imports, so
-// tests can drive everything directly.
+// Credential validation + connection testing for the connection wizard — the
+// only surface that defines a connection. Pure I/O over fetch — no Electron
+// imports, so tests can drive everything directly.
 //
 // Why the test is not a single fetch, for local/custom model servers:
 //   1. `localhost` can resolve IPv6-first while the server listens only on
@@ -33,8 +33,8 @@ const HOSTED_TIMEOUT_MS = 8000;
 const LOCAL_TIMEOUT_MS = 15000;
 
 /**
- * Shared validation for the wizard/settings writeEnv + testConnection
- * payloads. Never echoes the apiKey back in error messages or logs.
+ * Shared validation for the wizard's save/test/apply payloads. Never echoes the
+ * apiKey back in error messages or logs.
  *
  * The API key is required only where it cannot possibly work without one:
  * Anthropic, or the default hosted endpoint. Any explicit base URL — local
@@ -473,11 +473,10 @@ function writeWorkspaceEnvKeys(workspace, entries) {
 /**
  * The vision endpoint a save should land, resolved from what the card sent.
  *
- * `selection` is `{ profileId, enabled }` from the connection card, where an
- * empty `profileId` means "no vision model". OMITTING it entirely means "leave
- * the workspace's current vision setup alone" — which is what applying a
- * profile to the MAIN connection must do, or choosing a new chat endpoint
- * would silently drop the user's vision model.
+ * `selection` is `{ profileId, enabled }`, taken from the profile being applied:
+ * an empty `profileId` means that connection names no vision model, so the
+ * workspace ends up with none. OMITTING it entirely means "leave the workspace's
+ * current vision setup alone".
  *
  * Returns `{ connection, enabled }` — connection null when there is none — or
  * `{ error }`. The connection carries the app's own vocabulary
@@ -485,17 +484,6 @@ function writeWorkspaceEnvKeys(workspace, entries) {
  */
 function resolveVisionSelection(workspace, selection) {
   if (selection === undefined) return currentVisionConnection(workspace);
-
-  // `{ keep: true, enabled }` — the Vision toggle: the same endpoint, a
-  // different switch position. It cannot go through the profile lookup below,
-  // because a workspace may hold a vision connection that no longer names a
-  // saved profile (the profile was deleted, or the settings file was written by
-  // hand), and flipping a switch must never delete a working setup.
-  if (selection.keep === true) {
-    const current = currentVisionConnection(workspace);
-    if (!current.connection) return { connection: null, enabled: false };
-    return { connection: current.connection, enabled: selection.enabled !== false };
-  }
 
   const profileId = typeof selection.profileId === "string" ? selection.profileId.trim() : "";
   if (!profileId) return { connection: null, enabled: false };

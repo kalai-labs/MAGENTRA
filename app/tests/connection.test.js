@@ -28,7 +28,7 @@ const {
   readWorkspaceSettings,
   updateWorkspaceSettings,
 } = require("../main/config.js");
-const { upsertProfile, deleteProfile } = require("../main/profiles.js");
+const { upsertProfile, deleteProfile, readProfiles } = require("../main/profiles.js");
 
 function listen(server) {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server.address().port)));
@@ -365,16 +365,28 @@ async function main() {
       assert.equal(kept.connection.model, "llava", "a main-connection change keeps the vision model");
       assert.equal(kept.enabled, true);
 
-      // The toggle works off what is SAVED, not off a profile lookup: deleting
-      // the profile must not make the switch delete a working setup.
+      // A profile NAMES its vision model, so deleting that model must clear the
+      // pointer from every profile naming it. Left dangling, it would surface
+      // much later as a failed connect on a profile the user never edited.
+      const { id: coderId } = upsertProfile({
+        name: "coder",
+        baseUrl: "http://127.0.0.1:8080/v1",
+        apiKey: "",
+        model: "a-coding-model",
+        provider: "openai-compat",
+        visionProfileId: id,
+      });
       deleteProfile(id);
-      const toggledOff = resolveVisionSelection(ws, { keep: true, enabled: false });
-      assert.equal(toggledOff.connection.model, "llava", "the endpoint survives its profile");
-      assert.equal(toggledOff.enabled, false);
+      const coder = readProfiles().find((p) => p.id === coderId);
+      assert.ok(coder, "the connection itself survives");
+      assert.ok(!coder.visionProfileId, "deleting a vision model clears it from the profiles naming it");
       assert.ok(
         resolveVisionSelection(ws, { profileId: id }).error,
-        "re-selecting a deleted profile is refused rather than half-applied",
+        "selecting a profile that no longer exists is refused rather than half-applied",
       );
+      // The workspace keeps the endpoint it was already connected with — a
+      // deleted profile does not reach into a workspace and disconnect it.
+      assert.equal(currentVisionConnection(ws).connection.model, "llava");
 
       // ── .env: both keys in one rewrite ────────────────────────────────────
       writeWorkspaceEnvKeys(ws, [

@@ -31,7 +31,7 @@ function showView(name) {
 }
 
 // Dock navigation. setup.js adds its own navSettings listener for the
-// connection card; both fire, and the order between them does not matter.
+// wizard; both fire, and the order between them does not matter.
 navConsoleEl.addEventListener("click", () => showView("console"));
 navSettingsEl.addEventListener("click", () => showView("settings"));
 settingsCloseBtnEl.addEventListener("click", () => showView("console"));

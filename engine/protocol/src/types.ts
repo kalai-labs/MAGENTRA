@@ -292,7 +292,7 @@ export interface RestoredMessage {
 /**
  * One fully-resolved connection, as the frontend knows it: which API shape, at
  * which endpoint, with which key and model. The app resolves this from a saved
- * profile or the connection card (the renderer never holds a key — main does)
+ * profile (the renderer never holds a key — main does)
  * and hands it over whole, so the engine never has to guess a half-specified
  * endpoint.
  *

@@ -122,6 +122,5 @@ module.exports = {
   upsertProfile,
   deleteProfile,
   findProfile,
-  sanitizeProfile,
   sanitizeProfiles,
 };

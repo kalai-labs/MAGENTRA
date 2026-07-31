@@ -36,7 +36,7 @@ const {
   resolveVisionSelection,
   currentVisionConnection,
 } = require("./main/connection.js");
-const { readProfiles, upsertProfile, deleteProfile, findProfile, sanitizeProfiles } = require("./main/profiles.js");
+const { upsertProfile, deleteProfile, findProfile, sanitizeProfiles } = require("./main/profiles.js");
 const { initUpdates, updateState, checkNow, startUpdate, installNow } = require("./main/updates.js");
 
 const SMOKE = process.argv.includes("--smoke");
@@ -689,7 +689,7 @@ async function readAttachment(filePath, remainingBudget, visionReady) {
       return {
         name,
         ok: false,
-        error: "images need a vision model — choose one in Settings → Connection and switch Vision on",
+        error: "images need a vision model — add one to this workspace's connection profile in the connection wizard, then switch Vision on from the workspace menu",
       };
     }
     return {

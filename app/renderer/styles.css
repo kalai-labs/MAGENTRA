@@ -1271,11 +1271,7 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .seg-btn { padding: 6px 10px; border: 0; border-left: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: max(10px, 0.68rem); }
 .seg-btn:first-child { border-left: 0; }
 .seg-btn.on { color: var(--accent-hi); background: var(--accent-soft); }
-.key-wrap { min-width: 0; flex: 1; display: flex; gap: 5px; }
-#setKeyReveal { width: 32px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); }
 .set-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; }
-#setConnStatus { margin-right: auto; color: var(--text-faint); font-size: max(10px, 0.7rem); }
-#setConnStatus.ok { color: var(--green); } #setConnStatus.err { color: var(--red); }
 .set-actions button { padding: 7px 10px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--raised); font-size: max(10px, 0.7rem); }
 .set-actions button:hover { border-color: var(--accent); color: var(--accent-hi); }
 .glossary dt { margin-top: 7px; color: var(--accent-hi); font-size: max(10px, 0.73rem); font-weight: 650; }
@@ -1337,7 +1333,6 @@ html[data-overdrive="on"] #statusLed.idle { background: var(--od-accent); box-sh
 .wiz-check { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 9px; color: var(--text); font-size: max(10px, 0.76rem); cursor: pointer; }
 .wiz-check input { accent-color: var(--accent); }
 .wiz-check small { color: var(--text-faint); }
-.set-check { padding: 6px 0; margin: 0; }
 #wizStatus { margin-right: auto; color: var(--text-faint); font-size: max(10px, 0.7rem); }
 #wizStatus.ok { color: var(--green); } #wizStatus.err { color: var(--red); }
 #wizStartBtn { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-weight: 700; }

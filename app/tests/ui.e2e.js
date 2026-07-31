@@ -1148,181 +1148,6 @@ async function run() {
     assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
   });
 
-  await test("vision belongs to the connection profile, and both tabs switch their own", async () => {
-    // The design in one test: a vision model is set up ONCE, on a profile, and
-    // travels with the connection. Nothing about it is entered, tested or saved
-    // per workspace — it is only switched on and off, per tab, from the menu
-    // where that workspace lives.
-    windowRef.webContents.send("test:setup-required", { workspace: WORKSPACE });
-    await pause(80);
-
-    // A describer profile first, so it is on offer as a vision model.
-    await evaluate(`(() => {
-      document.querySelector('#wizName').value = 'Describer';
-      const base = document.querySelector('#wizBaseUrl');
-      base.value = 'https://api.test/v1';
-      base.dispatchEvent(new Event('input'));
-      const model = document.querySelector('#wizModel');
-      model.value = 'a-vision-model';
-      model.dispatchEvent(new Event('input'));
-      document.querySelector('#wizApiKey').value = 'vision-key';
-      document.querySelector('#wizSaveProfileBtn').click();
-    })()`);
-    await pause(80);
-
-    // It appears in the picker without a reload: saving refreshes the list that
-    // the profile rows and the picker both read.
-    const describerId = await evaluate(
-      `(() => { const o = [...document.querySelectorAll('#wizVisionProfile option')].find((x) => x.textContent.includes('Describer')); return o ? o.value : ''; })()`,
-    );
-    assert.ok(describerId, "a saved profile is offered as a vision model");
-
-    // Now a coding connection that NAMES it. One save carries both.
-    await evaluate(`(() => {
-      document.querySelector('#wizName').value = 'Coder';
-      const base = document.querySelector('#wizBaseUrl');
-      base.value = 'https://api.test/v1';
-      base.dispatchEvent(new Event('input'));
-      const model = document.querySelector('#wizModel');
-      model.value = 'a-coding-model';
-      model.dispatchEvent(new Event('input'));
-      document.querySelector('#wizApiKey').value = 'coder-key';
-      document.querySelector('#wizApiKey').dispatchEvent(new Event('input'));
-      document.querySelector('#wizVisionProfile').value = ${JSON.stringify("__ID__")};
-      document.querySelector('#wizSaveProfileBtn').click();
-    })()`.replace("__ID__", describerId));
-    await pause(80);
-    const savedCoder = calls.filter((call) => call.name === "saveProfile").pop();
-    assert.equal(savedCoder.args[0].visionProfileId, describerId, "the vision model is saved ON the profile");
-    // A profile row states its describer, so "can this connection read images"
-    // is answerable before anything is applied.
-    const rows = await evaluate(`[...document.querySelectorAll('.wiz-profile-meta')].map((m) => m.textContent)`);
-    assert.ok(rows.some((r) => r.includes("👁 a-vision-model")), "a profile row shows the vision model it carries");
-    await evaluate(`document.querySelector('#wizCloseBtn').click()`);
-    await pause();
-
-    // ── two workspaces, each its own connection ───────────────────────────
-    const tabEvt = (ch, p) => windowRef.webContents.send(ch, p);
-    tabEvt("test:tab-opened", { tabId: "tV1", workspace: "/tmp/ws-v1" });
-    await emit({ type: "workspace_changed", workspace: "/tmp/ws-v1", tabId: "tV1" });
-    tabEvt("test:tab-opened", { tabId: "tV2", workspace: "/tmp/ws-v2" });
-    await emit({ type: "workspace_changed", workspace: "/tmp/ws-v2", tabId: "tV2" });
-    await pause(60);
-
-    // Connect the BACKGROUND pane (tV1) from its own header menu. The wizard
-    // must target that tab — not the focused one, which is a different
-    // workspace with a different connection.
-    await evaluate(`(() => {
-      const head = tabs.get('tV1').paneEl.querySelector('.console-pane-head');
-      head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }));
-    })()`);
-    await pause(60);
-    await evaluate(
-      `[...document.querySelectorAll('.ctx-menu .ctx-item')].find((x) => x.textContent.includes('SET CONNECTION')).click()`,
-    );
-    await pause(80);
-    await evaluate(
-      `[...document.querySelectorAll('.wiz-profile-row')].find((r) => r.textContent.includes('Coder')).querySelector('.wiz-profile-use').click()`,
-    );
-    await pause(80);
-    const applied = calls.filter((call) => call.name === "applyProfile").pop();
-    assert.equal(applied.args[1], "tV1", "the profile is applied to the pane it was opened from");
-
-    // That tab can now read images; the other one still cannot — each carries
-    // its own connection, so the switch is per workspace.
-    const menuFor = async (tabId) => {
-      await evaluate(`(() => {
-        const head = tabs.get('${"$"}{TAB}').paneEl.querySelector('.console-pane-head');
-        head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }));
-      })()`.replace("${TAB}", tabId));
-      await pause(60);
-      return evaluate(
-        `(() => { const b = [...document.querySelectorAll('.ctx-menu .ctx-item')].find((x) => x.textContent.includes('VISION')); return b ? { text: b.textContent, disabled: b.disabled } : null; })()`,
-      );
-    };
-
-    const connected = await menuFor("tV1");
-    assert.ok(connected, "the pane menu offers the vision switch");
-    assert.equal(connected.disabled, false, "a connection carrying a describer can be switched");
-    assert.ok(connected.text.includes("a-vision-model"), "the switch names the model it would use");
-    assert.ok(connected.text.includes("OFF"), "applying a profile with a vision model turns it on");
-    await evaluate(
-      `[...document.querySelectorAll('.ctx-menu .ctx-item')].find((x) => x.textContent.includes('VISION')).click()`,
-    );
-    await pause(80);
-    const toggled = calls.filter((call) => call.name === "setVision").pop();
-    assert.equal(toggled.args[0], false, "the menu switches vision off");
-    assert.equal(toggled.args[1], "tV1", "the switch acts on the tab it was opened from");
-
-    const unconnected = await menuFor("tV2");
-    assert.equal(unconnected.disabled, true, "a workspace whose connection names no describer cannot switch vision on");
-    assert.ok(unconnected.text.includes("none in this connection"), "and it says why");
-    await evaluate(`document.dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
-
-    // Attachments from a pane ask about THAT pane's workspace, so images are
-    // offered against its own vision model.
-    await evaluate(`(() => {
-      const btn = [...tabs.get('tV1').paneEl.querySelectorAll('.pane-tool')].find((b) => b.title === 'Attach context files');
-      btn.click();
-    })()`);
-    await pause(80);
-    const picked = calls.filter((call) => call.name === "pickContextFiles").pop();
-    assert.equal(picked.args[0].tabId, "tV1", "the pane's attach picker names its own tab");
-
-    // Deleting the describer clears it from the connection that named it —
-    // a pointer to a profile that no longer exists must not survive, or it
-    // would fail later at connect time on a profile the user never edited.
-    await evaluate(`document.querySelector('#navSetupConn').click()`);
-    await pause(80);
-    await evaluate(
-      `[...document.querySelectorAll('.wiz-profile-row')].find((r) => r.textContent.includes('Describer')).querySelector('.wiz-profile-del').click()`,
-    );
-    await pause(80);
-    const afterDelete = await evaluate(
-      `(() => { const r = [...document.querySelectorAll('.wiz-profile-row')].find((x) => x.textContent.includes('Coder')); return r ? r.textContent : ''; })()`,
-    );
-    assert.ok(afterDelete && !afterDelete.includes("👁"), "deleting the vision model clears it from the profiles naming it");
-
-    // Leave the saved set as it was found.
-    await evaluate(
-      `[...document.querySelectorAll('.wiz-profile-row')].find((r) => r.textContent.includes('Coder')).querySelector('.wiz-profile-del').click()`,
-    );
-    await pause(80);
-    await evaluate(`document.querySelector('#wizCloseBtn').click()`);
-    await pause();
-
-    // Closing the LAST tab reloads the window back to the landing page (the
-    // renderer's own behaviour). Wait for that reload to land, or the next
-    // scenario's events arrive at a page that is already being replaced.
-    await evaluate(`window.__beforeReload = true`);
-    tabEvt("test:tab-closed", { tabId: "tV1" });
-    tabEvt("test:tab-closed", { tabId: "tV2" });
-    for (let i = 0; i < 60; i++) {
-      await pause(50);
-      let stale = false;
-      try {
-        stale = await evaluate(`window.__beforeReload === true`);
-      } catch {
-        stale = true; // mid-navigation: the page is going away, keep waiting
-      }
-      if (!stale) break;
-    }
-    await pause(120); // let the reloaded page's modules boot
-    // The reload re-applies the saved UI scale from localStorage. Put it back to
-    // 1.0 so the responsive breakpoints later in the suite measure real pixels.
-
-    // The reload dropped the open workspace with it. Put the suite back where it
-    // found things — a workspace open, no tiled panes — the same way a user
-    // does, by opening it from the recent list.
-    await evaluate(`document.querySelector('.recent-row').click()`);
-    await pause(80);
-    assert.equal(
-      await evaluate(`document.querySelector('#workspacePath').textContent`),
-      "magentra-ui-workspace",
-      "the workspace is open again for the scenarios that follow",
-    );
-  });
-
   await test("custom endpoint wizard: pasted URL normalizes, keyless + self-signed works, model stays aligned", async () => {
     windowRef.webContents.send("test:setup-required", { workspace: WORKSPACE });
     await pause(80);
@@ -1558,15 +1383,6 @@ async function run() {
   await test("responsive workbench collapses navigation and overlays inspector", async () => {
     windowRef.setSize(800, 620);
     await pause(80);
-    console.log("DEBUG win", JSON.stringify(await evaluate(`({
-      inner: window.innerWidth,
-      matches900: window.matchMedia('(max-width: 900px)').matches,
-      sidebarVar: getComputedStyle(document.documentElement).getPropertyValue('--sidebar-w'),
-      computedWidth: getComputedStyle(document.querySelector('#sidebar')).width,
-      inlineWidth: document.querySelector('#sidebar').style.width,
-      bodyClass: document.body.className,
-      rect: Math.round(document.querySelector('#sidebar').getBoundingClientRect().width),
-    })`)));
     const state = await evaluate(`(() => ({
       sidebarWidth: Math.round(document.querySelector('#sidebar').getBoundingClientRect().width),
       stageRight: getComputedStyle(document.querySelector('#stage')).right,
@@ -1827,6 +1643,150 @@ async function run() {
     assert.equal(afterFocusedClose.directStreams, 1, "exactly one stream in the single console — no orphan from the closed tab");
     assert.ok(afterFocusedClose.shownIsA, "the single console shows the SURVIVING tab's own stream, not the closed tab's");
     assert.ok(afterFocusedClose.transcriptHasA, "the surviving tab's content is shown in the single console");
+  });
+
+  // Runs after the concurrent-tabs scenario on purpose: that one leaves tab tA
+  // open, and a workspace tab is what the connection menus act on. Closing the
+  // LAST tab reloads the window (the renderer's landing-page behaviour), so this
+  // scenario adds a second tab and closes only that one.
+  await test("vision belongs to the connection profile, and each tab switches its own", async () => {
+    // The design in one test: a vision model is set up ONCE, on a profile, and
+    // travels with the connection. Nothing about it is entered, tested or saved
+    // per workspace — it is only switched on and off, per tab, from the menu
+    // where that workspace lives.
+    const tabEvt = (ch, p) => windowRef.webContents.send(ch, p);
+
+    // A describer profile first, so it is on offer as a vision model.
+    await evaluate(`document.querySelector('#navSetupConn').click()`);
+    await pause(80);
+    await evaluate(`(() => {
+      document.querySelector('#wizName').value = 'Describer';
+      const base = document.querySelector('#wizBaseUrl');
+      base.value = 'https://api.test/v1';
+      base.dispatchEvent(new Event('input'));
+      const model = document.querySelector('#wizModel');
+      model.value = 'a-vision-model';
+      model.dispatchEvent(new Event('input'));
+      document.querySelector('#wizApiKey').value = 'vision-key';
+      document.querySelector('#wizSaveProfileBtn').click();
+    })()`);
+    await pause(80);
+
+    // It appears in the picker without a reload: saving refreshes the list that
+    // the profile rows and the picker both read.
+    const describerId = await evaluate(
+      `(() => { const o = [...document.querySelectorAll('#wizVisionProfile option')].find((x) => x.textContent.includes('Describer')); return o ? o.value : ''; })()`,
+    );
+    assert.ok(describerId, "a saved profile is offered as a vision model");
+
+    // Now a coding connection that NAMES it. One save carries both.
+    await evaluate(`(() => {
+      document.querySelector('#wizName').value = 'Coder';
+      const base = document.querySelector('#wizBaseUrl');
+      base.value = 'https://api.test/v1';
+      base.dispatchEvent(new Event('input'));
+      const model = document.querySelector('#wizModel');
+      model.value = 'a-coding-model';
+      model.dispatchEvent(new Event('input'));
+      document.querySelector('#wizApiKey').value = 'coder-key';
+      document.querySelector('#wizApiKey').dispatchEvent(new Event('input'));
+      document.querySelector('#wizVisionProfile').value = ${JSON.stringify("__ID__")};
+      document.querySelector('#wizSaveProfileBtn').click();
+    })()`.replace("__ID__", describerId));
+    await pause(80);
+    const savedCoder = calls.filter((call) => call.name === "saveProfile").pop();
+    assert.equal(savedCoder.args[0].visionProfileId, describerId, "the vision model is saved ON the profile");
+
+    // A profile row states its describer, so "can this connection read images"
+    // is answerable before anything is applied.
+    const rows = await evaluate(`[...document.querySelectorAll('.wiz-profile-meta')].map((m) => m.textContent)`);
+    assert.ok(rows.some((r) => r.includes("👁 a-vision-model")), "a profile row shows the vision model it carries");
+    await evaluate(`document.querySelector('#wizCloseBtn').click()`);
+    await pause();
+
+    // ── a second workspace, so the two connections are distinguishable ─────
+    tabEvt("test:tab-opened", { tabId: "tV2", workspace: "/tmp/ws-v2" });
+    await emit({ type: "workspace_changed", workspace: "/tmp/ws-v2", tabId: "tV2" });
+    await pause(60);
+
+    // Connect the BACKGROUND pane (tA) from its own header menu. The wizard must
+    // target that tab — not the focused one, which is a different workspace with
+    // a different connection.
+    await evaluate(`(() => {
+      const head = tabs.get('tA').paneEl.querySelector('.console-pane-head');
+      head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }));
+    })()`);
+    await pause(60);
+    await evaluate(
+      `[...document.querySelectorAll('.ctx-menu .ctx-item')].find((x) => x.textContent.includes('SET CONNECTION')).click()`,
+    );
+    await pause(80);
+    await evaluate(
+      `[...document.querySelectorAll('.wiz-profile-row')].find((r) => r.textContent.includes('Coder')).querySelector('.wiz-profile-use').click()`,
+    );
+    await pause(80);
+    const applied = calls.filter((call) => call.name === "applyProfile").pop();
+    assert.equal(applied.args[1], "tA", "the profile is applied to the pane it was opened from");
+
+    // That tab can now read images; the other still cannot — each carries its
+    // own connection, so the switch is per workspace.
+    const menuFor = async (tabId) => {
+      await evaluate(`(() => {
+        const head = tabs.get('${"$"}{TAB}').paneEl.querySelector('.console-pane-head');
+        head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }));
+      })()`.replace("${TAB}", tabId));
+      await pause(60);
+      return evaluate(
+        `(() => { const b = [...document.querySelectorAll('.ctx-menu .ctx-item')].find((x) => x.textContent.includes('VISION')); return b ? { text: b.textContent, disabled: b.disabled } : null; })()`,
+      );
+    };
+
+    const connected = await menuFor("tA");
+    assert.ok(connected, "the pane menu offers the vision switch");
+    assert.equal(connected.disabled, false, "a connection carrying a describer can be switched");
+    assert.ok(connected.text.includes("a-vision-model"), "the switch names the model it would use");
+    assert.ok(connected.text.includes("OFF"), "applying a profile with a vision model turns it on");
+    await evaluate(
+      `[...document.querySelectorAll('.ctx-menu .ctx-item')].find((x) => x.textContent.includes('VISION')).click()`,
+    );
+    await pause(80);
+    const toggled = calls.filter((call) => call.name === "setVision").pop();
+    assert.equal(toggled.args[0], false, "the menu switches vision off");
+    assert.equal(toggled.args[1], "tA", "the switch acts on the tab it was opened from");
+
+    const unconnected = await menuFor("tV2");
+    assert.equal(unconnected.disabled, true, "a workspace whose connection names no describer cannot switch vision on");
+    assert.ok(unconnected.text.includes("none in this connection"), "and it says why");
+    await evaluate(`document.dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
+
+    // Attachments from a pane ask about THAT pane's workspace, so images are
+    // offered against its own vision model.
+    await evaluate(`(() => {
+      const btn = [...tabs.get('tA').paneEl.querySelectorAll('.pane-tool')].find((b) => b.title === 'Attach context files');
+      btn.click();
+    })()`);
+    await pause(80);
+    const picked = calls.filter((call) => call.name === "pickContextFiles").pop();
+    assert.equal(picked.args[0].tabId, "tA", "the pane's attach picker names its own tab");
+
+    // Deleting the describer clears it from the connection that named it — a
+    // pointer to a profile that no longer exists must not outlive it.
+    await evaluate(`document.querySelector('#navSetupConn').click()`);
+    await pause(80);
+    await evaluate(
+      `[...document.querySelectorAll('.wiz-profile-row')].find((r) => r.textContent.includes('Describer')).querySelector('.wiz-profile-del').click()`,
+    );
+    await pause(80);
+    const afterDelete = await evaluate(
+      `(() => { const r = [...document.querySelectorAll('.wiz-profile-row')].find((x) => x.textContent.includes('Coder')); return r ? r.textContent : ''; })()`,
+    );
+    assert.ok(afterDelete && !afterDelete.includes("👁"), "deleting the vision model clears it from the profiles naming it");
+    await evaluate(`document.querySelector('#wizCloseBtn').click()`);
+    await pause();
+
+    // Leave one tab open: closing the last one reloads the page.
+    tabEvt("test:tab-closed", { tabId: "tV2", focus: "tA" });
+    await pause(60);
   });
 
   // Last on purpose. The OVERDRIVE scenario above reads a computed border colour

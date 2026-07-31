@@ -286,7 +286,7 @@ function syncActivityUi() {
   // are no credentials (a prompt would go into a dead engine).
   promptInputEl.disabled = !engineLinked;
   promptInputEl.placeholder = !engineLinked
-    ? "Engine not linked — open Settings → Connection or the setup wizard"
+    ? "Engine not linked — open the connection wizard (⇆ Connect)"
     : busy
       ? "Message joins the running turn to steer it…"
       : "Ask Magentra anything…";
