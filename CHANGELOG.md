@@ -10,6 +10,14 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.16.0 — 2026-07-31
+
+### Features
+
+- new vision feature ([edf264b](https://github.com/kalai-labs/MAGENTRA/commit/edf264bae43a0dcfa78b7527e2aa5e6e9e2fb744))
+
+[Compare with v0.15.1](https://github.com/kalai-labs/MAGENTRA/compare/v0.15.1...v0.16.0)
+
 ## 0.15.1 — 2026-07-30
 
 ### Refactoring
