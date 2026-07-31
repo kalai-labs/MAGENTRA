@@ -396,6 +396,16 @@ export type FrontendRequest =
    */
   | { type: "set_connection"; connection: ConnectionSpec }
   /**
+   * Switch image reading on or off, live, without touching the connection.
+   *
+   * Its own frame rather than a `set_connection` carrying a flag: that frame
+   * rewrites the endpoint, the key and the environment and rebuilds the
+   * provider, which is a great deal of machinery — and a credential rewrite —
+   * to move one boolean. Refused when no vision endpoint is configured, since
+   * the flag alone can look at nothing.
+   */
+  | { type: "set_vision"; enabled: boolean }
+  /**
    * Mid-run steering: user text that joins the RUNNING turn at its next
    * message boundary instead of waiting for the turn to end. Sent by
    * frontends while a turn is busy; falls back to a normal user turn when

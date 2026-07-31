@@ -52,7 +52,6 @@ function enterActiveState(workspace) {
   sidebarSessionsRefreshEl.classList.remove("hidden");
   inspectorToggleEl.classList.remove("hidden");
   if (revealWorkspaceBtnEl) revealWorkspaceBtnEl.classList.remove("hidden");
-  void loadConnectionCard();
   sendBtnEl.disabled = false;
   clearBtnEl.disabled = false;
   syncActivityUi();
@@ -268,9 +267,6 @@ async function boot() {
   // workspace explicitly. `did-finish-load` pushes the recent list.
   renderRecentList(config && config.recentWorkspaces);
   applyModel((config && config.model) || modelSelectEl.value);
-  if (config && config.model && setModelDefaultEl) {
-    setModelDefaultEl.value = config.model;
-  }
 
   if (window.magentra.getAppInfo) {
     try {

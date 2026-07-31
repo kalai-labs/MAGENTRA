@@ -102,19 +102,13 @@ function openWorkspaceCtxMenu(e, opts) {
   if (typeof closeCtxMenu === "function") closeCtxMenu();
   const menuEl = document.createElement("div");
   menuEl.className = "ctx-menu";
-  const item = (label, danger, onClick) => {
-    const b = document.createElement("button");
-    b.className = "ctx-item" + (danger ? " danger" : "");
-    b.textContent = label;
-    b.addEventListener("click", () => {
-      onClick();
-      closeCtxMenu();
-    });
-    menuEl.appendChild(b);
-  };
+  const item = (label, danger, onClick) => ctxItem(menuEl, label, onClick, { danger });
   if (opts.tabId) {
     // An open tab.
     if (opts.tabId !== focusedTabId && window.magentra.focusTab) item("◉ FOCUS", false, () => window.magentra.focusTab(opts.tabId));
+    // Connection + vision, for THIS workspace — the same items the pane header
+    // offers, from the row that is always visible whether tiled or not.
+    appendConnectionCtxItems(menuEl, opts.tabId);
     if (window.magentra.openInNewWindow) item("⊞ OPEN IN NEW WINDOW", false, () => window.magentra.openInNewWindow(opts.workspace));
     if (window.magentra.closeTab) item("✕ CLOSE TAB", true, () => window.magentra.closeTab(opts.tabId));
   } else {

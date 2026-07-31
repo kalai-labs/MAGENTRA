@@ -70,7 +70,7 @@ const MENU_BAR = [
       { label: "Console", hint: "Ctrl+1", action: () => showView("console") },
       { label: "Sessions", hint: "Ctrl+2", needsWorkspace: true, action: () => { showView("sessions"); requestSessionList(); } },
       { label: "Changes", hint: "Ctrl+3", needsWorkspace: true, action: () => showView("changes") },
-      { label: "Settings", hint: "Ctrl+4", action: () => { showView("settings"); void loadConnectionCard(); } },
+      { label: "Settings", hint: "Ctrl+4", action: () => showView("settings") },
       { label: "Addons", hint: "Ctrl+5", needsWorkspace: true, action: () => showView("addons") },
       { sep: true },
       { label: "Toggle Full Screen", hint: "F11", action: () => toggleFullScreen() },

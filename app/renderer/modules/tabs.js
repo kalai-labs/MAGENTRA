@@ -312,7 +312,9 @@ function buildPaneComposer(tabId) {
     const ts = tsOf();
     if (!ts) return;
     ts.attachments = ts.attachments || [];
-    if (typeof openAttachPicker === "function") void openAttachPicker(ts.attachments, attachEl());
+    // This pane's tabId: the picker offers images only when THIS workspace's
+    // connection has a vision model, not the focused one's.
+    if (typeof openAttachPicker === "function") void openAttachPicker(ts.attachments, attachEl(), tabId);
   };
   const doNew = () => {
     if (paneBusy()) return; // don't clear mid-turn (mirrors the shared composer)
@@ -380,13 +382,7 @@ function openPaneOverflowMenu(anchorEl, items) {
   if (typeof closeCtxMenu === "function") closeCtxMenu();
   const menuEl = document.createElement("div");
   menuEl.className = "ctx-menu";
-  for (const it of items) {
-    const b = document.createElement("button");
-    b.className = "ctx-item";
-    b.textContent = it.label;
-    b.addEventListener("click", () => { it.fn(); closeCtxMenu(); });
-    menuEl.appendChild(b);
-  }
+  for (const it of items) ctxItem(menuEl, it.label, it.fn);
   mountCtxMenu(menuEl, { anchor: anchorEl });
 }
 
@@ -850,44 +846,21 @@ function openPaneCtxMenu(e, tabId) {
   if (panes.length === 3) {
     const currentBig = bigTabId && panes.some((p) => p.id === bigTabId) ? bigTabId : panes[2].id;
     if (tabId !== currentBig) {
-      const mv = document.createElement("button");
-      mv.className = "ctx-item";
-      mv.textContent = "⤓ MOVE TO BOTTOM";
-      mv.addEventListener("click", () => {
+      ctxItem(menuEl, "⤓ MOVE TO BOTTOM", () => {
         bigTabId = tabId;
         applyLayout();
-        closeCtxMenu();
       });
-      menuEl.appendChild(mv);
     }
   }
 
-  // Set connection for THIS workspace only — focus the tab first (so the shared
-  // connection wizard, which acts on the focused workspace, targets it), then
-  // open it in apply mode. Reuses the whole wizard/profile machinery; the
-  // resulting engine restart lands on this tab's workspace, not the others'.
-  if (typeof openConnectionsWizard === "function") {
-    const conn = document.createElement("button");
-    conn.className = "ctx-item";
-    conn.textContent = "SET CONNECTION";
-    conn.addEventListener("click", () => {
-      if (tabId !== focusedTabId && window.magentra.focusTab) window.magentra.focusTab(tabId);
-      closeCtxMenu();
-      void openConnectionsWizard("apply");
-    });
-    menuEl.appendChild(conn);
-  }
+  // Connection + vision for THIS pane's workspace. Both act on `tabId`, so a
+  // background pane is connected (or has its vision switched) where it sits —
+  // no focus change, and never the focused workspace by accident.
+  appendConnectionCtxItems(menuEl, tabId);
 
   // Close this tab — also available on the sidebar row's ✕; here too for reach.
   if (window.magentra.closeTab) {
-    const close = document.createElement("button");
-    close.className = "ctx-item danger";
-    close.textContent = "✕ CLOSE TAB";
-    close.addEventListener("click", () => {
-      window.magentra.closeTab(tabId);
-      closeCtxMenu();
-    });
-    menuEl.appendChild(close);
+    ctxItem(menuEl, "✕ CLOSE TAB", () => window.magentra.closeTab(tabId), { danger: true });
   }
 
   if (menuEl.children.length === 0) return; // nothing to offer here

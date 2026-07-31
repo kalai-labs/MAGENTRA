@@ -66,8 +66,16 @@ function upsertProfile(profile) {
   return { list, id };
 }
 
+/**
+ * Delete a profile — and clear it from any profile that named it as its vision
+ * model. A dangling pointer would otherwise survive here and fail much later,
+ * at connect time, as "the chosen vision model is no longer saved" on a profile
+ * the user never edited.
+ */
 function deleteProfile(id) {
-  const list = readProfiles().filter((p) => p.id !== id);
+  const list = readProfiles()
+    .filter((p) => p.id !== id)
+    .map((p) => (p.visionProfileId === id ? { ...p, visionProfileId: undefined } : p));
   writeProfiles(list);
   return list;
 }
@@ -77,8 +85,12 @@ function findProfile(id) {
 }
 
 /** The renderer never needs the raw key — only whether one is stored. Strip it
- * everywhere a profile crosses the IPC boundary toward the UI. */
-function sanitizeProfile(p) {
+ * everywhere a profile crosses the IPC boundary toward the UI.
+ *
+ * `visionModel` is resolved here rather than in the renderer: the pointer is an
+ * id, and every surface that shows a profile wants the model NAME behind it. */
+function sanitizeProfile(p, all) {
+  const vision = p.visionProfileId ? (all ?? readProfiles()).find((x) => x.id === p.visionProfileId) : null;
   return {
     id: p.id,
     name: p.name,
@@ -88,7 +100,20 @@ function sanitizeProfile(p) {
     contextWindow: p.contextWindow !== undefined && p.contextWindow !== null ? String(p.contextWindow) : "",
     allowInsecureTls: p.insecureTls === true,
     hasKey: typeof p.apiKey === "string" && p.apiKey.trim() !== "",
+    // The vision model this profile connects alongside itself: the id it points
+    // at, and the name/model of that profile for display. Empty when it names
+    // none — then this connection simply cannot look at images.
+    visionProfileId: vision ? vision.id : "",
+    visionName: vision ? vision.name : "",
+    visionModel: vision && typeof vision.model === "string" ? vision.model : "",
   };
+}
+
+/** Every profile, sanitized, with vision pointers resolved against one read of
+ *  the store rather than one read per row. */
+function sanitizeProfiles(list) {
+  const all = list ?? readProfiles();
+  return all.map((p) => sanitizeProfile(p, all));
 }
 
 module.exports = {
@@ -98,4 +123,5 @@ module.exports = {
   deleteProfile,
   findProfile,
   sanitizeProfile,
+  sanitizeProfiles,
 };

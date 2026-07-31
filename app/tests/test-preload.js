@@ -34,7 +34,6 @@ contextBridge.exposeInMainWorld("magentra", {
   restartEngine: () => ipcRenderer.send("test:restart"),
   respondPermission: (id, decision, message) =>
     ipcRenderer.send("test:permission", message ? { id, decision, message } : { id, decision }),
-  writeEnv: (payload) => api("writeEnv", payload),
   testConnection: (payload) => api("testConnection", payload),
   detectLocalServers: () => api("detectLocalServers"),
   generateAddon: (payload) => api("generateAddon", payload),
@@ -42,11 +41,11 @@ contextBridge.exposeInMainWorld("magentra", {
   listProfiles: () => api("listProfiles"),
   saveProfile: (payload) => api("saveProfile", payload),
   deleteProfile: (id) => api("deleteProfile", id),
-  applyProfile: (id) => api("applyProfile", id),
+  applyProfile: (id, tabId) => api("applyProfile", id, tabId),
   getWebSearch: () => api("getWebSearch"),
   setWebSearch: (enabled) => api("setWebSearch", enabled),
-  getVision: () => api("getVision"),
-  setVision: (enabled) => api("setVision", enabled),
+  getVision: (tabId) => api("getVision", tabId),
+  setVision: (enabled, tabId) => api("setVision", enabled, tabId),
   getAppInfo: () => api("getAppInfo"),
   updateState: () => api("updateState"),
   checkUpdates: () => api("checkUpdates"),
@@ -55,7 +54,6 @@ contextBridge.exposeInMainWorld("magentra", {
   onUpdateState: (callback) => listen("test:update-state", callback),
   openExternal: (url) => ipcRenderer.send("test:external", url),
   openLogs: () => api("openLogs"),
-  connectionInfo: () => api("connectionInfo"),
   setTitleBarTheme: (theme) => ipcRenderer.send("test:titlebar", theme),
   windowControl: (action) => ipcRenderer.send("test:window-control", action),
   onFullScreen: (callback) => listen("test:fullscreen", callback),
@@ -74,7 +72,6 @@ contextBridge.exposeInMainWorld("magentra", {
       return 1;
     }
   },
-  revealKey: () => api("revealKey"),
   getPathForFile: () => null,
   onEvent: (callback) => listen("test:engine-event", callback),
   onRestarted: (callback) => listen("test:restarted", callback),
