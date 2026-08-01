@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ToolDefinition, ToolResult } from "@magentra/core";
+import { addonInvocationHeader, type ToolDefinition, type ToolResult } from "@magentra/core";
 
 const inputSchema = z.object({
   addon: z.string().min(1).describe("The exact name of an addon from the Available addons list."),
@@ -57,12 +57,7 @@ export const addonTool: ToolDefinition<z.infer<typeof inputSchema>> = {
             .join("\n")}</system-reminder>`
         : "";
 
-    const content =
-      `<system-reminder>The "${addon.name}" addon was invoked. Follow its instructions below now; they take priority over general guidance for this task.</system-reminder>\n` +
-      `<command-name>/${addon.name}</command-name>\n` +
-      body +
-      argsLine +
-      resourceLines;
+    const content = addonInvocationHeader(addon.name) + body + argsLine + resourceLines;
     return { content };
   },
   inputSchema,

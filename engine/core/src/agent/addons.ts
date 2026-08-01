@@ -1,8 +1,48 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
+import { definePrompt, renderPrompt } from "@magentra/protocol";
 import { parseFrontmatter } from "../config/frontmatter.js";
 import { BUILTIN_ADDONS } from "./builtinAddons.js";
+
+/**
+ * The header that carries an invoked addon into the conversation.
+ *
+ * ONE definition for both entry paths — the `Addon` tool and the `/<name>`
+ * slash command. It was previously the same sentence written out at both call
+ * sites, in two packages, so an edit to either changed the behaviour of half the
+ * ways an addon can be invoked.
+ *
+ * The precedence clause is the load-bearing part. It used to say only that the
+ * addon's instructions "take priority over general guidance", which named no
+ * limit: a procedure written to be relentless (an interview addon, a checklist
+ * that insists on every step) then kept going through the user's own attempts to
+ * redirect it — delegating a decision back to the agent, or asking it to stop —
+ * because nothing in the system said the user ranked above a loaded addon.
+ */
+const ADDON_INVOKE_HEADER = definePrompt({
+  id: "addon.invoke-header",
+  group: "2 · Injected reminders",
+  label: "Addon invocation header",
+  channel: "reminder",
+  where:
+    "Prepended to an addon's body every time one is invoked, by the Addon tool and by the /<name> slash command alike. `{{name}}` is the addon's name.",
+  placeholders: ["name"],
+  text: `The "{{name}}" addon was invoked. Follow its instructions below for this task — they outrank your default behaviour.
+
+The user outranks them in turn. When their message asks for something these instructions do not allow for — handing a decision back to you, telling you to stop or move on, or narrowing what they want — follow the user and adapt the procedure to fit. An addon shapes how you work; the user decides what you are working on.`,
+});
+
+/**
+ * The `<system-reminder>` + `<command-name>` preamble an invoked addon's body is
+ * prefixed with. Both invocation paths call this, so they cannot drift.
+ */
+export function addonInvocationHeader(name: string): string {
+  return (
+    `<system-reminder>${renderPrompt(ADDON_INVOKE_HEADER, { name })}</system-reminder>\n` +
+    `<command-name>/${name}</command-name>\n`
+  );
+}
 
 /** Directory name addons live under, inside a workspace's or the user's `.magentra`. */
 export const ADDONS_DIR = "addons";

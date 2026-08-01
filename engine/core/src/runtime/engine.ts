@@ -20,7 +20,7 @@ import { AsyncQueue } from "../util/asyncQueue.js";
 import { CronScheduler } from "../scheduling/cron.js";
 import { HookRunner } from "../agent/hooks.js";
 import { parseFrontmatter } from "../config/frontmatter.js";
-import { ADDON_ENTRY, ADDONS_DIR, loadAddons } from "../agent/addons.js";
+import { ADDON_ENTRY, ADDONS_DIR, addonInvocationHeader, loadAddons } from "../agent/addons.js";
 import { BUILTIN_ADDONS } from "../agent/builtinAddons.js";
 import {
   createProviderForEndpoint,
@@ -407,11 +407,7 @@ export class Engine {
       : addon.body + (trimmed ? `\nARGUMENTS: ${trimmed}` : "");
     this.emit({ type: "command_output", text: `🧩 ${addon.name} loaded — following its instructions.` });
     this.startExclusive(`running /${addon.name}`, () =>
-      this.session.runTurn(
-        `<system-reminder>The "${addon.name}" addon was invoked. Follow its instructions below now; they take priority over general guidance for this task.</system-reminder>\n` +
-          `<command-name>/${addon.name}</command-name>\n` +
-          body,
-      ),
+      this.session.runTurn(addonInvocationHeader(addon.name) + body),
     );
     return true;
   }
