@@ -21,5 +21,9 @@ app/tests/.tmp/
 
 .magentra/*
 .claude/*
+# Skills are project tooling and belong in the repo — everything else under
+# .claude/ (settings.local.json, caches) stays ignored. Without this negation a
+# new skill is silently untracked and only `git add -f` ever commits it.
+!.claude/skills/
 *.zip
 *.exe

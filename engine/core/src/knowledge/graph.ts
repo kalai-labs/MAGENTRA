@@ -20,7 +20,18 @@ export interface GraphFileEntry {
 }
 
 export interface GraphData {
-  version: 1;
+  /**
+   * Bumped whenever import EXTRACTION changes, not just the file shape.
+   *
+   * Entries are reused when a file's mtime+size are unchanged, so a scanner fix
+   * is invisible on any workspace that already has a graph.json — every
+   * untouched file keeps the edges the old scanner found. Rejecting the old
+   * version is what makes a fix actually reach existing installs.
+   *
+   * 2 — multi-line braced imports are seen; workspace packages resolve to their
+   *     sibling source instead of a `pkg:` node.
+   */
+  version: 2;
   files: Record<string, GraphFileEntry>;
 }
 
@@ -119,13 +130,29 @@ export function extOf(path: string): string {
 // ---------------------------------------------------------------------------
 
 const RE_FROM = /\b(?:import|export)\b[^;\n]*?\bfrom\s*["']([^"']+)["']/g;
+/**
+ * The braced form, which may span lines: `import {\n  a,\n} from "./x.js"`.
+ *
+ * RE_FROM cannot see it — its `[^;\n]*?` stops at the first newline, so any
+ * import whose specifier is not on the same line as the keyword contributed no
+ * edge at all. On this repository that silently dropped 4 of session.ts's 22
+ * relative imports, including finishing.ts, which therefore reported ZERO
+ * importers while session.ts imports four symbols from it.
+ *
+ * A separate pattern rather than relaxing RE_FROM to `[^;]*?`: allowing that one
+ * to cross newlines lets a side-effect `import "./a.js"` (no `from` clause at
+ * all) scan forward into a LATER statement — or into a comment — and capture a
+ * specifier that belongs to neither. `\{[^}]*\}` cannot leave its brace block,
+ * so this addition can only ever find real import clauses.
+ */
+const RE_FROM_BRACED = /\b(?:import|export)\s+(?:type\s+)?(?:[\w$]+\s*,\s*)?\{[^}]*\}\s*from\s*["']([^"']+)["']/g;
 const RE_BARE_IMPORT = /\bimport\s*["']([^"']+)["']/g;
 const RE_REQUIRE = /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
 const RE_DYNAMIC_IMPORT = /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 
 function extractJsSpecs(content: string): string[] {
   const specs = new Set<string>();
-  for (const re of [RE_FROM, RE_BARE_IMPORT, RE_REQUIRE, RE_DYNAMIC_IMPORT]) {
+  for (const re of [RE_FROM, RE_FROM_BRACED, RE_BARE_IMPORT, RE_REQUIRE, RE_DYNAMIC_IMPORT]) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(content)) !== null) specs.add(m[1]!);
@@ -176,8 +203,8 @@ function pkgNodeId(spec: string): string {
 }
 
 /** Resolve a TS/JS import specifier to a node id, or undefined to drop the edge. */
-function resolveJsSpec(cwd: string, fileDir: string, spec: string): string | undefined {
-  if (!spec.startsWith(".")) return pkgNodeId(spec);
+function resolveJsSpec(cwd: string, fileDir: string, spec: string, ctx?: ResolveContext): string | undefined {
+  if (!spec.startsWith(".")) return resolveWorkspaceSpec(cwd, spec, ctx) ?? pkgNodeId(spec);
 
   const base = join(fileDir, spec);
   const candidates: string[] = [base];
@@ -202,6 +229,44 @@ function resolveJsSpec(cwd: string, fileDir: string, spec: string): string | und
     if (fileExists(cand)) return normalizeToId(cwd, cand);
   }
   return undefined; // unresolvable relative spec — drop the edge
+}
+
+/**
+ * A bare specifier naming a sibling package in this workspace, resolved to that
+ * package's SOURCE entry — `@scope/pkg` → `<dir>/src/index.ts`.
+ *
+ * Source, not the manifest's `exports`/`main`: those point at build output
+ * (`./dist/index.js`), and `dist` is skipped by the scan, so honouring them
+ * would name a node the graph does not contain. The conventional source entries
+ * are tried instead, and when none exists the caller falls back to a `pkg:`
+ * node — exactly the old behaviour. This can therefore only ADD an edge to a
+ * file already in the graph; it never removes one and never invents a node.
+ */
+function resolveWorkspaceSpec(cwd: string, spec: string, ctx?: ResolveContext): string | undefined {
+  if (ctx === undefined || ctx.workspacePkgs.size === 0) return undefined;
+
+  // Longest name first, so `@scope/ui-core` is not shadowed by `@scope/ui`.
+  let name: string | undefined;
+  for (const candidate of ctx.workspacePkgs.keys()) {
+    if (spec !== candidate && !spec.startsWith(`${candidate}/`)) continue;
+    if (name === undefined || candidate.length > name.length) name = candidate;
+  }
+  if (name === undefined) return undefined;
+
+  const dir = ctx.workspacePkgs.get(name)!;
+  const subpath = spec.slice(name.length).replace(/^\//, "");
+  const stems = subpath === "" ? ["src/index", "index"] : [`src/${subpath}`, subpath];
+
+  for (const stem of stems) {
+    const base = join(cwd, dir, stem);
+    for (const ext of TRY_EXTS) {
+      if (fileExists(base + ext)) return normalizeToId(cwd, base + ext);
+    }
+    for (const ext of TRY_EXTS) {
+      if (fileExists(join(base, "index") + ext)) return normalizeToId(cwd, join(base, "index") + ext);
+    }
+  }
+  return undefined; // no source entry — caller falls back to a pkg: node
 }
 
 /** Resolve a python module token (with optional leading dots) to a node id. */
@@ -259,6 +324,11 @@ interface ResolveContext {
   byBasename: Map<string, string[]>;
   /** The module path declared in go.mod, when the workspace has one. */
   goModule: string | undefined;
+  /**
+   * Package name → its directory, for every member of an npm/yarn/pnpm
+   * workspace declared in the root package.json. Empty for an ordinary repo.
+   */
+  workspacePkgs: Map<string, string>;
 }
 
 function pushInto(map: Map<string, string[]>, key: string, value: string): void {
@@ -275,6 +345,63 @@ function readGoModule(cwd: string): string | undefined {
   }
 }
 
+/**
+ * Members of a monorepo workspace, as `package name → directory`.
+ *
+ * Without this every `@scope/pkg` import resolves to a synthetic `pkg:` node —
+ * the same bucket as `node:fs` — so the packages of a monorepo look mutually
+ * disconnected and `slice`/`blastRadius` stop dead at each package boundary.
+ * In this repository that measured engine/protocol/src/types.ts at 2 transitive
+ * importers when its real reach is 53.
+ *
+ * Only literal directories and a single trailing `/*` are expanded: those cover
+ * npm, yarn and pnpm conventions, and a pattern this does not understand simply
+ * contributes no members rather than guessing at one.
+ */
+function readWorkspacePkgs(cwd: string): Map<string, string> {
+  const out = new Map<string, string>();
+  let patterns: unknown;
+  try {
+    const root = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8")) as {
+      workspaces?: unknown;
+    };
+    patterns = Array.isArray(root.workspaces)
+      ? root.workspaces
+      : (root.workspaces as { packages?: unknown } | undefined)?.packages;
+  } catch {
+    return out; // no root manifest, or unreadable — not a workspace
+  }
+  if (!Array.isArray(patterns)) return out;
+
+  const dirs: string[] = [];
+  for (const raw of patterns) {
+    if (typeof raw !== "string" || raw.includes("**")) continue;
+    const pattern = raw.replace(/\/+$/, "");
+    if (pattern.endsWith("/*")) {
+      const base = pattern.slice(0, -2);
+      try {
+        for (const entry of readdirSync(join(cwd, base), { withFileTypes: true })) {
+          if (entry.isDirectory()) dirs.push(`${base}/${entry.name}`);
+        }
+      } catch {
+        // pattern names a directory that does not exist — skip it
+      }
+    } else if (!pattern.includes("*")) {
+      dirs.push(pattern);
+    }
+  }
+
+  for (const dir of dirs) {
+    try {
+      const meta = JSON.parse(readFileSync(join(cwd, dir, "package.json"), "utf8")) as { name?: unknown };
+      if (typeof meta.name === "string" && meta.name !== "") out.set(meta.name, dir);
+    } catch {
+      // not a package, or unreadable — contributes nothing
+    }
+  }
+  return out;
+}
+
 function buildResolveContext(cwd: string, ids: string[]): ResolveContext {
   const byDir = new Map<string, string[]>();
   const byBasename = new Map<string, string[]>();
@@ -283,7 +410,14 @@ function buildResolveContext(cwd: string, ids: string[]): ResolveContext {
     pushInto(byDir, slash < 0 ? "" : id.slice(0, slash), id);
     pushInto(byBasename, slash < 0 ? id : id.slice(slash + 1), id);
   }
-  return { cwd, ids: new Set(ids), byDir, byBasename, goModule: readGoModule(cwd) };
+  return {
+    cwd,
+    ids: new Set(ids),
+    byDir,
+    byBasename,
+    goModule: readGoModule(cwd),
+    workspacePkgs: readWorkspacePkgs(cwd),
+  };
 }
 
 /**
@@ -339,7 +473,7 @@ const RUST_STD_ROOTS = new Set(["std", "core", "alloc"]);
 function jsEdges(absPath: string, content: string, ctx: ResolveContext, out: Set<string>): void {
   const fileDir = dirname(absPath);
   for (const spec of extractJsSpecs(content)) {
-    const id = resolveJsSpec(ctx.cwd, fileDir, spec);
+    const id = resolveJsSpec(ctx.cwd, fileDir, spec, ctx);
     if (id !== undefined) out.add(id);
   }
 }
@@ -625,7 +759,7 @@ export function buildGraph(cwd: string, prev?: GraphData): GraphData {
       imports: extractImports(entry.abs, content, ctx),
     };
   }
-  return { version: 1, files };
+  return { version: 2, files };
 }
 
 function graphPath(cwd: string): string {
@@ -645,7 +779,7 @@ function saveGraph(cwd: string, g: GraphData): void {
 function isValidGraph(v: unknown): v is GraphData {
   if (typeof v !== "object" || v === null) return false;
   const g = v as Record<string, unknown>;
-  return g.version === 1 && typeof g.files === "object" && g.files !== null;
+  return g.version === 2 && typeof g.files === "object" && g.files !== null;
 }
 
 function graphsEqual(a: GraphData, b: GraphData): boolean {

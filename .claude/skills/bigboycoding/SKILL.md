@@ -123,21 +123,40 @@ invariants directly:
 npm run build && node .claude/skills/bigboycoding/permission-check.mjs
 ```
 
-`addon-check.mjs` covers the addon mechanism the same way — discovery, both
-layouts, workspace-over-builtin precedence, that no addon body ever leaks into
-the standing system prompt, and (against a real `Engine`) that each addon reaches
-the command registry and that `/<name>` runs a turn:
+`glob-state-dir-check.mjs` covers the other invariant with a purpose-built check
+— that `Glob` keeps `.magentra/` out of results unless the pattern or `path`
+names it:
 
 ```bash
-npm run build && node .claude/skills/bigboycoding/addon-check.mjs
+npm run build && node .claude/skills/bigboycoding/glob-state-dir-check.mjs
 ```
 
-`finishing-check.mjs` is the same pattern one level up: it drives whole turns
-through a real `Engine` with a scripted provider and asserts the end-of-turn
-ladder — which rung fired, in what order, how many times, and how many provider
-calls the turn cost. Reach for it whenever you touch `Session.runTurn`'s
-end-of-turn rungs; a rung's cost and its position are both easy to break
-silently.
+`tools-check.mjs` covers the tool registry: every registered tool has a name, a
+description, a real zod schema, a valid permission class and an `execute`, and
+the read-only ones (Read, Glob, Grep, TaskList, GraphQuery) are actually RUN
+against a temp workspace — so "registered" is never mistaken for "working". It
+deliberately skips mutate/execute/network tools so it stays safe to run anytime:
+
+```bash
+npm run build && node .claude/skills/bigboycoding/tools-check.mjs
+```
+
+All three were verified passing on 2026-08-01 (`permission-check`: 23 passed;
+`tools-check`: 61 passed, 27 tools). Write a new `*-check.mjs` here on the same
+pattern when you change an engine invariant that nothing else guards.
+
+## The system map
+
+`bigpicture` is the companion skill: `docs/big-picture/MAP.md` is a generated
+per-file skeleton (exports, members with line numbers, import edges) and
+`BIG-PICTURE.pdf` is the narrative. Read the map to find where something already
+lives before adding a second one; run `bigpicture.mjs check` after your edit so
+the architecture doc does not silently rot.
+
+```bash
+node .claude/skills/bigpicture/bigpicture.mjs impact <file>   # before editing
+node .claude/skills/bigpicture/bigpicture.mjs check           # after editing
+```
 
 ## Gotchas
 
