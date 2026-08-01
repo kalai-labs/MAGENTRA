@@ -493,7 +493,7 @@ pre.editor del { background: rgba(241, 106, 120, 0.16); color: #ffa2ab; text-dec
 <body>
 <div id="app">
   <div class="topbar">
-    <div class="brand"><i class="brand-dot"></i><b>Prompt Lab</b><span>Magentra</span></div>
+    <div class="brand"><i class="brand-dot"></i><b>Prompt Lab</b><span id="brandVersion">Magentra</span></div>
     <div class="search">
       <input id="q" type="search" placeholder="Search prompts, ids, and prompt text…" autocomplete="off" spellcheck="false" />
       <kbd>/</kbd>
@@ -650,6 +650,11 @@ async function load() {
   state.review.meta = data.review?.meta ?? {};
   state.source = data.source ?? {};
   state.dir = data.dir;
+  // Which engine build these prompts belong to, read live from VERSION by the
+  // server. A hand-maintained stamp in findings.json had drifted four releases.
+  state.version = data.version ?? "";
+  const brandEl = document.getElementById("brandVersion");
+  if (brandEl) brandEl.textContent = state.version ? `Magentra ${state.version}` : "Magentra";
   render();
 }
 

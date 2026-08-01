@@ -1,7 +1,7 @@
 {
   "meta": {
     "reviewed": "2026-07-30",
-    "build": "0.12.1.0",
+    "reviewedBuild": "0.12.1",
     "about": "Every registered prompt, reviewed and given a verdict. Reference excerpts are verbatim quotes from the leaked system prompts of two frontier coding agents (the newest two available), machine-verified against those files — they are prior art to synthesise from, not text to copy. Every claim carries the code reference it came from so it can be re-checked.",
     "verdicts": {
       "core": "Load-bearing. Keep it. Any action here is a refinement, not a question about whether it should exist.",

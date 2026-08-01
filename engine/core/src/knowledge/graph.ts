@@ -30,8 +30,10 @@ export interface GraphData {
    *
    * 2 — multi-line braced imports are seen; workspace packages resolve to their
    *     sibling source instead of a `pkg:` node.
+   * 3 — a side-effect import is anchored to a statement position, so the word
+   *     `import` inside a string no longer invents a package node.
    */
-  version: 2;
+  version: 3;
   files: Record<string, GraphFileEntry>;
 }
 
@@ -146,7 +148,15 @@ const RE_FROM = /\b(?:import|export)\b[^;\n]*?\bfrom\s*["']([^"']+)["']/g;
  * so this addition can only ever find real import clauses.
  */
 const RE_FROM_BRACED = /\b(?:import|export)\s+(?:type\s+)?(?:[\w$]+\s*,\s*)?\{[^}]*\}\s*from\s*["']([^"']+)["']/g;
-const RE_BARE_IMPORT = /\bimport\s*["']([^"']+)["']/g;
+/**
+ * A side-effect import: `import "./register.js";`.
+ *
+ * Anchored to a statement position, because `\bimport\s*["']` alone matches the
+ * word inside a STRING too. `if (path === "/api/import" && req.method === "POST")`
+ * produced an edge to a package literally named ` && req.method === `, which is
+ * how tools/prompt-lab/server.mjs came to have a phantom dependency.
+ */
+const RE_BARE_IMPORT = /(?:^|[;{}])\s*import\s*["']([^"']+)["']/gm;
 const RE_REQUIRE = /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
 const RE_DYNAMIC_IMPORT = /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 
@@ -759,7 +769,7 @@ export function buildGraph(cwd: string, prev?: GraphData): GraphData {
       imports: extractImports(entry.abs, content, ctx),
     };
   }
-  return { version: 2, files };
+  return { version: 3, files };
 }
 
 function graphPath(cwd: string): string {
@@ -779,7 +789,7 @@ function saveGraph(cwd: string, g: GraphData): void {
 function isValidGraph(v: unknown): v is GraphData {
   if (typeof v !== "object" || v === null) return false;
   const g = v as Record<string, unknown>;
-  return g.version === 2 && typeof g.files === "object" && g.files !== null;
+  return g.version === 3 && typeof g.files === "object" && g.files !== null;
 }
 
 function graphsEqual(a: GraphData, b: GraphData): boolean {

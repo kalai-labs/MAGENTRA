@@ -13,7 +13,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { watch } from "node:fs";
+import { watch, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -35,6 +35,24 @@ if (dirOverride) process.env.MAGENTRA_PROMPTS_DIR = dirOverride;
 
 const PORT = Number(arg("port", 4319));
 const HOST = arg("host", "127.0.0.1");
+
+/**
+ * The engine build these prompts belong to, read from the repo's VERSION file.
+ *
+ * Live rather than stamped. `findings.json` used to carry a hand-written
+ * `meta.build`, which nothing read and which sat four releases behind in the
+ * four-part scheme ADR 0008 retired — so the one place claiming "this is the
+ * version you are editing" was quietly wrong. A file read costs nothing and
+ * cannot drift.
+ */
+function engineVersion() {
+  try {
+    return readFileSync(join(HERE, "..", "..", "VERSION"), "utf8").trim() || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+const VERSION = engineVersion();
 
 
 /** Newest mtime under `dir` for files matching `ext`, or 0 when there are none. */
@@ -286,6 +304,7 @@ function catalog() {
     .filter((p) => p.channel === "tool")
     .reduce((n, p) => n + p.currentTokens, 0);
   return {
+    version: VERSION,
     dir: promptsDir(),
     orphans: orphanedPromptFiles(),
     prompts,
@@ -618,7 +637,7 @@ startWatching();
 server.listen(PORT, HOST, () => {
   const n = promptCatalog().length;
   process.stdout.write(
-    `\n  Prompt Lab — ${n} prompts\n` +
+    `\n  Prompt Lab — ${n} prompts · MAGENTRA ${VERSION}\n` +
       `  http://${HOST}:${PORT}\n` +
       `  overrides → ${promptsDir()}\n\n`,
   );

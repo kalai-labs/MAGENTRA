@@ -10,6 +10,12 @@ npm run prompt-lab -- --port 5000  # different port
 npm run prompt-lab -- --dir ./experiments/short   # a separate override set
 ```
 
+The banner and the browser header both name the engine build the prompts belong
+to, read live from `VERSION` on start — so the lab can never claim a version it
+is not serving. It compiles the engine first when `dist` is behind `src`, since
+the registry resolves defaults from the compiled output while *Promote* writes
+back to the TypeScript source.
+
 ## How it works
 
 Every prompt is declared once, next to the code that uses it, with
@@ -52,6 +58,11 @@ map; **Review notes** in the sidebar lists them worst-first.
 
 The file is read fresh on every request, so you can edit or extend it while the
 lab is open — add your own entries as you work through them.
+
+`meta.reviewed` / `meta.reviewedBuild` record when the review was carried out and
+against which build — history, not the running version. A note goes green on its
+own once its prompt no longer matches the `reviewedHash` it was written against,
+so a stale note is visible rather than silently authoritative.
 
 ## Adding a prompt
 

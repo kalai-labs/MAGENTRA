@@ -22,7 +22,7 @@ import { BUILTIN_ADDONS } from "./builtinAddons.js";
  */
 const ADDON_INVOKE_HEADER = definePrompt({
   id: "addon.invoke-header",
-  group: "2 · Injected reminders",
+  group: "3 · In-turn reminders",
   label: "Addon invocation header",
   channel: "reminder",
   where:
