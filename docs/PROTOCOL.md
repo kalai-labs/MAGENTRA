@@ -389,9 +389,10 @@ There is no active/inactive state to report: every installed addon is invocable.
 | --- | --- | --- |
 | `type` | `"addons_updated"` | |
 | `addons` | array | One entry per addon: `{ name, description, builtin }`. |
+| `commands` | `SlashCommandInfo[]`? | The refreshed slash-command registry — built-ins plus one `/<name>` per addon, exactly as `session_started.commands`. Adopt it so a just-installed addon is invocable immediately. Optional purely for older frontends; one that ignores it shows a palette missing every addon installed since the session began. |
 
 ```json
-{"type":"addons_updated","addons":[{"name":"magentron","description":"Read before you write — map what a change touches…","builtin":true},{"name":"release-notes","description":"Draft release notes from the commits since the last tag.","builtin":false}]}
+{"type":"addons_updated","addons":[{"name":"magentron","description":"Read before you write — map what a change touches…","builtin":true},{"name":"release-notes","description":"Draft release notes from the commits since the last tag.","builtin":false}],"commands":[{"cmd":"/help","args":"","desc":"show this help"},{"cmd":"/magentron","args":"[args]","desc":"Read before you write…"},{"cmd":"/release-notes","args":"[args]","desc":"Draft release notes…"}]}
 ```
 
 ### `addon_draft`

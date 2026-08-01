@@ -464,6 +464,58 @@ async function run() {
     assert.deepEqual(state, { gone: true, idle: true }, "indicator clears and the LED returns to idle when compaction finishes");
   });
 
+  await test("a newly installed addon is invocable, and / completes mid-message", async () => {
+    const setCaret = (value, caret) =>
+      `(() => { const i = document.querySelector('#promptInput'); i.value = ${JSON.stringify(value)}; i.setSelectionRange(${caret}, ${caret}); i.dispatchEvent(new Event('input')); })()`;
+    const items = `[...document.querySelectorAll('.slash-item .slash-cmd')].map((n) => n.textContent)`;
+
+    // An addon installed mid-session arrives on addons_updated. The registry
+    // rides with it; before that it only ever came on session_started, so a new
+    // addon was listed in the Addons view but absent from "/" until restart.
+    await emit({
+      type: "addons_updated",
+      addons: [{ name: "sql-review", description: "Review SQL", builtin: false }],
+      commands: [
+        { cmd: "/help", args: "", desc: "show this help" },
+        { cmd: "/sql-review", args: "[args]", desc: "Review SQL" },
+      ],
+    });
+    await evaluate(setCaret("/sql", 4));
+    assert.deepEqual(await evaluate(items), ["/sql-review"], "a just-installed addon is offered by the palette");
+
+    // Mid-message: the token under the caret drives the palette.
+    await evaluate(setCaret("please run /sql", 15));
+    assert.equal(await evaluate(`document.querySelector('#slashPop').classList.contains('hidden')`), false);
+    assert.deepEqual(await evaluate(items), ["/sql-review"], "/ completes anywhere in a message");
+
+    // Tab replaces only that token and leaves the rest of the sentence intact.
+    await evaluate(`document.querySelector('#promptInput').dispatchEvent(new KeyboardEvent('keydown', {key:'Tab', bubbles:true}))`);
+    assert.equal(await evaluate(`document.querySelector('#promptInput').value`), "please run /sql-review ");
+
+    // Enter mid-message SENDS; it must not be stolen to finish a word.
+    await evaluate(setCaret("please run /sql", 15));
+    await evaluate(`document.querySelector('#promptInput').dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true}))`);
+    await pause();
+    assert.equal(
+      await evaluate(`document.querySelector('#promptInput').value`),
+      "",
+      "Enter mid-message sends the message rather than completing the token",
+    );
+    assert.ok(
+      frames.some((f) => f.type === "user_message" && f.text.includes("please run /sql")),
+      "the message went out as prose, not as a slash_command",
+    );
+
+    // A URL is not a command: its token starts at "h", so nothing opens.
+    await evaluate(setCaret("see http://host/path", 20));
+    assert.equal(
+      await evaluate(`document.querySelector('#slashPop').classList.contains('hidden')`),
+      true,
+      "a URL must not open the palette",
+    );
+    await evaluate(`(() => { const i = document.querySelector('#promptInput'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
+  });
+
   await test("slash palette, background jobs, application menu, and recovery banner are live controls", async () => {
     await evaluate(`(() => { const input = document.querySelector('#promptInput'); input.value = '/'; input.dispatchEvent(new Event('input')); })()`);
     assert.equal(await evaluate(`document.querySelector('#slashPop').classList.contains('hidden')`), false);

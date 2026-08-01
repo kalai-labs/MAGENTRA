@@ -252,7 +252,21 @@ export type CoreEvent =
   /** The export_addon result: the addon's .md text + suggested filename, for the app to save. */
   | { type: "addon_export"; ok: boolean; name: string; filename?: string; text?: string; error?: string }
   /** The installed-addon roster changed (e.g. after install_addon). */
-  | { type: "addons_updated"; addons: { name: string; description: string; builtin: boolean }[] }
+  /**
+   * The addon roster changed (an install). Carries the slash-command registry
+   * alongside it for the same reason `session_started` does: the frontend must
+   * never derive `/<name>` itself, or the palette drifts from what the engine
+   * will actually dispatch.
+   *
+   * `commands` is optional only so an older frontend keeps working; a frontend
+   * that ignores it shows a palette missing every addon installed since the
+   * session began, which is exactly the bug this field exists to fix.
+   */
+  | {
+      type: "addons_updated";
+      addons: { name: string; description: string; builtin: boolean }[];
+      commands?: SlashCommandInfo[];
+    }
   /**
    * The full prior conversation, render-ready, sent once on /resume so the
    * frontend can repaint the chat. Flat by design: the frontend cannot read the

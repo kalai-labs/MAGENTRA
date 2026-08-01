@@ -354,8 +354,22 @@ export class Engine {
     }));
   }
 
+  /**
+   * Announce the roster AND the refreshed command registry.
+   *
+   * The registry travels because the frontend's palette is built from what the
+   * engine sends, never derived — and it was only ever sent on session_started.
+   * An addon installed mid-session therefore appeared in the Addons view but not
+   * under `/` until the next restart, even though the engine would have
+   * dispatched it happily. Same list the announcement builds, so the two cannot
+   * disagree.
+   */
   private emitAddonsUpdated(): void {
-    this.emit({ type: "addons_updated", addons: this.addonSummaries() });
+    this.emit({
+      type: "addons_updated",
+      addons: this.addonSummaries(),
+      commands: [...SLASH_COMMANDS.map(({ cmd, args, desc }) => ({ cmd, args, desc })), ...this.addonCommands()],
+    });
   }
 
   /**

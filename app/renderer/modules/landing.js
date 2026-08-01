@@ -1097,6 +1097,12 @@ function handleEngineEvent(event) {
       break;
     case "addons_updated":
       addons = Array.isArray(event.addons) ? event.addons : [];
+      // The registry rides along so a just-installed addon is invocable as
+      // /<name> immediately. Without this the palette kept the set captured at
+      // session_started, and a new addon showed up in the Addons view but not
+      // under "/" until the next restart. Guarded because an older engine (and
+      // the e2e fixture) emits this frame with no commands at all.
+      if (Array.isArray(event.commands) && event.commands.length > 0) SLASH_COMMANDS = event.commands;
       renderAddonsSurfaces();
       break;
     case "addon_draft":

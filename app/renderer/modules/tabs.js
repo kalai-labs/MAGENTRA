@@ -276,6 +276,10 @@ function buildPaneComposer(tabId) {
     autoGrowInput(ta);
     if (slash) slash.update();
   });
+  // Pointer only — see the shared composer's click handler for why not keyup.
+  ta.addEventListener("click", () => {
+    if (slash) slash.update();
+  });
   ta.addEventListener("focus", () => {
     if (tabId !== focusedTabId && window.magentra.focusTab) window.magentra.focusTab(tabId);
   });

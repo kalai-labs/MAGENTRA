@@ -82,26 +82,63 @@ function makeSlashPalette(inputEl, popEl, grow = autoGrow) {
     });
   }
 
-  function update() {
+  // True while the token being completed is the whole input's first word — i.e.
+  // this message really is a command. Mid-message it is false, and the palette
+  // behaves as plain autocomplete (see handleKeydown).
+  let atStart = false;
+
+  /**
+   * The `/word` under the caret, or null.
+   *
+   * Anchored to the caret rather than the start of the input, so `/` completes
+   * anywhere in a message — "compare this with /magentron" offers the addon just
+   * as the first character does. The token must begin at a word boundary, which
+   * is what keeps `http://host` and `src/foo` from opening the palette: their
+   * token starts at `h`/`s`, not `/`.
+   */
+  function activeToken() {
     const value = inputEl.value;
-    if (!value.startsWith("/") || value.includes("\n")) {
+    const caret = typeof inputEl.selectionStart === "number" ? inputEl.selectionStart : value.length;
+    const before = value.slice(0, caret);
+    const start = Math.max(before.lastIndexOf(" "), before.lastIndexOf("\n"), before.lastIndexOf("\t")) + 1;
+    const token = before.slice(start);
+    if (!token.startsWith("/")) return null;
+    return { token, start, end: caret };
+  }
+
+  function update() {
+    const active = activeToken();
+    if (!active) {
       hide();
       return;
     }
-    const firstToken = value.split(/\s+/)[0].toLowerCase();
-    matches = SLASH_COMMANDS.filter((c) => c.cmd.toLowerCase().startsWith(firstToken));
+    matches = SLASH_COMMANDS.filter((c) => c.cmd.toLowerCase().startsWith(active.token.toLowerCase()));
     if (matches.length === 0) {
       hide();
       return;
     }
+    // A command is the whole message, never part of one — the same test the
+    // submit path applies (see isCommand), so the palette's Enter behaviour and
+    // what actually gets dispatched can never disagree.
+    atStart = active.start === 0 && !inputEl.value.includes("\n");
     visible = true;
     selIdx = 0;
     popEl.classList.remove("hidden");
     render();
   }
 
+  /** Replace just the token under the caret, leaving the rest of the message. */
   function complete(cmd) {
-    inputEl.value = cmd + " ";
+    const active = activeToken();
+    const value = inputEl.value;
+    const insert = `${cmd} `;
+    if (active) {
+      inputEl.value = value.slice(0, active.start) + insert + value.slice(active.end);
+      const caret = active.start + insert.length;
+      if (typeof inputEl.setSelectionRange === "function") inputEl.setSelectionRange(caret, caret);
+    } else {
+      inputEl.value = insert;
+    }
     grow(inputEl);
     update();
   }
@@ -116,6 +153,11 @@ function makeSlashPalette(inputEl, popEl, grow = autoGrow) {
     if (e.key === "Tab") { e.preventDefault(); complete(matches[selIdx].cmd); return true; }
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); hide(); return true; }
     if (e.key === "Enter" && !e.shiftKey) {
+      // Enter completes only when the message IS a command. Mid-message the
+      // palette is autocomplete: someone typing "ask /magentron about this" and
+      // hitting Enter means send, and stealing that key to finish a word they
+      // did not ask to finish is the kind of surprise Tab exists to avoid.
+      if (!atStart) { hide(); return false; }
       const firstToken = inputEl.value.trim().split(/\s+/)[0].toLowerCase();
       const exact = SLASH_COMMANDS.some((c) => c.cmd.toLowerCase() === firstToken);
       if (!exact) { e.preventDefault(); complete(matches[selIdx].cmd); return true; }
@@ -502,6 +544,10 @@ promptInputEl.addEventListener("input", () => {
   autoGrow(promptInputEl);
   sharedSlash.update();
 });
+// Clicking into an existing "/word" re-opens the palette. Pointer only — a
+// keyup hook would fire for the ArrowUp/Down the palette itself consumes, and
+// update() resets the highlighted row, so navigating the list would break.
+promptInputEl.addEventListener("click", () => sharedSlash.update());
 promptInputEl.addEventListener("keydown", (e) => {
   if (sharedSlash.handleKeydown(e)) return; // palette consumed the key
   // Prompt history: only from an empty composer (or while already browsing),
