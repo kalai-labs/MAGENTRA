@@ -10,6 +10,16 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.16.1 — 2026-08-01
+
+### Bug fixes
+
+- fixing vision things ([417945f](https://github.com/kalai-labs/MAGENTRA/commit/417945f1774fcc837f7351aba7b2201e31652bc3))
+- vision fix ([b824f64](https://github.com/kalai-labs/MAGENTRA/commit/b824f64758dfbf2d98333cce845e6e5736266460))
+- auto compact to 1m ([b2efefe](https://github.com/kalai-labs/MAGENTRA/commit/b2efefe3c2a02a6e467306145395084749149f28))
+
+[Compare with v0.16.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.16.0...v0.16.1)
+
 ## 0.16.0 — 2026-07-31
 
 ### Features
