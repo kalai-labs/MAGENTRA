@@ -351,6 +351,7 @@ export class Engine {
       cmd: `/${a.name}`,
       args: "[args]",
       desc: a.description,
+      addon: true,
     }));
   }
 
@@ -1557,7 +1558,10 @@ const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
   { cmd: "/tasks", args: "", desc: "show the task list" },
   { cmd: "/addons", args: "", desc: "list installed addons; invoke one with /<name>" },
   { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous stance: nothing asks, self-verified completion" },
-  { cmd: "/settings", args: "[global] [k v]", desc: "show settings, or set one (add global to save to ~/.magentra)" },
+  // "open" rather than "show": a frontend with a settings UI opens it on the
+  // bare form (the desktop app does), while a headless one still prints the
+  // listing. One description that is true of both.
+  { cmd: "/settings", args: "[global] [k v]", desc: "open settings, or set one (add global to save to ~/.magentra)" },
   { cmd: "/resume", args: "<session-id>", desc: "resume a previous session" },
   { cmd: "/sessions", args: "", desc: "list saved sessions" },
 ];

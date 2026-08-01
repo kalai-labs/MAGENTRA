@@ -75,6 +75,16 @@ export interface SlashCommandInfo {
   cmd: string;
   args: string;
   desc: string;
+  /**
+   * True for an installed addon, absent for a built-in command.
+   *
+   * The two are interchangeable at the start of a message, where `/name` really
+   * is dispatched. They are not interchangeable inside one: a frontend
+   * completing `/` mid-sentence is helping the user NAME something, and an addon
+   * is a name worth writing — `/clear` or `/compact` in the middle of a
+   * paragraph is noise, since nothing there will run.
+   */
+  addon?: boolean;
 }
 
 /** Core -> frontend. */

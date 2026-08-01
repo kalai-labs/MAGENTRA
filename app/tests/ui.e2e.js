@@ -477,16 +477,37 @@ async function run() {
       addons: [{ name: "sql-review", description: "Review SQL", builtin: false }],
       commands: [
         { cmd: "/help", args: "", desc: "show this help" },
-        { cmd: "/sql-review", args: "[args]", desc: "Review SQL" },
+        { cmd: "/settings", args: "", desc: "show settings" },
+        { cmd: "/sql-review", args: "[args]", desc: "Review SQL", addon: true },
       ],
     });
     await evaluate(setCaret("/sql", 4));
     assert.deepEqual(await evaluate(items), ["/sql-review"], "a just-installed addon is offered by the palette");
 
-    // Mid-message: the token under the caret drives the palette.
-    await evaluate(setCaret("please run /sql", 15));
+    // At the start, EVERYTHING is offered — there, "/" really does dispatch.
+    await evaluate(setCaret("/s", 2));
+    assert.deepEqual(
+      await evaluate(items),
+      ["/settings", "/sql-review"],
+      "at the start of a message the palette offers built-ins and addons alike",
+    );
+
+    // Mid-message: the token under the caret drives the palette, and only
+    // ADDONS are offered — nothing dispatches from inside a sentence, so a
+    // built-in there would complete a word that can never run.
+    await evaluate(setCaret("please run /s", 13));
     assert.equal(await evaluate(`document.querySelector('#slashPop').classList.contains('hidden')`), false);
-    assert.deepEqual(await evaluate(items), ["/sql-review"], "/ completes anywhere in a message");
+    assert.deepEqual(await evaluate(items), ["/sql-review"], "mid-message offers addons only, not built-ins");
+
+    // A built-in with no addon match mid-message offers nothing at all.
+    await evaluate(setCaret("then /help me out", 10));
+    assert.equal(
+      await evaluate(`document.querySelector('#slashPop').classList.contains('hidden')`),
+      true,
+      "a built-in name mid-message opens nothing",
+    );
+
+    await evaluate(setCaret("please run /sql", 15));
 
     // Tab replaces only that token and leaves the rest of the sentence intact.
     await evaluate(`document.querySelector('#promptInput').dispatchEvent(new KeyboardEvent('keydown', {key:'Tab', bubbles:true}))`);
@@ -514,6 +535,38 @@ async function run() {
       "a URL must not open the palette",
     );
     await evaluate(`(() => { const i = document.querySelector('#promptInput'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
+  });
+
+  await test("/settings opens the settings editor, but still sets a value when given one", async () => {
+    const send = (text) =>
+      evaluate(
+        `(() => { const i = document.querySelector('#promptInput'); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input')); i.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true})); })()`,
+      );
+
+    // The bare form is handled in the renderer: it opens the editor and sends
+    // NOTHING, because a text dump of the config is the wrong answer in an app
+    // that can edit it.
+    const before = frames.filter((f) => f.type === "slash_command" && f.command === "settings").length;
+    await evaluate(`document.querySelector('#navConsole').click()`);
+    await send("/settings");
+    await pause();
+    assert.equal(await evaluate(`document.body.dataset.view`), "settings", "/settings opens the settings view");
+    assert.equal(
+      frames.filter((f) => f.type === "slash_command" && f.command === "settings").length,
+      before,
+      "the bare form must not ask the engine to print the config",
+    );
+
+    // With arguments it is a real write — schema-validated, persisted, applied
+    // live — so it still goes to the engine untouched.
+    await evaluate(`document.querySelector('#navConsole').click()`);
+    await send("/settings clarify false");
+    await pause();
+    assert.ok(
+      frames.some((f) => f.type === "slash_command" && f.command === "settings" && f.args === "clarify false"),
+      "/settings <key> <value> still reaches the engine",
+    );
+    assert.equal(await evaluate(`document.body.dataset.view`), "console", "the setter form does not navigate away");
   });
 
   await test("slash palette, background jobs, application menu, and recovery banner are live controls", async () => {

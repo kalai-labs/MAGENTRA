@@ -78,7 +78,7 @@ These structured types appear as fields inside events and requests.
 | `Question` | `{ question, header, options: QuestionOption[], multiSelect: boolean }` |
 | `AllowedPrompt` | `{ tool, prompt }` |
 | `SessionSummary` | `{ id, createdAt, updatedAt, cwd, firstUserMessage?, model?, label? }` — `label` is the user-assigned name (`rename_session`), shown instead of `firstUserMessage` |
-| `SlashCommandInfo` | `{ cmd, args, desc }` — one slash command the engine understands |
+| `SlashCommandInfo` | `{ cmd, args, desc, addon? }` — one slash command the engine understands. `addon: true` marks an installed addon; built-ins omit it. The two are interchangeable at the start of a message, where `/name` really is dispatched, and are not inside one — a frontend completing `/` mid-sentence is helping the user *name* something, so it should offer addons only. |
 | `RestoredToolCall` | `{ tool, input, result, isError }` |
 | `RestoredMessage` | `{ role: "user" \| "assistant", text, thinking?, toolCalls?: RestoredToolCall[] }` |
 

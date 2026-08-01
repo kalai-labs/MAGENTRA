@@ -314,6 +314,36 @@ const PLAN_FIRST_REMINDER = definePrompt({
   text: "Nothing is on the task board yet. When a request will take several moves to finish, lay it out first with TaskCreate — one entry per move, closing with a check task that names the end state you'll confirm — before you touch any files. A quick one-off needs no board; just handle it.",
 });
 
+/**
+ * The installed addon a message names with a leading slash, if any.
+ *
+ * Matched on a word boundary, so `/grill-me` is found in "bana /grill-me yap"
+ * while a path (`src/grill-me`) is not. Longest name wins, so `/review` cannot
+ * shadow `/review-sql`. Pure and exported so it is tested directly rather than
+ * having its regex copied into a check that can drift from it.
+ */
+export function addonNamedIn(text: string, addons: readonly { name: string }[]): string | undefined {
+  let hit: string | undefined;
+  for (const addon of addons) {
+    const escaped = addon.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`(?:^|\\s)/${escaped}(?=$|[\\s.,!?;:])`).test(text)) {
+      if (hit === undefined || addon.name.length > hit.length) hit = addon.name;
+    }
+  }
+  return hit;
+}
+
+const ADDON_NAMED_REMINDER = definePrompt({
+  id: "reminder.addon-named",
+  group: "3 · In-turn reminders",
+  label: "The user named an addon",
+  channel: "reminder",
+  where:
+    "Injected at turn start when the user's message names an installed addon with a leading slash (anywhere in the message, not only at the start). `{{name}}` is the addon. Also suppresses the clarify pre-layer for that turn.",
+  placeholders: ["name"],
+  text: 'The user named the "{{name}}" addon in their message. Load it with the Addon tool now and follow it — the rest of their message is the task to apply it to, so pass it along as the addon\'s arguments where that fits. Its procedure is the answer to what to do here; do not ask them to define it.',
+});
+
 const STANDARDS_SECTION_HEADER = definePrompt({
   id: "system.standards-header",
   group: "2 · Conditional system sections",
@@ -1294,8 +1324,19 @@ export class Session {
 
     // The pre-layers that put questions to the user, in the order they matter.
     //
+    // A message that NAMES an installed addon carries its own shape — the
+    // procedure is on disk and its description is already in the system prompt.
+    // Point at it, and skip the clarify round entirely: "bana /grill-me yap" was
+    // answered with a menu asking what /grill-me ought to be, which is the one
+    // question the addon itself already answers.
+    //
+    // Outside the clarify branch so it fires with `clarify` off too — naming an
+    // addon should reach the addon either way.
+    const namedAddon = addonNamedIn(userText, this.opts.addons ?? []);
+    if (namedAddon !== undefined) this.remind(renderPrompt(ADDON_NAMED_REMINDER, { name: namedAddon }));
+
     let clarification: string | undefined;
-    if (this.settings.clarify && !this.opts.child) {
+    if (this.settings.clarify && !this.opts.child && namedAddon === undefined) {
       clarification = await this.maybeClarify(userText);
     }
 

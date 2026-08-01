@@ -112,15 +112,21 @@ function makeSlashPalette(inputEl, popEl, grow = autoGrow) {
       hide();
       return;
     }
-    matches = SLASH_COMMANDS.filter((c) => c.cmd.toLowerCase().startsWith(active.token.toLowerCase()));
-    if (matches.length === 0) {
-      hide();
-      return;
-    }
     // A command is the whole message, never part of one — the same test the
     // submit path applies (see isCommand), so the palette's Enter behaviour and
     // what actually gets dispatched can never disagree.
     atStart = active.start === 0 && !inputEl.value.includes("\n");
+    // Mid-message, offer ADDONS only. Nothing dispatches from inside a sentence,
+    // so completing `/compact` or `/settings` there writes a word that will
+    // never run — noise in the one place the list has to be quick to scan. An
+    // addon is different: its name is how you refer to it in prose ("compare
+    // this with /magentron"), which is the whole reason to complete mid-message.
+    const pool = atStart ? SLASH_COMMANDS : SLASH_COMMANDS.filter((c) => c.addon === true);
+    matches = pool.filter((c) => c.cmd.toLowerCase().startsWith(active.token.toLowerCase()));
+    if (matches.length === 0) {
+      hide();
+      return;
+    }
     visible = true;
     selIdx = 0;
     popEl.classList.remove("hidden");
@@ -206,6 +212,22 @@ function sendSlashCommand(trimmed, opts = {}) {
   const rawCmd = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
   const args = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
   const command = rawCmd.slice(1); // strip the leading "/"
+
+  // `/settings` with no arguments opens the Settings view instead of asking the
+  // engine to print the config. The engine's text listing is the right answer
+  // for a frontend that has no UI, and the wrong one here: this app has a real
+  // editor for exactly these values, so dumping them into the transcript gives
+  // the user something to read where they wanted something to change.
+  //
+  // Only the bare form. `/settings <key> <value>` still goes to the engine —
+  // that path validates against the schema, writes the file and applies the
+  // value live, and nothing in the UI replaces it.
+  if (command.toLowerCase() === "settings" && !args) {
+    showView("settings");
+    if (inputEl) { inputEl.value = ""; grow(inputEl); }
+    if (slash) slash.hide();
+    return;
+  }
 
   window.magentra.send({ type: "slash_command", command, ...(args ? { args } : {}) }, tabId || undefined);
 
