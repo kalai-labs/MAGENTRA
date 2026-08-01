@@ -16,9 +16,11 @@ const rendererErrors = [];
 // sanitized records (never a raw key — only hasKey), exactly what the IPC returns.
 const profiles = [];
 let profileSeq = 0;
-// The workspace's vision endpoint, as connection:info reports it. Starts unset:
-// a workspace cannot look at an image until someone chooses a model for it.
-let visionState = { profileId: "", model: "", enabled: false };
+// Vision per tab (each tab is its own workspace with its own connection).
+// Starts unset everywhere: a workspace cannot look at an image until a profile
+// that names a vision model is applied to it.
+const visionByTab = {};
+const focusedTestTab = "tab-1";
 let windowRef = null;
 let passed = 0;
 
@@ -43,6 +45,22 @@ async function pushUpdateState(patch) {
   await pause();
 }
 
+/** Mirrors sanitizeProfiles in the main process: the vision POINTER is resolved
+ *  to the model behind it, which is what every surface showing a profile
+ *  displays. Every stub that returns profiles goes through it, exactly as every
+ *  real handler goes through sanitizeProfiles. */
+function sanitizedProfiles() {
+  return profiles.map((p) => {
+    const vision = p.visionProfileId ? profiles.find((x) => x.id === p.visionProfileId) : null;
+    return {
+      ...p,
+      visionProfileId: vision ? vision.id : "",
+      visionModel: vision ? vision.model : "",
+      visionName: vision ? vision.name : "",
+    };
+  });
+}
+
 function apiResult(name, args) {
   calls.push({ name, args });
   switch (name) {
@@ -54,28 +72,20 @@ function apiResult(name, args) {
     // The update state the renderer starts from. The scenario drives the rest by
     // pushing states over test:update-state, as main/updates.js broadcasts them.
     case "updateState": return { ...updateStateNow };
-    case "connectionInfo": return {
-      baseUrl: "https://api.test/v1",
-      model: MODEL,
-      hasKey: true,
-      contextWindow: 65536,
-      // The vision endpoint, exactly as main reports it: which saved profile
-      // describes images, and whether the switch is on.
-      visionProfileId: visionState.profileId,
-      visionModel: visionState.model,
-      visionEnabled: visionState.enabled,
-    };
-    case "revealKey": return { key: "test-key" };
-    case "getWebSearch": return true;
-    case "getVision": return { ...visionState };
-    // Refused without a vision model — the switch has nothing to turn on. Same
-    // rule as settings:setVision in the main process.
+    // Vision is per WORKSPACE (a tab), and its endpoint arrives with the applied
+    // profile — there is nothing to define or test here, only a switch.
+    case "getVision": {
+      const state = visionByTab[args[0] || focusedTestTab] || { configured: false, enabled: false, model: "" };
+      return { ...state };
+    }
     case "setVision": {
-      if (args[0] === true && !visionState.profileId) {
-        return { ok: false, error: "choose a vision model first — there is nothing to send images to" };
+      const tab = args[1] || focusedTestTab;
+      const state = visionByTab[tab];
+      if (!state || !state.configured) {
+        return { ok: false, error: "this connection has no vision model — add one to its profile in the connection wizard" };
       }
-      visionState = { ...visionState, enabled: args[0] === true };
-      return { ok: true, enabled: visionState.enabled };
+      visionByTab[tab] = { ...state, enabled: args[0] === true };
+      return { ok: true, enabled: args[0] === true, model: state.model };
     }
     case "testConnection": {
       // Echo the normalized base like the real main process (a pasted
@@ -94,7 +104,7 @@ function apiResult(name, args) {
         ollama: { available: true },
         lmstudio: { available: false, reason: "LM Studio wasn't found on this PC" },
       };
-    case "listProfiles": return profiles.map((p) => ({ ...p }));
+    case "listProfiles": return sanitizedProfiles();
     case "saveProfile": {
       const payload = args[0] || {};
       const profileName = typeof payload.name === "string" ? payload.name.trim() : "";
@@ -105,6 +115,8 @@ function apiResult(name, args) {
         baseUrl: payload.baseUrl || "",
         model: payload.model || "",
         provider: payload.provider === "anthropic" ? "anthropic" : "openai-compat",
+        // The vision model is part of the profile — saved with it, applied with it.
+        visionProfileId: typeof payload.visionProfileId === "string" ? payload.visionProfileId : "",
         contextWindow: payload.contextWindow ? String(payload.contextWindow) : "",
         allowInsecureTls: payload.insecureTls === true,
         hasKey: typeof payload.apiKey === "string" && payload.apiKey.trim() !== "",
@@ -112,25 +124,27 @@ function apiResult(name, args) {
       const idx = profiles.findIndex((p) => p.id === record.id);
       if (idx >= 0) profiles[idx] = record;
       else profiles.unshift(record);
-      return { ok: true, id: record.id, profiles: profiles.map((p) => ({ ...p })) };
+      return { ok: true, id: record.id, profiles: sanitizedProfiles() };
     }
     case "deleteProfile": {
       const idx = profiles.findIndex((p) => p.id === args[0]);
       if (idx >= 0) profiles.splice(idx, 1);
-      return { ok: true, profiles: profiles.map((p) => ({ ...p })) };
+      // As main does: a pointer to a deleted profile must not survive it.
+      for (const p of profiles) if (p.visionProfileId === args[0]) p.visionProfileId = "";
+      return { ok: true, profiles: sanitizedProfiles() };
     }
-    case "applyProfile": return { ok: true };
-    // Saving the connection is what LANDS the vision model, so the stub does
-    // what main does: an empty profileId clears it, a chosen one arrives on.
-    case "writeEnv": {
-      const chosen = args[0] && args[0].vision ? args[0].vision : null;
-      if (chosen) {
-        const profile = profiles.find((p) => p.id === chosen.profileId);
-        visionState = chosen.profileId
-          ? { profileId: chosen.profileId, model: profile ? profile.model : "", enabled: chosen.enabled !== false }
-          : { profileId: "", model: "", enabled: false };
-      }
-      return { ok: true, live: true, model: MODEL };
+    // The one connect path. A profile carries its vision model, so applying it
+    // is what gives a workspace one — no separate save, nothing to enable by hand.
+    case "applyProfile": {
+      const profile = profiles.find((p) => p.id === args[0]);
+      const tab = args[1] || focusedTestTab;
+      const vision = profile && profile.visionProfileId
+        ? profiles.find((p) => p.id === profile.visionProfileId)
+        : null;
+      visionByTab[tab] = vision
+        ? { configured: true, enabled: true, model: vision.model || "" }
+        : { configured: false, enabled: false, model: "" };
+      return { ok: true, live: true, model: (profile && profile.model) || MODEL };
     }
     default: return { ok: true };
   }
@@ -146,7 +160,11 @@ function wireTestIpc() {
 }
 
 async function evaluate(source) {
-  return windowRef.webContents.executeJavaScript(source, true);
+  try {
+    return await windowRef.webContents.executeJavaScript(source, true);
+  } catch (err) {
+    throw new Error(`evaluate failed: ${err && err.message}\n---\n${source.slice(0, 400)}`);
+  }
 }
 
 async function emit(event) {
@@ -1077,16 +1095,19 @@ async function run() {
     await pause();
     assert.ok(frames.some((frame) => frame.type === "set_compact_limit" && frame.limit === 0));
     assert.equal(await evaluate(`document.querySelector('#setCompactLimit').value`), "0");
-    await evaluate(`document.querySelector('#setKeyReveal').click()`);
+    // The Settings view holds NO connection controls: no endpoint, no key, no
+    // TEST, no save. Connections are the wizard's alone, so a key can never be
+    // typed, revealed or tested from here.
+    const connectionControls = await evaluate(`(() => [
+      '#setBaseUrl', '#setApiKey', '#setKeyReveal', '#setModelDefault', '#setContext',
+      '#setInsecure', '#setTestBtn', '#setSaveBtn', '#setConnStatus', '#setVisionProfile', '#setVision',
+    ].filter((sel) => document.querySelector(sel) !== null))()`);
+    assert.deepEqual(connectionControls, [], "the Settings view offers no connection controls");
+    await evaluate(`document.querySelector('[data-websearch="off"]').click()`);
     await pause();
-    assert.equal(await evaluate(`document.querySelector('#setApiKey').value`), "test-key");
-    await evaluate(`document.querySelector('#setTestBtn').click(); document.querySelector('[data-websearch="off"]').click()`);
-    await pause();
-    assert.ok(calls.some((call) => call.name === "testConnection"));
     assert.ok(calls.some((call) => call.name === "setWebSearch" && call.args[0] === false));
-    await evaluate(`document.querySelector('#setSaveBtn').click(); document.querySelector('#openLogsBtn').click()`);
+    await evaluate(`document.querySelector('#openLogsBtn').click()`);
     await pause();
-    assert.ok(calls.some((call) => call.name === "writeEnv"));
     assert.ok(calls.some((call) => call.name === "openLogs"));
     await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', {key:'?', bubbles:true}))`);
     assert.equal(await evaluate(`document.querySelector('#shortcutSheet').classList.contains('hidden')`), false);
@@ -1125,74 +1146,6 @@ async function run() {
     assert.equal(savedProfile.args[0].name, "My Endpoint");
     assert.ok(calls.some((call) => call.name === "applyProfile"));
     assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
-  });
-
-  await test("vision: a saved profile becomes the image describer, and the switch follows it", async () => {
-    // The main model is never sent an image, so this picker is the whole gate:
-    // no vision model → the switch cannot move, and images cannot be attached.
-    await evaluate(`document.querySelector('#navSettings').click()`);
-    await pause(80);
-    const before = await evaluate(`(() => ({
-      options: [...document.querySelectorAll('#setVisionProfile option')].map((o) => o.value),
-      selected: document.querySelector('#setVisionProfile').value,
-      offOn: document.querySelector('#setVision [data-vision="off"]').classList.contains('on'),
-      disabled: document.querySelector('#setVision [data-vision="on"]').disabled,
-    }))()`);
-    assert.equal(before.selected, "", "a workspace starts with no vision model");
-    assert.equal(before.offOn, true, "the switch rests at OFF");
-    assert.equal(before.disabled, true, "with nothing to send images to, ON cannot be chosen");
-    assert.ok(before.options.length > 1, "the saved profiles are offered as vision models");
-
-    // Clicking a disabled switch must not reach the main process — a UI that
-    // says ON while the engine has no endpoint fails every image at the wall.
-    await evaluate(`document.querySelector('#setVision [data-vision="on"]').click()`);
-    await pause();
-    assert.ok(!calls.some((call) => call.name === "setVision"), "a dead switch sends nothing");
-
-    // Choosing one and saving: the picker rides along with the connection, and
-    // a newly chosen model arrives switched on.
-    const profileId = before.options.find((value) => value !== "");
-    await evaluate(`(() => {
-      const sel = document.querySelector('#setVisionProfile');
-      sel.value = ${JSON.stringify(profileId)};
-      sel.dispatchEvent(new Event('change'));
-      document.querySelector('#setSaveBtn').click();
-    })()`);
-    await pause(80);
-    const saved = calls.filter((call) => call.name === "writeEnv").pop();
-    assert.equal(saved.args[0].vision.profileId, profileId, "SAVE carries the chosen vision model");
-    assert.equal(saved.args[0].vision.enabled, true, "picking a vision model switches it on");
-
-    // Now the switch is live, and it moves the same setting on its own.
-    assert.equal(
-      await evaluate(`document.querySelector('#setVision [data-vision="on"]').disabled`),
-      false,
-      "a saved vision model unlocks the switch",
-    );
-    await evaluate(`document.querySelector('#setVision [data-vision="off"]').click()`);
-    await pause();
-    assert.ok(
-      calls.some((call) => call.name === "setVision" && call.args[0] === false),
-      "the switch turns vision off through the same setting",
-    );
-    assert.equal(
-      await evaluate(`document.querySelector('#setVision [data-vision="off"]').classList.contains('on')`),
-      true,
-    );
-
-    // Clearing the picker removes the endpoint rather than leaving the last one.
-    await evaluate(`(() => {
-      const sel = document.querySelector('#setVisionProfile');
-      sel.value = '';
-      sel.dispatchEvent(new Event('change'));
-      document.querySelector('#setSaveBtn').click();
-    })()`);
-    await pause(80);
-    const cleared = calls.filter((call) => call.name === "writeEnv").pop();
-    assert.equal(cleared.args[0].vision.profileId, "", '"None" clears the vision model');
-    assert.equal(cleared.args[0].vision.enabled, false);
-    await evaluate(`document.querySelector('#navConsole').click()`);
-    await pause();
   });
 
   await test("custom endpoint wizard: pasted URL normalizes, keyless + self-signed works, model stays aligned", async () => {
@@ -1690,6 +1643,150 @@ async function run() {
     assert.equal(afterFocusedClose.directStreams, 1, "exactly one stream in the single console — no orphan from the closed tab");
     assert.ok(afterFocusedClose.shownIsA, "the single console shows the SURVIVING tab's own stream, not the closed tab's");
     assert.ok(afterFocusedClose.transcriptHasA, "the surviving tab's content is shown in the single console");
+  });
+
+  // Runs after the concurrent-tabs scenario on purpose: that one leaves tab tA
+  // open, and a workspace tab is what the connection menus act on. Closing the
+  // LAST tab reloads the window (the renderer's landing-page behaviour), so this
+  // scenario adds a second tab and closes only that one.
+  await test("vision belongs to the connection profile, and each tab switches its own", async () => {
+    // The design in one test: a vision model is set up ONCE, on a profile, and
+    // travels with the connection. Nothing about it is entered, tested or saved
+    // per workspace — it is only switched on and off, per tab, from the menu
+    // where that workspace lives.
+    const tabEvt = (ch, p) => windowRef.webContents.send(ch, p);
+
+    // A describer profile first, so it is on offer as a vision model.
+    await evaluate(`document.querySelector('#navSetupConn').click()`);
+    await pause(80);
+    await evaluate(`(() => {
+      document.querySelector('#wizName').value = 'Describer';
+      const base = document.querySelector('#wizBaseUrl');
+      base.value = 'https://api.test/v1';
+      base.dispatchEvent(new Event('input'));
+      const model = document.querySelector('#wizModel');
+      model.value = 'a-vision-model';
+      model.dispatchEvent(new Event('input'));
+      document.querySelector('#wizApiKey').value = 'vision-key';
+      document.querySelector('#wizSaveProfileBtn').click();
+    })()`);
+    await pause(80);
+
+    // It appears in the picker without a reload: saving refreshes the list that
+    // the profile rows and the picker both read.
+    const describerId = await evaluate(
+      `(() => { const o = [...document.querySelectorAll('#wizVisionProfile option')].find((x) => x.textContent.includes('Describer')); return o ? o.value : ''; })()`,
+    );
+    assert.ok(describerId, "a saved profile is offered as a vision model");
+
+    // Now a coding connection that NAMES it. One save carries both.
+    await evaluate(`(() => {
+      document.querySelector('#wizName').value = 'Coder';
+      const base = document.querySelector('#wizBaseUrl');
+      base.value = 'https://api.test/v1';
+      base.dispatchEvent(new Event('input'));
+      const model = document.querySelector('#wizModel');
+      model.value = 'a-coding-model';
+      model.dispatchEvent(new Event('input'));
+      document.querySelector('#wizApiKey').value = 'coder-key';
+      document.querySelector('#wizApiKey').dispatchEvent(new Event('input'));
+      document.querySelector('#wizVisionProfile').value = ${JSON.stringify("__ID__")};
+      document.querySelector('#wizSaveProfileBtn').click();
+    })()`.replace("__ID__", describerId));
+    await pause(80);
+    const savedCoder = calls.filter((call) => call.name === "saveProfile").pop();
+    assert.equal(savedCoder.args[0].visionProfileId, describerId, "the vision model is saved ON the profile");
+
+    // A profile row states its describer, so "can this connection read images"
+    // is answerable before anything is applied.
+    const rows = await evaluate(`[...document.querySelectorAll('.wiz-profile-meta')].map((m) => m.textContent)`);
+    assert.ok(rows.some((r) => r.includes("👁 a-vision-model")), "a profile row shows the vision model it carries");
+    await evaluate(`document.querySelector('#wizCloseBtn').click()`);
+    await pause();
+
+    // ── a second workspace, so the two connections are distinguishable ─────
+    tabEvt("test:tab-opened", { tabId: "tV2", workspace: "/tmp/ws-v2" });
+    await emit({ type: "workspace_changed", workspace: "/tmp/ws-v2", tabId: "tV2" });
+    await pause(60);
+
+    // Connect the BACKGROUND pane (tA) from its own header menu. The wizard must
+    // target that tab — not the focused one, which is a different workspace with
+    // a different connection.
+    await evaluate(`(() => {
+      const head = tabs.get('tA').paneEl.querySelector('.console-pane-head');
+      head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }));
+    })()`);
+    await pause(60);
+    await evaluate(
+      `[...document.querySelectorAll('.ctx-menu .ctx-item')].find((x) => x.textContent.includes('SET CONNECTION')).click()`,
+    );
+    await pause(80);
+    await evaluate(
+      `[...document.querySelectorAll('.wiz-profile-row')].find((r) => r.textContent.includes('Coder')).querySelector('.wiz-profile-use').click()`,
+    );
+    await pause(80);
+    const applied = calls.filter((call) => call.name === "applyProfile").pop();
+    assert.equal(applied.args[1], "tA", "the profile is applied to the pane it was opened from");
+
+    // That tab can now read images; the other still cannot — each carries its
+    // own connection, so the switch is per workspace.
+    const menuFor = async (tabId) => {
+      await evaluate(`(() => {
+        const head = tabs.get('${"$"}{TAB}').paneEl.querySelector('.console-pane-head');
+        head.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }));
+      })()`.replace("${TAB}", tabId));
+      await pause(60);
+      return evaluate(
+        `(() => { const b = [...document.querySelectorAll('.ctx-menu .ctx-item')].find((x) => x.textContent.includes('VISION')); return b ? { text: b.textContent, disabled: b.disabled } : null; })()`,
+      );
+    };
+
+    const connected = await menuFor("tA");
+    assert.ok(connected, "the pane menu offers the vision switch");
+    assert.equal(connected.disabled, false, "a connection carrying a describer can be switched");
+    assert.ok(connected.text.includes("a-vision-model"), "the switch names the model it would use");
+    assert.ok(connected.text.includes("OFF"), "applying a profile with a vision model turns it on");
+    await evaluate(
+      `[...document.querySelectorAll('.ctx-menu .ctx-item')].find((x) => x.textContent.includes('VISION')).click()`,
+    );
+    await pause(80);
+    const toggled = calls.filter((call) => call.name === "setVision").pop();
+    assert.equal(toggled.args[0], false, "the menu switches vision off");
+    assert.equal(toggled.args[1], "tA", "the switch acts on the tab it was opened from");
+
+    const unconnected = await menuFor("tV2");
+    assert.equal(unconnected.disabled, true, "a workspace whose connection names no describer cannot switch vision on");
+    assert.ok(unconnected.text.includes("none in this connection"), "and it says why");
+    await evaluate(`document.dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
+
+    // Attachments from a pane ask about THAT pane's workspace, so images are
+    // offered against its own vision model.
+    await evaluate(`(() => {
+      const btn = [...tabs.get('tA').paneEl.querySelectorAll('.pane-tool')].find((b) => b.title === 'Attach context files');
+      btn.click();
+    })()`);
+    await pause(80);
+    const picked = calls.filter((call) => call.name === "pickContextFiles").pop();
+    assert.equal(picked.args[0].tabId, "tA", "the pane's attach picker names its own tab");
+
+    // Deleting the describer clears it from the connection that named it — a
+    // pointer to a profile that no longer exists must not outlive it.
+    await evaluate(`document.querySelector('#navSetupConn').click()`);
+    await pause(80);
+    await evaluate(
+      `[...document.querySelectorAll('.wiz-profile-row')].find((r) => r.textContent.includes('Describer')).querySelector('.wiz-profile-del').click()`,
+    );
+    await pause(80);
+    const afterDelete = await evaluate(
+      `(() => { const r = [...document.querySelectorAll('.wiz-profile-row')].find((x) => x.textContent.includes('Coder')); return r ? r.textContent : ''; })()`,
+    );
+    assert.ok(afterDelete && !afterDelete.includes("👁"), "deleting the vision model clears it from the profiles naming it");
+    await evaluate(`document.querySelector('#wizCloseBtn').click()`);
+    await pause();
+
+    // Leave one tab open: closing the last one reloads the page.
+    tabEvt("test:tab-closed", { tabId: "tV2", focus: "tA" });
+    await pause(60);
   });
 
   // Last on purpose. The OVERDRIVE scenario above reads a computed border colour

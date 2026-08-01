@@ -123,7 +123,10 @@ const DEFAULT_UI_SETTINGS = {
   // 0 turns auto-compaction off (manage it yourself with /compact). This is the
   // ONLY place the limit is set — it rides to the engine as a set_compact_limit
   // frame, never a settings.json key, so it can never disagree with this control.
-  compactLimit: 256000,
+  //
+  // A DEFAULT, so it applies to fresh installs only: any saved value — including
+  // one that merely equals an older default — is the user's and is left alone.
+  compactLimit: 1024000,
   // OVERDRIVE: fully autonomous stance (nothing asks — commands run without
   // approval prompts). Persisted so it survives a reload and re-asserts itself
   // on the next engine link, exactly like the safety toggles above.

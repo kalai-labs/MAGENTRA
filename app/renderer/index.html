@@ -309,7 +309,7 @@
           <div class="set-card-title">CONTEXT</div>
           <div class="set-row">
             <span class="set-label">Auto-compact at</span>
-            <input id="setCompactLimit" class="set-number" type="number" min="0" step="1000" value="32000"
+            <input id="setCompactLimit" class="set-number" type="number" min="0" max="2000000" step="1000" value="1024000"
                    inputmode="numeric" aria-describedby="setCompactNote">
             <span class="set-suffix">tokens</span>
           </div>
@@ -338,41 +338,7 @@
 
         <div class="set-card">
           <div class="set-card-title">CONNECTION</div>
-          <div class="set-row"><span class="set-label">Base URL</span><input id="setBaseUrl" type="text" spellcheck="false" placeholder="https://your-endpoint/v1" /></div>
-          <div class="set-row">
-            <span class="set-label">API key</span>
-            <div class="key-wrap">
-              <input id="setApiKey" type="password" spellcheck="false" placeholder="●●●●●●●●" />
-              <button id="setKeyReveal" title="Reveal" aria-label="Reveal">◉</button>
-            </div>
-          </div>
-          <div class="set-row"><span class="set-label">Model</span><input id="setModelDefault" type="text" spellcheck="false" placeholder="provider/model-id" /></div>
-          <div class="set-row"><span class="set-label">Context size</span><input id="setContext" type="number" min="256" step="256" placeholder="auto (model-aware)" /></div>
-          <label class="wiz-check set-check">
-            <input type="checkbox" id="setInsecure" />
-            <span>Allow self-signed certificate <small>— only for https servers you own</small></span>
-          </label>
-          <p class="set-note">Leave empty: the engine uses the model's real window automatically. Set a number ONLY for local servers (it becomes <code>num_ctx</code>); saving with the field empty clears any old override.</p>
-          <div class="set-row">
-            <span class="set-label">Vision model</span>
-            <select id="setVisionProfile">
-              <option value="">None — images cannot be read</option>
-            </select>
-          </div>
-          <div class="set-row">
-            <span class="set-label">Vision</span>
-            <div class="seg" id="setVision">
-              <button class="seg-btn" data-vision="on">ON</button>
-              <button class="seg-btn on" data-vision="off">OFF</button>
-            </div>
-          </div>
-          <p class="set-note">The main model is never shown an image. Pick a saved connection that can see one: it describes the picture and the agent works from that description. Without one, images cannot be attached and <code>Read</code> refuses them. Saved with the connection below.</p>
-          <div class="set-actions">
-            <span id="setConnStatus"></span>
-            <button id="setTestBtn">TEST</button>
-            <button id="setSaveBtn">SAVE TO WORKSPACE</button>
-          </div>
-          <p class="set-note">Credentials are written to <code>.env</code> in the current workspace. They never leave this machine.</p>
+          <p class="set-note">Connections live in the connection wizard — endpoint, key, model, and the vision model that reads images are all one saved profile. Open <strong>SET UP CONNECTIONS</strong> from the dock, or right-click a workspace in the sidebar (or a pane, when several are open) to connect it or switch its vision model on and off.</p>
         </div>
 
         <div class="set-card" id="glossaryCard">
@@ -647,11 +613,11 @@
       <label class="wiz-field" id="wizContextField" hidden><span>CONTEXT SIZE</span>
         <input id="wizContext" type="number" min="256" step="256" placeholder="auto — set e.g. 8192 for local servers" spellcheck="false" />
       </label>
-      <label class="wiz-field" id="wizVisionField"><span>VISION MODEL <small>— optional</small></span>
+      <label class="wiz-field"><span>VISION MODEL <small>— optional</small></span>
         <select id="wizVisionProfile">
           <option value="">None — images cannot be read</option>
         </select>
-        <span class="wiz-field-hint">Another saved profile, one that can see images. The model above is never shown a picture: the vision model describes it and the agent works from that description. Save this profile first if the vision model is not in the list yet.</span>
+        <span class="wiz-field-hint">Another saved profile, one that can see images — saved as part of THIS connection, so connecting brings it along with nothing else to set up. The model above is never shown a picture: the vision model describes it and the agent works from that description. Switch it on and off later by right-clicking the workspace.</span>
       </label>
 
       <div class="wiz-actions">

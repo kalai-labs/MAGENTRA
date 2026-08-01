@@ -76,7 +76,7 @@ feels like it's forgetting recent context too soon, increase this value.
 
 ## Switching later
 
-You can change the connection any time from **Settings → Connection** in the
+You can change the connection any time from the **connection wizard** (⇆ Connect in the dock, or right-click a workspace) in the
 desktop app: set the Base URL to a local endpoint (leave the API key blank),
 choose a model, and set a Context size. Saving writes the same
 `.magentra/settings.json` the wizard does.

@@ -793,10 +793,10 @@ export class Session {
    *  switched-on flag with no endpoint behind it can look at nothing. */
   visionUnavailableReason(): string | undefined {
     if (!this.settings.visionConnection) {
-      return "no vision model is configured for this workspace (Settings → Connection → Vision model)";
+      return "this workspace's connection names no vision model — add one to its profile in the connection wizard";
     }
     if (!this.settings.vision) {
-      return "vision is off for this workspace (Settings → Connection → Vision)";
+      return "vision is switched off for this workspace — turn it on from the workspace menu";
     }
     return undefined;
   }

@@ -164,6 +164,77 @@ function closeCtxMenu() {
 }
 
 /**
+ * Append one item to a `.ctx-menu` and return its button. Every menu built the
+ * same three lines by hand; this is that, once.
+ * `opts`: `{ danger }` for a destructive action, `{ disabled }` for one that is
+ * shown (so the user learns it exists) but cannot be taken yet.
+ */
+function ctxItem(menuEl, label, onClick, opts = {}) {
+  const b = document.createElement("button");
+  b.className = "ctx-item" + (opts.danger ? " danger" : "");
+  b.textContent = label;
+  if (opts.disabled) b.disabled = true;
+  if (opts.title) b.title = opts.title;
+  b.addEventListener("click", () => {
+    if (b.disabled) return;
+    onClick();
+    closeCtxMenu();
+  });
+  menuEl.appendChild(b);
+  return b;
+}
+
+/**
+ * The per-workspace connection items every context menu offers: connect it, and
+ * switch its vision model on or off.
+ *
+ * Shared by the sidebar workspace rows and the tiled pane headers so a workspace
+ * is reached the same way wherever it is shown — and, more to the point, so
+ * there is one implementation of "what can be done to a connection from a menu"
+ * rather than one per surface.
+ *
+ * Both act on `tabId`, never on whatever is focused: with several tabs open,
+ * each is a different workspace with a different connection, and acting on the
+ * focused one would silently change the wrong workspace.
+ *
+ * The vision item's label is filled in when the state arrives — the menu opens
+ * immediately rather than waiting on IPC, and the item cannot be clicked until
+ * it knows what it would do.
+ */
+function appendConnectionCtxItems(menuEl, tabId) {
+  if (!tabId) return;
+  if (typeof openConnectionsWizard === "function") {
+    ctxItem(menuEl, "⇆ SET CONNECTION", () => void openConnectionsWizard("apply", tabId));
+  }
+  if (!window.magentra || !window.magentra.getVision || !window.magentra.setVision) return;
+
+  const visionBtn = ctxItem(menuEl, "👁 VISION …", () => {}, { disabled: true });
+  void window.magentra
+    .getVision(tabId)
+    .then((state) => {
+      if (!state || !state.configured) {
+        visionBtn.textContent = "👁 VISION — none in this connection";
+        visionBtn.title = "Add a vision model to this connection's profile in the wizard";
+        return;
+      }
+      visionBtn.disabled = false;
+      visionBtn.textContent = state.enabled ? `👁 VISION OFF — ${state.model}` : `👁 VISION ON — ${state.model}`;
+      visionBtn.title = state.enabled
+        ? "Stop reading images on this workspace"
+        : `Read images through ${state.model}`;
+      visionBtn.addEventListener("click", () => {
+        void window.magentra.setVision(!state.enabled, tabId).then((res) => {
+          if (res && res.ok) return;
+          if (typeof appendSysError === "function") appendSysError((res && res.error) || "failed to change vision");
+        });
+      });
+    })
+    .catch(() => {
+      visionBtn.textContent = "👁 VISION — unavailable";
+    });
+}
+
+/**
  * Mount a built `.ctx-menu`: place it, register it as THE open menu, and wire
  * its dismissal. Each caller builds its own items — the menus offer different
  * things — but placement and dismissal are identical, so they live here once.

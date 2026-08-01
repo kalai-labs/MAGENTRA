@@ -686,6 +686,26 @@ export class Engine {
       case "set_connection":
         this.handleSetConnection(request.connection);
         break;
+      case "set_vision":
+        // Refused rather than stored when there is no endpoint behind it: a
+        // frontend showing ON while every image fails at the wall is worse than
+        // a switch that says why it would not move.
+        if (request.enabled && !this.opts.settings.visionConnection) {
+          this.emit({
+            type: "error",
+            message: "Vision cannot be switched on: this workspace has no vision model. Choose one in the connection wizard.",
+            fatal: false,
+          });
+          break;
+        }
+        this.opts.settings.vision = request.enabled;
+        this.emit({
+          type: "command_output",
+          text: request.enabled
+            ? `👁 vision on — images go to ${this.opts.settings.visionConnection?.model ?? "the vision model"}`
+            : "👁 vision off — images cannot be attached or read",
+        });
+        break;
       case "set_compact_limit":
         this.session.setAutoCompactLimit(request.limit);
         break;

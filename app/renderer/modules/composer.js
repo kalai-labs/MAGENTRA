@@ -313,14 +313,22 @@ function attachmentSummary(list = pendingAttachments) {
 }
 
 /** Open the OS file picker and stash the readable results into `list` (rendered
- *  in `container`). Unreadable / oversized picks are reported but skipped. */
-async function openAttachPicker(list = pendingAttachments, container = attachChipsEl) {
+ *  in `container`). Unreadable / oversized picks are reported but skipped.
+ *
+ *  `tabId` names the pane asking. It decides whether IMAGES are on offer, since
+ *  that depends on the workspace's own vision model — and a tiled pane is a
+ *  different workspace from the focused one. */
+async function openAttachPicker(list = pendingAttachments, container = attachChipsEl, tabId) {
   // Pass the current pending totals so the 15-file / 2 MB caps span every "+"
   // click, not just this one dialog batch (main enforces against these).
   const pendingBytes = list.reduce((sum, a) => sum + (a.bytes || 0), 0);
   let res;
   try {
-    res = await window.magentra.pickContextFiles({ pendingCount: list.length, pendingBytes });
+    res = await window.magentra.pickContextFiles({
+      pendingCount: list.length,
+      pendingBytes,
+      ...(tabId ? { tabId } : {}),
+    });
   } catch (err) {
     appendSysError(`attach failed: ${err && err.message ? err.message : err}`);
     return;

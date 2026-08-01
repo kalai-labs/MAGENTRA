@@ -31,7 +31,7 @@ function showView(name) {
 }
 
 // Dock navigation. setup.js adds its own navSettings listener for the
-// connection card; both fire, and the order between them does not matter.
+// wizard; both fire, and the order between them does not matter.
 navConsoleEl.addEventListener("click", () => showView("console"));
 navSettingsEl.addEventListener("click", () => showView("settings"));
 settingsCloseBtnEl.addEventListener("click", () => showView("console"));
@@ -70,7 +70,7 @@ const MENU_BAR = [
       { label: "Console", hint: "Ctrl+1", action: () => showView("console") },
       { label: "Sessions", hint: "Ctrl+2", needsWorkspace: true, action: () => { showView("sessions"); requestSessionList(); } },
       { label: "Changes", hint: "Ctrl+3", needsWorkspace: true, action: () => showView("changes") },
-      { label: "Settings", hint: "Ctrl+4", action: () => { showView("settings"); void loadConnectionCard(); } },
+      { label: "Settings", hint: "Ctrl+4", action: () => showView("settings") },
       { label: "Addons", hint: "Ctrl+5", needsWorkspace: true, action: () => showView("addons") },
       { sep: true },
       { label: "Toggle Full Screen", hint: "F11", action: () => toggleFullScreen() },

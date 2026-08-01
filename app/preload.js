@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld("magentra", {
   revealWorkspace: (tabId) => ipcRenderer.invoke("workspace:reveal", tabId),
   // Attach-context picker: opens a file dialog and returns read/extracted text
   // for each chosen file (≤2 MB each). The renderer folds it into the message.
+  // `opts.tabId` names the pane asking, so image attachments are offered
+  // against THAT workspace's vision model rather than the focused tab's.
   pickContextFiles: (opts) => ipcRenderer.invoke("context:pickFiles", opts),
   undoChanges: (relPath, diffs) => ipcRenderer.invoke("changes:undo", { relPath, diffs }),
   setModel: (model) => ipcRenderer.invoke("config:setModel", model),
@@ -27,7 +29,6 @@ contextBridge.exposeInMainWorld("magentra", {
       ...(message ? { message } : {}),
       ...(tabId ? { tabId } : {}),
     }),
-  writeEnv: (payload) => ipcRenderer.invoke("setup:writeEnv", payload),
   testConnection: (payload) => ipcRenderer.invoke("setup:testConnection", payload),
   // Which local model servers (Ollama, LM Studio) are present on this machine.
   detectLocalServers: () => ipcRenderer.invoke("connections:detectLocal"),
@@ -39,13 +40,18 @@ contextBridge.exposeInMainWorld("magentra", {
   listProfiles: () => ipcRenderer.invoke("profiles:list"),
   saveProfile: (payload) => ipcRenderer.invoke("profiles:save", payload),
   deleteProfile: (id) => ipcRenderer.invoke("profiles:delete", id),
-  applyProfile: (id) => ipcRenderer.invoke("profiles:apply", { id }),
+  // A profile is the whole connection — endpoint, key, model, and the vision
+  // model it names. `tabId` picks the workspace to connect; omitted, the
+  // focused one.
+  applyProfile: (id, tabId) => ipcRenderer.invoke("profiles:apply", tabId ? { id, tabId } : { id }),
   getWebSearch: () => ipcRenderer.invoke("settings:getWebSearch"),
   setWebSearch: (enabled) => ipcRenderer.invoke("settings:setWebSearch", enabled),
-  // Vision: whether images can be attached/read, and through which model.
-  // Enabling is refused while no vision model is chosen.
-  getVision: () => ipcRenderer.invoke("settings:getVision"),
-  setVision: (enabled) => ipcRenderer.invoke("settings:setVision", enabled),
+  // Vision: whether this workspace's connection may read images, and through
+  // which model. The endpoint is never chosen here — it arrives with the
+  // connection profile — so these only move the switch. Per tab, because each
+  // tab is its own workspace with its own connection.
+  getVision: (tabId) => ipcRenderer.invoke("settings:getVision", tabId ? { tabId } : {}),
+  setVision: (enabled, tabId) => ipcRenderer.invoke("settings:setVision", { enabled, ...(tabId ? { tabId } : {}) }),
   getAppInfo: () => ipcRenderer.invoke("app:info"),
   // Updates. `updateState` is the state now, for a window that just opened;
   // `onUpdateState` is every change after that. An update is app-global, so the
@@ -61,7 +67,6 @@ contextBridge.exposeInMainWorld("magentra", {
   },
   openExternal: (url) => ipcRenderer.send("app:openExternal", url),
   openLogs: () => ipcRenderer.invoke("app:openLogs"),
-  connectionInfo: () => ipcRenderer.invoke("connection:info"),
   setTitleBarTheme: (theme) => ipcRenderer.send("app:titleBarTheme", theme),
   // Full screen hides the native title bar (and its controls), so the renderer
   // draws its own minimize / exit-full-screen / close buttons and drives them
@@ -89,7 +94,6 @@ contextBridge.exposeInMainWorld("magentra", {
       return 1;
     }
   },
-  revealKey: () => ipcRenderer.invoke("connection:revealKey"),
   getPathForFile: (file) => {
     try {
       return webUtils.getPathForFile(file);

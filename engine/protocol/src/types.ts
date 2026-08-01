@@ -292,7 +292,7 @@ export interface RestoredMessage {
 /**
  * One fully-resolved connection, as the frontend knows it: which API shape, at
  * which endpoint, with which key and model. The app resolves this from a saved
- * profile or the connection card (the renderer never holds a key — main does)
+ * profile (the renderer never holds a key — main does)
  * and hands it over whole, so the engine never has to guess a half-specified
  * endpoint.
  *
@@ -395,6 +395,16 @@ export type FrontendRequest =
    * stdin-log redaction covers this frame with no extra rule.
    */
   | { type: "set_connection"; connection: ConnectionSpec }
+  /**
+   * Switch image reading on or off, live, without touching the connection.
+   *
+   * Its own frame rather than a `set_connection` carrying a flag: that frame
+   * rewrites the endpoint, the key and the environment and rebuilds the
+   * provider, which is a great deal of machinery — and a credential rewrite —
+   * to move one boolean. Refused when no vision endpoint is configured, since
+   * the flag alone can look at nothing.
+   */
+  | { type: "set_vision"; enabled: boolean }
   /**
    * Mid-run steering: user text that joins the RUNNING turn at its next
    * message boundary instead of waiting for the turn to end. Sent by

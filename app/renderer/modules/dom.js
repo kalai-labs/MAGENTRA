@@ -145,18 +145,10 @@ const setRainOpacityEl = document.getElementById("setRainOpacity");
 const setDetailEl = document.getElementById("setDetail");
 const setDeletionsEl = document.getElementById("setDeletions");
 const setWebSearchEl = document.getElementById("setWebSearch");
-const setVisionEl = document.getElementById("setVision");
 const hintAutoEl = document.getElementById("hintAuto");
 const hintUsageEl = document.getElementById("hintUsage");
 
-// settings: connection card
-const setBaseUrlEl = document.getElementById("setBaseUrl");
-const setApiKeyEl = document.getElementById("setApiKey");
-const setKeyRevealEl = document.getElementById("setKeyReveal");
-const setModelDefaultEl = document.getElementById("setModelDefault");
-const setConnStatusEl = document.getElementById("setConnStatus");
-const setTestBtnEl = document.getElementById("setTestBtn");
-const setSaveBtnEl = document.getElementById("setSaveBtn");
+// settings: about / links (the connection card moved wholly into the wizard)
 const setVersionEl = document.getElementById("setVersion");
 const openLogsBtnEl = document.getElementById("openLogsBtn");
 const sourceCodeLinkEl = document.getElementById("sourceCodeLink");
@@ -190,14 +182,9 @@ const welcomeSetupConnBtnEl = document.getElementById("welcomeSetupConnBtn");
 const wizBaseUrlHintEl = document.getElementById("wizBaseUrlHint");
 const wizInsecureRowEl = document.getElementById("wizInsecureRow");
 const wizInsecureEl = document.getElementById("wizInsecure");
-const setInsecureEl = document.getElementById("setInsecure");
 
-// connection settings: context size
-const setContextEl = document.getElementById("setContext");
-
-// vision: which saved profile describes images, in the settings card and in the
-// wizard. Both pick from the same profile list; both save with the connection.
-const setVisionProfileEl = document.getElementById("setVisionProfile");
+// The profile's vision model: another saved profile, chosen while building this
+// one. Lives with the connection, so nothing about it is set up per workspace.
 const wizVisionProfileEl = document.getElementById("wizVisionProfile");
 
 // startup landing: recent folders

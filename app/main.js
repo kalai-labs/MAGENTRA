@@ -36,7 +36,7 @@ const {
   resolveVisionSelection,
   currentVisionConnection,
 } = require("./main/connection.js");
-const { readProfiles, upsertProfile, deleteProfile, findProfile, sanitizeProfile } = require("./main/profiles.js");
+const { upsertProfile, deleteProfile, findProfile, sanitizeProfiles } = require("./main/profiles.js");
 const { initUpdates, updateState, checkNow, startUpdate, installNow } = require("./main/updates.js");
 
 const SMOKE = process.argv.includes("--smoke");
@@ -689,7 +689,7 @@ async function readAttachment(filePath, remainingBudget, visionReady) {
       return {
         name,
         ok: false,
-        error: "images need a vision model — choose one in Settings → Connection and switch Vision on",
+        error: "images need a vision model — add one to this workspace's connection profile in the connection wizard, then switch Vision on from the workspace menu",
       };
     }
     return {
@@ -728,9 +728,12 @@ async function readAttachment(filePath, remainingBudget, visionReady) {
 
 ipcMain.handle("context:pickFiles", async (_evt, opts = {}) => {
   try {
-    // Images are offered only when this workspace can actually look at one.
-    // Listing them otherwise invites a pick that can only be turned away.
-    const vision = currentVisionConnection(currentConfig.workspace);
+    // Images are offered only when THIS PANE's workspace can look at one.
+    // Listing them otherwise invites a pick that can only be turned away — and
+    // with several tabs open, each is a different workspace with its own
+    // connection, so the focused one is the wrong question to ask.
+    const attachTab = tabFromPayload(opts);
+    const vision = currentVisionConnection(attachTab ? attachTab.workspace : currentConfig.workspace);
     const visionReady = Boolean(vision.connection) && vision.enabled;
     const imageExts = visionReady ? Object.keys(IMAGE_TYPES).map((e) => e.slice(1)) : [];
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -1044,31 +1047,6 @@ function createExtraWindow() {
   return win;
 }
 
-// ---------------------------------------------------------------------------
-// First-run setup wizard (credential entry)
-// ---------------------------------------------------------------------------
-
-ipcMain.handle("setup:writeEnv", async (_evt, payload) => {
-  // SAVE with an empty key field keeps the already-saved key: the user is
-  // updating model/URL/context, not the credential. "The saved key" means the one
-  // for the provider being saved — see savedWorkspaceKey.
-  if (payload && typeof payload === "object" && payload.useSavedKey) {
-    payload = { ...payload, apiKey: savedWorkspaceKey(currentConfig.workspace, payload.provider) };
-  }
-  const validated = validateCredentialPayload(payload);
-  if (!validated.ok) return validated;
-
-  const workspace = currentConfig.workspace;
-  if (!workspace) return { ok: false, error: "no workspace" };
-  // The card always sends its vision picker's state, so an empty profileId
-  // clears the vision model. A payload without the key at all leaves the
-  // workspace's current one alone (see resolveVisionSelection).
-  const vision = payload && typeof payload === "object" && payload.vision && typeof payload.vision === "object"
-    ? { profileId: payload.vision.profileId, enabled: payload.vision.enabled }
-    : undefined;
-  return applyValidatedConnection(workspace, validated, vision);
-});
-
 /**
  * Commit a validated connection to a workspace: the API key to its .env, the rest
  * to its .magentra/settings.json, then put it to work. Shared by the setup
@@ -1352,7 +1330,7 @@ ipcMain.handle("addons:saveExport", async (_evt, payload) => {
   return { ok: true, path: result.filePath };
 });
 
-ipcMain.handle("profiles:list", () => readProfiles().map(sanitizeProfile));
+ipcMain.handle("profiles:list", () => sanitizeProfiles());
 
 ipcMain.handle("profiles:save", (_evt, payload) => {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -1376,8 +1354,21 @@ ipcMain.handle("profiles:save", (_evt, payload) => {
   const validated = validateCredentialPayload(connection);
   if (!validated.ok) return validated;
 
+  // The vision model this connection brings with it — another saved profile, by
+  // id. Stored as a POINTER so one endpoint's key is never copied into a second
+  // record: change that profile's key once and every connection using it as a
+  // describer follows.
+  const profileId = typeof payload.id === "string" ? payload.id : undefined;
+  let visionProfileId = typeof payload.visionProfileId === "string" ? payload.visionProfileId.trim() : "";
+  if (visionProfileId) {
+    if (visionProfileId === profileId) {
+      return { ok: false, error: "a profile cannot be its own vision model" };
+    }
+    if (!findProfile(visionProfileId)) return { ok: false, error: "the chosen vision model is no longer saved" };
+  }
+
   const { list, id } = upsertProfile({
-    id: typeof payload.id === "string" ? payload.id : undefined,
+    id: profileId,
     name,
     baseUrl: validated.baseUrl,
     apiKey: validated.apiKey,
@@ -1385,22 +1376,37 @@ ipcMain.handle("profiles:save", (_evt, payload) => {
     provider: validated.provider,
     ...(validated.contextWindow !== undefined ? { contextWindow: validated.contextWindow } : {}),
     ...(validated.insecureTls ? { insecureTls: true } : {}),
+    ...(visionProfileId ? { visionProfileId } : {}),
   });
   logEvent("sys", { ev: "profile-saved" });
-  return { ok: true, id, profiles: list.map(sanitizeProfile) };
+  return { ok: true, id, profiles: sanitizeProfiles(list) };
 });
 
 ipcMain.handle("profiles:delete", (_evt, id) => {
   if (typeof id !== "string" || !id) return { ok: false, error: "invalid id" };
   const list = deleteProfile(id);
   logEvent("sys", { ev: "profile-deleted" });
-  return { ok: true, profiles: list.map(sanitizeProfile) };
+  return { ok: true, profiles: sanitizeProfiles(list) };
 });
 
+/**
+ * Connect a workspace using a saved profile. THE path — the wizard's SAVE &
+ * CONNECT, a profile row's USE, and the tab context menus all end here, so a
+ * connection is only ever what some profile says it is.
+ *
+ * `tabId` names the workspace to connect. Multi-tab: each tab is its own
+ * workspace, and "the focused one" is a guess that is wrong whenever the user
+ * acted on a pane that is not focused.
+ *
+ * The profile's vision model comes with it. That is the whole point of storing
+ * it on the profile: a connection the user set up once carries its describer,
+ * with nothing to re-enter, re-test, or save to a workspace by hand.
+ */
 ipcMain.handle("profiles:apply", (_evt, payload) => {
   const id = payload && typeof payload === "object" ? payload.id : payload;
   if (typeof id !== "string" || !id) return { ok: false, error: "invalid id" };
-  const workspace = currentConfig.workspace;
+  const tab = tabFromPayload(payload);
+  const workspace = tab ? tab.workspace : currentConfig.workspace;
   if (!workspace) return { ok: false, error: "no workspace open" };
   const profile = findProfile(id);
   if (!profile) return { ok: false, error: "profile not found" };
@@ -1413,10 +1419,25 @@ ipcMain.handle("profiles:apply", (_evt, payload) => {
     insecureTls: profile.insecureTls === true,
   });
   if (!validated.ok) return validated;
-  const result = applyValidatedConnection(workspace, validated);
-  if (result.ok) logEvent("sys", { ev: "profile-applied" });
+  // Applying a profile that names a vision model switches vision ON: choosing
+  // one is asking to use it. One that names none clears the workspace's vision
+  // model rather than leaving the previous connection's behind.
+  const result = applyValidatedConnection(workspace, validated, {
+    profileId: typeof profile.visionProfileId === "string" ? profile.visionProfileId : "",
+    enabled: true,
+  });
+  if (result.ok) logEvent("sys", { ev: "profile-applied", vision: Boolean(profile.visionProfileId) });
   return result;
 });
+
+/** The tab an IPC payload names, or null for "whatever is focused". Every
+ *  per-workspace action takes one, because with several tabs open the focused
+ *  workspace is not necessarily the one the user clicked on. */
+function tabFromPayload(payload) {
+  const tabId = payload && typeof payload === "object" && typeof payload.tabId === "string" ? payload.tabId : "";
+  if (tabId && engineTabs.has(tabId)) return engineTabs.get(tabId);
+  return null;
+}
 
 /**
  * The saved key for a workspace, for the provider it is actually configured with.
@@ -1465,36 +1486,6 @@ function persistWorkspaceModel(workspace, model) {
     settings.model = model.trim();
   });
 }
-
-// What the Settings → Connection card shows on open: the saved endpoint and
-// whether a key exists (never the key itself — that goes through revealKey).
-ipcMain.handle("connection:info", () => {
-  const workspace = currentConfig.workspace;
-  const info = { baseUrl: "", model: currentConfig.model || "", provider: "openai-compat", contextWindow: "", hasKey: false, allowInsecureTls: false };
-  if (!workspace) return info;
-  const settings = readWorkspaceSettings(workspace);
-  if (typeof settings.baseUrl === "string") info.baseUrl = settings.baseUrl;
-  if (typeof settings.model === "string") info.model = settings.model;
-  if (settings.provider === "anthropic") info.provider = "anthropic";
-  if (Number.isFinite(settings.contextWindow)) info.contextWindow = String(settings.contextWindow);
-  info.allowInsecureTls = settings.allowInsecureTls === true;
-  // Asked for THIS workspace's provider, so a leftover key line for the other
-  // one cannot make the card claim a key it would never send.
-  info.hasKey = savedWorkspaceKey(workspace, info.provider) !== "";
-  // The vision endpoint, as the picker needs it: which saved profile it came
-  // from, what it runs, and whether the toggle is on. `visionEnabled` is only
-  // ever true alongside a connection — the card has nothing to switch on
-  // otherwise (see resolveVisionSelection).
-  const vision = currentVisionConnection(workspace);
-  info.visionProfileId = vision.connection ? vision.connection.profileId : "";
-  info.visionModel = vision.connection ? vision.connection.model : "";
-  info.visionEnabled = vision.connection ? vision.enabled : false;
-  return info;
-});
-
-// The actual saved key, on explicit request (the reveal button). It is the
-// user's own workspace .env on their own machine — "reveal" must mean reveal.
-ipcMain.handle("connection:revealKey", () => ({ key: savedWorkspaceKey() }));
 
 ipcMain.handle("setup:testConnection", async (_evt, payload) => {
   // An empty key field with a saved key means "test the saved connection" — the
@@ -1653,66 +1644,56 @@ ipcMain.handle("config:setModel", (evt, model) => {
   return currentConfig;
 });
 
-/**
- * The workspace's main connection as a credential payload — what
- * {@link applyValidatedConnection} needs to re-apply the connection it is
- * already on.
- *
- * Reads the EFFECTIVE (global + project) layer, because that is what the engine
- * resolves: a connection configured once globally must not come back as an
- * empty payload the moment a workspace re-saves it.
- */
-function savedConnectionPayload(workspace) {
-  const settings = readEffectiveWorkspaceSettings(workspace);
-  const provider = settings.provider === "anthropic" ? "anthropic" : "openai-compat";
-  return {
-    provider,
-    baseUrl: typeof settings.baseUrl === "string" ? settings.baseUrl : "",
-    apiKey: savedWorkspaceKey(workspace, provider),
-    model: typeof settings.model === "string" && settings.model ? settings.model : currentConfig.model,
-    ...(Number.isFinite(settings.contextWindow) ? { contextWindow: settings.contextWindow } : {}),
-    insecureTls: settings.allowInsecureTls === true,
-  };
-}
-
-ipcMain.handle("settings:getVision", () => {
-  const workspace = currentConfig.workspace;
-  if (!workspace) return { enabled: false, model: "", profileId: "" };
+/** The vision state of a tab's workspace, for the context menus: whether a
+ *  describer is configured at all, which model it is, and whether it is on. */
+ipcMain.handle("settings:getVision", (_evt, payload) => {
+  const tab = tabFromPayload(payload);
+  const workspace = tab ? tab.workspace : currentConfig.workspace;
+  if (!workspace) return { configured: false, enabled: false, model: "" };
   const vision = currentVisionConnection(workspace);
   return {
-    enabled: vision.connection ? vision.enabled : false,
+    configured: Boolean(vision.connection),
+    enabled: Boolean(vision.connection) && vision.enabled,
     model: vision.connection ? vision.connection.model : "",
-    profileId: vision.connection ? vision.connection.profileId : "",
   };
 });
 
 /**
- * The Vision toggle. It moves the SAME `vision` setting the connection card
- * writes, through the same save path — so the switch, a re-saved connection and
- * an applied profile can never leave three different ideas of whether images
- * are readable.
+ * Switch image reading on or off for one workspace, immediately.
  *
- * Turning it on without a vision model is refused rather than written: the flag
- * alone can look at nothing, and a live engine would fail every image at the
- * wall with the switch showing ON.
+ * Persisted to that workspace's settings (what a later restart boots from) and
+ * pushed to its live engine as `set_vision` — a flag, not a connection. It
+ * deliberately does NOT re-apply the connection: rewriting `.env` and rebuilding
+ * the provider to move one boolean is machinery the user did not ask for, and it
+ * would make a toggle depend on credentials still being valid.
+ *
+ * The endpoint itself is never chosen here. It arrives with the connection
+ * profile, so there is nothing to define, test, or save by hand at this point —
+ * only whether to use what the profile already brought.
  */
-ipcMain.handle("settings:setVision", (_evt, enabled) => {
-  if (typeof enabled !== "boolean") return { ok: false, error: "invalid value" };
-
-  const workspace = currentConfig.workspace;
+ipcMain.handle("settings:setVision", (_evt, payload) => {
+  const enabled = payload && typeof payload === "object" ? payload.enabled === true : payload === true;
+  const tab = tabFromPayload(payload);
+  const workspace = tab ? tab.workspace : currentConfig.workspace;
   if (!workspace) return { ok: false, error: "no workspace" };
 
   const vision = currentVisionConnection(workspace);
-  if (enabled && !vision.connection) {
-    return { ok: false, error: "choose a vision model first — there is nothing to send images to" };
+  if (!vision.connection) {
+    return {
+      ok: false,
+      error: "this connection has no vision model — add one to its profile in the connection wizard",
+    };
   }
-  if (!vision.connection) return { ok: true, enabled: false };
 
-  const validated = validateCredentialPayload(savedConnectionPayload(workspace));
-  if (!validated.ok) return validated;
-  const result = applyValidatedConnection(workspace, validated, { keep: true, enabled });
-  if (result.ok) logEvent("sys", { ev: "vision-changed", enabled });
-  return result.ok ? { ok: true, enabled } : result;
+  const error = updateWorkspaceSettings(workspace, (settings) => {
+    settings.vision = enabled;
+  });
+  if (error) return { ok: false, error: `failed to write settings: ${error}` };
+
+  const live = tab ?? tabForWorkspace(workspace);
+  if (live && live.child && live.child.stdin.writable) writeToEngine({ type: "set_vision", enabled }, live.id);
+  logEvent("sys", { ev: "vision-changed", enabled });
+  return { ok: true, enabled, model: vision.connection.model };
 });
 
 ipcMain.handle("settings:getWebSearch", () => {

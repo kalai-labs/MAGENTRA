@@ -487,6 +487,23 @@ Starts a turn with the user's text.
 {"type":"user_message","text":"why does this dialog look wrong?","images":[{"name":"bug.png","mediaType":"image/png","data":"iVBORw0KG…"}]}
 ```
 
+### `set_vision`
+
+Switches image reading on or off, live, without touching the connection.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `type` | `"set_vision"` | |
+| `enabled` | boolean | Refused with a non-fatal `error` frame when `settings.visionConnection` is unset — the flag alone has nothing to send an image to. |
+
+Its own frame rather than a `set_connection` carrying a flag: that frame rewrites
+the endpoint, the key and the environment and rebuilds the provider, which is a
+great deal of machinery — and a credential rewrite — to move one boolean.
+
+```json
+{"type":"set_vision","enabled":false}
+```
+
 ### `permission_response`
 
 Answer to a `permission_request`.

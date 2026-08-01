@@ -23,6 +23,12 @@ Superseding parts of the original design below, after using it:
 - **Opening is explicit via right-click.** Right-click a workspace in the sidebar → a menu:
   "open as new tab" (this window), "open in new window" (a separate OS window), focus, close —
   instead of a single implicit behaviour.
+- **Connections are per workspace, from the workspace's own menu.** The same right-click menu —
+  and the pane header's, when tiled — carries **SET CONNECTION** and the **VISION** switch. Both
+  act on the tab they were opened from, never on whatever is focused: with several workspaces
+  open, "the focused one" is a different workspace with a different connection, and acting on it
+  would silently repoint the wrong engine. The attach picker follows the same rule, so images are
+  offered only when *that* pane's connection carries a vision model.
 - **Multiple OS windows.** "Open in new window" spawns a second full window with its own
   independent set of tabs. The main process now tracks a **per-window active tab**
   (`win.mgActiveTabId`), stamps each tab with its window (`tab.win`), routes every engine event

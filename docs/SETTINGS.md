@@ -35,7 +35,7 @@ file — never the shareable project file — and the file is written mode `0600
 | `baseUrl` | *(unset)* | Endpoint the openai-compatible provider talks to. Point it at any compatible server — a hosted `/v1` API, a gateway, or a local one (e.g. Ollama's `http://localhost:11434/v1`). Left unset, a built-in fallback endpoint applies. |
 | `apiKeyEnv` | *(unset)* | Name of the env var holding the API key. When unset, the provider defaults apply: `ANTHROPIC_API_KEY`, or `MAGENTRA_API_KEY`/`OPENAI_API_KEY` for openai-compatible. |
 | `apiKey` | *(unset)* | The key itself, stored in `~/.magentra/settings.json`. A **secret**: never printed by `/settings`, and any matching env var always wins over it. |
-| `allowInsecureTls` | `false` | Skip TLS certificate verification for provider requests — the `verify=False` escape hatch for self-signed certificates on servers you own. The engine warns loudly at boot while this is on; never enable it for endpoints you don't control. Set via the wizard/Settings "Allow self-signed certificate" checkbox. |
+| `allowInsecureTls` | `false` | Skip TLS certificate verification for provider requests — the `verify=False` escape hatch for self-signed certificates on servers you own. The engine warns loudly at boot while this is on; never enable it for endpoints you don't control. Set via the connection wizard's "Allow self-signed certificate" checkbox. |
 
 ## Vision
 
@@ -50,19 +50,21 @@ refuses with an explanation rather than returning content the model cannot see.
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `vision` | `false` | Whether images can be used at all. Ignored (treated as off) while `visionConnection` is unset. Set it from Settings → Connection → Vision. |
+| `vision` | `false` | Whether images can be used at all. Ignored (treated as off) while `visionConnection` is unset. Switched from the workspace menu (right-click a workspace in the sidebar, or a pane). |
 | `visionConnection.provider` | `"openai-compatible"` | API dialect of the vision endpoint. |
 | `visionConnection.model` | *(required)* | The model that looks at images, e.g. a vision-capable local model under Ollama. |
 | `visionConnection.baseUrl` | *(unset)* | Endpoint of the vision model; same rules as `baseUrl`. |
 | `visionConnection.apiKey` | *(unset)* | Its key. A **secret**, redacted by `/settings`. `MAGENTRA_VISION_API_KEY` always wins over it — that is where the desktop app puts the key (in the workspace `.env`). |
 | `visionConnection.contextWindow` | *(unset)* | Context-size hint, forwarded as `num_ctx` to a local server. |
 | `visionConnection.allowInsecureTls` | `false` | Self-signed certificate opt-in for the vision endpoint. TLS verification is process-wide, so enabling it here relaxes it for every provider request. |
-| `visionConnection.profileId` | *(unset)* | Which saved app profile it came from. Written and read by the desktop app's picker; the engine ignores it. |
+| `visionConnection.profileId` | *(unset)* | Which saved app profile it came from. Written and read by the desktop app; the engine ignores it. |
 
-The desktop app writes this whole block from Settings → Connection → **Vision
-model**, choosing one of the saved connection profiles. The key lands in the
-workspace `.env` as `MAGENTRA_VISION_API_KEY`, never in the shareable project
-settings file.
+The desktop app never asks for this block directly. A connection **profile**
+names another profile as its vision model, and applying that profile writes both
+connections at once — so a vision model is set up once, in the connection
+wizard, and travels with every workspace that connection is applied to. The key
+lands in the workspace `.env` as `MAGENTRA_VISION_API_KEY`, never in the
+shareable project settings file.
 
 ## Turn and context limits
 

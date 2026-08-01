@@ -108,9 +108,9 @@ export function friendlyProviderError(err: unknown, host?: string): string {
   // the one thing that was fine, so both causes are stated, URL first — it is
   // the one the user cannot see is wrong.
   if (status === 401 || status === 403)
-    return `The provider${where} refused this request (HTTP ${status}). Either the base URL is not this API's real endpoint — providers differ (/v1, /v1/openai, /inference/v1, /openai/v1) — or the API key is wrong. Re-run TEST in Settings → Connection: it probes the known endpoints and tells you which of the two it is.`;
+    return `The provider${where} refused this request (HTTP ${status}). Either the base URL is not this API's real endpoint — providers differ (/v1, /v1/openai, /inference/v1, /openai/v1) — or the API key is wrong. Re-run TEST in the connection wizard: it probes the known endpoints and tells you which of the two it is.`;
   if (status === 404)
-    return `Model or endpoint not found${where}. Either the model id does not exist on this provider (they often need a fully-qualified id, e.g. "accounts/fireworks/models/glm-5p2") or the base URL is wrong. Re-run TEST in Settings → Connection to tell them apart.`;
+    return `Model or endpoint not found${where}. Either the model id does not exist on this provider (they often need a fully-qualified id, e.g. "accounts/fireworks/models/glm-5p2") or the base URL is wrong. Re-run TEST in the connection wizard to tell them apart.`;
   if (status === 429) return `Rate limited by the provider${where}. It will retry; if this persists, slow down or check your plan.`;
   if (status === 408 || status === 504) return `The provider timed out${where}. Try again.`;
   if (typeof status === "number" && status >= 500) return `The provider had a server error (${status})${where}. Try again shortly.`;
