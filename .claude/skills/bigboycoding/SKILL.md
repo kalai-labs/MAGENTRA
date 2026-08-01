@@ -141,9 +141,21 @@ deliberately skips mutate/execute/network tools so it stays safe to run anytime:
 npm run build && node .claude/skills/bigboycoding/tools-check.mjs
 ```
 
-All three were verified passing on 2026-08-01 (`permission-check`: 23 passed;
-`tools-check`: 61 passed, 27 tools). Write a new `*-check.mjs` here on the same
-pattern when you change an engine invariant that nothing else guards.
+`addon-check.mjs` guards the addon mechanism — both layouts, workspace-over-
+builtin precedence, `$ARGUMENTS`, the frontmatter parser's real contract, and the
+load-bearing one: **no addon body ever reaches the standing system prompt**
+(verified by passing full addons, bodies included, through `buildSystemPrompt` —
+handing it summaries proves nothing):
+
+```bash
+npm run build && node .claude/skills/bigboycoding/addon-check.mjs
+```
+
+All four were verified passing on 2026-08-01 (`permission-check` 23,
+`addon-check` 19, `tools-check` 61 across 27 tools), each with its key assertion
+confirmed to FAIL when the invariant is deliberately broken. Write a new
+`*-check.mjs` here on the same pattern when you change an engine invariant that
+nothing else guards.
 
 ## The system map
 

@@ -1673,6 +1673,11 @@ const ADDON_AUTHOR_ROLE = definePrompt({
 procedure a coding agent loads on demand: its description decides WHEN the agent
 reaches for it, and its body is the method the agent then follows.
 
+An addon exists to buy PREDICTABILITY — the same process every run. Judge every
+line you write by that: it earns its place only if it changes what the agent
+actually does. A line the agent would already obey ("be careful", "be thorough")
+costs tokens and buys nothing.
+
 Your entire final response must be EXACTLY the content of one addon .md file —
 no code fences, no commentary before or after it.`,
 });
@@ -1684,7 +1689,19 @@ type AddonGenOptions = {
   connection?: { provider: "anthropic" | "openai-compat"; baseUrl?: string; apiKey: string; model: string };
 };
 
-/** The format the generator must produce — one place, so the wizard and the validator agree. */
+/**
+ * The format the generator must produce — one place, so the wizard and the
+ * validator agree.
+ *
+ * The "Writing the body" rules below are MAGENTRA's adaptation of the
+ * skill-authoring principles set out by Mat Pocock in his "writing great skills"
+ * reference: predictability as the root virtue, completion criteria that are
+ * checkable, positive phrasing over prohibition, leading words that recruit the
+ * model's existing priors, and pruning anything the agent already does by
+ * default. Credited here rather than in the prompt text — the model needs the
+ * rule, not its provenance, and every token in a side-call prompt is paid on
+ * every generation.
+ */
 function buildAddonPrompt(description: string, takenNames: string[], opts: AddonGenOptions = {}): string {
   const contextLine =
     opts.context && opts.context.trim()
@@ -1703,19 +1720,31 @@ keys, then the procedure as the body:
 
 ---
 name: <short-kebab-case-name>
-description: <one line, on ONE physical line: the CONDITION for reaching for this addon — what kind of task, and what trigger words. This is the only text the agent sees before invoking, so it must be enough to decide. Say so plainly if following it costs noticeably more tokens.>
+description: <one line, on ONE physical line: the CONDITION for reaching for this addon — what kind of task, and what trigger words. This is the only text the agent sees before invoking, so it must be enough to decide. Name each DISTINCT situation once; two phrasings of the same situation are one trigger, not two. Say so plainly if following it costs noticeably more tokens.>
 ---
 
 <the procedure the agent follows once this addon is loaded: concrete steps,
 headings and bullet lists welcome. Write instructions to the agent, not prose
 about the addon.>
 
+Writing the body — these are what make an addon repeatable:
+- **End every step on a checkable condition.** "Run the suite and report the
+  actual output" beats "test it"; "every call site listed" beats "review the
+  call sites". An agent that cannot tell done from not-done stops early.
+- **State the target behaviour rather than the ban.** "Prefer X" steers; "don't
+  do Y" names Y and makes it more available. Keep a prohibition only where it is
+  a hard guardrail, and pair it with what to do instead.
+- **Reach for a word the model already knows.** One vivid, familiar term
+  ("reconnaissance pass", "smoke test", "dry run") anchors a whole behaviour more
+  reliably than three sentences describing it.
+- **Say each thing once.** The same instruction in two places is two places to
+  fall out of step.
+
 Hard rules:
-- The frontmatter has ONLY \`name:\` and \`description:\`, each on ONE line. No
-  YAML block scalars, no other keys — the parser is line-based and will not
-  understand them.
-- Never write a colon-space inside the description value; it would be parsed as
-  another key.
+- The frontmatter has ONLY \`name:\` and \`description:\`, and each value sits on
+  ONE physical line. The parser is line-based: it splits a line at its FIRST
+  colon, so punctuation inside a value — colons included — is safe, but a value
+  that wraps onto a second line is lost.
 - The body must be non-empty and must stand on its own: an agent reading only
   this file has to know what to do.
 - Use \`$ARGUMENTS\` in the body if the addon should accept an argument from the

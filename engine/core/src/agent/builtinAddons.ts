@@ -19,12 +19,11 @@ description: Read before you write — map what a change touches, reuse what alr
 ---
 
 Every change must leave the codebase **smaller in concept than it looks on the
-diff**: no second copy of something that already exists, and no orphaned remains
-of what the change replaced. You are editing one coherent system, not appending
-to a pile.
+diff**: one copy of each capability, and nothing left standing that the change
+replaced.
 
-Work in three phases. Do not skip Phase 1 because the task "looks like a
-one-liner" — that is exactly when duplication sneaks in.
+Work in three phases. Phase 1 earns its keep most on the change that "looks like
+a one-liner" — that is exactly where a second copy gets added by accident.
 
 ## Phase 1 — Map before you write
 
@@ -67,8 +66,8 @@ New and old must never coexist "for now."
    docs, string-keyed lookups, route tables, and re-exports — migrate each call
    site, then delete the old definition **and** anything that only existed to
    support it (private helpers, now-unused imports, constants, types, fixtures).
-3. **Never leave** commented-out code, dead branches behind a flag that is now
-   always one value, unreachable returns, or a file nothing imports.
+3. **Leave the tree free of** commented-out code, dead branches behind a flag
+   that is now always one value, unreachable returns, and files nothing imports.
 4. **Follow the thread.** Removing a function orphans its helpers; removing the
    last caller of a helper makes that helper dead too. Chase the chain until
    nothing new is orphaned.

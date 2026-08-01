@@ -20,7 +20,11 @@ const inputSchema = z.object({
  */
 export const addonTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "Addon",
-  description: `Loads an addon's instructions into the conversation and follows them for the current task. Pass the exact addon name from the "Available addons" list; never invent names. Optional args are substituted into the addon or appended as ARGUMENTS.`,
+  // Phrased as the target behaviour rather than a prohibition: the old wording
+  // ("never invent names") spends its most-read clause naming the failure, which
+  // makes it more available, not less. Copying a name from the list is the whole
+  // instruction, and an unknown name already returns the list as an error.
+  description: `Loads an addon's instructions into the conversation and follows them for the current task. Copy the addon name exactly as it appears in the "Available addons" list. Optional args are substituted into the addon or appended as ARGUMENTS.`,
   permissionClass: "read",
   parallelSafe: true,
   describeInput: (input) => `addon: ${input.addon}`,

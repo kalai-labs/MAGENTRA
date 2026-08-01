@@ -30,8 +30,12 @@ addon. Use $ARGUMENTS anywhere in the body to accept an argument.
 
 Exactly two frontmatter keys, `name` and `description`, **each on one physical
 line**. The parser (`engine/core/src/config/frontmatter.ts`) is line-based and
-hand-rolled: no YAML block scalars, no multi-line values. A colon-space inside a
-value would start a new key.
+hand-rolled: no YAML block scalars, no multi-line values.
+
+It splits each line at its **first** colon, so punctuation inside a value —
+colons included — is safe: `description: Use when X happens: then do Y` parses
+as one `description`. What is *not* safe is a value that wraps onto a second
+line; the remainder is dropped.
 
 Both keys have fallbacks — the name falls back to the file or directory name, the
 description to the first non-empty body line — so a bare `.md` file with no
@@ -44,6 +48,38 @@ is not a summary; it is a trigger condition. Write it as "use when …", name th
 trigger words, and say plainly if following the addon costs noticeably more
 tokens than not following it. A vague description means the addon never fires, or
 fires when it shouldn't.
+
+Name each **distinct** situation once. Two phrasings of the same situation
+("build features test-first … when the user asks for TDD") are one trigger
+written twice: they cost double and sharpen nothing.
+
+### Writing a body that is worth loading
+
+An addon exists to buy **predictability** — the same *process* every run, not the
+same output. Four rules carry most of that:
+
+- **End every step on a checkable condition.** "Run the suite and report the
+  actual output" beats "test it"; "every call site listed" beats "review the call
+  sites". An agent that cannot tell done from not-done stops early — and the
+  stopping looks like success.
+- **State the target behaviour rather than the ban.** *Don't think of an
+  elephant* names the elephant. "Prefer X" steers where "never do Y" advertises
+  Y. Keep a prohibition only as a hard guardrail, paired with what to do instead.
+- **Reach for a word the model already knows.** One vivid, familiar term —
+  *reconnaissance pass*, *smoke test*, *dry run*, *blast radius* — anchors a whole
+  behaviour in a token or two, because the model already holds the concept. It
+  beats three sentences describing the same thing.
+- **Cut anything the agent already does.** "Be thorough" is a line you pay for
+  and get nothing back. The test: does it change behaviour versus the default? If
+  not, delete the sentence rather than rewording it.
+
+The failure these prevent is a body that reads well and runs differently every
+time.
+
+> These authoring principles are MAGENTRA's adaptation of Mat Pocock's "writing
+> great skills" reference. The vocabulary there — predictability, completion
+> criteria, progressive disclosure, leading words, no-ops, negation — maps onto
+> addons directly, since an addon *is* a skill in that sense.
 
 ## Layouts
 
@@ -141,5 +177,5 @@ picked up on the next session start (or `/clear`).
 
 Invariants are asserted by `.claude/skills/bigboycoding/addon-check.mjs`
 (`npm run build && node .claude/skills/bigboycoding/addon-check.mjs`) — discovery,
-both layouts, precedence, that no body ever leaks into the standing system
+both layouts, precedence, that no addon body ever leaks into the standing system
 prompt, and the on-invoke load.
