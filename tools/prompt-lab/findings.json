@@ -1,7 +1,8 @@
 {
   "meta": {
-    "reviewed": "2026-07-30",
-    "reviewedBuild": "0.12.1",
+    "reviewed": "2026-08-01",
+    "reviewedBuild": "0.16.6",
+    "refresh": "Re-audited 2026-08-01 against build 0.16.6: every reviewedHash recomputed from the live registry. Notes whose recommended edit verifiably landed were converted to 'addressed'; notes that drifted for unrelated release reasons were re-read and re-stamped against the current text; the clarify.system delete verdict was withdrawn (see that note); four prompts added since the original review were given findings (addon.invoke-header, reminder.addon-named, vision.describe, vision.description-wrapper).\n\nReopened 2026-08-02 for a full re-check at the user's request: every hand-set 'done' was cleared — 42 manually-addressed notes, 2 manually-done work-order steps, and 17 notes carrying the permanent reviewedHash: \"addressed\" sentinel, which was replaced with the live hash of the text each note is now read against. That last swap matters: the sentinel meant 'settled forever', while a real hash means 'open now, and settles again by itself the moment the prompt changes'. No verdict, problem or action text was altered by the reset. Zero hash drift was found across all 73 notes before the swap, so nothing was silently stale.",
     "about": "Every registered prompt, reviewed and given a verdict. Reference excerpts are verbatim quotes from the leaked system prompts of two frontier coding agents (the newest two available), machine-verified against those files — they are prior art to synthesise from, not text to copy. Every claim carries the code reference it came from so it can be re-checked.",
     "verdicts": {
       "core": "Load-bearing. Keep it. Any action here is a refinement, not a question about whether it should exist.",
@@ -13,7 +14,34 @@
     "quoteAudit": "All reference excerpts were checked verbatim against the two source files on 2026-07-29: 12 chunks, 0 mismatches. Quotes that turned out to come from older revisions or from a bundled skill were removed rather than re-attributed.",
     "principle": "Two rules govern every action in this review.\n\n1. ADD A LINE, NEVER A ROUND. If a rule is worth having, it belongs inside a prompt that is already being sent — a bullet in an existing section, a clause in a tool description. A new reminder or a new pre-layer buys the same words at the price of a full model call, every time it fires. Prompt text is nearly free; round trips are not.\n\n2. WE ARE NOT COPYING. The reference is prior art for wording and placement, not a target to converge on. Several things this engine does have no counterpart there and are better — they are marked OURS below and must survive any edit. Where a reference line and one of ours say the same thing, ours stays.",
     "audit": "Checked on 2026-07-29 whether each reference rule was genuinely absent here. Six of nine were already present, several stated more strongly — those recommendations were withdrawn. Only three real gaps remain: scope fidelity, anti-rumination, and the task-continuation rule.",
-    "purpose": "Prompt Lab is where this agent gets designed, not where it gets compared. Every prompt the engine sends is listed here with what it is for, where it fires, and what it costs — so the whole behaviour of the product can be reasoned about in one place and changed in one place. The reference excerpts are research: evidence about what a mature harness found worth saying, and where it chose to say it. They are not a specification to converge on. Several things this engine does are already better, and those are marked OURS."
+    "purpose": "Prompt Lab is where this agent gets designed, not where it gets compared. Every prompt the engine sends is listed here with what it is for, where it fires, and what it costs — so the whole behaviour of the product can be reasoned about in one place and changed in one place. The reference excerpts are research: evidence about what a mature harness found worth saying, and where it chose to say it. They are not a specification to converge on. Several things this engine does are already better, and those are marked OURS.",
+    "focus": {
+      "title": "Clarifying questions: one round asks choices that depend on each other",
+      "reported": "2026-08-02",
+      "why": "Reported from real use. For \"make me a game\" the clarify round asked which GENRE and which ART STYLE side by side. Both questions are answered together, so the style options had to be invented blind to the genre — and the pixel-art/vector/hand-drawn set worth offering a puzzle game is not the set worth offering a platformer. The upstream question should have been asked alone, and the style question asked afterwards with options the answer makes obvious.\n\nThe cause is structural, not a bad question. `maybeClarify` runs ONE inference and `askQuestionRound` puts the whole set to the user at once (session.ts:1155-1214) — there is no second round, and no prompt anywhere says the set is simultaneous. So the layer batches dependent questions without knowing it is doing anything wrong.\n\nThe fix is two-sided and must be done in one pass. Teaching clarify to withhold the dependent question, without also legitimizing the follow-up, just loses the question: the agent would guess the art style silently, which is worse than asking it early. Every prompt below either causes the batching or blocks the follow-up.",
+      "prompts": [
+        {
+          "id": "clarify.system",
+          "role": "causes it",
+          "look": "The closing \"Questions:\" paragraph. It constrains count, distinctness and option shape, but never says the set is answered SIMULTANEOUSLY — so nothing rules out a question whose options depend on another answer in the same set. This is the one edit that stops the bad round."
+        },
+        {
+          "id": "tool.AskUserQuestion",
+          "role": "blocks the follow-up",
+          "look": "\"Use it only when you are stuck on a decision…\" — purely discouraging. After clarify answers \"puzzle game\", the art-style question is now well-defined and cheap to ask, and nothing legitimizes asking it. Also: the description says \"up to 5 questions\" while inputSchema caps at 4 (askUserQuestion.ts:22)."
+        },
+        {
+          "id": "system.autonomy",
+          "role": "blocks the follow-up",
+          "look": "Three bullets push the same way — \"Ask the user ONLY when…\", \"When you have what you need to act, act\", \"Stop for input only when the decision genuinely belongs to the user\". Correct in general, but with no carve-out the agent reads a post-clarify follow-up as re-asking, which the section forbids. Needs one clause, not a rewrite."
+        },
+        {
+          "id": "clarify.answers-preamble",
+          "role": "missing — not registered",
+          "look": "The block that hands clarify's answers back to the agent is an inline string at session.ts:1188, not a definePrompt, so it cannot be edited here. It is the exact moment a dependent decision becomes well-defined, and all it currently says is \"Unanswered questions are yours to decide sensibly\". Register it first (step 19), then it becomes the cheapest place to carry the follow-up rule."
+        }
+      ]
+    }
   },
   "findings": {
     "system.identity": {
@@ -21,33 +49,33 @@
       "title": "Keep. Longer than the reference, for a real reason.",
       "problem": "The reference states identity in two lines because it is first-party to its own model. You carry the harder problem: a fixed product identity over a swappable engine. That needs the extra prose.",
       "action": "Keep as is. If prompt budget ever gets tight, this is compressible without losing the rule — it is currently argued at more length than it needs.",
-      "reviewedHash": "ecad353a211e",
+      "reviewedHash": "31fe57529011",
       "ours": "A fixed product identity over a swappable engine. The reference never has to solve this because it is first-party to its model."
     },
     "system.harness": {
       "verdict": "core",
       "title": "Keep. Your parallel-call line is stronger than theirs.",
       "problem": "The reference states parallel tool calls in one clause. Yours argues it: 'the single biggest lever on how fast a turn feels: the moment you know you need three files, open all three in one round instead of three.' That is better teaching, and the earlier suggestion to replace it was wrong.\n\nThe only real observation left is placement — it sits seventh in a nine-item list, at the same visual weight as a note about markdown rendering.",
-      "action": "Move the existing bullet to the top of the section. Do not reword it. One line moved, zero tokens added.",
+      "action": "Done — verified 2026-08-01: the bullet now opens the section (work-order step 15 passes).",
       "reference": {
         "label": "Reference harness",
         "note": "One clause inside its harness section. Notably it does NOT argue the point at length — it states it and moves on, and the section is nine lines total.",
         "text": "Prefer the dedicated file/search tools over shell commands when one fits. Independent tool calls can run in parallel in one response."
       },
-      "reviewedHash": "33cf575c1208",
+      "reviewedHash": "0fcaa8790675",
       "ours": "The do-not-re-read-after-Edit rule, which saves a round trip every time it applies, and the read-the-seams-before-the-bodies rule. Neither appears in the reference."
     },
     "system.communication": {
       "verdict": "core",
       "title": "Keep. Add a corrections paragraph.",
       "problem": "Nothing anywhere stops self-correction spirals: re-auditing earlier statements, apologising, narrating mistakes. That is pure output length with no reader value.",
-      "action": "ADD ONE BULLET, not a section: 'Correct an earlier statement only when the error changes the user's code or decisions. No apologies, no preambles, no recounting the mistake.' ~25 tokens in a prompt already sent.\n\nSkip the reference's follow-up-question paragraph — it is long, and the short bullet carries the behaviour.",
+      "action": "Done — verified 2026-08-01: the corrections bullet is in, verbatim. The section has also absorbed the action-care content (reversibility, external-publish, honest reporting); emptying system.action-care itself is still open (work-order step 4).",
       "reference": {
         "label": "Reference harness",
         "note": "A whole section with no counterpart in your registry. Quoted verbatim.",
         "text": "## Corrections\nAvoid unnecessary or excessive self-correction. Only correct an earlier statement in your user-facing text when the error would change the user's code, conclusions, or decisions. State corrections plainly and concisely, and continue the task; combine multiple corrections rather than enumerating them all. For slips that change nothing for the user, simply make the correction and move on - no need to note it explicitly. Don't add apologies or preambles, don't be overly self-critical, and don't ruminate or give a detailed account of the mistake or tally past errors. Sometimes, other agents will report incorrect or misleading results - don't always take them at face value immediately. If other agents correct your statements and they are right, then simply update your approach without narrating too much about the correction to the user. This instruction does not apply to thinking blocks.\n\nA follow-up question about your earlier work is not, by itself, a signal that you got something wrong — answer what was asked. A statement that was accurate needs no correction: don't re-audit how you phrased it, how you verified it, or limits you already stated. When the user does point to a real error, correct it plainly as above."
       },
-      "reviewedHash": "4773ae04cf11",
+      "reviewedHash": "77743a2dd39b",
       "ours": "The markdown table contract, with a worked example. The reference has nothing like it, and a malformed table is a visible defect in your workbench."
     },
     "system.action-care": {
@@ -86,7 +114,7 @@
         "note": "Two sentences, and that is the whole of it. The long anti-abstraction block existed in an older revision and was cut — worth knowing before you expand yours.",
         "text": "Write code that reads like the surrounding code: match its comment density, naming, and idiom.\n\nOnly write a code comment to state a constraint the code itself can't show — never to say where it came from, what the next line does, or why your change is correct; that's you talking to the reviewer, not the next reader, and it's noise the moment the PR merges."
       },
-      "reviewedHash": "1c3b4893c764",
+      "reviewedHash": "82df9dd4e953",
       "ours": "Reuse-before-writing, replace-in-place, and the rule that you must PROVE code is dead before deleting it — searching for dynamic lookup, string-keyed registries, route tables. The reference has none of these. This is your best section."
     },
     "system.tasks": {
@@ -102,20 +130,20 @@
       "title": "Rewritten. 1,404 → 558 tokens.",
       "problem": "Was the largest section and the main over-planning driver. Now scoped to what must be true on every request; the planning procedure moved into the task tools.",
       "action": "Done. Nothing further needed.",
-      "reviewedHash": "addressed",
+      "reviewedHash": "a2f76e058eb0",
       "ours": "The un-searched-Write guard and the GraphQuery-before-reading rule. Both are engine capabilities the reference simply does not have."
     },
     "system.autonomy": {
       "verdict": "core",
-      "title": "Keep. Add scope fidelity.",
-      "problem": "Handles the stopping question well. What is missing is what the deliverable IS: that the requested scope must not be quietly narrowed, and that a partly-blocked task still gets every other part finished.",
-      "action": "ADD ONE BULLET to the existing list — do not add a section. Something like: 'The requested scope is the deliverable. If part of it turns out to be blocked, finish every other part in full and say plainly what you left out and why; scaling the work down is the user's call.' That is ~35 tokens inside a prompt already sent, and it costs no extra round.\n\nDo not import the reference's uncertainty paragraph — your bullet 1 already says 'When you have what you need to act, act.'",
+      "title": "Keep. The do-not-ask bullets now block a legitimate follow-up.",
+      "problem": "Scope fidelity landed (verified 2026-08-01, work-order step 9). The live issue is different: three bullets all push away from asking — \"Ask the user ONLY when the answer changes the design, is irreversible, or reaches outside the workspace\", \"When you have what you need to act, act. Do not re-ask settled questions\", and \"Stop for input only when the decision genuinely belongs to the user\". Each is right on its own. Together, and with nothing distinguishing them, the agent reads a post-clarify dependent question (genre answered → now which art style) as re-asking a settled question, and guesses instead. This section is read on every single request; the AskUserQuestion description is read once, so if the two disagree this one wins.",
+      "action": "One clause on the act-now bullet, not a rewrite: a decision that only became well-defined because of an earlier answer is not a settled question being re-asked — asking it once, with options the answer makes concrete, is the correct move. Work-order step 18. Keep every existing bullet: the pressure not to ask is doing real work and only needs an exception, not a softening.",
       "reference": {
         "label": "Reference harness",
         "note": "Its 'Delivering work' section. Quoted verbatim.",
         "text": "## Delivering work\nDo ordinary work as asked, acting on the actual request rather than on speculation about what lies behind it. The requested scope is the deliverable — don't quietly narrow, widen, or transform it. Interpret ambiguity the way a careful colleague would: make routine judgment calls yourself, and check in only when different readings would lead to materially different work. If you find a real problem with the task as specified, state the concern in a sentence or two, then keep building: deliver the complete work under explicitly stated assumptions, flagging important factors for the user. Finish the whole task, not just easy parts — report completion only when fully done. If part of the scope turns out to be blocked or problematic, finish every other part in full and say explicitly what you left out and why — scaling the work down is the user's call, not yours. Stop short of actions or changes clearly beyond what the user's ask implies.\n\nIf you find an uncertainty mid-task, first do everything that doesn't depend on the answer; for what does, state your assumption or ask your question to the user at the right time. Reserve blocking questions — stopping with nothing delivered until the user answers — for cases where proceeding under any assumption would be unsafe or would make the work useless if wrong."
       },
-      "reviewedHash": "96d3811b4d50",
+      "reviewedHash": "cde0f7243e21",
       "ours": "'When you have what you need to act, act' plus the thinking-aloud exception — deliver an assessment and stop rather than fixing uninvited. The reference has the first; the exception is yours and it prevents a whole class of unwanted edits."
     },
     "system.environment": {
@@ -128,21 +156,21 @@
     "system.addons-block": {
       "verdict": "core",
       "title": "Keep — it is the whole discoverability surface.",
-      "problem": "The addon roster: names and descriptions only, one line each. This is the only text that decides whether the agent ever reaches for an addon, so its framing matters more than its length.",
-      "action": "No change to the text. The lever is the addon descriptions themselves, not this header.",
-      "reviewedHash": "pending"
+      "problem": "The addon roster: names and descriptions only, one line each. This is the only text that decides whether the agent ever reaches for an addon, so its framing matters more than its length. Since 0.16.x it also teaches that /name anywhere in a user message invokes the addon — the fix for '/grill-me mid-message got a clarify interrogation instead of the addon'.",
+      "action": "No further change. The slash-naming paragraph is guarded by addon-check.mjs; the lever for discoverability remains the addon descriptions themselves.",
+      "reviewedHash": "245acc3a5ec3"
     },
     "system.overdrive": {
       "verdict": "optional",
       "title": "Only sent while OVERDRIVE is on — check what it duplicates.",
       "problem": "456 tokens, free on every normal turn. The risk is not cost, it is drift: this section restates plan-first, verify, and do-not-stop-early, which `system.autonomy` and the task tools also own. When two sections carry one rule, the mode version silently becomes the real one and normal mode quietly gets a weaker agent.\n\nThe reference keeps its autonomous variant to a single added idea — the user is not watching, so do not ask — and leaves completion to the always-on rules.",
-      "action": "Cut everything from this section that is not specifically about NOT ASKING and NOTHING BEING BLOCKED. Push plan-first, verification and do-not-stop-early down into `system.autonomy` and the task tools, where they apply in both modes.",
+      "action": "Done — verified 2026-08-01: stripped below 300 tokens (work-order step 11 passes).",
       "reference": {
         "label": "Reference harness",
         "note": "The entire autonomous-mode addition, in one paragraph.",
         "text": "You are operating autonomously. The user is not watching in real time and cannot answer questions mid-task, so asking 'Want me to…?' or 'Shall I…?' will block the work. For reversible actions that follow from the original request, proceed without asking. Stop only for destructive actions or genuine scope changes the user must decide. Offering follow-ups after the task is done is fine; asking permission before doing the work is not."
       },
-      "reviewedHash": "2b8e3b2d9126"
+      "reviewedHash": "c26d5f4f85b1"
     },
     "system.standards-header": {
       "verdict": "core",
@@ -222,19 +250,19 @@
       "title": "Fixed. Now fires once per turn.",
       "problem": "Used to re-fire on every attempt to end the turn while anything stayed open, each firing a full round trip. Six open tasks could charge six extra model calls.\n\nFixed in code: it now carries the same once-per-turn fuse as its siblings and no longer spends the wrap-up rung's budget.",
       "action": "No further change to the text. It is also the safety net for your completion goal: it is what catches a turn trying to end with work still on the board. Keep it — just make sure the task tools give the agent a way to close the loop honestly, or this rung becomes a nag it cannot satisfy.",
-      "reviewedHash": "addressed"
+      "reviewedHash": "9146643c311e"
     },
     "finishing.runtime-evidence": {
       "verdict": "core",
       "title": "Keep — but it lies about the engine, and it is your largest reminder.",
       "problem": "654 tokens. Three problems.\n\n1. Step 4 says 'You have no eyes here'. That is false: `read.ts:84` returns PNG as an image block and `ToolResultPart` carries `type: \"image\"`. A vision model can be shown a screenshot today. The agent reads this as 'visual verification is impossible', stops looking, falls back to type-checking, and reports success on UI work it never saw.\n\n2. The escape clause names 'a console, a display, a device' as a legitimate stopping point. In a desktop UI app that fires on nearly every frontend task.\n\n3. Step 1 tells the agent to run the build, then says the build is not evidence. It costs a command and settles nothing.",
-      "action": "Change step 4 to 'Never claim an observation you did not make.' — a rule about honesty, not about capability. Narrow the escape clause to credentials and external services; drop 'a display'. Cut step 1. Merge the two closing paragraphs. Target ~450 tokens.\n\nLonger term, follow the reference's placement: move visual verification into an on-demand skill so it costs nothing until a UI task needs it.",
+      "action": "Done in substance — verified 2026-08-01: the 'no eyes' claim is gone (replaced by the vision-on/vision-off rungs, which state a workspace fact the engine enforces), the 'a display' escape is gone, and the rung measures ~580 tokens, down from 654. The last ~130 tokens toward the 450 target remain an optional trim.",
       "reference": {
         "label": "Reference harness",
         "note": "Checked both reference prompts: neither contains any UI or dev-server rule, and neither claims the agent cannot see. Verification of visual work is handled entirely by an on-demand skill, listed in the roster as one line. The lesson is placement, not wording — nothing about seeing belongs in an always-on rung.",
         "text": "- run: Launch and drive this project's app to see a change working. Use when asked to run, start, or screenshot the app, or to confirm a change works in the real app (not just tests)."
       },
-      "reviewedHash": "76dbbbf3f3d0",
+      "reviewedHash": "995853abed63",
       "ours": "The circular-evidence idea: a check that leans on a stand-in you wrote yourself proves only self-consistency. The reference has no equivalent anywhere. Whatever you cut from this rung, keep that."
     },
     "finishing.self-verify": {
@@ -272,19 +300,20 @@
       "title": "Keep. Absorb the role prompt.",
       "problem": "The instruction half of the session-naming call.",
       "action": "Take the role text in, then empty `session.auto-name.role`.",
-      "reviewedHash": "731ae0017d37"
+      "reviewedHash": "276fd000d27b"
     },
     "clarify.system": {
-      "verdict": "delete",
-      "title": "786 tokens AND a full model call before work starts.",
-      "problem": "This runs as its own inference on the incoming message, before anything happens. It is the first thing the user waits on. Its own design notes call it strictly fail-open — on any error the turn proceeds anyway, which is an argument that the common case never needed it.\n\nAfter the working-method rewrite this is your largest remaining latency cost.",
-      "action": "Delete it, and let `system.autonomy` carry the judgement. If you would rather keep it, measure first: log how often it returns clarify=true. If that is under ~10%, it is pure latency.",
+      "verdict": "core",
+      "title": "Verdict revised: keep — and fix dependent-question batching.",
+      "problem": "The 2026-07-30 'delete' verdict was written against the 0.12.1 text and is withdrawn: the layer has since been rebuilt (codebase-skim grounding, sharper open-endedness test, existing-project direction rule) and the product decision is to keep it. The live defect now is question INDEPENDENCE: the layer produces its whole set in one inference and the set is answered together, but nothing in the prompt tells it that — so it asks 'which genre?' and 'which art style?' side by side, inventing style options blind to the genre answer. Reported from real use 2026-08-01: for 'make me a game' the sensible pixel-art options for a puzzle game and a platformer are not the same list.",
+      "action": "Add a dependency rule to the closing Questions paragraph: questions in one set are answered TOGETHER, so they must be independent — never include a question whose sensible options depend on another question's answer in the same set; ask only the upstream shape-defining question and leave the dependent one for the agent to ask afterwards, with options tailored to the answer. Pairs with the tool.AskUserQuestion follow-up sentence (work-order step 17): one edit stops the premature question, the other makes sure it still gets asked at the right time.",
       "reference": {
         "label": "Reference harness",
-        "note": "No pre-layer at all. The decision is pushed into the turn itself, in two sentences of always-on prose. Quoted verbatim.",
+        "note": "No pre-layer at all — kept for context. The old delete recommendation leaned on this; the decision went the other way, and the skim grounding is why: the reference cannot ask codebase-specific questions because it never looks first.",
         "text": "When you have enough information to act, act. Do not re-derive facts already established in the conversation, re-litigate a decision the user has already made, or narrate options you will not pursue. If you are weighing a choice, give a recommendation, not an exhaustive survey"
       },
-      "reviewedHash": "444dd7c0c029"
+      "reviewedHash": "a1adf793fdc9",
+      "ours": "The codebase-skim grounding: a deterministic read of the workspace rides inside the single inference, so questions name the concrete options THIS codebase invites. The reference has no pre-layer at all."
     },
     "compaction.system": {
       "verdict": "core",
@@ -296,16 +325,16 @@
     "addon-author.role": {
       "verdict": "optional",
       "title": "Only fires in the create-addon wizard.",
-      "problem": "Never sent on a normal turn — one focused authoring call.",
+      "problem": "Never sent on a normal turn — one focused authoring call. Rewritten in 0.16.x around the writing-great-skills principles (with attribution to the original author in the source).",
       "action": "Leave it.",
-      "reviewedHash": "pending"
+      "reviewedHash": "441fc4bbdf26"
     },
     "subagent.result-contract": {
       "verdict": "core",
       "title": "Keep. 121 tokens.",
       "problem": "Appended to every subagent's system prompt. Tells it the final message is captured verbatim as a tool result, not shown to a human.",
       "action": "No change.",
-      "reviewedHash": "0a1c70154b6e"
+      "reviewedHash": "24a39f7f8045"
     },
     "subagent.role.general-purpose": {
       "verdict": "core",
@@ -353,15 +382,15 @@
       "verdict": "core",
       "title": "Keep. At parity with the reference — and it handles images.",
       "problem": "Slightly longer than the reference and covers the same ground. Worth knowing while reading the runtime-evidence finding: this tool returns PNG/JPG/GIF/WebP as image blocks.",
-      "action": "Add one line the reference has: do not re-read a file you just edited to confirm the edit landed. It saves a round trip every time it applies.",
-      "reviewedHash": "7a8ceb148234"
+      "action": "Done — verified 2026-08-01: the description carries the do-not-re-read-after-edit rule.",
+      "reviewedHash": "80269a2d136d"
     },
     "tool.Write": {
       "verdict": "core",
       "title": "Keep. At parity.",
       "problem": "Covers the same ground as the reference, plus a guard the reference lacks: an un-searched Write of a new file is refused once.",
       "action": "No change.",
-      "reviewedHash": "9e8653427f2e",
+      "reviewedHash": "6c372f4abef3",
       "ours": "The un-searched-Write refusal: a new source file is refused once with the closest existing matches. The reference has no such guard, and this is a direct defence against the duplicate-code failure."
     },
     "tool.Edit": {
@@ -376,7 +405,7 @@
       "title": "Keep.",
       "problem": "Filename and path matching. No reference concern.",
       "action": "No change.",
-      "reviewedHash": "2cb921609cf9"
+      "reviewedHash": "e442c8009bef"
     },
     "tool.Grep": {
       "verdict": "core",
@@ -389,22 +418,22 @@
       "verdict": "core",
       "title": "Keep. Should absorb the Git section.",
       "problem": "Two omissions cost round trips: it does not state what shell state persists between calls, so the agent re-establishes context defensively; and it gives no pattern for waiting on a condition, which is where turns quietly stall.",
-      "action": "Add the persistence contract and the until-loop pattern. Then take in `system.git`.",
-      "reviewedHash": "0b2ac751f68f"
+      "action": "The two additions landed — verified 2026-08-01: the persistence contract and the wait pattern are in the description. Absorbing `system.git` is still open (work-order step 3).",
+      "reviewedHash": "a4c0cc043703"
     },
     "tool.TaskCreate": {
       "verdict": "core",
       "title": "Rewritten — one line still missing.",
       "problem": "The 3-step threshold and the when-not-to list now live here instead of the system prompt. What is still absent is the rule that makes a task list a LOOP rather than a checklist: finishing a task is where new work gets discovered, and that work has to land on the board or it is lost.\n\nThis is the half of 'tasks done does not mean work done' that belongs on the create side.",
       "action": "ADD ONE BULLET to the When-to-use list: 'After finishing a task, add any follow-up work you discovered while doing it.' Verified absent — this is a real gap, and it is the half of your completion goal that lives on the create side. ~15 tokens, no new prompt, no extra round.",
-      "reviewedHash": "addressed"
+      "reviewedHash": "fe33cc82e8d0"
     },
     "tool.TaskUpdate": {
       "verdict": "core",
       "title": "Rewritten — two gaps left.",
       "problem": "1. Nothing mentions `status: \"deleted\"`, though your working-method tells the agent to delete abandoned tasks. The instruction has no action to bind to.\n\n2. Nothing tells the agent what to do after resolving one. The reference closes the loop here: mark it done, then look at the board again. Without that, a turn ends when the CURRENT task finishes rather than when the WORK finishes.",
       "action": "TWO SHORT ADDITIONS, both inside this description. First: 'After resolving a task, check TaskList and pick up the next one.' Verified absent, and it is what turns a checklist into a loop — the behaviour you asked for, working identically in both modes. Second: the `status: \"deleted\"` path, which your working-method already tells the agent to use but no tool describes.",
-      "reviewedHash": "addressed"
+      "reviewedHash": "16f12459cbca"
     },
     "tool.TaskList": {
       "verdict": "core",
@@ -422,17 +451,17 @@
     },
     "tool.AskUserQuestion": {
       "verdict": "core",
-      "title": "Keep.",
-      "problem": "Your stall-ask rung depends on this tool existing and being understood.",
-      "action": "Thin against the reference, but the rung that uses it carries the guidance. Low priority.",
-      "reviewedHash": "59be04b7cc57"
+      "title": "Keep. Add the dependent-follow-up sentence.",
+      "problem": "The description only discourages ('use it only when you are stuck… pick the default and move on'). Nothing legitimizes a follow-up once an earlier answer opens a decision whose sensible options only exist NOW — genre just chosen, and the art-style options worth offering differ by genre — so the agent guesses instead of asking the one question that just became well-defined. This is the receiving half of the clarify.system independence fix: clarify withholds the dependent question, and this tool is where it must still get asked.",
+      "action": "Two edits. (1) Add one sentence: also use it for a dependent follow-up — when an earlier answer (from the clarify round or a previous question) opens a decision whose options only make sense now, ask that one question in its own round with options tailored to the answer, rather than guessing. (2) Fix the count while you are in here: the text says \"up to 5 multiple-choice questions\" but inputSchema caps `questions` at 4 (askUserQuestion.ts:22) — the model is told it may send a call the validator will reject.",
+      "reviewedHash": "1625209396d4"
     },
     "tool.Agent": {
       "verdict": "core",
       "title": "Keep. Delegation rules added.",
       "problem": "Now carries the two rules that matter: do not re-run a delegated search, and relay the report because the user never sees it.",
       "action": "Done.",
-      "reviewedHash": "addressed"
+      "reviewedHash": "9ee178e335a0"
     },
     "tool.TaskStop": {
       "verdict": "core",
@@ -460,14 +489,14 @@
       "title": "Keep.",
       "problem": "Longer than the reference equivalent.",
       "action": "No change.",
-      "reviewedHash": "3bb612291eb5"
+      "reviewedHash": "e91aca8b8fb0"
     },
     "tool.Monitor": {
       "verdict": "core",
       "title": "Keep. Add the routing rule.",
       "problem": "The common misuse of a watch tool is arming an unbounded watcher for a one-off event, which then stays armed long after the event fired. Nothing here steers away from that.",
-      "action": "Adopt the reference routing structure — it is the clearest tool prose in the reference set.",
-      "reviewedHash": "351102607615"
+      "action": "Done — verified 2026-08-01: the routing rule is in the description.",
+      "reviewedHash": "5580a51cb736"
     },
     "tool.EnterWorktree": {
       "verdict": "core",
@@ -521,16 +550,16 @@
     "tool.Addon": {
       "verdict": "core",
       "title": "Keep.",
-      "problem": "Loads an addon's instructions on demand. One built-in ships (magentron), so it is live rather than inert.",
+      "problem": "Loads an addon's instructions on demand. One built-in ships (magentron), so it is live rather than inert. Since 0.16.x the loaded body is prepended with the shared addon.invoke-header — same header as the slash-command path, one definition.",
       "action": "No change to the text.",
-      "reviewedHash": "pending"
+      "reviewedHash": "86426e98c750"
     },
     "tool.GraphQuery": {
       "verdict": "core",
       "title": "Keep. This is your differentiator.",
       "problem": "The reference has no structural query tool at all — it locates code with find and grep. Your import-graph queries answer impact questions it can only approximate. It is under-sold: the system prompt mentions it in one line.",
-      "action": "Keep the description. Consider giving it a stronger mention in `system.working-method`.",
-      "reviewedHash": "8be69516027d",
+      "action": "Done — verified 2026-08-01: `system.working-method` now names GraphQuery; the description is kept.",
+      "reviewedHash": "14a2c56ecba8",
       "ours": "The whole tool. The reference locates code with find and grep and has no structural query at all. Slice, blast radius and structure answer impact questions it can only guess at."
     },
     "tool.Workflow": {
@@ -546,14 +575,14 @@
       "problem": "Substituted into the evidence rung only when mocks, fakes or stubs the agent wrote itself were the thing it checked against. ~190 tokens, and a turn with real evidence never pays for it.\\n\\nIt survives from the retired circular-evidence rung. Only the argument was kept — confirming a contract from the dependency, and naming an honest gap, are already said once in the rung's closing paragraphs, and saying them twice teaches the model to skim.",
       "action": "No change. If you ever shorten this, keep the middle sentence — a passing check against your own stand-in proves self-consistency and nothing more.",
       "ours": "No reference equivalent exists anywhere. The insight that a mock is authored by the same understanding as the code, so the two agree by construction, is yours alone. Whatever else gets trimmed, this stays.",
-      "reviewedHash": "addressed"
+      "reviewedHash": "5426ddd45e75"
     },
     "finishing.vision-on": {
       "verdict": "core",
       "title": "Keep. Fires when settings.vision is true.",
       "problem": "Tells the agent a screenshot is real evidence it may go and take. Sent only when the workspace has declared the model can read images.",
       "action": "No change. It only reaches the model when `/settings vision true` has been set, so it can never make a false capability claim.",
-      "reviewedHash": "addressed"
+      "reviewedHash": "bf07ac4c048e"
     },
     "finishing.vision-off": {
       "verdict": "core",
@@ -561,7 +590,37 @@
       "problem": "Replaces the old 'You have no eyes here' line, which was a claim about the harness and was false — the Read tool does return images. This states a fact about the WORKSPACE instead, and the Read tool now enforces it by refusing image files outright rather than returning content the model cannot interpret.",
       "action": "No change. Flip the behaviour with `/settings vision true` rather than editing this text.",
       "ours": "The capability is a setting the engine enforces at the tool boundary, not a sentence the model is asked to believe. The reference has no equivalent — it simply has no such rung.",
-      "reviewedHash": "addressed"
+      "reviewedHash": "49dd81d65d14"
+    },
+    "addon.invoke-header": {
+      "verdict": "core",
+      "title": "Keep. The single precedence header for every addon invocation.",
+      "problem": "Prepended wherever an addon body enters context — the slash-command path and the Addon tool both render this one definition, so the two cannot drift. Carries the precedence order: the addon outranks default behaviour, the user outranks the addon, with the three override shapes named (handing a decision back, stopping or moving on, narrowing what they want).",
+      "action": "No change. addon-check.mjs guards the user-outranks clause and the one-definition invariant.",
+      "reviewedHash": "ba49351e23c3",
+      "ours": "An explicit user-over-addon precedence contract. The reference has nothing like it; without it an insistent addon kept interrogating a user who had already said stop."
+    },
+    "reminder.addon-named": {
+      "verdict": "core",
+      "title": "Keep. Deterministic dispatch when a message names an addon.",
+      "problem": "Injected at turn start when the user's message contains /name of an installed addon anywhere in the text (detector: addonNamedIn — word-boundary match, longest name wins, paths and URLs excluded). Also suppresses the clarify pre-layer for that turn: 'bana /grill-me yap' used to trigger a clarify round asking what /grill-me should do.",
+      "action": "No change. addon-check.mjs covers the detector cases, the registration, and the roster teaching the slash form.",
+      "reviewedHash": "fcd79828dbcf",
+      "ours": "Dispatch is detected in code, not left to the model — the reminder fires deterministically, and only the invocation itself remains the model's call."
+    },
+    "vision.describe": {
+      "verdict": "core",
+      "title": "Keep. Only sent to the configured vision model.",
+      "problem": "System prompt of the image-description side-call: when the main model cannot read images, the workspace's vision model is asked to describe the attachment. Costs nothing on text-only turns.",
+      "action": "No change.",
+      "reviewedHash": "d333fb33cd16"
+    },
+    "vision.description-wrapper": {
+      "verdict": "core",
+      "title": "Keep. 110 tokens, image turns only.",
+      "problem": "Wraps the vision model's description where it substitutes for the image in the main conversation, so the main model knows it is reading a relayed observation rather than its own perception.",
+      "action": "No change.",
+      "reviewedHash": "3a55bc778b0c"
     }
   },
   "workOrder": {
@@ -705,8 +764,8 @@
             "prompts": [
               "clarify.system"
             ],
-            "do": "Delete the clarify pre-layer",
-            "detail": "786 tokens AND a full model call before any work starts — your largest remaining latency cost. Blocked until step 9 lands, because `system.autonomy` then carries the judgement. If you would rather keep it, measure first: if it returns clarify=true under ~10% of the time, it is pure latency.",
+            "do": "Delete the clarify pre-layer — WITHDRAWN 2026-08-01",
+            "detail": "Decision reversed: the layer was rebuilt (codebase-skim grounding) and is kept as a product feature. Marked done by hand so the board can close; per the rules above it stays amber, never green. The live work on this prompt is step 16.",
             "test": {
               "prompt": "clarify.system",
               "disabled": true
@@ -778,143 +837,65 @@
             }
           }
         ]
+      },
+      {
+        "phase": "6 · Clarifying questions — stop batching dependent choices",
+        "why": "Reported from real use 2026-08-02: \"make me a game\" was asked its genre and its art style in one round, so the style options were guessed blind to the genre. Four steps, and the order is load-bearing. 16 stops the premature question; 17 and 18 make sure it still gets asked once the answer makes it well-defined — do 16 alone and the question is not asked early, it is not asked at all. 19 is optional and makes the rule cheapest to carry.",
+        "steps": [
+          {
+            "n": 16,
+            "kind": "edit",
+            "prompts": [
+              "clarify.system"
+            ],
+            "do": "Add the independence rule to the clarify Questions paragraph",
+            "detail": "Questions in one set are answered together, so they must be independent of each other: never include a question whose sensible options depend on another question's answer in the same set. If B's options would change with A's answer (genre, then art style), ask only A — the upstream shape-defining decision. One sharp upstream question beats two parallel ones with generically guessed options.",
+            "test": {
+              "prompt": "clarify.system",
+              "matches": "independent"
+            }
+          },
+          {
+            "n": 17,
+            "kind": "edit",
+            "prompts": [
+              "tool.AskUserQuestion"
+            ],
+            "do": "Legitimize the dependent follow-up in AskUserQuestion",
+            "detail": "One sentence: also use it for a dependent follow-up — when an earlier answer (from the clarify round or a previous question) opens a decision whose sensible options only exist NOW, ask that one question in its own round with options tailored to the answer, rather than guessing. While editing, fix the count: the description promises \"up to 5 multiple-choice questions\" but inputSchema caps the array at 4 (askUserQuestion.ts:22), so a 5-question call is rejected by validation after the model was told it was allowed.",
+            "test": {
+              "prompt": "tool.AskUserQuestion",
+              "matches": "follow-up"
+            }
+          },
+          {
+            "n": 18,
+            "kind": "edit",
+            "prompts": [
+              "system.autonomy"
+            ],
+            "do": "Carve the dependent follow-up out of the do-not-ask rules",
+            "detail": "Three bullets currently forbid what step 17 asks for: \"Ask the user ONLY when the answer changes the design…\", \"When you have what you need to act, act. Do not re-ask settled questions…\", \"Stop for input only when the decision genuinely belongs to the user\". Add one clause to the second: a decision that only became well-defined because of an earlier answer is not a settled question being re-asked — it is the first time it could be asked properly. Without this the section and the tool description contradict each other, and the section is read on every request while the tool description is read once.",
+            "test": {
+              "prompt": "system.autonomy",
+              "matches": "became well-defined|not a settled question|dependent follow-up"
+            }
+          },
+          {
+            "n": 19,
+            "kind": "code",
+            "prompts": [
+              "clarify.answers-preamble"
+            ],
+            "do": "Register the clarify answer-receipt block as a prompt",
+            "detail": "session.ts:1188 passes askQuestionRound an inline preamble — \"honor the answers as requirements. Unanswered questions are yours to decide sensibly\" — that is not a definePrompt, so the Lab cannot see or edit it. Wrap it in definePrompt (group 5, channel side-call) and it becomes the cheapest place to carry the follow-up rule: it is already being sent, it arrives exactly when a dependent decision has just become well-defined, and it costs no extra round trip. ADD A LINE, NEVER A ROUND.",
+            "test": {
+              "prompt": "clarify.answers-preamble",
+              "matches": "AskUserQuestion|follow-up"
+            }
+          }
+        ]
       }
-    ],
-    "manualDone": {
-      "12": {
-        "at": "2026-07-29"
-      }
-    }
-  },
-  "manualAddressed": {
-    "system.environment": {
-      "at": "2026-07-29"
-    },
-    "system.addons-block": {
-      "at": "2026-07-29"
-    },
-    "subagent.result-contract": {
-      "at": "2026-07-29"
-    },
-    "subagent.role.general-purpose": {
-      "at": "2026-07-29"
-    },
-    "subagent.description.general-purpose": {
-      "at": "2026-07-29"
-    },
-    "subagent.role.explore": {
-      "at": "2026-07-29"
-    },
-    "subagent.description.explore": {
-      "at": "2026-07-29"
-    },
-    "subagent.role.plan": {
-      "at": "2026-07-29"
-    },
-    "subagent.description.plan": {
-      "at": "2026-07-29"
-    },
-    "finishing.self-verify": {
-      "at": "2026-07-29"
-    },
-    "finishing.self-verify.closing-code": {
-      "at": "2026-07-29"
-    },
-    "finishing.self-verify.closing-plain": {
-      "at": "2026-07-29"
-    },
-    "reminder.error-batch": {
-      "at": "2026-07-29"
-    },
-    "reminder.recovery-nudge": {
-      "at": "2026-07-29"
-    },
-    "reminder.length-continuation": {
-      "at": "2026-07-29"
-    },
-    "reminder.tool-cutoff": {
-      "at": "2026-07-29"
-    },
-    "reminder.stall-pivot": {
-      "at": "2026-07-29"
-    },
-    "reminder.stall-ask": {
-      "at": "2026-07-29"
-    },
-    "system.standards-header": {
-      "at": "2026-07-29"
-    },
-    "compaction.system": {
-      "at": "2026-07-29"
-    },
-    "compaction.wrapper": {
-      "at": "2026-07-29"
-    },
-    "tool.Write": {
-      "at": "2026-07-29"
-    },
-    "tool.Edit": {
-      "at": "2026-07-29"
-    },
-    "tool.Glob": {
-      "at": "2026-07-29"
-    },
-    "tool.Grep": {
-      "at": "2026-07-29"
-    },
-    "tool.TaskList": {
-      "at": "2026-07-29"
-    },
-    "tool.TaskGet": {
-      "at": "2026-07-29"
-    },
-    "tool.AskUserQuestion": {
-      "at": "2026-07-29"
-    },
-    "tool.TaskStop": {
-      "at": "2026-07-29"
-    },
-    "tool.TaskOutput": {
-      "at": "2026-07-29"
-    },
-    "tool.WebFetch": {
-      "at": "2026-07-29"
-    },
-    "tool.WebSearch": {
-      "at": "2026-07-29"
-    },
-    "tool.Monitor": {
-      "at": "2026-07-29"
-    },
-    "tool.EnterWorktree": {
-      "at": "2026-07-29"
-    },
-    "tool.ExitWorktree": {
-      "at": "2026-07-29"
-    },
-    "tool.PushNotification": {
-      "at": "2026-07-29"
-    },
-    "tool.CronCreate": {
-      "at": "2026-07-29"
-    },
-    "tool.CronDelete": {
-      "at": "2026-07-29"
-    },
-    "tool.CronList": {
-      "at": "2026-07-29"
-    },
-    "tool.ScheduleWakeup": {
-      "at": "2026-07-29"
-    },
-    "tool.Addon": {
-      "at": "2026-07-29"
-    },
-    "tool.GraphQuery": {
-      "at": "2026-07-29"
-    },
-    "reminder.wrapup-nudge": {
-      "at": "2026-07-29"
-    }
+    ]
   }
 }

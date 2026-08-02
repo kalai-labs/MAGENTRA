@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { watch, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -21,6 +22,35 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO = join(HERE, "..", "..");
+
+/**
+ * The repo's TypeScript compiler entry script, or undefined if it is not
+ * installed.
+ *
+ * Resolved once, and NOT invoked as `npx tsc`. On Windows npx is `npx.cmd`, and
+ * `execFile` without a shell cannot spawn a `.cmd` — it fails with ENOENT before
+ * the compiler is ever reached. That failure was invisible in both places it
+ * happened: promote wrote the source file, caught the ENOENT as if it were a
+ * type error, restored the file and reported "typecheck failed" with an empty
+ * body; and the startup build printed "BUILD FAILED" with nothing after it, so
+ * the lab served defaults from a stale `dist`. Running the compiler's own script
+ * under the node binary already executing this server puts no shell in the path
+ * at all, so it behaves identically on every platform.
+ */
+const TSC = (() => {
+  try {
+    return createRequire(join(REPO, "package.json")).resolve("typescript/bin/tsc");
+  } catch {
+    return undefined;
+  }
+})();
+
+/** Typechecks and builds the whole repo. Rejects like execFile on failure. */
+function tscBuild(timeout) {
+  if (TSC === undefined) throw new Error("typescript is not installed — run `npm install` in the repo root");
+  return run(process.execPath, [TSC, "-b"], { cwd: REPO, timeout });
+}
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
@@ -85,17 +115,17 @@ async function newestMtime(dir, ext) {
 
 /** Compiles the engine when the sources are ahead of the build. */
 async function ensureBuilt() {
-  const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-  const engine = join(repo, "engine");
+  const engine = join(REPO, "engine");
   const [src, out] = await Promise.all([newestMtime(engine, ".ts"), newestMtime(engine, ".js")]);
   if (out >= src) return;
   process.stdout.write("  sources changed since the last build — compiling…\n");
   try {
-    const { execFile } = await import("node:child_process");
-    const { promisify } = await import("node:util");
-    await promisify(execFile)("npx", ["tsc", "-b"], { cwd: repo, timeout: 300_000 });
+    await tscBuild(300_000);
   } catch (err) {
-    const out2 = `${err?.stdout ?? ""}${err?.stderr ?? ""}`.trim();
+    // `message` as well as the streams: a compiler that never started (missing
+    // install, spawn failure) has empty stdout and stderr, and reporting only
+    // those printed a bare "BUILD FAILED" with no cause under it.
+    const out2 = `${err?.stdout ?? ""}${err?.stderr ?? ""}`.trim() || err?.message || String(err);
     process.stdout.write(`  BUILD FAILED — defaults may not match source:\n${out2.slice(0, 500)}\n`);
   }
 }
@@ -325,8 +355,6 @@ function catalog() {
 // never appears verbatim in the source, so it cannot be found and is reported
 // as not promotable rather than silently mangled.
 
-const REPO = join(HERE, "..", "..");
-
 /**
  * Every engine source file with its contents, cached against the newest mtime
  * in the tree.
@@ -372,32 +400,72 @@ async function sourceFiles() {
   return files;
 }
 
-/** A string as it would be written inside a TS template literal. */
-function toTemplateLiteral(text) {
-  return text.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+/**
+ * A string as it would be written inside a TS literal of the given quote style.
+ *
+ * All three styles, not just backticks: a one-line default is usually written
+ * `'…'`, and inside those a quote and a newline have to be escaped. Searching
+ * only the template-literal form missed every single-quoted default that
+ * contains an apostrophe — the text carries a real `'` and the source carries
+ * `\'`, so the two never compared equal.
+ */
+function toSourceLiteral(text, quote) {
+  const escaped = text.replace(/\\/g, "\\\\").split(quote).join(`\\${quote}`);
+  return quote === "`"
+    ? escaped.replace(/\$\{/g, "\\${")
+    : // A raw line break cannot appear inside '' or "" — it is written as \n.
+      escaped.replace(/\r?\n/g, "\\n");
 }
+
+/** The quote styles a default may be written in, template literal first. */
+const QUOTES = ["`", "'", '"'];
+
+/**
+ * The same text as it appears in a file that uses `eol` for line breaks.
+ *
+ * Needed because a multi-line default and its source literal are never byte
+ * equal on Windows. TypeScript normalizes CRLF to LF inside a template literal
+ * when it parses one, so every multi-line default arrives here with LF while
+ * the .ts file on disk is checked out with CRLF — 68 of this repo's 71 engine
+ * sources are. A plain indexOf therefore missed 36 of 73 prompts and blamed
+ * "assembled from variables", which was true of none of them. Searching in both
+ * line-ending forms, and remembering which one matched, is what makes the
+ * write-back safe too: splicing LF text into a CRLF file would rewrite the
+ * whole file's endings on the next editor save and bury the prompt change in
+ * the diff.
+ */
+const withEol = (text, eol) => (eol === "\r\n" ? text.replace(/\n/g, "\r\n") : text);
 
 /**
  * Locates a prompt's default literal. Returns the file and the exact source
- * form to replace, or a reason it cannot be found.
+ * form to replace — already in that file's line endings — or a reason it cannot
+ * be found.
  */
 async function locateLiteral(defaultText) {
-  const needle = toTemplateLiteral(defaultText);
+  // One candidate per quote style, and for template literals also per line
+  // ending, since only those can carry a raw line break.
+  const candidates = QUOTES.flatMap((quote) => {
+    const form = toSourceLiteral(defaultText, quote);
+    const eols = quote === "`" && form.includes("\n") ? ["\n", "\r\n"] : ["\n"];
+    return eols.map((eol) => ({ quote, eol, needle: withEol(form, eol) }));
+  });
+
   const hits = [];
   for (const [file, body] of await sourceFiles()) {
-    let from = 0;
-    for (;;) {
-      const at = body.indexOf(needle, from);
-      if (at === -1) break;
-      from = at + 1;
-      // The match must reach the END of the source literal. A bare indexOf also
-      // matches a PREFIX of a longer one — which is exactly what happens when
-      // source has drifted ahead of this process's in-memory default — and
-      // replacing a prefix would leave the tail of the old text dangling after
-      // the new. Defaults are written as backtick, double- or single-quoted
-      // literals, so any closing quote ends the match.
-      if (!"`\"'".includes(body[at + needle.length] ?? "")) continue;
-      hits.push({ file, at });
+    for (const c of candidates) {
+      let from = 0;
+      for (;;) {
+        const at = body.indexOf(c.needle, from);
+        if (at === -1) break;
+        from = at + 1;
+        // The match must reach the END of the source literal, closed by its own
+        // quote. A bare indexOf also matches a PREFIX of a longer literal —
+        // which is exactly what happens when source has drifted ahead of this
+        // process's in-memory default — and replacing a prefix would leave the
+        // tail of the old text dangling after the new.
+        if (body[at + c.needle.length] !== c.quote) continue;
+        hits.push({ file, at, needle: c.needle, eol: c.eol, quote: c.quote });
+      }
     }
   }
   if (hits.length === 0) {
@@ -412,7 +480,7 @@ async function locateLiteral(defaultText) {
   if (hits.length > 1) {
     return { ok: false, reason: `${hits.length} identical literals in source — too ambiguous to edit safely` };
   }
-  return { ok: true, file: hits[0].file, needle };
+  return { ok: true, file: hits[0].file, needle: hits[0].needle, eol: hits[0].eol, quote: hits[0].quote };
 }
 
 /** ids whose default was located, computed once so the UI can enable the button. */
@@ -445,19 +513,30 @@ async function promote(id, text) {
 
   // Override files carry a trailing newline; a source literal must not, or the
   // section gains a blank line every time the prompt is assembled.
-  const clean = text.replace(/\r\n/g, "\n").replace(/\s+$/, "");
+  // `\r\n?` and not `\r\n`: a lone CR survived the old normalization, and a lone
+  // CR is a line terminator to the TS parser — inside a single-quoted default it
+  // would break the literal it was just written into.
+  const clean = text.replace(/\r\n?/g, "\n").replace(/\s+$/, "");
   const before = await readFile(found.file, "utf8");
   if (!before.includes(found.needle)) {
     return { ok: false, reason: "the file changed on disk while this promote was being prepared — reload the lab and try again" };
   }
-  const after = before.replace(found.needle, toTemplateLiteral(clean));
+  // Written back in the line endings the literal was found in, so the diff is
+  // the prompt and nothing else.
+  // A function replacement, never a string one: String.replace expands `$&`,
+  // "$'" and `` $` `` inside a string replacement, and prompt text is prose that
+  // can contain any of them. toSourceLiteral escapes `${` but not those.
+  const replacement = withEol(toSourceLiteral(clean, found.quote), found.eol);
+  const after = before.replace(found.needle, () => replacement);
   await writeFile(found.file, after, "utf8");
 
   try {
-    await run("npx", ["tsc", "-b"], { cwd: REPO, timeout: 180_000 });
+    await tscBuild(180_000);
   } catch (err) {
     await writeFile(found.file, before, "utf8");
-    const out = `${err?.stdout ?? ""}${err?.stderr ?? ""}`.trim();
+    // A compiler that never started leaves both streams empty; without the
+    // message fallback the operator saw a bare "typecheck failed" and no cause.
+    const out = `${err?.stdout ?? ""}${err?.stderr ?? ""}`.trim() || err?.message || String(err);
     return { ok: false, reverted: true, reason: `typecheck failed, file restored\n${out.slice(0, 600)}` };
   }
 

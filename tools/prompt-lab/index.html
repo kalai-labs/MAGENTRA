@@ -321,6 +321,48 @@ pre.editor del { background: rgba(241, 106, 120, 0.16); color: #ffa2ab; text-dec
 .principle p:last-child { margin-bottom: 0; }
 .principle b { color: var(--accent-hi); font-weight: 620; letter-spacing: 0.02em; }
 
+/* ── focus ────────────────────────────────────────────────────────────────
+   One named defect being worked right now, above everything else on the page.
+   Violet rather than a verdict colour: it cuts across verdicts — the prompts it
+   names are all "core", and the whole point is that none of them looks urgent
+   on its own. */
+.focus { border-color: var(--violet); }
+.focus .stage-head { background: var(--violet-soft); }
+.focus .stage-num { background: var(--violet); color: #1b0c33; }
+.focus .why { color: var(--text); font-size: 12.8px; line-height: 1.62; margin: 0 0 10px; max-width: 88ch; }
+.focus .why:last-of-type { margin-bottom: 14px; }
+.focus .fsub {
+  font: 600 9.5px/1 "Inter", sans-serif; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--text-faint); margin: 4px 0 8px;
+}
+.fitem { display: flex; gap: 11px; padding: 9px 0; align-items: flex-start; }
+.fitem + .fitem { border-top: 1px solid rgba(36,43,50,0.6); }
+.fitem .fstar { flex: none; width: 20px; height: 20px; border-radius: 5px; margin-top: 1px;
+  display: grid; place-items: center; font-size: 10px;
+  background: var(--violet-soft); color: var(--violet); }
+.fitem .fbody { min-width: 0; flex: 1; }
+.fitem .fhead { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.fitem .fid { font: 12px var(--mono); color: var(--accent-hi); padding: 0; }
+.fitem .fid:hover { text-decoration: underline; }
+.fitem .frole {
+  font: 600 9.5px/1 "Inter", sans-serif; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 6px; border-radius: 4px; flex: none;
+  background: rgba(143,154,165,0.16); color: var(--text-dim);
+}
+.fitem .frole.cause { background: var(--red-soft); color: var(--red); }
+.fitem .frole.block { background: var(--amber-soft); color: var(--amber); }
+.fitem .frole.missing { background: var(--violet-soft); color: var(--violet); }
+.fitem .flook { color: var(--text-dim); font-size: 12px; line-height: 1.55; margin-top: 3px; max-width: 84ch; }
+/* The same star wherever a focused prompt appears, so the rail and the map
+   agree with the card without anyone cross-referencing ids. */
+.star { color: var(--violet); font-size: 10px; flex: none; line-height: 1; }
+.note-card.infocus { border-left: 2px solid var(--violet); }
+.focus-flag {
+  background: var(--violet-soft); border-left: 2px solid var(--violet);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 9px 13px; margin: 0 0 12px;
+  color: var(--text-hi); font-size: 12.5px;
+}
+
 /* ── work order ───────────────────────────────────────────────────────── */
 .stage.work { border-color: var(--border-hi); }
 .stage.work .stage-num { width: auto; min-width: 24px; padding: 0 7px; font-size: 10px; }
@@ -670,6 +712,15 @@ const V_META = Object.fromEntries(VERDICTS.map((v) => [v.key, v]));
 /** The dot: an addressed finding reads settled whatever verdict it started at. */
 const dotOf = (note) => (note.addressed ? "done" : note.verdict);
 
+/**
+ * The prompts named by the current focus — one defect being worked now, spread
+ * across several prompts that each look fine alone. Kept as a set because the
+ * star is drawn in three places (rail, map chips, note card) and none of them
+ * should have to know the focus's shape.
+ */
+const focusIds = () => new Set((state.review.meta?.focus?.prompts ?? []).map((p) => p.id));
+const inFocus = (id) => focusIds().has(id);
+
 function setStatus(kind, text) {
   const n = $("#status");
   n.className = "status " + kind;
@@ -841,11 +892,13 @@ function paintRail() {
 
   const box = $("#plist");
   box.textContent = "";
+  const focused = focusIds();
   for (const p of list) {
     const b = el("button", "pitem" + (state.selected === p.id ? " on" : ""));
     const row = el("div", "row");
     const note = noteFor(p.id);
     if (note) row.append(el("i", "sev " + dotOf(note)));
+    if (focused.has(p.id)) row.append(el("i", "star", "★"));
     row.append(el("span", "label", p.label));
     if (isDirty(p.id)) row.append(el("i", "mark"));
     else if (p.disabled) row.append(el("i", "mark off"));
@@ -872,6 +925,7 @@ function chipFor(p, opts = {}) {
   if (opts.ord != null) b.append(el("span", "ord", String(opts.ord)));
   const note = noteFor(p.id);
   if (note) b.append(el("i", "sev " + dotOf(note)));
+  if (inFocus(p.id)) b.append(el("i", "star", "★"));
   b.append(el("span", "name", p.label));
   if (!opts.grid) b.append(el("span", "desc", p.where.split(/(?<=\.)\s/)[0]));
   if (p.disabled) b.append(el("i", "mark off"));
@@ -993,6 +1047,81 @@ async function markStep(n, done) {
 }
 
 /**
+ * The one defect being worked right now, above the plan and the principle.
+ *
+ * Exists because the board sorts by verdict, and a defect can be spread across
+ * prompts that are all "core" and all individually fine — the clarify layer
+ * batching dependent questions is exactly that shape. Nothing in a verdict-sorted
+ * list would ever bring those prompts together, so the operator would fix one
+ * side of a two-sided problem and make it worse. Each entry says whether the
+ * prompt CAUSES the defect or BLOCKS the fix, since those are edited differently.
+ */
+function renderFocus(wrap) {
+  const focus = state.review.meta?.focus;
+  if (!focus?.prompts?.length) return;
+
+  const card = el("div", "stage focus");
+  const sh = el("div", "stage-head");
+  sh.append(el("i", "stage-num", String(focus.prompts.length)));
+  const t = el("div");
+  t.append(el("h2", null, `Focus — ${focus.title}`));
+  t.append(el("div", "sub", focus.reported
+    ? `Reported ${focus.reported}. Read these prompts together, and edit them in one pass.`
+    : "Read these prompts together, and edit them in one pass."));
+  sh.append(t);
+  card.append(sh);
+
+  const body = el("div", "stage-body");
+  for (const para of (focus.why ?? "").split("\n\n")) {
+    if (!para) continue;
+    const p = el("p", "why");
+    p.innerHTML = rich(para);
+    body.append(p);
+  }
+
+  body.append(el("div", "fsub", "What to look at, and why it is on the list"));
+  for (const item of focus.prompts) {
+    const row = el("div", "fitem");
+    row.append(el("i", "fstar", "★"));
+    const mid = el("div", "fbody");
+    const head = el("div", "fhead");
+    const known = state.byId.has(item.id);
+    const roleKey = /cause/i.test(item.role ?? "") ? "cause"
+      : /block/i.test(item.role ?? "") ? "block"
+      : /missing/i.test(item.role ?? "") ? "missing" : "";
+    if (item.role) head.append(el("span", "frole " + roleKey, item.role));
+    if (known) {
+      const link = el("button", "fid", item.id);
+      link.onclick = () => select(item.id);
+      head.append(link);
+      const p = state.byId.get(item.id);
+      head.append(el("span", "frole", p.label));
+    } else {
+      // A focus may name a prompt that does not exist yet — that absence is
+      // itself the finding, so it must render rather than silently vanish.
+      head.append(el("span", "fid", item.id));
+      head.append(el("span", "frole missing", "not registered"));
+    }
+    mid.append(head);
+    const look = el("div", "flook");
+    look.innerHTML = rich(item.look ?? "");
+    mid.append(look);
+    row.append(mid);
+    body.append(row);
+  }
+
+  if (focus.steps?.length) {
+    const note = el("p", "flook");
+    note.style.marginTop = "12px";
+    note.textContent = `Work-order steps for this: ${focus.steps.map((n) => `#${n}`).join(", ")} — below.`;
+    body.append(note);
+  }
+
+  card.append(body);
+  wrap.append(card);
+}
+
+/**
  * The ordered plan, above the verdict groups. Order is the point: every merge
  * edits the receiving prompt before the source is emptied, so the rule is never
  * absent from the prompt set in between.
@@ -1083,6 +1212,9 @@ function renderList() {
   wrap.append(head);
 
   if (state.view === "notes") {
+    // Above the principle: the principle is how to edit, the focus is what to
+    // edit today.
+    renderFocus(wrap);
     if (state.review.meta?.principle) {
       const box = el("div", "principle");
       for (const para of state.review.meta.principle.split("\n\n")) {
@@ -1172,7 +1304,8 @@ function rich(text) {
  *  mature reference harness words the same thing, and a suggested direction. */
 function noteCard(note) {
   const done = note.addressed;
-  const card = el("div", "note-card " + (done ? "done" : note.verdict));
+  const focusItem = (state.review.meta?.focus?.prompts ?? []).find((p) => p.id === note.id);
+  const card = el("div", "note-card " + (done ? "done" : note.verdict) + (focusItem ? " infocus" : ""));
 
   const head = el("div", "note-head");
   head.append(el("span", "lvl " + (done ? "done" : note.verdict),
@@ -1196,6 +1329,14 @@ function noteCard(note) {
     const hidden = body.classList.toggle("hidden");
     fold.textContent = hidden ? "show" : "hide";
   };
+
+  // The focus reason sits above the note's own problem: it is why this prompt is
+  // open on the bench today, which is not always the same as what the note says.
+  if (focusItem) {
+    const flag = el("div", "focus-flag");
+    flag.innerHTML = `<b>★ ${esc(state.review.meta.focus.title)}</b> — ${esc(focusItem.role ?? "")}<br>${rich(focusItem.look ?? "")}`;
+    body.append(flag);
+  }
 
   for (const para of note.problem.split("\n\n")) {
     const el_ = el("p");

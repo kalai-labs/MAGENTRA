@@ -64,6 +64,27 @@ against which build — history, not the running version. A note goes green on i
 own once its prompt no longer matches the `reviewedHash` it was written against,
 so a stale note is visible rather than silently authoritative.
 
+## Focus
+
+`meta.focus` pins one defect to the top of the review page and stars the prompts
+it touches in the rail, on the injection map, and on their own note cards.
+
+```jsonc
+"focus": {
+  "title": "…", "reported": "2026-08-02", "why": "…",
+  "prompts": [{ "id": "clarify.system", "role": "causes it", "look": "…" }],
+  "steps": [16, 17, 18, 19]          // the work-order steps that fix it
+}
+```
+
+It exists because the board sorts by verdict, and a defect is often spread across
+prompts that are each `core` and each individually fine — one causes the
+behaviour, the others block the fix. Nothing in a verdict-sorted list brings
+those together, so half the fix gets made and the result is worse than before.
+`role` is free text; `causes`/`blocks`/`missing` pick the badge colour. An `id`
+that is not in the registry renders as *not registered* rather than disappearing
+— a prompt that ought to exist and does not is itself a finding.
+
 ## Adding a prompt
 
 ```ts

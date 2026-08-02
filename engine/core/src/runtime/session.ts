@@ -1121,12 +1121,24 @@ export class Session {
    * A compact snippet of the last exchange, so a follow-up ("improve it") is
    * judged with what came before in view instead of looking open-ended on its
    * own. Shared by every pre-layer that has to reason about the request.
+   *
+   * Harness scaffolding is stripped before sampling: a turn that was
+   * interrupted (or resumed) leaves messages whose entire text is a
+   * <system-reminder> block, and sampling those as "the exchange" hands the
+   * clarify judge a context that says nothing about the work. That is exactly
+   * how "continue your work" after a resume got answered with "I don't have
+   * context from a previous task" — the judge's snippet was two interrupt
+   * markers. The window is wider than the two lines kept, for the same reason:
+   * an interrupt-heavy tail must not push the real exchange out of reach.
    */
   private recentExchange(): string {
     const recent = this.messages
-      .slice(-4)
-      .map((m) => ({ role: m.role, text: assistantText(m) }))
-      .filter((m) => m.text.trim().length > 0)
+      .slice(-10)
+      .map((m) => ({
+        role: m.role,
+        text: assistantText(m).replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim(),
+      }))
+      .filter((m) => m.text.length > 0)
       .slice(-2)
       .map((m) => `${m.role}: ${m.text.length > 400 ? `${m.text.slice(0, 400)}…` : m.text}`)
       .join("\n");
