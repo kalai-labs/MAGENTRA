@@ -1,6 +1,6 @@
 {
   "name": "@magentra/core",
-  "version": "0.16.8",
+  "version": "0.16.9",
   "private": true,
   "type": "module",
   "exports": {
