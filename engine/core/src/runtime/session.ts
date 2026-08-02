@@ -262,7 +262,7 @@ Set clarify=true ONLY when BOTH hold:
 
 Set clarify=false for everything else: concrete tasks naming a target, questions or explanations, conversational messages, follow-ups whose context already fixes the shape, and anything where a sensible default exists and adjusting later is cheap. When unsure, prefer false — asking needlessly is friction.
 
-Questions: at most 3, each one decision-changing (never a detail that could be adjusted later), 2-4 mutually distinct options with a one-line description each; put your recommended option first with " (Recommended)" appended to its label. multiSelect true only when choices genuinely combine.`,
+Questions: at most 5, each one decision-changing (never a detail that could be adjusted later), 2-4 mutually distinct options with a one-line description each; put your recommended option first with " (Recommended)" appended to its label. multiSelect true only when choices genuinely combine. NOTE THAT: Questions in one set are answered together, so they must be independent -- never include a question whose sensible options depend on another question's answer in the same set, ask only the upstream shape-defining question and leave the dependent one for the agent to ask afterwards, with options tailored to the answer.`,
 });
 
 // Caps that keep the clarify skim a cursory glance, not a context dump: the

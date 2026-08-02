@@ -28,7 +28,7 @@
         {
           "id": "tool.AskUserQuestion",
           "role": "blocks the follow-up",
-          "look": "\"Use it only when you are stuck on a decision…\" — purely discouraging. After clarify answers \"puzzle game\", the art-style question is now well-defined and cheap to ask, and nothing legitimizes asking it. Also: the description says \"up to 5 questions\" while inputSchema caps at 4 (askUserQuestion.ts:22)."
+          "look": "\"Use it only when you are stuck on a decision…\" — purely discouraging. After clarify answers \"puzzle game\", the art-style question is now well-defined and cheap to ask, and nothing legitimizes asking it. That is the whole edit here now; the old \"up to 5 vs schema cap of 4\" mismatch was resolved in code on 2026-08-02 by raising the cap to 5."
         },
         {
           "id": "system.autonomy",
@@ -453,7 +453,7 @@
       "verdict": "core",
       "title": "Keep. Add the dependent-follow-up sentence.",
       "problem": "The description only discourages ('use it only when you are stuck… pick the default and move on'). Nothing legitimizes a follow-up once an earlier answer opens a decision whose sensible options only exist NOW — genre just chosen, and the art-style options worth offering differ by genre — so the agent guesses instead of asking the one question that just became well-defined. This is the receiving half of the clarify.system independence fix: clarify withholds the dependent question, and this tool is where it must still get asked.",
-      "action": "Two edits. (1) Add one sentence: also use it for a dependent follow-up — when an earlier answer (from the clarify round or a previous question) opens a decision whose options only make sense now, ask that one question in its own round with options tailored to the answer, rather than guessing. (2) Fix the count while you are in here: the text says \"up to 5 multiple-choice questions\" but inputSchema caps `questions` at 4 (askUserQuestion.ts:22) — the model is told it may send a call the validator will reject.",
+      "action": "Add one sentence: also use it for a dependent follow-up — when an earlier answer (from the clarify round or a previous question) opens a decision whose options only make sense now, ask that one question in its own round with options tailored to the answer, rather than guessing. (The count mismatch that used to be listed here is resolved in code: inputSchema now caps questions at 5, matching what this description promises. Nothing to change in the text for it.)",
       "reviewedHash": "1625209396d4"
     },
     "tool.Agent": {
@@ -862,7 +862,7 @@
               "tool.AskUserQuestion"
             ],
             "do": "Legitimize the dependent follow-up in AskUserQuestion",
-            "detail": "One sentence: also use it for a dependent follow-up — when an earlier answer (from the clarify round or a previous question) opens a decision whose sensible options only exist NOW, ask that one question in its own round with options tailored to the answer, rather than guessing. While editing, fix the count: the description promises \"up to 5 multiple-choice questions\" but inputSchema caps the array at 4 (askUserQuestion.ts:22), so a 5-question call is rejected by validation after the model was told it was allowed.",
+            "detail": "One sentence: also use it for a dependent follow-up — when an earlier answer (from the clarify round or a previous question) opens a decision whose sensible options only exist NOW, ask that one question in its own round with options tailored to the answer, rather than guessing. The count mismatch this step also used to carry is gone: askUserQuestion.ts now caps the array at 5, so the description's \"up to 5\" is accurate and needs no edit.",
             "test": {
               "prompt": "tool.AskUserQuestion",
               "matches": "follow-up"

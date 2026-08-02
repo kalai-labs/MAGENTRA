@@ -19,14 +19,14 @@ const questionSchema = z.object({
 });
 
 const inputSchema = z.object({
-  questions: z.array(questionSchema).min(1).max(4).describe("Questions to ask the user (1-4)"),
+  questions: z.array(questionSchema).min(1).max(5).describe("Questions to ask the user (1-5)"),
 });
 
 export const askUserQuestionTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "AskUserQuestion",
   description: `Asks the user up to 5 multiple-choice questions and blocks until they answer.
 
-Use it only when you are stuck on a decision that genuinely belongs to the user — one the request, the code, and sensible defaults cannot settle. For choices with a conventional default, pick it, mention it, and move on. If you recommend an option, put it first and append "(Recommended)" to its label. The UI always adds an "Other" free-text option.`,
+Use it only when you are stuck on a decision that genuinely belongs to the user — one the request, the code, and sensible defaults cannot settle. For choices with a conventional default, pick it, mention it, and move on. If you recommend an option, put it first and append "(Recommended)" to its label. The UI always adds an "Other" free-text option. Also use it for a dependent follow up question.`,
   permissionClass: "interact",
   execute: async (input, ctx) => {
     const answers = await ctx.session.askUser(input.questions);
