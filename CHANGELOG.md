@@ -10,6 +10,14 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.16.9 — 2026-08-02
+
+### Bug fixes
+
+- prompt enhancement ([4607baa](https://github.com/kalai-labs/MAGENTRA/commit/4607baa44ff862bc2525bad17195e482527cd201))
+
+[Compare with v0.16.8](https://github.com/kalai-labs/MAGENTRA/compare/v0.16.8...v0.16.9)
+
 ## 0.16.8 — 2026-08-02
 
 ### Bug fixes
