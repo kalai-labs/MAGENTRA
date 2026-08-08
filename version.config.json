@@ -23,6 +23,9 @@
     },
     {
       "path": "app/package.json"
+    },
+    {
+      "path": "tui/package.json"
     }
   ],
   "types": {
@@ -79,6 +82,7 @@
     "protocol",
     "host",
     "app",
+    "tui",
     "docs",
     "build"
   ],

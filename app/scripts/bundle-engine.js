@@ -21,6 +21,7 @@ const ENTRY = path.join(REPO_ROOT, "engine", "host", "dist", "main.js");
 const OUT_DIR = path.join(APP_DIR, "build-resources", "engine");
 const OUT_FILE = path.join(OUT_DIR, "engine.cjs");
 const RIPGREP_SHIM = path.join(APP_DIR, "shims", "ripgrep-shim.cjs");
+const DEVTOOLS_SHIM = path.join(APP_DIR, "shims", "devtools-shim.cjs");
 
 // The composer's "attach context" file picker reads files in the Electron main
 // process, and reuses the engine's own dependency-free document extractor
@@ -29,6 +30,14 @@ const RIPGREP_SHIM = path.join(APP_DIR, "shims", "ripgrep-shim.cjs");
 // (In development main.js imports engine/core/dist directly — no bundle needed.)
 const DOC_EXTRACT_ENTRY = path.join(REPO_ROOT, "engine", "core", "src", "knowledge", "docs.ts");
 const DOC_EXTRACT_OUT = path.join(OUT_DIR, "doc-extract.mjs");
+
+// The terminal UI (tui/): ink + react + yoga in ONE ESM file, run by the
+// shipped Electron binary with ELECTRON_RUN_AS_NODE=1 — the same trick as
+// engine.cjs, which the TUI detects as its sibling and spawns per session.
+// ESM is mandatory: ink's reconciler and yoga-layout use top-level await.
+// yoga's wasm is base64-embedded in its JS, so no .wasm sidecar ships.
+const TUI_ENTRY = path.join(REPO_ROOT, "tui", "src", "cli.tsx");
+const TUI_OUT = path.join(OUT_DIR, "tui.mjs");
 
 // The binaries come from the @vscode/ripgrep platform packages in node_modules.
 // Packaging filters (build.win / build.linux / build.mac) pick rg.exe vs rg per
@@ -96,6 +105,31 @@ async function main() {
     minify: true,
     legalComments: "none",
     sourcemap: false,
+  });
+
+  // The terminal UI (see TUI_ENTRY above for why ESM).
+  await esbuild.build({
+    entryPoints: [TUI_ENTRY],
+    outfile: TUI_OUT,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node20",
+    jsx: "automatic",
+    minify: true,
+    legalComments: "none",
+    sourcemap: false,
+    // NODE_ENV picks react/scheduler production branches.
+    define: { "process.env.NODE_ENV": '"production"' },
+    // ink gates devtools behind process.env['DEV'] — the bracket access dodges
+    // a define fold, so the devtools module bundles regardless; the shim keeps
+    // its react-devtools-core import (never-installed optional peer) from
+    // becoming an eager external that breaks ESM linking. See the shim header.
+    alias: { "react-devtools-core": DEVTOOLS_SHIM },
+    banner: {
+      js: "import{createRequire as __magentraCR}from'node:module';const require=__magentraCR(import.meta.url);",
+    },
+    logLevel: "info",
   });
 
   for (const { target: rgTarget, src, dest } of RIPGREP) {

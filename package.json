@@ -6,7 +6,8 @@
   "license": "Apache-2.0",
   "workspaces": [
     "engine/*",
-    "app"
+    "app",
+    "tui"
   ],
   "engines": {
     "node": ">=20"
