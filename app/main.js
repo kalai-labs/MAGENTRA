@@ -962,7 +962,9 @@ function createWindow() {
   // that made the home button do nothing).
 
   let rendererCrashed = false;
+  let rendererEverLoaded = false;
   mainWindow.webContents.once("did-finish-load", () => {
+    rendererEverLoaded = true;
     if (SMOKE) {
       setTimeout(() => {
         app.exit(rendererCrashed ? 1 : 0);
@@ -977,6 +979,33 @@ function createWindow() {
   mainWindow.webContents.on("render-process-gone", (_evt, details) => {
     rendererCrashed = true;
     logEvent("renderer", { ev: "render-process-gone", reason: details && details.reason });
+
+    // Windows twin of the Linux launcher's sandbox rescue (scripts/afterPack.js).
+    // On some machines the Chromium sandbox cannot start from certain install
+    // locations — observed in the field on a per-user install under
+    // %LOCALAPPDATA%\Programs, where policy/tooling-reshaped ACLs on the
+    // AppData tree kill every sandboxed child at birth (GPU exits with
+    // STATUS_DLL_NOT_FOUND, the renderer with a Chromium CHECK) while the same
+    // bytes run fine elsewhere and --no-sandbox always boots. Linux puts a
+    // wrapper IN FRONT of the process to decide this; Windows has no wrapper,
+    // so the decision is reactive: if the renderer dies before its very first
+    // paint and the sandbox is on, relaunch ONCE with --no-sandbox. The argv
+    // check is the loop guard — a crash under --no-sandbox is a real crash and
+    // stays fatal. The relaunched instance keeps its argv (a --smoke rescue
+    // still smokes), and the log carries the event so the fallback is never
+    // silent.
+    if (
+      process.platform === "win32" &&
+      !rendererEverLoaded &&
+      !process.argv.includes("--no-sandbox") &&
+      !process.env.PORTABLE_EXECUTABLE_FILE // portable already runs sandbox-less
+    ) {
+      logEvent("sys", { ev: "sandbox-rescue-relaunch", reason: details && details.reason });
+      app.relaunch({ args: process.argv.slice(1).concat(["--no-sandbox"]) });
+      app.exit(0);
+      return;
+    }
+
     if (SMOKE) app.exit(1);
   });
   mainWindow.webContents.on("unresponsive", () => {

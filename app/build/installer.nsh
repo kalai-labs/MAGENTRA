@@ -65,6 +65,10 @@ FunctionEnd
   CreateDirectory "$INSTDIR\bin"
   SetOutPath "$INSTDIR\bin"
   File "${BUILD_RESOURCES_DIR}\magentra.cmd"
+  ; Restore immediately: OutPath is global NSIS state, and the template's
+  ; finish-page "Run MAGENTRA" launches with the CURRENT OutPath as the app's
+  ; working directory — leaving it at bin\ ships a subtly wrong first launch.
+  SetOutPath "$INSTDIR"
 
   ReadRegStr $0 HKCU "Environment" "Path"
   Push $0
