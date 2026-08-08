@@ -1,6 +1,6 @@
 {
   "name": "@magentra/tui",
-  "version": "0.16.9",
+  "version": "0.17.0",
   "private": true,
   "type": "module",
   "description": "Terminal frontend for the MAGENTRA engine — a pure NDJSON protocol client (ink). Ships inside the desktop artifacts as resources/engine/tui.mjs and runs through Electron's own Node.",
