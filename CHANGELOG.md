@@ -10,6 +10,14 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.17.1 — 2026-08-08
+
+### Bug fixes
+
+- **app:** per-user install boot rescue + console handles for magentra ([03def73](https://github.com/kalai-labs/MAGENTRA/commit/03def737cc575bac5fc234b2d24040c1ba5e1066))
+
+[Compare with v0.17.0](https://github.com/kalai-labs/MAGENTRA/compare/v0.17.0...v0.17.1)
+
 ## 0.17.0 — 2026-08-08
 
 ### Features
