@@ -46,8 +46,18 @@ const hasTty = process.stdin.isTTY === true && process.stdout.isTTY === true;
 if (isPackagedRun() && (wantsGui || !hasTty)) {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
-  const wrapper = join(dirname(process.execPath), 'magentra');
-  const gui = process.platform === 'linux' && existsSync(wrapper) ? wrapper : process.execPath;
+  // Hand off to the DESKTOP binary, which is not always process.execPath:
+  // on Windows we run as magentra-cli.exe (the console-subsystem copy — using
+  // it for the GUI would pin a console window to the desktop app), and on
+  // linux the sibling `magentra` wrapper must run so its sandbox detection
+  // still applies. macOS and dev fall through to process.execPath.
+  const binDir = dirname(process.execPath);
+  let gui = process.execPath;
+  if (process.platform === 'win32' && existsSync(join(binDir, 'MAGENTRA.exe'))) {
+    gui = join(binDir, 'MAGENTRA.exe');
+  } else if (process.platform === 'linux' && existsSync(join(binDir, 'magentra'))) {
+    gui = join(binDir, 'magentra');
+  }
   spawn(gui, [], { detached: true, stdio: 'ignore', env }).unref();
   process.exit(0);
 }

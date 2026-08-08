@@ -102,7 +102,44 @@ fi
 exec "$BIN" "$@"
 `;
 
+/**
+ * magentra-cli.exe: a byte-copy of MAGENTRA.exe with the PE subsystem flipped
+ * GUI → CONSOLE. The terminal command needs it because a GUI-subsystem binary
+ * never attaches to the launching console, so under ELECTRON_RUN_AS_NODE
+ * libuv finds no TTY (verified in a real conhost: isTTY stays false even with
+ * explicit CON handle redirection) and ink cannot enter raw mode. The console
+ * copy attaches like any CLI and inherits real console handles.
+ *
+ * The copy is only ever run AS NODE (the shim sets ELECTRON_RUN_AS_NODE), so
+ * Chromium, the sandbox, and asar integrity never come into play; the GUI
+ * keeps launching through the untouched MAGENTRA.exe. The duplicate costs
+ * little in the download — the NSIS payload is a solid 7z, which all but
+ * dedupes a second copy of the same bytes.
+ */
+function writeConsoleSubsystemCopy(srcExe, destExe) {
+  const b = fs.readFileSync(srcExe);
+  const lfanew = b.readUInt32LE(0x3c);
+  if (b.readUInt32LE(lfanew) !== 0x00004550) throw new Error(`${srcExe}: PE signature not found`);
+  // IMAGE_OPTIONAL_HEADER starts 24 bytes after the PE signature; Subsystem
+  // is a WORD at offset 68 in both PE32 and PE32+.
+  const subsystemOffset = lfanew + 24 + 68;
+  const subsystem = b.readUInt16LE(subsystemOffset);
+  if (subsystem !== 2 && subsystem !== 3) {
+    throw new Error(`${srcExe}: unexpected PE subsystem ${subsystem} — refusing to patch`);
+  }
+  b.writeUInt16LE(3, subsystemOffset); // IMAGE_SUBSYSTEM_WINDOWS_CUI
+  fs.writeFileSync(destExe, b);
+}
+
 module.exports = async function afterPack(context) {
+  if (context.electronPlatformName === "win32") {
+    const src = path.join(context.appOutDir, "MAGENTRA.exe");
+    const dest = path.join(context.appOutDir, "magentra-cli.exe");
+    writeConsoleSubsystemCopy(src, dest);
+    console.log("afterPack: wrote magentra-cli.exe (console-subsystem copy for the terminal command)");
+    return;
+  }
+
   if (context.electronPlatformName === "darwin") {
     const appName = context.packager.appInfo.productFilename; // "MAGENTRA"
     const binDir = path.join(context.appOutDir, `${appName}.app`, "Contents", "Resources", "bin");
