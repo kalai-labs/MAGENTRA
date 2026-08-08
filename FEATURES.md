@@ -166,6 +166,20 @@ on a clean turn.
 - [x] **Mathematics** — `$…$`/`\(…\)` inline and `$$…$$`/`\[…\]` display LaTeX render as native **MathML**: no library, no CDN, no extra web font, and nothing the strict CSP has to be relaxed for. Symbols, sub/superscripts, fractions, roots, big operators with limits, delimiters, text runs and matrix/cases environments; anything unparsed falls back to its own source. Prices (`$5, not $7`) and backticked `` `$x$` `` stay text. `ui`
 - [x] **Fully local assets** — `default-src 'none'` with `style-src`/`script-src`/`font-src` all `'self'`: nothing is fetched from the web at runtime, so the app works offline and in an air-gapped environment. Both bundled fonts are SIL OFL 1.1 with the licence text and copyright notices shipped alongside them (`app/renderer/fonts/`). `ui`
 
+## Terminal UI (tui/)
+
+The engine's second frontend: a pure NDJSON protocol client (ink), bundled to
+one ESM file (`resources/engine/tui.mjs`) and run through the shipped
+Electron's own Node — the `magentra` terminal command opens it at the shell's
+cwd.
+
+- [ ] **Packaged boot** — `ELECTRON_RUN_AS_NODE=1 <electron> resources/engine/tui.mjs <ws>` boots the TUI against the sibling `engine.cjs`; a turn streams; `/exit` tears both processes down. `proc`
+- [ ] **TTY dispatch** — an interactive terminal gets the TUI; no TTY (desktop entry, `< NUL`) hands over to the GUI; `--gui` forces the GUI from a terminal. Per OS: linux wrapper, mac `Resources/bin/magentra`, and the TUI's own fallback on Windows. `proc`
+- [ ] **Windows PATH lifecycle** — the NSIS setup writes `bin\magentra.cmd` and appends `$INSTDIR\bin` to the HKCU PATH exactly once; uninstall removes both and leaves the rest of PATH byte-identical. `fs`
+- [ ] **Workspace + resume args** — `magentra <path>` opens that directory (error on a missing one); `--resume` lists this workspace's sessions, `--resume <id>` restores one, riding the engine's own session store. `proc`
+- [ ] **Profile pickup** — a folder with no credentials offers `~/.magentra/profiles.json` profiles and connecting writes the same `.env` + `.magentra/settings.json` the IDE writes. `fs`
+- [ ] **Sandbox unaffected** — the linux TUI branch starts no Chromium; the GUI path's sandbox detection is byte-identical to before, and the TUI's GUI handoff re-enters the wrapper, not `magentra-bin`. `proc`
+
 ## Packaging
 
 - [ ] **Linux artifact** — AppImage/tar.gz launches on a clean machine, with a working Grep (the bundled `rg`). `ui`
