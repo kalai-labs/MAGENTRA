@@ -10,6 +10,14 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.17.2 — 2026-08-08
+
+### Bug fixes
+
+- **app:** console-subsystem exe so the magentra command gets a real TTY ([0410e32](https://github.com/kalai-labs/MAGENTRA/commit/0410e32880c72186daf33d800c6e731502182a5c))
+
+[Compare with v0.17.1](https://github.com/kalai-labs/MAGENTRA/compare/v0.17.1...v0.17.2)
+
 ## 0.17.1 — 2026-08-08
 
 ### Bug fixes
