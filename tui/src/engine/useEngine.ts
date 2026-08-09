@@ -7,10 +7,19 @@
  * Translation rules, agreed in the design session:
  *  - text_delta streams live; a Line commits to scrollback at each newline.
  *  - thinking_delta content is never shown; a finished thinking block commits
- *    one `◌ reasoning` row with its real duration.
+ *    one `◌ thought` row with its real duration.
  *  - tool calls commit one rail row when they FINISH (started only drives the
  *    activity label), so every committed line is final — <Static> stays honest.
  *  - token meters render engine figures verbatim; no TUI-side arithmetic.
+ *
+ * PAINTING IS COALESCED, and that is load-bearing. Ink runs on a legacy React
+ * root, so updates outside React's own event system are NOT batched: one
+ * setState per text_delta meant one full render, one yoga layout and one
+ * terminal repaint per delta. Measured on a 2000-delta answer (10 KB of text
+ * the engine wrote in 12 ms): 2510 terminal writes, 2.2 MB of escape output —
+ * 216x the text — and ~1.6 s before the last character appeared, which is why
+ * the terminal felt slower than the desktop app for the same model. Deltas now
+ * accumulate in a ref and repaint on a ~30 fps timer instead.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -23,6 +32,8 @@ import {
   workspaceConnected,
   type Profile,
 } from '../profiles.js';
+import { isTrusted, trustFolder } from '../trust.js';
+import { toolTarget } from '../toolLabel.js';
 import { startHost, type EngineHost } from './host.js';
 import {
   PROTOCOL_VERSION,
@@ -34,6 +45,7 @@ import {
   type SlashCommandInfo,
   type TaskItem,
 } from '../protocol.js';
+import type { ActivityState } from '../components/Activity.js';
 import type { Line, LineBody } from '../types.js';
 
 export type PendingPrompt =
@@ -49,6 +61,9 @@ export type PendingPrompt =
 
 export type Meters = { context: number; output: number; warn: boolean };
 
+/** Something running outside a turn, from background_notification. */
+export type BackgroundJob = { taskId: string; description: string };
+
 export type Engine = {
   lines: Line[];
   /** The in-flight prose line, streaming in the live region. */
@@ -56,7 +71,9 @@ export type Engine = {
   /** True while the streaming line is the turn's first spoken line. */
   liveLead: boolean;
   busy: boolean;
-  activity: string;
+  /** When the current turn started, for the activity line's own ticker. */
+  startedAt: number;
+  activity: ActivityState;
   meters: Meters;
   model: string;
   models: string[];
@@ -64,9 +81,21 @@ export type Engine = {
   commands: SlashCommandInfo[];
   /** The session task list, verbatim from task_list_updated. */
   tasks: TaskItem[];
+  /** Last few lines of the running command's output — the live tail. */
+  tail: string[];
+  /** Work running outside a turn (/compact, backgrounded Bash, addon gen). */
+  jobs: BackgroundJob[];
   prompt: PendingPrompt | null;
   /** Set when the session cannot continue (fatal error / engine exit). */
   fatal: string | null;
+  /**
+   * Non-null before anything else happens when this folder has never been
+   * trusted: the first-run trust gate. Nothing is spawned and no credentials
+   * are written until it is answered.
+   */
+  trustGate: string | null;
+  /** Record trust for this folder, then continue booting. */
+  acceptTrust(): void;
   /**
    * Non-null before the engine is spawned, when the workspace has no
    * credentials and saved profiles exist: the startup profile picker.
@@ -92,7 +121,6 @@ export type Engine = {
   interrupt(): void;
   setModel(model: string): void;
   toggleOverdrive(): void;
-  clearLocal(): void;
   /** Echo a user-typed command into the transcript without sending a frame. */
   echo(text: string): void;
   /** Commit a local notice block (e.g. the /model catalog). */
@@ -102,15 +130,47 @@ export type Engine = {
   pickOption(index: number): void;
   /** Confirm a multiSelect question's picks and advance. */
   confirmQuestion(): void;
+  /** Abandon the whole question round, answering nothing. */
+  skipQuestions(): void;
   shutdown(): void;
 };
 
-const TARGET_MAX = 46;
-const METRIC_MAX = 34;
+const TARGET_MAX = 60;
+const METRIC_MAX = 22;
+
+/**
+ * Live shell output. `TAIL_ROWS` is what shows under the spinner while a
+ * command runs; `COMMIT_ROWS` is how much of it is kept in the transcript
+ * afterwards, so a chatty build log leaves a readable trace without burying
+ * the conversation. `OUTPUT_CAP` bounds what is held per call — a command that
+ * prints megabytes must not grow the process.
+ */
+const TAIL_ROWS = 3;
+const COMMIT_ROWS = 10;
+const OUTPUT_CAP = 32_000;
+
+/** One repaint per frame at ~30 fps, however many deltas arrive in between. */
+const PAINT_MS = 33;
+
+const IDLE_ACTIVITY: ActivityState = { label: 'working', detail: '' };
 
 function clip(text: string, max: number): string {
-  const one = text.split('\n')[0]!.trim();
+  const one = (text ?? '').split('\n')[0]!.trim();
   return one.length > max ? `${one.slice(0, max - 1)}…` : one;
+}
+
+/** Blank lines carry nothing in a tail and cost a whole row, so they go. */
+function significantLines(text: string): string[] {
+  return text.split('\n').map((l) => l.replace(/\s+$/, '')).filter((l) => l.trim() !== '');
+}
+
+function lastLines(text: string, count: number): string[] {
+  const lines = significantLines(text);
+  return lines.length > count ? lines.slice(-count) : lines;
+}
+
+function countLines(text: string): number {
+  return significantLines(text).length;
 }
 
 /**
@@ -125,13 +185,16 @@ export function useEngine(resume: string | true | undefined, workspace: string):
   const [liveText, setLiveText] = useState('');
   const [liveLead, setLiveLead] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [activity, setActivity] = useState('working');
+  const [startedAt, setStartedAt] = useState(0);
+  const [activity, setActivityState] = useState<ActivityState>(IDLE_ACTIVITY);
   const [meters, setMeters] = useState<Meters>({ context: 0, output: 0, warn: false });
   const [model, setModelState] = useState('');
   const [models, setModels] = useState<string[]>([]);
   const [overdrive, setOverdrive] = useState(false);
   const [commands, setCommands] = useState<SlashCommandInfo[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [tail, setTail] = useState<string[]>([]);
+  const [jobs, setJobs] = useState<BackgroundJob[]>([]);
   const [sessionPicker, setSessionPicker] = useState<SessionSummary[] | null>(null);
   // Consumed on the FIRST session_started only — /clear re-emits that event
   // and must not re-trigger a resume.
@@ -152,18 +215,100 @@ export function useEngine(resume: string | true | undefined, workspace: string):
   const thinkingSince = useRef<number | null>(null);
   const overdriveRef = useRef(false);
   const toolStarts = useRef(new Map<string, { tool: string; target: string }>());
+  /** Streamed output per in-flight call id, tail-capped at OUTPUT_CAP. */
+  const toolOutput = useRef(new Map<string, string>());
+  /** The call whose output the live tail is showing. */
+  const tailId = useRef<string | null>(null);
+  /** Set by a delta, consumed by the next paint — the tail is throttled too. */
+  const tailDirty = useRef(false);
   const promptRef = useRef<PendingPrompt | null>(null);
+  const paintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** The activity we last pushed to React, so identical deltas don't re-render. */
+  const activityRef = useRef<ActivityState>(IDLE_ACTIVITY);
+  /** True while the boot-time OVERDRIVE default is the reason it flipped on. */
+  const overdriveIsDefault = useRef(false);
+  const overdriveDefaultApplied = useRef(false);
 
-  const commit = useCallback((line: LineBody) => {
-    // Never two blanks in a row — same rule the fake scheduler enforced.
-    if (line.kind === 'blank' && lastKind.current === 'blank') return;
-    lastKind.current = line.kind;
-    setLines((prev) => [...prev, { ...line, id: nextId.current++ } as Line]);
+  /**
+   * The paint scheduler. Deliberately ref-held rather than a useCallback: both
+   * `commit` and `drainBuffer` need to arm it, and `drainBuffer` is what it
+   * ultimately calls, so a normal dependency chain would be circular.
+   */
+  const paintRef = useRef<() => void>(() => {});
+  const lastPaintAt = useRef(0);
+  /**
+   * Re-entrancy guard. A drain commits the lines it completes, and `commit`
+   * arms the scheduler — so without this a drain that ran longer than a frame
+   * could re-enter itself from inside its own loop. Anything committed while a
+   * drain is running is flushed by that drain before it returns, so skipping
+   * the arm is safe as well as necessary.
+   */
+  const painting = useRef(false);
+
+  /**
+   * Leading-edge throttle, not a plain delay. An idle stream paints the FIRST
+   * delta immediately — waiting out a frame before showing the first token
+   * would trade the streaming feel away for the batching win — and only a
+   * stream already painting within the last frame gets deferred.
+   */
+  const schedulePaint = useCallback(() => {
+    if (paintTimer.current || painting.current) return;
+    const since = Date.now() - lastPaintAt.current;
+    if (since >= PAINT_MS) {
+      paintRef.current();
+      return;
+    }
+    paintTimer.current = setTimeout(() => {
+      paintTimer.current = null;
+      paintRef.current();
+    }, PAINT_MS - since);
+  }, []);
+
+  /** Lines committed since the last paint. See the coalescing note up top. */
+  const pendingLines = useRef<Line[]>([]);
+
+  const flushLines = useCallback(() => {
+    if (pendingLines.current.length === 0) return;
+    const batch = pendingLines.current;
+    pendingLines.current = [];
+    setLines((prev) => [...prev, ...batch]);
+  }, []);
+
+  const commit = useCallback(
+    (line: LineBody) => {
+      // Never two blanks in a row — same rule the fake scheduler enforced.
+      if (line.kind === 'blank' && lastKind.current === 'blank') return;
+      lastKind.current = line.kind;
+      pendingLines.current.push({ ...line, id: nextId.current++ } as Line);
+      schedulePaint();
+    },
+    [schedulePaint],
+  );
+
+  /** A fresh session repaints from zero: nothing queued may survive it. */
+  const resetLines = useCallback(() => {
+    pendingLines.current = [];
+    lastKind.current = null;
+    setLines([]);
+  }, []);
+
+  const setActivity = useCallback((next: ActivityState) => {
+    const prev = activityRef.current;
+    if (prev.label === next.label && prev.detail === next.detail) return;
+    activityRef.current = next;
+    setActivityState(next);
   }, []);
 
   /** Commit every complete line in the buffer; the remainder keeps streaming. */
   const drainBuffer = useCallback(
     (flushAll: boolean) => {
+      if (paintTimer.current) {
+        clearTimeout(paintTimer.current);
+        paintTimer.current = null;
+      }
+      lastPaintAt.current = Date.now();
+      painting.current = true;
+
       const commitProse = (raw: string) => {
         const text = raw.trimEnd();
         if (text.length === 0) {
@@ -173,11 +318,14 @@ export function useEngine(resume: string | true | undefined, workspace: string):
         const isFenceLine = /^```/.test(text.trim());
         // Fence contents are marked at commit time — the delimiter line itself
         // is not code, and toggles the state for the lines that follow it.
-        const code = fence.current && !isFenceLine;
+        const wasInFence = fence.current;
+        const code = wasInFence && !isFenceLine;
         if (isFenceLine) fence.current = !fence.current;
         // Code lines never carry the ◆ marker and never consume the lead — the
         // speaker mark belongs to speech, not to a listing.
-        if (code || isFenceLine) {
+        if (isFenceLine) {
+          commit({ kind: 'fence', info: text.trim().replace(/^`+/, '').trim(), open: !wasInFence });
+        } else if (code) {
           commit({ kind: 'prose', text, lead: false, code });
         } else {
           commit({ kind: 'prose', text, lead: !spoke.current });
@@ -186,21 +334,45 @@ export function useEngine(resume: string | true | undefined, workspace: string):
       };
 
       let buf = textBuffer.current;
-      let nl: number;
-      while ((nl = buf.indexOf('\n')) !== -1) {
-        commitProse(buf.slice(0, nl));
-        buf = buf.slice(nl + 1);
+      try {
+        let nl: number;
+        while ((nl = buf.indexOf('\n')) !== -1) {
+          commitProse(buf.slice(0, nl));
+          buf = buf.slice(nl + 1);
+        }
+        if (flushAll && buf.trim().length > 0) {
+          commitProse(buf);
+          buf = '';
+        }
+      } finally {
+        // The guard MUST come down even if a commit threw. Leaving it raised
+        // would make schedulePaint a permanent no-op — the stream would keep
+        // arriving and the screen would simply stop updating.
+        textBuffer.current = buf;
+        painting.current = false;
       }
-      if (flushAll && buf.trim().length > 0) {
-        commitProse(buf);
-        buf = '';
+      if (tailDirty.current) {
+        tailDirty.current = false;
+        const id = tailId.current;
+        setTail(id ? lastLines(toolOutput.current.get(id) ?? '', TAIL_ROWS) : []);
       }
-      textBuffer.current = buf;
+      flushLines();
       setLiveText(buf.trimStart());
       setLiveLead(!spoke.current);
     },
-    [commit],
+    [commit, flushLines],
   );
+
+  // What the frame timer runs. Deltas keep landing in textBuffer and lines in
+  // pendingLines meanwhile — nothing is dropped, only the number of RENDERS is
+  // bounded.
+  paintRef.current = () => drainBuffer(false);
+
+  useEffect(() => {
+    return () => {
+      if (paintTimer.current) clearTimeout(paintTimer.current);
+    };
+  }, []);
 
   /** A thinking block just ended (something else arrived): commit its row. */
   const endThinking = useCallback(() => {
@@ -208,13 +380,12 @@ export function useEngine(resume: string | true | undefined, workspace: string):
     const ms = Date.now() - thinkingSince.current;
     thinkingSince.current = null;
     commit({ kind: 'reasoning', ms });
-    commit({ kind: 'blank' });
   }, [commit]);
 
   const noticeBlock = useCallback(
     (text: string) => {
       commit({ kind: 'blank' });
-      for (const line of text.split('\n')) commit({ kind: 'notice', text: line ? `  ${line}` : ' ' });
+      for (const line of text.split('\n')) commit({ kind: 'notice', text: line || ' ' });
       commit({ kind: 'blank' });
     },
     [commit],
@@ -225,8 +396,13 @@ export function useEngine(resume: string | true | undefined, workspace: string):
       switch (event.type) {
         case 'session_started': {
           // Fresh session (boot, /clear, resume): repaint from zero.
-          setLines([]);
-          lastKind.current = null;
+          resetLines();
+          toolStarts.current.clear();
+          toolOutput.current.clear();
+          tailId.current = null;
+          tailDirty.current = false;
+          setTail([]);
+          setJobs([]);
           textBuffer.current = '';
           spoke.current = false;
           fence.current = false;
@@ -252,13 +428,24 @@ export function useEngine(resume: string | true | undefined, workspace: string):
             host.current?.send({ type: 'resume_session', id });
           } else if (resumePending.current === true) {
             host.current?.send({ type: 'list_sessions' });
+          } else if (!overdriveDefaultApplied.current) {
+            // Terminal sessions in a TRUSTED folder start autonomous. Applied
+            // once, and only to a session we started fresh: a resumed session
+            // carries its own recorded stance, which the engine restores
+            // deliberately and must not be overridden here.
+            overdriveDefaultApplied.current = true;
+            if (isTrusted(workspaceRef.current) && !event.overdrive) {
+              overdriveIsDefault.current = true;
+              host.current?.send({ type: 'set_overdrive', enabled: true });
+            }
           }
           break;
         }
 
         case 'turn_started':
           setBusy(true);
-          setActivity('working');
+          setStartedAt(Date.now());
+          setActivity({ label: 'thinking', detail: '' });
           spoke.current = false;
           fence.current = false; // an unclosed fence must not bleed across turns
           setLiveLead(true);
@@ -268,8 +455,8 @@ export function useEngine(resume: string | true | undefined, workspace: string):
         case 'text_delta':
           endThinking();
           textBuffer.current += event.text;
-          drainBuffer(false);
-          setActivity('responding');
+          schedulePaint();
+          setActivity({ label: 'responding', detail: '' });
           break;
 
         case 'thinking_delta':
@@ -277,15 +464,37 @@ export function useEngine(resume: string | true | undefined, workspace: string):
             drainBuffer(true);
             thinkingSince.current = Date.now();
           }
-          setActivity('thinking');
+          setActivity({ label: 'thinking', detail: '' });
           break;
 
         case 'tool_call_started': {
           endThinking();
           drainBuffer(true);
-          const target = clip(event.description ?? '', TARGET_MAX) || event.tool;
+          // The COMMAND, not the model's prose about it — see toolLabel.ts.
+          const target = clip(toolTarget(event.input, event.description), TARGET_MAX);
           toolStarts.current.set(event.id, { tool: event.tool, target });
-          setActivity(`${event.tool.toLowerCase()} · ${target}`);
+          // Only the newest call owns the live tail; a nested/parallel call
+          // that streams later simply takes it over.
+          tailId.current = event.id;
+          toolOutput.current.set(event.id, '');
+          setTail([]);
+          setActivity({ label: event.tool.toLowerCase(), detail: target });
+          break;
+        }
+
+        // A running command's own stdout/stderr. Buffered per call and painted
+        // on the same frame timer as prose — bash.ts already batches these to
+        // ~4/sec, but a parallel build plus a stream must still not outpace the
+        // terminal.
+        case 'tool_output_delta': {
+          const prev = toolOutput.current.get(event.id);
+          if (prev === undefined) break; // its call already finished
+          const next = prev + event.text;
+          toolOutput.current.set(event.id, next.length > OUTPUT_CAP ? next.slice(-OUTPUT_CAP) : next);
+          if (event.id === tailId.current) {
+            tailDirty.current = true;
+            schedulePaint();
+          }
           break;
         }
 
@@ -295,17 +504,35 @@ export function useEngine(resume: string | true | undefined, workspace: string):
           commit({
             kind: 'tool',
             verb: (event.subagent ? '·' : '') + event.tool.toLowerCase(),
-            target: started?.target ?? event.tool,
+            target: started?.target ?? '',
             metric: clip(event.resultPreview, METRIC_MAX) || (event.isError ? 'error' : 'ok'),
             status: event.isError ? 'fail' : 'ok',
           });
+          // Whatever the command actually said, kept under its row. Tools that
+          // never stream (Read, Grep, Edit) collected nothing, so they add
+          // nothing — this only fires for shell and workflow work.
+          const output = toolOutput.current.get(event.id) ?? '';
+          toolOutput.current.delete(event.id);
+          if (event.id === tailId.current) {
+            tailId.current = null;
+            tailDirty.current = false;
+            setTail([]);
+          }
+          const rows = lastLines(output, COMMIT_ROWS);
+          if (rows.length > 0) {
+            const total = countLines(output);
+            if (total > rows.length) {
+              commit({ kind: 'output', text: `… ${total - rows.length} earlier lines`, dim: true });
+            }
+            for (const row of rows) commit({ kind: 'output', text: row });
+          }
           break;
         }
 
         case 'agent_spawned':
           endThinking();
           drainBuffer(true);
-          commit({ kind: 'agent', text: clip(event.agentDesc, TARGET_MAX + 16), status: 'ok' });
+          commit({ kind: 'agent', text: clip(event.agentDesc, TARGET_MAX), status: 'ok' });
           break;
 
         case 'agent_finished':
@@ -347,6 +574,29 @@ export function useEngine(resume: string | true | undefined, workspace: string):
           setTasks(event.tasks);
           break;
 
+        // Work that runs OUTSIDE a turn: turn_started never fires for it, so
+        // ignoring this event made /compact and every backgrounded command look
+        // like the session had simply stopped responding.
+        case 'background_notification': {
+          const description = event.payload?.description ?? event.taskId;
+          if (event.kind === 'start') {
+            setJobs((js) =>
+              js.some((j) => j.taskId === event.taskId) ? js : [...js, { taskId: event.taskId, description }],
+            );
+            commit({ kind: 'notice', text: `⟳ ${description} — started` });
+          } else if (event.kind === 'exit') {
+            setJobs((js) => js.filter((j) => j.taskId !== event.taskId));
+            const code = event.payload?.code;
+            const how = event.payload?.stopped
+              ? 'stopped'
+              : typeof code === 'number' && code !== 0
+                ? `exit ${code}`
+                : 'done';
+            commit({ kind: 'notice', text: `⟳ ${description} — ${how}` });
+          }
+          break;
+        }
+
         // A just-installed addon must be invocable immediately: the event
         // carries the refreshed registry, and the engine is the only party
         // allowed to derive `/<name>` entries — adopting it wholesale is the
@@ -367,13 +617,15 @@ export function useEngine(resume: string | true | undefined, workspace: string):
           break;
 
         case 'retry_status':
-          setActivity(`retry #${event.attempt} in ${Math.round(event.delayMs / 1000)}s — ${event.reason}`);
+          setActivity({
+            label: `retry #${event.attempt}`,
+            detail: `in ${Math.round(event.delayMs / 1000)}s — ${event.reason}`,
+          });
           break;
 
         case 'turn_finished':
           endThinking();
           drainBuffer(true);
-          commit({ kind: 'blank' });
           if (event.stopReason === 'aborted') {
             commit({ kind: 'interrupted' });
           } else {
@@ -390,8 +642,9 @@ export function useEngine(resume: string | true | undefined, workspace: string):
             output: event.usage.outputTokens,
             warn: event.contextWarn ?? m.warn,
           }));
+          flushLines();
           setBusy(false);
-          setActivity('working');
+          setActivity(IDLE_ACTIVITY);
           break;
 
         case 'command_output':
@@ -403,25 +656,25 @@ export function useEngine(resume: string | true | undefined, workspace: string):
           break;
 
         case 'session_list':
+          // ONLY the picker consumes this. `/sessions` makes the engine emit a
+          // session_list AND a command_output listing the same sessions, so
+          // rendering both printed the roster twice.
           if (resumePending.current === true) {
-            // The --resume picker's data arrived.
             resumePending.current = undefined;
             if (event.sessions.length > 0) setSessionPicker(event.sessions);
             else noticeBlock('no saved sessions in this workspace');
-          } else {
-            // Ordinary /sessions output.
-            noticeBlock(
-              event.sessions
-                .map((s) => `${s.id}  ${s.label ?? s.firstUserMessage ?? '(empty)'}${s.model ? ` · ${s.model}` : ''}`)
-                .join('\n') || 'no saved sessions in this workspace',
-            );
           }
           break;
 
         case 'overdrive_changed':
           setOverdrive(event.enabled);
           overdriveRef.current = event.enabled;
-          noticeBlock(`OVERDRIVE ${event.enabled ? 'ON — nothing asks' : 'off'}`);
+          if (event.enabled && overdriveIsDefault.current) {
+            overdriveIsDefault.current = false;
+            noticeBlock('OVERDRIVE is ON — the default for a trusted folder. /overdrive off to disable.');
+          } else {
+            noticeBlock(`OVERDRIVE ${event.enabled ? 'ON — nothing asks' : 'off'}`);
+          }
           break;
 
         case 'model_catalog':
@@ -472,10 +725,11 @@ export function useEngine(resume: string | true | undefined, workspace: string):
           break;
       }
     },
-    [commit, drainBuffer, endThinking, noticeBlock],
+    [commit, drainBuffer, endThinking, flushLines, noticeBlock, resetLines, schedulePaint, setActivity],
   );
 
   const [picker, setPicker] = useState<Profile[] | null>(null);
+  const [trustGate, setTrustGate] = useState<string | null>(null);
   const spawnRef = useRef<EngineSpawn | null>(null);
   const workspaceRef = useRef(workspace);
 
@@ -483,7 +737,7 @@ export function useEngine(resume: string | true | undefined, workspace: string):
     if (host.current || spawnRef.current === null) return;
     const h = startHost(spawnRef.current, workspaceRef.current, {
       onEvent: handleEvent,
-      onStderr: (line) => commit({ kind: 'notice', text: `  ${line}` }),
+      onStderr: (line) => commit({ kind: 'notice', text: line }),
       onExit: (code) => {
         setBusy(false);
         setFatal(`engine exited${code === null ? '' : ` (code ${code})`}`);
@@ -492,20 +746,13 @@ export function useEngine(resume: string | true | undefined, workspace: string):
     host.current = h;
   }, [commit, handleEvent]);
 
-  // Resolve the engine spawn once. Packaged: the sibling engine.cjs through
-  // Electron-as-Node; dev: the ~/.magentra-tui.json checkout (whose actionable
-  // error text lands as the fatal banner). When the workspace has no
-  // credentials and saved profiles exist, hold the spawn and offer the picker
-  // instead — a new folder becomes usable by choosing a profile, exactly as
-  // the IDE's "apply a profile" would have connected it.
-  useEffect(() => {
-    try {
-      spawnRef.current = resolveEngineSpawn(workspaceRef.current);
-    } catch (err) {
-      setFatal(err instanceof Error ? err.message : String(err));
-      return;
-    }
-
+  /**
+   * Everything that must happen before the workspace has credentials in it:
+   * the profile picker, or a note that there is nothing to pick. Runs only
+   * once trust is settled — writing an API key into `<ws>/.env` is itself an
+   * act of trusting the folder.
+   */
+  const connectThenBoot = useCallback(() => {
     if (!workspaceConnected(workspaceRef.current)) {
       const profiles = readProfiles();
       if (profiles.length > 0) {
@@ -514,11 +761,31 @@ export function useEngine(resume: string | true | undefined, workspace: string):
       }
       commit({
         kind: 'notice',
-        text: `  no credentials in this folder and no saved profiles (${profilesPath()})`,
+        text: `no credentials in this folder and no saved profiles (${profilesPath()})`,
       });
     }
-
     boot();
+  }, [boot, commit]);
+
+  // Resolve the engine spawn once. Packaged: the sibling engine.cjs through
+  // Electron-as-Node; dev: the ~/.magentra-tui.json checkout (whose actionable
+  // error text lands as the fatal banner).
+  useEffect(() => {
+    try {
+      spawnRef.current = resolveEngineSpawn(workspaceRef.current);
+    } catch (err) {
+      setFatal(err instanceof Error ? err.message : String(err));
+      return;
+    }
+
+    if (!isTrusted(workspaceRef.current)) {
+      setTrustGate(workspaceRef.current);
+      return; // nothing spawns, nothing is written, until this is answered
+    }
+
+    connectThenBoot();
+    // The host is torn down explicitly on ctrl+c / /exit; this covers an
+    // unmount from any other cause.
     return () => host.current?.kill();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -527,11 +794,24 @@ export function useEngine(resume: string | true | undefined, workspace: string):
     host.current?.send(request);
   }, []);
 
+  /** Send whatever answers the round collected and clear the prompt. */
+  const settleQuestions = useCallback(
+    (p: Extract<PendingPrompt, { kind: 'question' }>) => {
+      const answers: Record<string, string[]> = {};
+      p.questions.forEach((_, i) => (answers[`q:${i}`] = p.picked[i] ?? []));
+      setPrompt(null);
+      promptRef.current = null;
+      send({ type: 'question_response', id: p.id, answers });
+    },
+    [send],
+  );
+
   return {
     lines,
     liveText,
     liveLead,
     busy,
+    startedAt,
     activity,
     meters,
     model,
@@ -539,8 +819,25 @@ export function useEngine(resume: string | true | undefined, workspace: string):
     overdrive,
     commands,
     tasks,
+    tail,
+    jobs,
     prompt,
     fatal,
+    trustGate,
+
+    acceptTrust: useCallback(() => {
+      try {
+        trustFolder(workspaceRef.current);
+      } catch (err) {
+        commit({
+          kind: 'error',
+          text: `could not record trust: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      setTrustGate(null);
+      connectThenBoot();
+    }, [commit, connectThenBoot]),
+
     picker,
 
     pickProfile: useCallback(
@@ -555,7 +852,7 @@ export function useEngine(resume: string | true | undefined, workspace: string):
         }
         commit({
           kind: 'notice',
-          text: `  profile "${profile.name}" (${describeProfile(profile)}) → .env + .magentra/settings.json`,
+          text: `profile "${profile.name}" (${describeProfile(profile)}) → .env + .magentra/settings.json`,
         });
         setPicker(null);
         boot();
@@ -594,10 +891,11 @@ export function useEngine(resume: string | true | undefined, workspace: string):
         commit({ kind: 'user', text });
         commit({ kind: 'blank' });
         setBusy(true);
-        setActivity('working');
+        setStartedAt(Date.now());
+        setActivity({ label: 'thinking', detail: '' });
         send({ type: 'user_message', text });
       },
-      [commit, send],
+      [commit, send, setActivity],
     ),
 
     steer: useCallback(
@@ -641,11 +939,6 @@ export function useEngine(resume: string | true | undefined, workspace: string):
       send({ type: 'set_overdrive', enabled: !overdriveRef.current });
     }, [send]),
 
-    clearLocal: useCallback(() => {
-      setLines([]);
-      lastKind.current = null;
-    }, []),
-
     echo: useCallback((text: string) => commit({ kind: 'user', text }), [commit]),
 
     printNotice: useCallback((text: string) => noticeBlock(text), [noticeBlock]),
@@ -658,7 +951,7 @@ export function useEngine(resume: string | true | undefined, workspace: string):
         promptRef.current = null;
         commit({
           kind: 'notice',
-          text: `  ${p.tool}: ${decision.replace('_', ' ')}`,
+          text: `${p.tool}: ${decision.replace(/_/g, ' ')}`,
         });
         send({ type: 'permission_response', id: p.id, decision });
       },
@@ -682,20 +975,16 @@ export function useEngine(resume: string | true | undefined, workspace: string):
         }
 
         p.picked[p.index] = [label];
-        commit({ kind: 'notice', text: `  ${q.header}: ${label}` });
+        commit({ kind: 'notice', text: `${q.header}: ${label}` });
         if (p.index + 1 < p.questions.length) {
           const next = { ...p, index: p.index + 1 };
           setPrompt(next);
           promptRef.current = next;
         } else {
-          const answers: Record<string, string[]> = {};
-          p.questions.forEach((_, i) => (answers[`q:${i}`] = p.picked[i] ?? []));
-          setPrompt(null);
-          promptRef.current = null;
-          send({ type: 'question_response', id: p.id, answers });
+          settleQuestions(p);
         }
       },
-      [commit, send],
+      [commit, settleQuestions],
     ),
 
     confirmQuestion: useCallback(() => {
@@ -703,19 +992,27 @@ export function useEngine(resume: string | true | undefined, workspace: string):
       if (!p || p.kind !== 'question') return;
       const q = p.questions[p.index]!;
       if (!q.multiSelect) return;
-      commit({ kind: 'notice', text: `  ${q.header}: ${(p.picked[p.index] ?? []).join(', ') || '(none)'}` });
+      commit({ kind: 'notice', text: `${q.header}: ${(p.picked[p.index] ?? []).join(', ') || '(none)'}` });
       if (p.index + 1 < p.questions.length) {
         const next = { ...p, index: p.index + 1 };
         setPrompt(next);
         promptRef.current = next;
       } else {
-        const answers: Record<string, string[]> = {};
-        p.questions.forEach((_, i) => (answers[`q:${i}`] = p.picked[i] ?? []));
-        setPrompt(null);
-        promptRef.current = null;
-        send({ type: 'question_response', id: p.id, answers });
+        settleQuestions(p);
       }
-    }, [commit, send]),
+    }, [commit, settleQuestions]),
+
+    // esc on a question card. It used to be wired to confirmQuestion, which
+    // returns immediately for a single-select question — so the advertised
+    // "esc skips" did nothing at all and the card could not be dismissed. The
+    // engine settles a round with whatever it was given and reports the rest
+    // as "(no answer)", so answering nothing is a legitimate reply.
+    skipQuestions: useCallback(() => {
+      const p = promptRef.current;
+      if (!p || p.kind !== 'question') return;
+      commit({ kind: 'notice', text: 'question skipped' });
+      settleQuestions(p);
+    }, [commit, settleQuestions]),
 
     shutdown: useCallback(() => host.current?.kill(), []),
   };

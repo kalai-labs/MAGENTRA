@@ -25,7 +25,19 @@ const ROOT = process.cwd();
 const rel = (p) => relative(ROOT, p).split(sep).join("/");
 
 // ── file collection ────────────────────────────────────────────────────────
-const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".git", "out", "fonts", ".claude"]);
+// build-resources/ is packaging output (minified copies of app/ plus the
+// bundled engine.cjs and tui.mjs). Indexing it reported every frame twice,
+// once as a real handler and once as a hit inside its own minified bundle.
+const SKIP_DIRS = new Set([
+  "node_modules",
+  "dist",
+  "build",
+  "build-resources",
+  ".git",
+  "out",
+  "fonts",
+  ".claude",
+]);
 
 function walk(dir, exts, acc = []) {
   let entries;
@@ -48,7 +60,11 @@ function walk(dir, exts, acc = []) {
 const engineFiles = walk(join(ROOT, "engine"), [".ts"]).filter((f) => f.includes(`${sep}src${sep}`));
 const appFiles = walk(join(ROOT, "app"), [".js", ".mjs", ".html"]);
 const toolFiles = walk(join(ROOT, "tools"), [".mjs", ".js", ".ts"]);
-const allFiles = [...engineFiles, ...appFiles, ...toolFiles];
+// tui/ is the terminal frontend. It is typechecked (it is a tsc -b project),
+// but it talks to the engine over the SAME bare frame strings app/ does, so
+// --frame must see it or a protocol rename looks safe when it is not.
+const tuiFiles = walk(join(ROOT, "tui"), [".ts", ".tsx"]).filter((f) => f.includes(`${sep}src${sep}`));
+const allFiles = [...engineFiles, ...appFiles, ...toolFiles, ...tuiFiles];
 
 const source = new Map();
 for (const f of allFiles) {
@@ -296,7 +312,7 @@ if (!argv.length) {
   node .claude/skills/bigboycoding/blast-radius.mjs --frame <frame-type>
   node .claude/skills/bigboycoding/blast-radius.mjs --entrypoints
 
-Indexed ${allFiles.length} files (${engineFiles.length} engine .ts, ${appFiles.length} app, ${toolFiles.length} tools).`);
+Indexed ${allFiles.length} files (${engineFiles.length} engine .ts, ${appFiles.length} app, ${toolFiles.length} tools, ${tuiFiles.length} tui).`);
   process.exit(0);
 }
 

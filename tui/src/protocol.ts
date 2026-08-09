@@ -149,14 +149,30 @@ export type CoreEvent =
   | { type: "model_catalog"; models: string[] }
   | { type: "cwd_changed"; cwd: string; worktree: boolean }
   /**
-   * Event types this TUI does not consume (task_list_updated, file_edited,
-   * background_notification, addons_updated, session_list, addon_draft,
-   * addon_export, tool_output_delta payload use…). They parse fine and fall
-   * through handleEvent's default arm — listed loosely here so the wire can
-   * grow without breaking the compile.
+   * Work that runs OUTSIDE a turn: a manual /compact, a backgrounded Bash job,
+   * addon generation. turn_started never fires for these, so a frontend that
+   * ignores them shows nothing at all while they run — /compact looked frozen.
+   * `kind` is "start" | "exit"; the payload carries a description and, on exit,
+   * an exit code / output file.
    */
   | {
-      type: "file_edited" | "background_notification" | "addon_draft" | "addon_export";
+      type: "background_notification";
+      taskId: string;
+      kind: string;
+      payload?: {
+        description?: string;
+        code?: number | null;
+        outputFile?: string;
+        stopped?: boolean;
+      };
+    }
+  /**
+   * Event types this TUI does not consume. They parse fine and fall through
+   * handleEvent's default arm — listed loosely here so the wire can grow
+   * without breaking the compile.
+   */
+  | {
+      type: "file_edited" | "addon_draft" | "addon_export";
     };
 
 /** Frontend -> core. Only the frames this TUI sends. */

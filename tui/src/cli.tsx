@@ -34,7 +34,13 @@ const resume = parseResume(argv);
 const wantsGui = argv.includes('--gui');
 const positional = argv.filter((a, i) => !a.startsWith('-') && argv[i - 1] !== '--resume');
 
-const workspace = positional[0] ? resolve(positional[0]) : (process.env.INIT_CWD ?? process.cwd());
+// INIT_CWD only means "where npm was invoked", and only in a dev run through
+// an npm script — npm chdir's to the package root before running one. A
+// packaged `magentra` is launched by the shell directly, so process.cwd() is
+// already the folder the user is standing in; honouring a stale INIT_CWD
+// inherited from some ancestor npm process would silently open the wrong tree.
+const launchDir = isPackagedRun() ? process.cwd() : (process.env.INIT_CWD ?? process.cwd());
+const workspace = positional[0] ? resolve(positional[0]) : launchDir;
 
 if (positional[0] && !existsSync(workspace)) {
   console.error(`magentra: no such directory: ${workspace}`);

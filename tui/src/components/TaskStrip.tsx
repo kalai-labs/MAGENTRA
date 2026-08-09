@@ -17,12 +17,14 @@
 
 import { Box, Text } from 'ink';
 import { glyph, theme } from '../theme.js';
+import { truncate } from '../markdown.js';
 import type { TaskItem } from '../protocol.js';
 
 const MAX_ROWS = 6;
 
-export function TaskStrip({ tasks }: { tasks: TaskItem[] }) {
+export function TaskStrip({ tasks, width }: { tasks: TaskItem[]; width: number }) {
   if (tasks.length === 0) return null;
+  const room = Math.max(16, width - 8);
 
   const done = tasks.filter((t) => t.status === 'completed');
   const currentIdx = tasks.findIndex((t) => t.status === 'in_progress');
@@ -59,7 +61,7 @@ export function TaskStrip({ tasks }: { tasks: TaskItem[] }) {
               {'  '}
               {glyph.taskDone}{' '}
               <Text color={theme.muted} strikethrough>
-                {row.subject}
+                {truncate(row.subject, room)}
               </Text>
             </Text>
           );
@@ -72,7 +74,7 @@ export function TaskStrip({ tasks }: { tasks: TaskItem[] }) {
                 {glyph.taskNow}{' '}
               </Text>
               <Text color={theme.prose} bold>
-                {row.activeForm ?? row.subject}
+                {truncate(row.activeForm ?? row.subject, room)}
               </Text>
             </Text>
           );
@@ -80,7 +82,7 @@ export function TaskStrip({ tasks }: { tasks: TaskItem[] }) {
         return (
           <Text key={row.id} color={theme.muted}>
             {'  '}
-            {glyph.taskTodo} {row.subject}
+            {glyph.taskTodo} {truncate(row.subject, room)}
           </Text>
         );
       })}

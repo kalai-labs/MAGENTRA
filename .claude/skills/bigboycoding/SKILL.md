@@ -8,11 +8,12 @@ description: Read before you write. Use when changing, refactoring, renaming, de
 Think in whole-system terms before touching a line. This repo has a trap:
 
 ```
-engine/   87 .ts files   — typechecked by `npm run build` (tsc -b)
-app/      39 .js/.html   — typechecked by NOTHING
+engine/   71 .ts files   — typechecked by `npm run build` (tsc -b)
+tui/      15 .ts/.tsx    — typechecked by `npm run build` (tsc -b)
+app/      43 .js/.html   — typechecked by NOTHING
 ```
 
-`tsc -b` covers **only `engine/*`**. All of `app/` — the Electron main process,
+`tsc -b` covers `engine/*` and `tui/*`, and **neither has a unit test suite**. All of `app/` — the Electron main process,
 the preload bridge, and every renderer module — is plain JavaScript outside the
 compiler. And `engine/*` has **no unit test suite at all**; tsc is its only
 automated gate.
@@ -151,9 +152,23 @@ handing it summaries proves nothing):
 npm run build && node .claude/skills/bigboycoding/addon-check.mjs
 ```
 
-All four were verified passing on 2026-08-01 (`permission-check` 23,
-`addon-check` 19, `tools-check` 61 across 27 tools), each with its key assertion
-confirmed to FAIL when the invariant is deliberately broken. Write a new
+`tui-layout-check.mjs` covers the terminal frontend, whose two invariants tsc
+cannot see: the layout core (`tui/src/markdown.ts` does its own wrapping and
+right-alignment in display CELLS, because Ink lays `<Static>` out as an
+absolutely positioned content-sized box where `flexGrow` never reaches the
+right edge), and folder trust (global, inherited by subfolders, matched on path
+SEGMENTS so `/home/me/work` never trusts `/home/me/workspace`). It also pins
+the no-reflow guarantee: the live streaming line and the committed line must be
+laid out by the same function at the same width:
+
+```bash
+npm run build && node .claude/skills/bigboycoding/tui-layout-check.mjs
+```
+
+All five were verified passing (`permission-check` 23, `addon-check` 19,
+`tools-check` 61 across 27 tools, `tui-layout-check` 61 on 2026-08-09), each
+with its key assertion confirmed to FAIL when the invariant is deliberately
+broken. Write a new
 `*-check.mjs` here on the same pattern when you change an engine invariant that
 nothing else guards.
 

@@ -435,9 +435,30 @@ function makeRowExpandable(rowEl) {
   });
 }
 
+/**
+ * Find the row a tool event belongs to, wherever it lives.
+ *
+ * A SUBAGENT's tool rows are stored on its agent card (`card.toolRows`), not in
+ * the flat map — onToolCallStarted/Finished both branch on `event.subagent` to
+ * pick the right one. But `tool_output_delta` carries no subagent tag at all
+ * (engine/protocol only stamps that onto tool_call_started/finished), so a flat
+ * lookup silently dropped every delta from a subagent's shell command: the live
+ * tail simply never appeared inside an agent card. Resolving by id across both
+ * places fixes it without touching the wire.
+ */
+function findToolRow(id) {
+  const own = toolRows.get(id);
+  if (own) return own;
+  for (const card of agentCards.values()) {
+    const row = card.toolRows && card.toolRows.get(id);
+    if (row) return row;
+  }
+  return null;
+}
+
 /** Live tail: incremental tool output renders under its row while it runs. */
 function onToolOutputDelta(event) {
-  const row = toolRows.get(event.id);
+  const row = findToolRow(event.id);
   if (!row || !row.rowEl.isConnected) return;
   if (!row.tailEl) {
     row.tailEl = document.createElement("pre");

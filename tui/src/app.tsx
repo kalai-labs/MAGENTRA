@@ -7,12 +7,16 @@
  *                 terminal. Wheel, Shift+PageUp and terminal search operate on
  *                 real scrollback, and quitting leaves the session readable.
  *
- *   live region   streaming prose line + activity + blocking prompt + composer.
+ *   live region   streaming prose + activity + blocking prompt + composer.
  *                 The only thing that repaints.
  *
  * All intelligence is the engine's. The TUI translates events into lines,
  * forwards input as frames, and renders the engine's own token figures — it
  * computes nothing itself.
+ *
+ * Terminal width is threaded down to every committed line on purpose: <Static>
+ * boxes are content-sized by Ink, so nothing inside them can discover the
+ * width for itself (see markdown.ts).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -25,10 +29,15 @@ import { ProfilePicker } from './components/ProfilePicker.js';
 import { Prompt } from './components/Prompt.js';
 import { SessionPicker } from './components/SessionPicker.js';
 import { TaskStrip } from './components/TaskStrip.js';
+import { ToolTail } from './components/ToolTail.js';
 import { TranscriptLine } from './components/TranscriptLine.js';
+import { TrustGate } from './components/TrustGate.js';
 import { useEngine } from './engine/useEngine.js';
+import { configureMarks } from './markdown.js';
 import { theme } from './theme.js';
 import type { SlashCommandInfo } from './protocol.js';
+
+configureMarks({ code: theme.code, link: theme.link, muted: theme.muted });
 
 /** The only commands the TUI dispatches itself; everything else is the engine's. */
 const LOCAL_COMMANDS: SlashCommandInfo[] = [
@@ -46,7 +55,12 @@ export function App({ resume, workspace }: { resume?: string | true; workspace: 
   const [value, setValue] = useState('');
   const [cursor, setCursor] = useState(0);
   const [width, setWidth] = useState(stdout?.columns ?? 80);
-  const [elapsed, setElapsed] = useState(0);
+  const [rows, setRows] = useState(stdout?.rows ?? 24);
+
+  // How many wrapped rows the streaming line may occupy before it starts
+  // showing only its tail — enough that ordinary paragraphs never clip, capped
+  // so the composer cannot be pushed off a short terminal.
+  const liveRows = Math.max(3, Math.min(14, rows - 12));
 
   // Highlight index shared by whichever chooser is active (profile picker,
   // permission card, question card). Arrows move it, ↵ selects it; number keys
@@ -78,7 +92,7 @@ export function App({ resume, workspace }: { resume?: string | true; workspace: 
 
   const palette = useMemo(() => {
     const none = { mode: 'none' as const, items: [] as SlashCommandInfo[], start: 0 };
-    if (palHidden || engine.prompt || engine.picker || engine.fatal) return none;
+    if (palHidden || engine.prompt || engine.picker || engine.trustGate || engine.fatal) return none;
 
     // Dispatch position: the whole composer is one leading /token.
     if (/^\/\S*$/.test(value)) {
@@ -91,7 +105,7 @@ export function App({ resume, workspace }: { resume?: string | true; workspace: 
     }
 
     // Naming position: the word being typed at the cursor starts with '/'.
-    const start = value.lastIndexOf(' ', cursor - 1) + 1;
+    const start = Math.max(value.lastIndexOf(' ', cursor - 1), value.lastIndexOf('\n', cursor - 1)) + 1;
     const token = value.slice(start, cursor);
     if (start > 0 && token.startsWith('/')) {
       const q = token.toLowerCase();
@@ -102,7 +116,7 @@ export function App({ resume, workspace }: { resume?: string | true; workspace: 
       };
     }
     return none;
-  }, [value, cursor, palHidden, engine.commands, engine.prompt, engine.picker, engine.fatal]);
+  }, [value, cursor, palHidden, engine.commands, engine.prompt, engine.picker, engine.trustGate, engine.fatal]);
   const paletteItems = palette.items;
 
   // Recall of previously submitted input, via up/down arrows.
@@ -111,23 +125,15 @@ export function App({ resume, workspace }: { resume?: string | true; workspace: 
 
   useEffect(() => {
     if (!stdout) return;
-    const onResize = () => setWidth(stdout.columns);
+    const onResize = () => {
+      setWidth(stdout.columns);
+      setRows(stdout.rows);
+    };
     stdout.on('resize', onResize);
     return () => {
       stdout.off('resize', onResize);
     };
   }, [stdout]);
-
-  // Elapsed ticker for the activity line; only runs while a turn is in flight.
-  useEffect(() => {
-    if (!engine.busy) {
-      setElapsed(0);
-      return;
-    }
-    const started = Date.now();
-    const id = setInterval(() => setElapsed(Date.now() - started), 100);
-    return () => clearInterval(id);
-  }, [engine.busy]);
 
   // Without a tty there is no way to type; say so and leave.
   useEffect(() => {
@@ -159,7 +165,9 @@ export function App({ resume, workspace }: { resume?: string | true; workspace: 
       return;
     }
 
-    if (text.startsWith('/')) {
+    // Only a SINGLE-LINE message can be a slash command. A pasted block whose
+    // first character happens to be `/` (a path, a diff) is a message.
+    if (text.startsWith('/') && !text.includes('\n')) {
       const [head, ...rest] = text.slice(1).split(/\s+/);
       const cmd = (head ?? '').toLowerCase();
       const args = rest.join(' ');
@@ -186,6 +194,7 @@ export function App({ resume, workspace }: { resume?: string | true; workspace: 
       }
 
       if (cmd === 'overdrive' && !args) {
+        engine.echo(text);
         engine.toggleOverdrive();
         return;
       }
@@ -225,6 +234,19 @@ export function App({ resume, workspace }: { resume?: string | true; workspace: 
       if (key.ctrl && input === 'c') {
         engine.shutdown();
         exit();
+        return;
+      }
+
+      // Trust owns the keyboard before anything is spawned or written.
+      if (engine.trustGate) {
+        if (input === 'y' || input === 'Y' || key.return) {
+          engine.acceptTrust();
+          return;
+        }
+        if (input === 'n' || input === 'N' || key.escape) {
+          engine.shutdown();
+          exit();
+        }
         return;
       }
 
@@ -311,7 +333,7 @@ export function App({ resume, workspace }: { resume?: string | true; workspace: 
         const q = engine.prompt.questions[engine.prompt.index]!;
         const count = q.options.length;
         if (key.escape) {
-          engine.confirmQuestion();
+          engine.skipQuestions();
           return;
         }
         if (key.upArrow) {
@@ -332,6 +354,17 @@ export function App({ resume, workspace }: { resume?: string | true; workspace: 
           return;
         }
         if (/^[1-9]$/.test(input)) engine.pickOption(Number(input) - 1);
+        return;
+      }
+
+      // A PASTE arrives as one chunk containing newlines. Ink reports no
+      // `return` key for it, so it must be inserted verbatim rather than run
+      // through the keypress path — which used to strip every newline and
+      // silently glue the lines together ("first linesecond linethird").
+      if (input.length > 1 && /[\r\n]/.test(input)) {
+        const pasted = input.replace(/\r\n?/g, '\n');
+        setValue((v) => v.slice(0, cursor) + pasted + v.slice(cursor));
+        setCursor((c) => c + pasted.length);
         return;
       }
 
@@ -437,23 +470,29 @@ export function App({ resume, workspace }: { resume?: string | true; workspace: 
     { isActive: interactive },
   );
 
+  const showComposer = interactive && !engine.fatal && !engine.picker && !engine.trustGate;
+
   return (
     <Box flexDirection="column">
-      <Static items={engine.lines}>{(line) => <TranscriptLine key={line.id} line={line} />}</Static>
+      <Static items={engine.lines}>
+        {(line) => <TranscriptLine key={line.id} line={line} width={width} />}
+      </Static>
 
       <Box flexDirection="column">
-        <LiveLine text={engine.liveText} lead={engine.liveLead} width={width} />
+        <LiveLine text={engine.liveText} lead={engine.liveLead} width={width} maxRows={liveRows} />
         {engine.busy && !engine.prompt ? (
-          <Activity elapsed={elapsed} activity={engine.activity} />
+          <Activity startedAt={engine.startedAt} activity={engine.activity} />
         ) : (
           <Text> </Text>
         )}
+        <ToolTail tail={engine.tail} jobs={engine.jobs} width={width} />
         {engine.busy || engine.tasks.some((t) => t.status === 'in_progress') ? (
-          <TaskStrip tasks={engine.tasks} />
+          <TaskStrip tasks={engine.tasks} width={width} />
         ) : null}
+        {engine.trustGate ? <TrustGate workspace={engine.trustGate} width={width} /> : null}
         {engine.picker ? <ProfilePicker profiles={engine.picker} selected={sel} /> : null}
         {engine.sessionPicker ? <SessionPicker sessions={engine.sessionPicker} selected={sel} /> : null}
-        {engine.prompt ? <Prompt prompt={engine.prompt} selected={sel} /> : null}
+        {engine.prompt ? <Prompt prompt={engine.prompt} selected={sel} width={width} /> : null}
         <CommandPalette items={paletteItems} selected={palSel} naming={palette.mode === 'name'} />
         {engine.fatal ? (
           <Box flexDirection="column">
@@ -465,7 +504,7 @@ export function App({ resume, workspace }: { resume?: string | true; workspace: 
             <Text color={theme.muted}>ctrl+c to exit</Text>
           </Box>
         ) : null}
-        {interactive && !engine.fatal && !engine.picker ? (
+        {showComposer ? (
           <Composer
             value={value}
             cursor={cursor}

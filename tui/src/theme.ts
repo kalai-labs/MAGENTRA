@@ -18,6 +18,11 @@
  * Two speakers, two colours. Green marks what you said; magenta marks what
  * Magentra said. Everything else is machine output and stays neutral, so a
  * glance down the left edge tells you who is talking without reading a word.
+ *
+ * Readability rule, and the reason `userText` is bright rather than dim: the
+ * two things a reader scans for are "where did I ask something" and "what did
+ * it answer". Both are FOREGROUND. Machine activity — the tool rail, the
+ * reasoning rows, the footers — is the only thing allowed to recede.
  */
 
 export const campbell = {
@@ -43,8 +48,8 @@ export const campbell = {
 export const theme = {
   /** Assistant prose — the main reading surface. */
   prose: campbell.brightWhite,
-  /** Echo of what the user typed. Recedes; it's already known. */
-  userText: campbell.white,
+  /** What the user typed. Bright and bold: it anchors the whole transcript. */
+  userText: campbell.brightWhite,
   /** The ❯ prompt marker and success glyphs. You. */
   marker: campbell.brightGreen,
   /** The ◆ marker on everything Magentra says. */
@@ -67,6 +72,12 @@ export const theme = {
   border: campbell.brightBlack,
   /** Composer border while a turn is in flight. */
   borderActive: campbell.brightBlue,
+  /** Inline `code` inside prose — reads as a string, like a tool target. */
+  code: campbell.brightCyan,
+  /** [links](url). */
+  link: campbell.brightBlue,
+  /** Section rules and separators between turns. */
+  divider: campbell.brightBlack,
 } as const;
 
 /** Glyph vocabulary. Kept in one place so the whole app speaks one language. */
@@ -77,12 +88,13 @@ export const glyph = {
   tool: '▸', // ▸  tool call
   fail: '✕', // ✕  failed tool call
   reason: '◌', // ◌  reasoning
-  branch: '└', // └  sub-detail
+  ok: '✓', // ✓  turn completed
+  stop: '⏹', // ⏹  turn interrupted
   taskDone: '✓', // ✓  completed task (checklist, not rail)
   taskNow: '●', // ●  in-progress task
   taskTodo: '○', // ○  pending task
   up: '↑', // ↑  tokens
-  cursor: '█', // █  composer cursor
+  bar: '▌', // ▌  the bar beside a user message
 } as const;
 
 /** Braille spinner — reads as motion without shouting. */
@@ -99,8 +111,19 @@ export const spinnerFrames = [
   '⠏',
 ] as const;
 
-/** Column widths for the tool rail, so every row aligns. */
+/**
+ * Column geometry for the tool rail. The verb column is wide enough for the
+ * longest verb the engine emits (`multiedit`, `webfetch`, `taskupdate`) so the
+ * target column starts at the same place on every row — that alignment is what
+ * lets the eye skim the rail without reading it.
+ */
 export const layout = {
   railIndent: '  ',
-  verbWidth: 6,
+  verbWidth: 10,
+  /** Widest the right-hand metric column is allowed to get. */
+  metricWidth: 22,
 } as const;
+
+/** The gutter every line of Magentra's speech sits behind. */
+export const SPEAKER_MARKER = `${glyph.speaker} `;
+export const SPEAKER_INDENT = '  ';

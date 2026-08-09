@@ -18,12 +18,26 @@ export type LineBody =
    * parsing — decided at commit time by the emitter's fence state.
    */
   | { kind: 'prose'; text: string; lead?: boolean; code?: boolean }
-  /** `┊ ◌ reasoning   4.1s` — one row marking a completed thinking block. */
+  /**
+   * A ``` delimiter. It is not prose and must not be printed as such: it
+   * renders as the top or bottom edge of the block, carrying the info string
+   * (`ts`, `bash`) as a label so the reader can see what the listing is.
+   */
+  | { kind: 'fence'; info: string; open: boolean }
+  /** `┊ ◌ thought   4.1s` — one row marking a completed thinking block. */
   | { kind: 'reasoning'; ms: number }
   /** `┊ ▸ bash   npm test              ok` — one completed tool call. */
   | { kind: 'tool'; verb: string; target: string; metric: string; status: ToolStatus }
   /** `┊ ▸ agent  explore the parser` — a subagent header row. */
   | { kind: 'agent'; text: string; status: ToolStatus }
+  /**
+   * A line of a shell command's actual output, committed under its tool row.
+   *
+   * Only tools that stream (Bash, Workflow) produce these, so an ordinary Read
+   * never adds any. Without them a terminal session showed a command's exit
+   * code and nothing else — you could not see what the command said.
+   */
+  | { kind: 'output'; text: string; dim?: boolean }
   /** Vertical breathing room. */
   | { kind: 'blank' }
   /** Turn footer, from turn_finished — engine figures rendered verbatim. */

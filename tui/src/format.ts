@@ -9,8 +9,3 @@ export function secs(ms: number): string {
 export function tokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
-
-/** Pads a verb into its column without ever truncating it. */
-export function col(text: string, width: number): string {
-  return text.length >= width ? `${text} ` : text.padEnd(width);
-}
