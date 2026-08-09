@@ -10,6 +10,14 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.17.3 — 2026-08-09
+
+### Bug fixes
+
+- new tui enhancements ([b3d4c97](https://github.com/kalai-labs/MAGENTRA/commit/b3d4c977887fbb28ff1c8c249bd9b6cb7a143c25))
+
+[Compare with v0.17.2](https://github.com/kalai-labs/MAGENTRA/compare/v0.17.2...v0.17.3)
+
 ## 0.17.2 — 2026-08-08
 
 ### Bug fixes
