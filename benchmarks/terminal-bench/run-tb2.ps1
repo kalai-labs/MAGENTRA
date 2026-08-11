@@ -57,6 +57,26 @@ param(
     [string]$BaseUrl = "https://api.fireworks.ai/inference/v1",
     [string]$Dataset = "terminal-bench/terminal-bench-2",
 
+    # The harbor agent. Defaults to MAGENTRA; set it to a built-in name (e.g.
+    # "terminus-2") to run a CONTROL on the identical model and endpoint, which
+    # is the only comparison that isolates the harness from the model.
+    [string]$Agent = "magentra_agent:MagentraAgent",
+
+    # How the key reaches the agent. MAGENTRA reads MAGENTRA_API_KEY; harbor's
+    # native litellm agents read the provider's own variable (DEEPINFRA_API_KEY,
+    # OPENAI_API_KEY, ...), so this is a list, not a constant.
+    [string[]]$KeyEnvNames = @("MAGENTRA_API_KEY"),
+
+    # Env var carrying the endpoint. Empty means "do not pass one" — a litellm
+    # provider prefix (deepinfra/...) already implies the endpoint, and passing
+    # a stray base url would be ignored at best.
+    [string]$BaseUrlEnvName = "MAGENTRA_BASE_URL",
+
+    # Model id for the liveness probe, which talks to $BaseUrl directly and so
+    # needs the ENDPOINT's own id — not a litellm-prefixed one. Defaults to
+    # $Model with a leading provider prefix stripped.
+    [string]$ProbeModel,
+
     # Tasks per harbor job. Small batches bound the blast radius of a key dying
     # mid-job; large batches amortise harbor's startup. 6 is a good middle.
     [int]$BatchSize = 6,
@@ -253,7 +273,7 @@ function Test-KeyAlive {
     if ($DryRun) { return $true }
 
     $body = @{
-        model      = $Model
+        model      = $ProbeModel
         messages   = @(@{ role = "user"; content = "ping" })
         max_tokens = 1
     } | ConvertTo-Json -Depth 5 -Compress
@@ -531,12 +551,32 @@ function Invoke-Batch {
     $harborArgs = @(
         "run",
         "-d", $Dataset,
-        "-a", "magentra_agent:MagentraAgent",
+        "-a", $Agent,
         "-m", $Model,
-        "--ae", "MAGENTRA_API_KEY=$($KeyInfo.Key)",
-        "--ae", "MAGENTRA_BASE_URL=$BaseUrl",
         "--environment-build-timeout-multiplier", "3"
     )
+    # The key has to reach BOTH places, because the two agent kinds read it from
+    # different processes:
+    #
+    #   --ae         installed agents (MAGENTRA) run INSIDE the task container,
+    #                and extra_env is how harbor injects env there.
+    #   process env  harbor-native agents (terminus-2) call litellm from the
+    #                HARBOR HOST process, which never sees --ae. Without this a
+    #                terminus run fails every single trial with
+    #                "DeepinfraException - Missing credentials" — observed.
+    #
+    # Setting it per batch rather than once at startup keeps key ROTATION honest
+    # for native agents: the host env always holds the key harbor is currently
+    # being run with.
+    foreach ($name in $KeyEnvNames) {
+        if ($name) {
+            $harborArgs += @("--ae", "$name=$($KeyInfo.Key)")
+            [Environment]::SetEnvironmentVariable($name, $KeyInfo.Key, "Process")
+        }
+    }
+    if ($BaseUrlEnvName) {
+        $harborArgs += @("--ae", "$BaseUrlEnvName=$BaseUrl")
+    }
     if ($AgentTimeoutSec -gt 0) {
         $harborArgs += @("--ae", "MAGENTRA_TB_TIMEOUT_SEC=$AgentTimeoutSec")
     }
@@ -681,6 +721,20 @@ if (-not (Test-Path $StateRoot)) { $null = New-Item -ItemType Directory -Path $S
 # on disk, complete, and resumable by passing the same -Model again.
 $ModelSlug = ($Model -split "/")[-1] -replace "[^A-Za-z0-9._-]", ""
 
+# A ledger is identified by (model, AGENT), never by model alone. Terminus 2 and
+# MAGENTRA on the same model produce the same $ModelSlug, so with a model-only
+# identity the control run would auto-resume the treatment run's finished
+# ledger, see 86/86 already scored, and report the treatment's wins as the
+# control's without launching a container. That failure is silent and produces a
+# number that looks perfect, which is the worst kind.
+$AgentSlug = (($Agent -split "[:/]")[-1] -replace "[^A-Za-z0-9._-]", "")
+if (-not $AgentSlug) { $AgentSlug = "agent" }
+
+# The probe talks to $BaseUrl directly, so it needs the endpoint's own model id.
+if (-not $ProbeModel) {
+    $ProbeModel = $Model -replace "^(deepinfra|openai|anthropic|fireworks_ai|together_ai)/", ""
+}
+
 function Get-StateMeta {
     param([string]$Dir)
     $path = Join-Path $Dir "meta.json"
@@ -699,15 +753,23 @@ if (-not $RunId) {
             $newest = Get-ChildItem -Path $StateRoot -Directory -ErrorAction SilentlyContinue |
                 Where-Object { -not $_.Name.StartsWith("_") } |
                 Where-Object {
-                    # Only resume a run of the SAME model. An unstamped legacy
-                    # directory is skipped rather than guessed at.
+                    # Only resume a run of the SAME model AND the SAME agent. An
+                    # unstamped legacy directory is skipped rather than guessed
+                    # at; one stamped before agents were tracked is treated as
+                    # the default agent, which is what it must have been.
                     $meta = Get-StateMeta $_.FullName
-                    ($null -ne $meta) -and ($meta.model -eq $Model)
+                    $metaAgent = if ($meta -and $meta.agent) { $meta.agent } else { "magentra_agent:MagentraAgent" }
+                    ($null -ne $meta) -and ($meta.model -eq $Model) -and ($metaAgent -eq $Agent)
                 } |
                 Sort-Object LastWriteTime -Descending | Select-Object -First 1
             if ($newest) { $RunId = $newest.Name; Write-Log "Resuming $($newest.Name) (same model)." "Cyan" }
         }
-        if (-not $RunId) { $RunId = "tb2-$ModelSlug-" + (Get-Date).ToString("yyyyMMdd-HHmm") }
+        if (-not $RunId) {
+            # The agent slug is omitted for MAGENTRA so existing run-id shapes
+            # (tb2-<model>-<stamp>) and their resumable directories are unchanged.
+            $prefix = if ($Agent -eq "magentra_agent:MagentraAgent") { "tb2-$ModelSlug" } else { "tb2-$ModelSlug-$AgentSlug" }
+            $RunId = "$prefix-" + (Get-Date).ToString("yyyyMMdd-HHmm")
+        }
     }
 }
 if ($DryRun) { $Fresh = $true }
@@ -727,9 +789,20 @@ if ($existingMeta -and $existingMeta.model -and $existingMeta.model -ne $Model) 
           "Mixing models in one ledger would corrupt the score. Use -Fresh for a new run, " +
           "or pass -Model $($existingMeta.model) to continue that one.")
 }
+# Same refusal on the agent axis. Without it, a control run pointed at the
+# treatment's ledger inherits its rewards and reports them as its own.
+if ($existingMeta) {
+    $existingAgent = if ($existingMeta.agent) { $existingMeta.agent } else { "magentra_agent:MagentraAgent" }
+    if ($existingAgent -ne $Agent) {
+        Fail ("Run '$RunId' belongs to agent $existingAgent, but -Agent is $Agent. " +
+              "Mixing agents in one ledger would attribute one harness's wins to another. " +
+              "Use -Fresh for a new run, or pass -Agent $existingAgent to continue that one.")
+    }
+}
 if (-not $existingMeta) {
     ([ordered]@{
         model     = $Model
+        agent     = $Agent
         baseUrl   = $BaseUrl
         dataset   = $Dataset
         createdAt = (Get-Date).ToString("o")

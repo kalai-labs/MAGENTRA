@@ -88,6 +88,14 @@ param(
     [string]$KeysFile,
     [string]$RunId,
 
+    # Run Terminus 2 — the benchmark authors' reference agent — instead of
+    # MAGENTRA, on the IDENTICAL model, endpoint and task list. The agent is the
+    # only variable that changes, which is the whole point: it isolates the
+    # harness from the model. Terminus scored 52.4% +/-2.6 on GLM 5 on the
+    # public leaderboard, so this also cross-checks our setup against a known
+    # number — if it reproduces, any MAGENTRA delta is real.
+    [switch]$Terminus,
+
     [switch]$IncludeVision,
     [switch]$NoRebuild,
     [switch]$Fresh,
@@ -112,14 +120,13 @@ if (-not (Test-Path $KeysFile)) {
 # The adapter reads this from the environment it is launched in and writes it
 # into the container's ~/.magentra/settings.json. Scoped to this process, so it
 # cannot leak into an unrelated harbor invocation in the same shell.
-if ($ContextWindow -gt 0) {
+if ($ContextWindow -gt 0 -and -not $Terminus) {
     $env:MAGENTRA_TB_CONTEXT_WINDOW = "$ContextWindow"
 } else {
     Remove-Item Env:\MAGENTRA_TB_CONTEXT_WINDOW -ErrorAction SilentlyContinue
 }
 
 $forward = @{
-    Model            = "zai-org/GLM-5"
     BaseUrl          = "https://api.deepinfra.com/v1/openai"
     KeysFile         = $KeysFile
     Concurrency      = $Concurrency
@@ -136,6 +143,21 @@ $forward = @{
     SeedFrom         = @()
 }
 
+if ($Terminus) {
+    # Terminus is a harbor-native litellm agent, so the model needs a provider
+    # prefix (litellm resolves deepinfra/<id> to the same endpoint MAGENTRA hits
+    # directly) and the key must arrive under the provider's own variable. No
+    # base-url env: the provider prefix already determines the endpoint.
+    # run-tb2.ps1 derives the probe model by stripping that prefix, so the
+    # liveness probe still talks plain OpenAI to DeepInfra.
+    $forward["Model"]          = "deepinfra/zai-org/GLM-5"
+    $forward["Agent"]          = "terminus-2"
+    $forward["KeyEnvNames"]    = @("DEEPINFRA_API_KEY")
+    $forward["BaseUrlEnvName"] = ""
+} else {
+    $forward["Model"] = "zai-org/GLM-5"
+}
+
 # Rebuild unless explicitly waived: `npm run app` never compiles the engine and
 # the bundle never rebuilds itself, so "I built it recently" is not evidence.
 if (-not $NoRebuild) { $forward["Rebuild"] = $true }
@@ -146,14 +168,22 @@ if ($Fresh)         { $forward["Fresh"]         = $true }
 if ($DryRun)        { $forward["DryRun"]        = $true }
 if ($ReportOnly)    { $forward["ReportOnly"]    = $true }
 
+$who = if ($Terminus) { "TERMINUS 2 (control)" } else { "MAGENTRA" }
 Write-Host ""
-Write-Host "MAGENTRA - Terminal-Bench 2.0 - DeepInfra GLM-5" -ForegroundColor Cyan
-Write-Host "  model          zai-org/GLM-5   (baseline: Terminus 2 52.4% +/-2.6)"
+Write-Host "$who - Terminal-Bench 2.0 - DeepInfra GLM-5" -ForegroundColor Cyan
+Write-Host "  agent          $(if ($Terminus) { 'terminus-2' } else { 'magentra_agent:MagentraAgent' })"
+Write-Host "  model          $($forward['Model'])   (published: Terminus 2 52.4% +/-2.6)"
 Write-Host "  endpoint       https://api.deepinfra.com/v1/openai"
 Write-Host "  keys           $KeysFile"
 Write-Host "  k              1"
 Write-Host "  concurrency    $Concurrency   batch $BatchSize"
-Write-Host "  contextWindow  $ContextWindow"
+if ($Terminus) {
+    Write-Host "  contextWindow  n/a (terminus manages its own context)"
+    Write-Host "  note           token/cost columns stay 0 - only MAGENTRA's driver" -ForegroundColor DarkGray
+    Write-Host "                 writes magentra-result.json. Scores are unaffected." -ForegroundColor DarkGray
+} else {
+    Write-Host "  contextWindow  $ContextWindow"
+}
 if ($NoRebuild) {
     Write-Host "  rebuild        SKIPPED - bundle/version.json is what will run" -ForegroundColor Yellow
 } else {
