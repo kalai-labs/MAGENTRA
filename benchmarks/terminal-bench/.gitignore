@@ -1,0 +1,11 @@
+bundle/
+# Harbor job output in every spelling it has taken: jobs/, jobs-void412/ (a
+# voided run kept for forensics), jobs-merged/ (the upload repack). These are
+# generated trial artifacts, not source — jobs-void412 alone is 879 files and
+# 26 MB, and only `jobs/` being listed here is what nearly committed it.
+jobs*/
+__pycache__/
+# Every key pool, not just tb2's: a per-provider keys file must never become
+# committable just because it picked a different name.
+*-keys.txt
+tb2-state/
