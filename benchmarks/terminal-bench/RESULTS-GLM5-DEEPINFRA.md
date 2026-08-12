@@ -65,10 +65,11 @@ than the estimate.
 
 Timed out: `break-filter-js-from-html`, `caffe-cifar-10`, `circuit-fibsqrt`, `compile-compcert`, `dna-assembly`, `feal-differential-cryptanalysis`, `feal-linear-cryptanalysis`, `fix-code-vulnerability`, `gpt2-codegolf`, `llm-inference-batching-scheduler`, `make-doom-for-mips`, `make-mips-interpreter`, `model-extraction-relu-logits`, `overfull-hbox`, `path-tracing`, `polyglot-rust-c`, `protein-assembly`, `regex-chess`, `regex-log`, `torch-pipeline-parallelism`, `torch-tensor-parallelism`, `tune-mjcf`
 
-**1 task(s) failed for another reason** — these are engine
-defects, not benchmark outcomes, and are worth fixing:
+**1 task(s) failed for a reason other than the clock.**
+These are infrastructure or agent failures rather than benchmark
+outcomes — the task was never genuinely attempted and lost:
 
-- `train-fasttext`
+- `train-fasttext` — engine/agent error
 
 ## Per-task results
 

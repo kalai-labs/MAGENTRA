@@ -155,15 +155,27 @@ def main():
     # not captured into the document now the evidence is gone the moment the
     # directory is cleaned — and "0" alone cannot distinguish an agent that was
     # wrong from one that never got to finish.
+    # Deduplicate by TASK, not by trial directory: a re-queued task has one
+    # exception file per attempt, so counting files reports 8 failures where
+    # there are 2 tasks. Timeout wins over other errors when a task has both,
+    # since the timeout is what actually decided the score.
     jobs = Path(__file__).parent / "jobs"
-    timeouts, crashes = [], []
+    timeout_set, other = set(), {}
     for exc in jobs.glob(f"*{state.name}*/*/exception.txt"):
         task = exc.parent.name.rsplit("__", 1)[0]
         try:
             body = exc.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        (timeouts if "AgentTimeoutError" in body else crashes).append(task)
+        if "AgentTimeoutError" in body:
+            timeout_set.add(task)
+        else:
+            kind = ("tmux session failed to start"
+                    if "Failed to start tmux" in body
+                    else "engine/agent error")
+            other[task] = kind
+    timeouts = sorted(timeout_set)
+    crashes = sorted(k for k in other if k not in timeout_set)
 
     if timeouts or crashes:
         o("## Failure analysis")
@@ -180,11 +192,12 @@ def main():
         o("Timed out: " + ", ".join(f"`{t}`" for t in sorted(timeouts)))
         o()
         if crashes:
-            o(f"**{len(crashes)} task(s) failed for another reason** — these are engine")
-            o("defects, not benchmark outcomes, and are worth fixing:")
+            o(f"**{len(crashes)} task(s) failed for a reason other than the clock.**")
+            o("These are infrastructure or agent failures rather than benchmark")
+            o("outcomes — the task was never genuinely attempted and lost:")
             o()
-            for t in sorted(crashes):
-                o(f"- `{t}`")
+            for t in crashes:
+                o(f"- `{t}` — {other[t]}")
             o()
 
     o("## Per-task results")

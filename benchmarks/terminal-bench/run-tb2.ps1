@@ -809,6 +809,13 @@ if (-not $existingMeta) {
     } | ConvertTo-Json) | Out-File -FilePath (Join-Path $StateDir "meta.json") -Encoding utf8
 }
 
+# Empty on a first invocation (job-name shape unchanged), stamped on a resume so
+# batch names cannot collide with the ones the earlier invocation wrote.
+$InvocationTag = ""
+if (Test-Path (Join-Path $StateDir "ledger.json")) {
+    $InvocationTag = "r" + (Get-Date).ToString("MMddHHmm")
+}
+
 $LedgerPath = Join-Path $StateDir "ledger.json"
 $KeyStatePath = Join-Path $StateDir "keys.json"
 $ReportPath = Join-Path $StateDir "report.md"
@@ -869,7 +876,16 @@ while ($true) {
     $batchNo++
     $take = [Math]::Min($BatchSize, $pending.Count)
     $batch = @($pending[0..($take - 1)])
-    $jobName = "$RunId-b$('{0:D2}' -f $batchNo)-$($key.Label -replace '[^A-Za-z0-9]','')"
+    # Batch numbers restart at 1 on every invocation, so a RESUMED run would
+    # reuse job names the first invocation already created and harbor refuses
+    # with "FileExistsError: Job directory ... already exists". It exits 1
+    # instantly, which the retry logic reads as a failed attempt — so a resume
+    # burned both retries per task in seconds and abandoned 22 tasks as
+    # "unscored" without running anything. Observed, not hypothetical.
+    #
+    # $InvocationTag is empty for a fresh run (job names keep their old shape)
+    # and carries a stamp on any resume, which makes collisions impossible.
+    $jobName = "$RunId-b$('{0:D2}' -f $batchNo)$InvocationTag-$($key.Label -replace '[^A-Za-z0-9]','')"
 
     Write-Log ""
     Write-Log "--- batch $batchNo | key $($key.Label) | $($batch.Count) task(s) | $($pending.Count) pending ---" "Cyan"
