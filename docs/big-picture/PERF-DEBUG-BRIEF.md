@@ -114,21 +114,36 @@ evidence: `jobs/tb2-GLM-5-20260810-2311-b14-deepinfra/train-fasttext__3fPVPsM/`.
   untyped and joined to the engine by bare frame strings, and `engine/*` has no
   unit tests, so `npm run build` passing proves very little.
 
-## The control run (in flight as of this writing)
+## The control run — LANDED 2026-08-13. Read this before anything above.
 
-Terminus 2 — the benchmark authors' reference agent — on the **identical** model
-and endpoint, so the agent is the only variable:
+Terminus 2, the benchmark authors' reference agent, on the identical model,
+endpoint, task list and k. Full writeup in
+`benchmarks/terminal-bench/COMPARISON-GLM5.md`.
 
-```
-benchmarks/terminal-bench/tb2-state/tb2-GLM-5-terminus-2-20260811-1941/
-```
+| Agent | Score |
+|---|---|
+| MAGENTRA | 36/89 = 40.4% |
+| **Terminus 2** | **34/89 = 38.2%** |
+| Terminus 2, published leaderboard | 52.4% ±2.6 |
 
-Interpretation when it lands:
+**This invalidates the framing at the top of this brief.** There is no 12-point
+gap to explain. At k=1 the SE is ±5.2 points, so a 2-task difference is noise:
+MAGENTRA and the reference harness are at parity here. Exclusive wins split 10
+to 9 across the 84 commonly scored tasks — they solve different tasks, neither
+dominates.
 
-- **lands near 52.4%** → the setup is validated and MAGENTRA's 12-point gap is a
-  genuine harness difference worth debugging.
-- **lands near 40%** → the gap is the fp4 serving or this endpoint, not the
-  harness, and the debugging target changes completely.
+**Terminus did not reproduce its own published 52.4%**, missing it by ~14 points
+under our serving. Both harnesses landing far below the published number while
+landing within 2 points of each other implicates the shared variable — DeepInfra
+fp4 serving — not either agent. Do not treat 52.4% as a target.
 
-Do not start deep engine work until this number exists; it decides what the
-target even is.
+What survives, and is now *stronger*: the throughput thesis. Terminus timed out
+on **26 of 86 (30.2%)** against MAGENTRA's 22 (25.6%). Two architecturally
+unrelated agents — different tool loops, different context management, different
+terminal drivers — shedding a quarter to a third of the suite to the clock says
+the ceiling is the endpoint's decode speed, not one harness's design.
+
+That moderates the `Write`-argument-decode finding: it is a real inefficiency
+worth fixing, but it cannot be the dominant cause of timeouts when a harness
+that never calls MAGENTRA's `Write` stalls at least as often. Size any expected
+gain against that.
