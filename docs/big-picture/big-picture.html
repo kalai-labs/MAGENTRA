@@ -1,0 +1,1142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MAGENTRA — The Big Picture</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm 16mm 14mm; }
+
+  :root {
+    --ink:        #16181d;
+    --ink-soft:   #4a5058;
+    --ink-faint:  #7b828c;
+    --rule:       #d8dce2;
+    --rule-soft:  #ebeef2;
+    --accent:     #7a2fd6;
+    --accent-dim: #efe6fb;
+    --code-bg:    #f6f7f9;
+    --warn-bg:    #fff8e6;
+    --warn-bd:    #e8c96a;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { font-size: 10.2pt; }
+
+  body {
+    margin: 0;
+    color: var(--ink);
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.52;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- cover ---------- */
+  .cover {
+    height: 245mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    page-break-after: always;
+  }
+  .cover .eyebrow {
+    font-size: 8.5pt; letter-spacing: .28em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; margin-bottom: 10mm;
+  }
+  .cover h1 {
+    font-size: 34pt; line-height: 1.05; margin: 0 0 6mm; letter-spacing: -.02em;
+  }
+  .cover .sub {
+    font-size: 13pt; color: var(--ink-soft); max-width: 130mm; margin: 0 0 14mm;
+  }
+  .cover .meta {
+    border-top: 2px solid var(--ink); padding-top: 4mm;
+    font-size: 9pt; color: var(--ink-soft);
+    display: grid; grid-template-columns: 34mm 1fr; gap: 1.6mm 6mm;
+  }
+  .cover .meta b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- toc ---------- */
+  .toc { page-break-after: always; }
+  .toc h2 { border: 0; margin-top: 0; }
+  .toc ol { list-style: none; padding: 0; margin: 0; counter-reset: sec; }
+  .toc > ol > li {
+    counter-increment: sec;
+    padding: 1.15mm 0; border-bottom: 1px solid var(--rule-soft);
+    font-size: 10pt;
+  }
+  .toc > ol > li::before {
+    content: counter(sec) ".";
+    display: inline-block; width: 9mm; color: var(--accent); font-weight: 700;
+  }
+  .toc .tnote { display:block; margin-left: 9mm; color: var(--ink-faint); font-size: 8.4pt; line-height: 1.35; }
+
+  /* ---------- headings ---------- */
+  h2 {
+    font-size: 17pt; margin: 0 0 4mm; padding-bottom: 2mm;
+    border-bottom: 2px solid var(--ink); letter-spacing: -.01em;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 12pt; margin: 7mm 0 2.5mm; color: var(--ink);
+    page-break-after: avoid;
+  }
+  h4 {
+    font-size: 10pt; margin: 5mm 0 1.5mm; color: var(--accent);
+    text-transform: uppercase; letter-spacing: .08em;
+    page-break-after: avoid;
+  }
+  section { page-break-before: always; }
+  section.cont { page-break-before: auto; }
+
+  p { margin: 0 0 3mm; }
+  ul, ol { margin: 0 0 3mm; padding-left: 5.5mm; }
+  li { margin-bottom: 1.2mm; }
+  li > ul { margin-top: 1.2mm; }
+
+  code, pre, .mono { font-family: "Cascadia Mono", Consolas, "SF Mono", monospace; }
+  code { font-size: .88em; background: var(--code-bg); padding: .5mm 1mm; border-radius: 2px; }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    padding: 2.6mm 3.5mm; font-size: 7.6pt; line-height: 1.38;
+    overflow: hidden; white-space: pre; margin: 0 0 3.5mm;
+    page-break-inside: avoid;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  table {
+    width: 100%; border-collapse: collapse; margin: 0 0 4mm;
+    font-size: 8.9pt; page-break-inside: avoid;
+  }
+  th {
+    text-align: left; border-bottom: 1.5px solid var(--ink);
+    padding: 1.6mm 2mm; font-size: 8.2pt; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--ink-soft);
+  }
+  td { border-bottom: 1px solid var(--rule-soft); padding: 1.6mm 2mm; vertical-align: top; }
+  td.mono, th.mono { font-family: "Cascadia Mono", Consolas, monospace; font-size: 8.2pt; }
+  tr:last-child td { border-bottom: 1px solid var(--rule); }
+
+  .lede {
+    font-size: 11pt; color: var(--ink-soft); border-left: 3px solid var(--accent);
+    padding-left: 4mm; margin: 0 0 6mm;
+  }
+  .note, .warn {
+    padding: 3mm 4mm; margin: 0 0 4mm; font-size: 9.2pt;
+    page-break-inside: avoid;
+  }
+  .note { background: var(--accent-dim); border-left: 3px solid var(--accent); }
+  .warn { background: var(--warn-bg); border-left: 3px solid var(--warn-bd); }
+  .note b, .warn b { display: block; margin-bottom: 1mm; }
+
+  .kv { display: grid; grid-template-columns: 42mm 1fr; gap: 1.4mm 5mm; font-size: 9.2pt; margin-bottom: 4mm; }
+  .kv > div:nth-child(odd) { font-weight: 600; color: var(--ink-soft); }
+
+  .cols2 { column-count: 2; column-gap: 8mm; }
+  .cols2 li { break-inside: avoid; }
+
+  .tag {
+    display: inline-block; font-size: 7.4pt; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; padding: .4mm 1.6mm; border-radius: 2px;
+    background: var(--accent); color: #fff; vertical-align: 1px;
+  }
+  .tag.grey { background: var(--ink-faint); }
+
+  .rungs { counter-reset: rung; list-style: none; padding: 0; }
+  .rungs > li {
+    counter-increment: rung; position: relative; padding-left: 10mm;
+    margin-bottom: 3mm; page-break-inside: avoid;
+  }
+  .rungs > li::before {
+    content: counter(rung); position: absolute; left: 0; top: 0;
+    width: 6.5mm; height: 6.5mm; border-radius: 50%;
+    background: var(--ink); color: #fff; font-size: 8pt; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .rungs .rname { font-weight: 700; }
+  .rungs .rcond { font-family: Consolas, monospace; font-size: 8.2pt; color: var(--accent); }
+
+  .footer-note {
+    margin-top: 8mm; padding-top: 3mm; border-top: 1px solid var(--rule);
+    font-size: 8.5pt; color: var(--ink-faint);
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ COVER ═══════════════════════════ -->
+<div class="cover">
+  <div class="eyebrow">Architecture Reference</div>
+  <h1>MAGENTRA<br>The Big Picture</h1>
+  <p class="sub">How the engine, the protocol and the desktop app fit together — the map to come back to before changing anything.</p>
+  <div class="meta">
+    <b>Version</b><span>0.16.6</span>
+    <b>Compiled from</b><span>the working tree at commit <span class="mono">71a9d18</span></span>
+    <b>Date</b><span>1 August 2026</span>
+    <b>Source of truth</b><span>the code. Where this document and the code disagree, the code is right — §16 lists the drift found while writing it.</span>
+    <b>Regenerate</b><span class="mono">npx electron docs/big-picture/render.mjs</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ TOC ═══════════════════════════ -->
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li>What MAGENTRA is<span class="tnote">the product in one page, and the one idea the whole design turns on</span></li>
+    <li>Repository map<span class="tnote">five engine packages, one app, strict dependency direction</span></li>
+    <li>Process topology<span class="tnote">who runs in which OS process, and what crosses each boundary</span></li>
+    <li>The protocol — the seam<span class="tnote">PROTOCOL_VERSION 1, two transports, no back doors</span></li>
+    <li>The turn loop<span class="tnote">runTurn, round by round — the heart of the engine</span></li>
+    <li>The finishing ladder<span class="tnote">eight rungs between “the model stopped talking” and “done”</span></li>
+    <li>Tools and the permission engine<span class="tnote">27 tools, five classes, five-step resolution</span></li>
+    <li>The vision path<span class="tnote">why the main model never sees an image</span></li>
+    <li>Token algebra and context<span class="tnote">B(t), D(t), T_turn — three numbers that must never be added</span></li>
+    <li>Settings, credentials, state on disk<span class="tnote">four layers, two <span class="mono">.magentra</span> directories</span></li>
+    <li>The knowledge layer<span class="tnote">import graph, symbol index, reuse gate, standards</span></li>
+    <li>Extension surfaces<span class="tnote">addons, hooks, MCP, scheduling, workflows</span></li>
+    <li>Concurrent workspaces<span class="tnote">the engine pool and the TabState swap</span></li>
+    <li>The desktop app<span class="tnote">main process, preload, 18 renderer modules</span></li>
+    <li>Build, packaging, release, update<span class="tnote">dev vs packaged, semver, two update tiers</span></li>
+    <li>Invariants, tripwires and known drift<span class="tnote">the things that break the whole app when touched</span></li>
+    <li>Concept → file index<span class="tnote">where to look for anything in this document</span></li>
+  </ol>
+</div>
+
+<!-- ═══════════════ 1 ═══════════════ -->
+<section>
+<h2>1 · What MAGENTRA is</h2>
+
+<p class="lede">A headless agentic coding engine, plus a desktop frontend that is only ever a client of it. The engine is UI-agnostic: it consumes typed requests and emits typed events over a versioned protocol, so today's Electron app and tomorrow's VS Code extension are the same kind of thing.</p>
+
+<h3>The one idea</h3>
+<p>Everything below follows from a single rule: <b>the protocol is the only integration surface.</b> If the desktop app can do it, it does it by sending a <code>FrontendRequest</code> and reading <code>CoreEvent</code>s. The app holds no reference into engine internals; the host binary holds none either — it consumes <code>engine.events</code> and calls <code>engine.send()</code>, and nothing else.</p>
+<p>A capability that cannot be expressed as an event/request pair does not exist as far as any frontend is concerned. That is what makes the seam stable enough to build a second frontend against without touching the engine.</p>
+
+<h3>What it does</h3>
+<ul>
+  <li><b>Runs an agentic turn loop</b> against any Anthropic or OpenAI-compatible endpoint — hosted API, gateway, or a model box on the LAN.</li>
+  <li><b>27 built-in tools</b>, plus any MCP server's tools, behind a permission engine with two stances.</li>
+  <li><b>Persists everything</b> as append-only JSONL transcripts you can resume, rename, archive or delete.</li>
+  <li><b>Runs up to four workspaces at once</b>, each in its own engine process, each with its own connection, model, tasks and permissions.</li>
+  <li><b>Ships as an unsigned desktop app</b> that updates itself where the OS permits and walks the user through it where it does not.</li>
+</ul>
+
+<h3>The design temperament</h3>
+<p>Three habits show up everywhere in the code and explain most of what looks unusual:</p>
+<ul>
+  <li><b>Failures that look like success are the enemy.</b> The finishing rungs (§6), the reuse gate, the stall detector and the runtime evidence floor all exist to catch a turn that <i>reads</i> as finished and is not. They remind rather than block — a silent refusal was found to be worse than a loud reminder.</li>
+  <li><b>One definition, one place.</b> Token quantities live once in <code>protocol/tokens.ts</code>. Provider construction lives once in <code>providerFactory.ts</code>. Model-facing prose lives once in the prompt registry. Where a value <i>must</i> be duplicated across the app/engine boundary, the comment says so and names its twin.</li>
+  <li><b>Additive-only state.</b> A persisted key is added, never renamed or repurposed, so any version can read any other version's state and going back a version is safe. There is no migration machinery, on purpose.</li>
+</ul>
+</section>
+
+<!-- ═══════════════ 2 ═══════════════ -->
+<section>
+<h2>2 · Repository map</h2>
+
+<pre><code>MAGENTRA/
+├── engine/
+│   ├── protocol/    types.ts · ndjson.ts · tokens.ts · prompts.ts · branding.ts
+│   ├── providers/   Provider interface · anthropic · openai-compat · fake · retry
+│   ├── core/        the engine proper — see below
+│   ├── tools/       one module per tool + createDefaultRegistry()
+│   └── host/        headless binary: NDJSON over stdio
+├── app/             Electron desktop frontend (plain JS, outside the TS build)
+├── tui/             terminal frontend (ink/TS): a pure NDJSON protocol client,
+│                    bundled to resources/engine/tui.mjs and opened by the
+│                    `magentra` terminal command
+├── docs/            ARCHITECTURE · PROTOCOL · TOOLS · SETTINGS · ADDONS · adr/
+├── tools/           version tool (semver/changelog) · prompt-lab
+└── benchmarks/      agent benchmark prompts and results
+    └── terminal-bench/   Harbor adapter: runs the UNMODIFIED engine on
+                          Terminal-Bench 2.0 (driver.mjs is a second NDJSON
+                          frontend beside the desktop app; no engine changes)</code></pre>
+
+<h3>Dependency direction — enforced by TS project references</h3>
+<pre><code>protocol  ←  providers  ←  core  ←  tools  ←  host
+
+protocol   zero dependencies. The seam a future IDE consumes.
+core       never imports from tools. Tools are INJECTED via the registry,
+           so the engine stays embeddable with any subset (subagents get
+           restricted sets).
+host       the only package allowed to touch stdin/stdout for user output.
+           core has no console.log — everything is an event.
+app        plain JavaScript, outside the TS build. Talks to the engine
+           ONLY through the host's stdio stream.
+tui        TypeScript, inside the TS build (root references). The second
+           frontend; speaks the same protocol over the same stdio seam.</code></pre>
+
+<h3>Inside <span class="mono">engine/core/src</span></h3>
+<table>
+<tr><th style="width:30mm">Directory</th><th>What lives there</th></tr>
+<tr><td class="mono">runtime/</td><td><code>engine.ts</code> (request dispatch, slash commands, addons, sessions), <code>session.ts</code> (the turn loop — 2 800 lines, the largest file in the repo), <code>permissions.ts</code>, <code>finishing.ts</code>, <code>sessionStats.ts</code>, <code>fileState.ts</code></td></tr>
+<tr><td class="mono">agent/</td><td><code>tool.ts</code> (ToolDefinition, registry, ToolContext), <code>prompts.ts</code> (system-prompt sections), <code>addons.ts</code>, <code>hooks.ts</code>, <code>agents.ts</code> (subagent types), <code>builtinAddons.ts</code></td></tr>
+<tr><td class="mono">config/</td><td><code>settings.ts</code> (the zod schema — single source of truth), <code>providerFactory.ts</code>, <code>pricing.ts</code>, <code>frontmatter.ts</code></td></tr>
+<tr><td class="mono">knowledge/</td><td><code>graph.ts</code> (import graph + PageRank/blast radius), <code>symbols.ts</code>, <code>reuseGate.ts</code>, <code>seeds.ts</code>, <code>standards.ts</code>, <code>workspace.ts</code>, <code>docs.ts</code> (PDF/DOCX text extraction)</td></tr>
+<tr><td class="mono">scheduling/</td><td><code>background.ts</code> (background jobs + task-notifications), <code>cron.ts</code>, <code>workflow.ts</code> (node:vm sandbox)</td></tr>
+<tr><td class="mono">state/</td><td><code>transcript.ts</code> (append-only JSONL + repair helpers), <code>taskStore.ts</code></td></tr>
+<tr><td class="mono">integrations/</td><td><code>mcp.ts</code> — hand-rolled stdio MCP client (JSON-RPC 2.0, NDJSON framing)</td></tr>
+<tr><td class="mono">util/</td><td><code>asyncQueue.ts</code> (single-consumer event stream), <code>fsAtomic.ts</code>, <code>zodToJsonSchema.ts</code></td></tr>
+</table>
+
+<h3>Dependencies, and why so few</h3>
+<p><code>@anthropic-ai/sdk</code>, <code>zod</code>, <code>fast-glob</code>, <code>@vscode/ripgrep</code>, plus <code>electron</code>/<code>electron-builder</code>/<code>esbuild</code> for the app. Everything else — NDJSON framing, diffing, process management, cron parsing, the JSONL store, the MCP client — is hand-rolled because each is small and boring.</p>
+</section>
+
+<!-- ═══════════════ 3 ═══════════════ -->
+<section>
+<h2>3 · Process topology</h2>
+
+<p class="lede">Four kinds of process. Three boundaries. Knowing which side of which boundary you are on answers most “why can't I just import that?” questions.</p>
+
+<pre><code>┌─ Electron RENDERER (one per window) ────────────────────────────┐
+│  18 classic scripts sharing one global scope (no bundler)       │
+│  Map&lt;tabId, TabState&gt; — per-workspace console state            │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │  contextBridge (preload.js)
+                           │  IPC channels — every frame carries a tabId
+┌──────────────────────────▼──────────────────────────────────────┐
+│  Electron MAIN (app/main.js + app/main/*.js)                    │
+│    • engine pool  Map&lt;tabId, EngineTab&gt;   (MAX_TABS = 4)        │
+│    • per-window active tab  win.mgActiveTabId                   │
+│    • connection profiles, .env writing, logging, updates        │
+│    • the attach-file picker (reads images/docs off disk)        │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │  NDJSON over stdio — ONE line per frame
+                           │  (no tabId here: the engine never knows)
+┌──────────────────────────▼──────────────────────────────────────┐
+│  ENGINE HOST process (one per open workspace)                   │
+│    engine/host  --serve --cwd &lt;workspace&gt;                       │
+│      Engine ── Session ── ToolRegistry ── Provider              │
+│                   │                                             │
+│                   ├─ subagent Sessions (≤ 8 children)           │
+│                   └─ background jobs, monitors, cron            │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │  HTTPS
+              ┌────────────┴────────────┐
+              ▼                         ▼
+       main model endpoint       vision model endpoint
+       (chat + tools)            (images only, §8)</code></pre>
+
+<h3>What each boundary costs you</h3>
+<table>
+<tr><th style="width:38mm">Boundary</th><th>Consequence</th></tr>
+<tr><td>renderer ↔ main</td><td>The renderer is sandboxed: it cannot read the transcript file, cannot touch <code>fs</code>, cannot spawn. Anything it needs from disk arrives over IPC. This is why <code>session_restored</code> ships a flat, render-ready paint list rather than a file path.</td></tr>
+<tr><td>main ↔ engine</td><td><b>The app cannot import from the engine.</b> The engine ships as a bundled child process. Every value both sides need is duplicated, with a comment naming its twin — <code>IMAGE_TYPES</code>, <code>isLocalBaseUrl</code>, <code>VISION_API_KEY_ENV</code>, <code>DEFAULT_BASE_URL</code>. When two such twins disagreed, the app accepted a keyless LAN endpoint the engine then refused to boot on.</td></tr>
+<tr><td>engine ↔ provider</td><td>The only place a real network call happens. <code>FakeProvider</code> substitutes here, which is why the whole suite can run with no network and no key.</td></tr>
+</table>
+
+<h3>Data flow of one user message</h3>
+<pre><code>composer.js
+  → window.magentra.sendToEngine({type:"user_message", text, images}, tabId)
+  → main.writeToEngine(frame, tabId)        [logs a redacted copy]
+  → child.stdin.write(JSON.stringify(frame) + "\n")
+  → host: decodeFrames(stdin) → engine.send(frame)
+  → Engine.send: case "user_message"
+       → withImageDescriptions(text, images)      [§8]
+       → startExclusive(...) → Session.runTurn(text)   [§5]
+  → CoreEvents ──stdout──→ main (tags with tabId) ──IPC──→ renderer
+  → stream.js handleEngineEvent(event) under the owning TabState</code></pre>
+</section>
+
+<!-- ═══════════════ 4 ═══════════════ -->
+<section>
+<h2>4 · The protocol — the seam</h2>
+
+<div class="kv">
+  <div>Version</div><div><code>PROTOCOL_VERSION = 1</code>, surfaced to the frontend as <code>session_started.v</code></div>
+  <div>Defined in</div><div><code>engine/protocol/src/types.ts</code> — the source of truth</div>
+  <div>Framed by</div><div><code>engine/protocol/src/ndjson.ts</code></div>
+  <div>Documented in</div><div><code>docs/PROTOCOL.md</code> (see §16 — five frames are missing from it)</div>
+</div>
+
+<h3>Two transports, one message shape</h3>
+<ul>
+  <li><b>In-process.</b> <code>engine.events</code> is an async-iterable <code>AsyncQueue</code>; <code>engine.send(request)</code> returns immediately; <code>engine.idle()</code> resolves when the running turn ends.</li>
+  <li><b>NDJSON over stdio.</b> <code>encodeFrame(obj) = JSON.stringify(obj) + "\n"</code>. <code>decodeFrames</code> splits on <code>\n</code>, tolerates a trailing <code>\r</code> (CRLF pipes), skips blanks. A line that fails to parse becomes a non-fatal <code>error</code> event rather than killing the transport.</li>
+</ul>
+<p>Messages are bare tagged unions discriminated by <code>type</code> — no envelope, no correlation id beyond the ones individual frames carry (<code>turnId</code>, <code>permission_request.id</code>, <code>question_request.id</code>, tool-use <code>id</code>).</p>
+
+<div class="note"><b>The AsyncQueue is single-consumer.</b> Its own header comment: “a second concurrent consumer silently steals events from the first.” This is one of the two reasons the engine is hard single-session, and therefore the reason multi-workspace is a process pool rather than a multiplexed session registry (§13).</div>
+
+<h3>Core → frontend events</h3>
+<div class="cols2">
+<ul>
+<li><code>session_started</code> — id, cwd, model, overdrive, the slash-command registry, the addon roster, the per-model rate card</li>
+<li><code>turn_started</code> / <code>turn_finished</code></li>
+<li><code>text_delta</code> / <code>thinking_delta</code></li>
+<li><code>tool_call_started</code> / <code>tool_call_finished</code></li>
+<li><code>tool_output_delta</code> — throttled live tool output</li>
+<li><code>retry_status</code> — provider backing off, and why</li>
+<li><code>agent_spawned</code> / <code>agent_finished</code></li>
+<li><code>permission_request</code> / <code>question_request</code></li>
+<li><code>task_list_updated</code></li>
+<li><code>file_edited</code> — with a unified diff</li>
+<li><code>background_notification</code> — <code>start</code> / <code>exit</code></li>
+<li><code>context_update</code> — the live meters</li>
+<li><code>command_output</code> — slash commands, <code>!</code> passthrough, and every finishing-rung marker</li>
+<li><code>session_list</code> / <code>session_restored</code> / <code>session_report</code></li>
+<li><code>addons_updated</code> — roster <b>plus the refreshed command registry</b> / <code>addon_draft</code> / <code>addon_export</code></li>
+<li><code>model_catalog</code> — the endpoint's real <code>GET /models</code></li>
+<li><code>cwd_changed</code> — worktree enter/exit</li>
+<li><code>overdrive_changed</code></li>
+<li><code>error</code> — with <code>fatal</code></li>
+</ul>
+</div>
+
+<h3>Frontend → core requests</h3>
+<div class="cols2">
+<ul>
+<li><code>user_message</code> — text + optional <code>images</code></li>
+<li><code>steer_message</code> — mid-turn guidance</li>
+<li><code>interrupt</code></li>
+<li><code>permission_response</code> / <code>question_response</code></li>
+<li><code>slash_command</code> / <code>bang_command</code></li>
+<li><code>set_model</code> — live, no restart</li>
+<li><code>set_connection</code> — live, no restart (ADR 0007)</li>
+<li><code>set_vision</code> — its own frame, deliberately</li>
+<li><code>set_overdrive</code> / <code>set_deletion_guard</code></li>
+<li><code>set_compact_limit</code></li>
+<li><code>resume_session</code> / <code>list_sessions</code></li>
+<li><code>rename_session</code> / <code>archive_session</code> / <code>delete_session</code></li>
+<li><code>stop_background</code></li>
+<li><code>generate_addon</code> / <code>install_addon</code> / <code>export_addon</code></li>
+</ul>
+</div>
+
+<h3>Two round-trips worth memorising</h3>
+<pre><code>PERMISSION
+core → permission_request {id, tool, input, description}
+front→ permission_response {id, decision: allow_once|allow_session|
+                                      allow_always|deny, message?}
+core → tool_call_started → tool_call_finished     (or an error tool_result)
+
+QUESTION  (AskUserQuestion)
+core → question_request {id, questions: Question[1..4]}
+front→ question_response {id, answers: {"q:0": ["pnpm"]}}
+       ↑ keyed POSITIONALLY so two identical question texts cannot collide;
+         the exact question text still works as a fallback.</code></pre>
+
+<div class="note"><b>Why <code>set_vision</code> is its own frame.</b> <code>set_connection</code> rewrites the endpoint, the key and the process environment and rebuilds the provider. That is a great deal of machinery — and a credential rewrite — to move one boolean.</div>
+</section>
+
+<!-- ═══════════════ 5 ═══════════════ -->
+<section>
+<h2>5 · The turn loop</h2>
+
+<p class="lede"><code>Session.runTurn(userText)</code> — <code>engine/core/src/runtime/session.ts:1238</code>. Everything the agent does happens inside this method. Read it once and most of the engine stops being surprising.</p>
+
+<h3>Before the loop</h3>
+<ol>
+<li><b><code>UserPromptSubmit</code> hook.</b> A blocking hook ends the turn here with an error event; a non-blocking one contributes context as a reminder.</li>
+<li><b>Plan-first reminder</b> — fired once while the task list is empty, re-armed when it empties again.</li>
+<li><b>Reset the rung fuses</b> — <code>filesChangedThisTurn</code>, <code>doubleFilesThisTurn</code>, <code>ranCommandThisTurn</code>, <code>evidenceNudgeFired</code>, <code>incompleteTasksNudgeFired</code>. They judge <i>this</i> turn's work, so they clear together.</li>
+<li><b>Open the stats phase</b> (root only — children share the ledger, so a subagent must never restart the meter the user is watching).</li>
+<li><b>Emit <code>turn_started</code>.</b></li>
+<li><b>Clarify pre-layer</b> — on a genuinely open-ended request, up to three shape-defining multiple-choice questions before any work. Root, attended, <code>settings.clarify</code> on; fail-open.</li>
+<li><b>OVERDRIVE snapshot</b> — <code>git stash create</code> parks a dangling commit so an in-workspace deletion stays recoverable. Best-effort; a failure never blocks the turn.</li>
+<li><b>Push the user message</b> with any pending reminders folded in.</li>
+</ol>
+
+<h3>The round</h3>
+<pre><code>for (iteration = 0; ; iteration++) {
+
+  if (capped && iteration >= maxIterationsPerTurn)      break
+  if (capped && turnUsage.output > maxTokensPerTurn)    break
+        ↑ "capped" is CHILD SESSIONS ONLY. An interactive root turn runs
+          uncapped — the stall detector is the brake, not a number.
+
+  drainSteering()          ← queued steer_message lands at this boundary
+
+  { assistant, toolCalls, end } = await streamAssistantTurn(signal)
+  addUsage(turnUsage, end.usage)      ← billed cost accumulates
+                                        context size does NOT (§9)
+
+  if (verifyBuffered) { … }           ← the silent self-verify reply (§6)
+
+  push(assistant);  stopReason = end.stopReason
+
+  if (toolCalls.length === 0)  → THE FINISHING LADDER (§6)
+
+  totalToolCallsThisTurn += toolCalls.length
+  results = await executeToolCalls(toolCalls, signal)
+      read-class + parallelSafe run CONCURRENTLY
+      everything else runs SEQUENTIALLY in call order,
+      so permission prompts cannot race
+
+  lastBatchHadError = results.some(isError)
+  STALL DETECTOR
+      sig = JSON.stringify([calls, results])
+      3 identical rounds in a row →  force a strategy pivot
+      after 2 spent pivots         →  force one concrete question to the user
+
+  push({role:"user", content: withReminders(results)})
+  await maybeCompact()                ← mid-turn window squeeze
+}</code></pre>
+
+<h3>After the loop — the <code>finally</code> block</h3>
+<ul>
+  <li><code>busy = false</code>, abort controller cleared, <code>suppressAssistantText</code> reset (a turn that died mid-self-verify must not mute the next one).</li>
+  <li><b>Close the stats phase.</b> Its total is <code>T_turn</code>; its output component is the authoritative <code>D_final</code> that supersedes every estimate streamed during the turn. A child never closes the phase.</li>
+  <li>Emit <code>turn_finished</code> with <code>usage</code>, <code>contextTokens</code>, optional <code>contextWarn</code> and <code>overdriveSnapshot</code>. <b>Cost is deliberately not surfaced</b> — our counting and a provider's billing can diverge.</li>
+  <li>Append a <code>meta</code> record snapshotting the tree-wide ledger, so <code>/resume</code> restores real accounting rather than a $0.00 session.</li>
+</ul>
+
+<h3>Error and interrupt repair</h3>
+<div class="warn"><b>A dangling <code>tool_use</code> poisons the history.</b> Providers reject a conversation where an assistant <code>tool_use</code> has no matching <code>tool_result</code> in the next message. So the <code>catch</code> synthesises the missing results (<code>syntheticToolResults</code> / <code>unansweredToolUseIds</code>) <i>before</i> recording anything — otherwise an interrupt or a provider error would break not just this turn but every later one, and <code>/resume</code> would replay the same wound.</div>
+<p>An abort sets <code>stopReason: "aborted"</code>; a real failure classifies the provider error into plain English (<code>friendlyProviderError</code>) — a raw <code>provider returned 401: {json}</code> means nothing to a user. The original text survives in the desktop layer's engine log.</p>
+</section>
+
+<!-- ═══════════════ 6 ═══════════════ -->
+<section>
+<h2>6 · The finishing ladder</h2>
+
+<p class="lede">When the model produces no tool calls, the turn does <b>not</b> simply end. It climbs a ladder of checks, each of which can push one more message and <code>continue</code> the loop. Order is load-bearing.</p>
+
+<ol class="rungs">
+<li><span class="rname">Pending steering</span> — <span class="rcond">drainSteering()</span><br>Outranks every end-of-turn decision. The user's mid-run guidance must be acted on, never dropped by a clean break.</li>
+
+<li><span class="rname">Stop hook</span> — <span class="rcond">end_turn &amp;&amp; !stopHookFired &amp;&amp; hooks.has("Stop")</span><br>A blocking hook injects its reason as a system-reminder and continues.</li>
+
+<li><span class="rname">Layer 3 · length cutoff</span> — <span class="rcond">stopReason === "max_tokens"</span><br>The provider truncated the answer. Resume rather than end on half a sentence. Marker: <code>↻ continuing after output-length cutoff</code>.</li>
+
+<li><span class="rname">Layer 2 · error recovery</span> — <span class="rcond">end_turn &amp;&amp; lastBatchHadError</span><br>The last tool batch failed and the turn is ending anyway — weak models bury a failure under a long non-answer. Marker: <code>↻ auto-recovery…</code>. Unbounded on purpose; the stall detector terminates a model that keeps failing identically.</li>
+
+<li><span class="rname">Layer 1.5 · incomplete tasks</span> — <span class="rcond">end_turn &amp;&amp; !lastBatchHadError &amp;&amp; !incompleteTasksNudgeFired</span><br>Tasks still <code>pending</code>/<code>in_progress</code>. <b>Fires once per turn</b> — without the fuse it re-fired on every end attempt, and a six-task plan charged six extra full-context round trips for one turn's work. It deliberately does not touch <code>nudgeCount</code>, which is rung 8's budget.</li>
+
+<li><span class="rname">Runtime evidence floor</span> — <span class="rcond">end_turn &amp;&amp; !evidenceNudgeFired &amp;&amp; changedCode &amp;&amp; (nothingRan || onlyDoubles)</span><br>One rung, two shapes:
+  <ul>
+    <li><b>nothing ran</b> — source was rewritten and nothing was executed, so every claim about it is an inference.</li>
+    <li><b>only doubles ran</b> — something <i>was</i> executed, but it was a stand-in this turn wrote, which agrees with whatever the author believed and therefore cannot disprove it.</li>
+  </ul>
+  Both texts name an honest “I could not run this” as a <b>complete</b> answer — because the first shape alone pushes toward the very failure it catches: told “you ran nothing” about a dependency this machine cannot execute, the cheapest way to go quiet is to mock it and watch the mock pass.
+  <br>Placed <i>above</i> self-verify deliberately: a self-verify that answers DONE breaks the loop where it stands, so anything below it would never run on the turns that go well.</li>
+
+<li><span class="rname">Self-verify</span> — <span class="rcond">end_turn &amp;&amp; !selfVerifyFired &amp;&amp; totalToolCalls &gt; 0 &amp;&amp; overdrive</span><br>Checks the outcome against the original query before the break is allowed. The reply streams <b>silently</b> (<code>suppressAssistantText</code>); a bare <code>DONE</code> ends the turn with no second message, anything else is revealed as genuine follow-up work.
+  <br><b>OVERDRIVE only</b> (since 2026-07-26): an attended turn already has a checkpoint — the user reads the reply — and should not pay a round trip per turn for a second opinion. Skipped entirely for a purely conversational turn: nothing was built, so nothing can be left behind.</li>
+
+<li><span class="rname">Layer 1 · wrap-up</span> — <span class="rcond">≥ 5 tool calls &amp;&amp; final text &lt; 150 chars &amp;&amp; nudgeCount &lt; 3</span><br>Substantial work ended on a bare reply. Ask for a summary. When files were actually written and a <code>STANDARDS.md</code> exists, the nudge also asks the model to confirm the diff complies.</li>
+</ol>
+
+<p>Only after all eight decline does the loop <code>break</code>.</p>
+
+<h3>Where the prose lives</h3>
+<p><code>engine/core/src/runtime/finishing.ts</code> holds the rung texts and the pure predicates (<code>codeFilesAmong</code>, <code>runtimeEvidenceText</code>, <code>selfVerifyText</code>). It imports nothing from the session or the permission engine, on purpose, so it can be reasoned about in isolation. Every rung's marker text is a <code>command_output</code> event — which is why you can watch the ladder climb in the transcript.</p>
+</section>
+
+<!-- ═══════════════ 7 ═══════════════ -->
+<section>
+<h2>7 · Tools and the permission engine</h2>
+
+<h3>The tool contract</h3>
+<pre><code>ToolDefinition {
+  name, description,
+  inputSchema:      zod schema        → validated before execution;
+                                        a failure becomes an error tool_result
+                                        the model can self-correct from
+  permissionClass:  read | mutate | execute | network | interact
+  parallelSafe?:    boolean
+  isFileEdit?:      boolean
+  permissionSubject?(input)           → what a rule matches against
+  deletionSubject?(input)             → what the deletion guard sees
+  describeInput?(input)               → the human one-liner in the card
+  execute(input, ctx, signal)         → ToolResult
+}</code></pre>
+
+<h3>The 27 registered tools</h3>
+<table>
+<tr><th style="width:26mm">Group</th><th>Tools</th></tr>
+<tr><td>Files</td><td class="mono">Read · Write · Edit · Glob · Grep</td></tr>
+<tr><td>Shell</td><td class="mono">Bash</td></tr>
+<tr><td>Tasks</td><td class="mono">TaskCreate · TaskUpdate · TaskList · TaskGet · TaskStop · TaskOutput</td></tr>
+<tr><td>Interaction</td><td class="mono">AskUserQuestion</td></tr>
+<tr><td>Delegation</td><td class="mono">Agent · Workflow</td></tr>
+<tr><td>Network</td><td class="mono">WebFetch · WebSearch</td></tr>
+<tr><td>Observation</td><td class="mono">Monitor · GraphQuery</td></tr>
+<tr><td>Git</td><td class="mono">EnterWorktree · ExitWorktree</td></tr>
+<tr><td>Scheduling</td><td class="mono">CronCreate · CronDelete · CronList · ScheduleWakeup · PushNotification</td></tr>
+<tr><td>Extension</td><td class="mono">Addon</td></tr>
+<tr><td>MCP</td><td>any <code>mcp__&lt;server&gt;__&lt;tool&gt;</code> wired in at startup</td></tr>
+</table>
+
+<h3>Permission resolution — the real order</h3>
+<pre><code>1. deny rules              settings.permissions.deny
+2. protected-path guard    edits into .magentra/** or a .env* file
+3. deletion guard          anything that REMOVES a file, folder or worktree
+4. allow rules             settings.permissions.allow + allowExact + session grants
+5. stance default          ↓</code></pre>
+<table>
+<tr><th>Stance</th><th><code>read</code> / <code>interact</code></th><th><code>mutate</code></th><th><code>execute</code> / <code>network</code></th></tr>
+<tr><td>normal</td><td>allow</td><td>allow</td><td><b>ask</b></td></tr>
+<tr><td>OVERDRIVE</td><td>allow</td><td>allow</td><td>allow</td></tr>
+</table>
+<p>File edits are auto-approved in both stances because the review drawer and Undo already cover them. In OVERDRIVE nothing prompts <b>except</b> the deletion guard and the protected-path guard — and only a deny rule the user wrote themselves still refuses.</p>
+
+<div class="note"><b>“Always allow” stores a shape, not a string.</b> <code>deriveAlwaysGrant</code> turns an approved command into its <i>shape</i> — <code>{tool:"Bash", subject:"mkdir", prefix:true}</code> covers every <code>mkdir …</code>; <code>git push</code>-style CLIs keep the subcommand; <code>npm run</code> keeps the script name; compound or substituted commands stay literal. <b>Shape grants never override the deletion guard</b>, and a protected deletion records no grant at all — it must re-ask every time.</div>
+
+<h3>Common behaviours across every tool</h3>
+<ul>
+  <li><b>Freshness.</b> <code>FileState</code> tracks mtime+hash per file read. <code>Edit</code> requires a prior read; <code>Write</code> requires one for an existing file. Changed on disk since → “re-read first”.</li>
+  <li><b>Truncation.</b> Default result budget 40 000 bytes (<code>Read</code> raises it to 250 000), head+tail with a marker. Several tools also self-cap: Glob at 1 000 paths, Bash at ~30 000 chars.</li>
+  <li><b>Cancellation.</b> Every <code>execute</code> gets an <code>AbortSignal</code>. Bash kills the whole process tree (<code>taskkill /T /F</code> on Windows, process-group <code>SIGKILL</code> elsewhere).</li>
+  <li><b>Errors are data.</b> A failing tool returns <code>{isError:true}</code> with an explanation. It never throws into the loop.</li>
+</ul>
+</section>
+
+<!-- ═══════════════ 8 ═══════════════ -->
+<section>
+<h2>8 · The vision path</h2>
+
+<p class="lede">The main model is <b>never</b> handed a picture — not even one that supports images. A second endpoint looks at it and writes a description; that text is what enters the conversation.</p>
+
+<h3>Why it is built this way</h3>
+<ul>
+  <li>The coding model may sit on an endpoint that does not accept image parts at all.</li>
+  <li>The one thing the agent “saw” becomes <b>auditable text in the transcript</b>, so every later claim about the picture rests on something checkable.</li>
+  <li>A wrapper around the description tells the model outright that it did not see the image and must not claim otherwise.</li>
+</ul>
+
+<h3>The chain, end to end</h3>
+<pre><code>~/.magentra/profiles.json
+    { name:"fireworks-glm-5p2+vision", model:"…glm-5p2",
+      visionProfileId:"546acc4e-…" }        ← points at ANOTHER profile
+          │  apply profile in the connection wizard
+          ▼
+&lt;workspace&gt;/.magentra/settings.json          &lt;workspace&gt;/.env
+    vision: true                             MAGENTRA_VISION_API_KEY=…
+    visionConnection: { provider, model,      ↑ the key NEVER lands in the
+                        baseUrl, profileId }    shareable settings file
+          │
+          ▼
+Engine.send("user_message")
+  → withImageDescriptions(text, images)              engine.ts:1014
+      guards:  visionUnavailableReason()  ·  ≤ 8 images
+               ≤ 9 000 000 base64 chars per image
+      emits :  🖼 looking at &lt;name&gt; with &lt;model&gt;…   BEFORE the call,
+               because describing runs inside the turn lock and an
+               interface that shows nothing reads as a swallowed message
+  → Session.describeImageForContext()                session.ts:862
+      → describeImage()  →  runInference({images})   session.ts:822
+           provider built by createProviderForEndpoint(
+             endpointSpecFromSettings(visionConnection, key))
+           cached on [provider, baseUrl, contextWindow, apiKey]
+           — the key is part of the cache key because it is BAKED INTO
+             the provider instance; rotating it otherwise keeps sending
+             the old one until the engine restarts
+      → OpenAICompatProvider maps the image part to
+             { type:"image_url", image_url:{ url:"data:&lt;mime&gt;;base64,…" }}
+  → the DESCRIPTION, wrapped, is prepended to the user's text</code></pre>
+
+<h3>The two gates</h3>
+<pre><code>visionUnavailableReason():
+  !settings.visionConnection → "this workspace's connection names no
+                                vision model — add one to its profile"
+  !settings.vision           → "vision is switched off for this workspace"
+  otherwise                  → undefined  (usable)</code></pre>
+<p>The flag alone is never enough: a switched-on flag with no endpoint behind it can look at nothing. Both the attach picker (which hides image types), the <code>Read</code> tool (which refuses <code>.png</code>) and the evidence rung (“vision is on” means an image can <i>actually</i> be looked at) ask this one function.</p>
+
+<h3>Nothing here can fail the turn</h3>
+<p>An image that cannot be described becomes a plain note saying so, and the typed text still runs. Losing the message because a vision server was down would be the worse outcome.</p>
+
+<div class="warn"><b>Field note — 1 August 2026.</b> Vision appeared completely dead: settings and profiles were correct, but attached images were dropped with no error and <code>turn_started</code> fired 1 ms after <code>user_message</code>. Cause: <code>npm run app</code> never compiles the engine, and <code>app/main.js</code> spawns <code>engine/host/dist/main.js</code> — a two-day-old build with no <code>withImageDescriptions</code> in it at all. <b>Before debugging any engine behaviour, check <code>dist/</code> freshness.</b> See §16.</div>
+</section>
+
+<!-- ═══════════════ 9 ═══════════════ -->
+<section>
+<h2>9 · Token algebra and context</h2>
+
+<p class="lede">Three quantities, defined exactly once in <code>engine/protocol/src/tokens.ts</code> and mirrored for the renderer in <code>app/renderer/modules/tokens.js</code>. <b>They must never be added together.</b> Nearly every token bug in an agent app is a confusion between two of them.</p>
+
+<table>
+<tr><th style="width:20mm">Symbol</th><th style="width:34mm">Name</th><th>What it is</th></tr>
+<tr><td class="mono">B(t)</td><td>Current context</td><td>The whole <b>input</b> of the latest invocation — <code>inputTokens + cacheWriteTokens + cacheReadTokens</code>. <b>Point-in-time.</b> Does not accumulate: a ten-round turn re-sends a similar prompt ten times, it does not make the window ten times bigger. Generated output is not part of it. <i>This is what a context meter must show.</i></td></tr>
+<tr><td class="mono">D(t)</td><td>Deliberation output</td><td>Output tokens generated so far by the <b>current turn</b>, over every model call it made — auxiliary prompts and subagents included. Starts each turn at 0 and only climbs. The number ticking up in the liveness strip.</td></tr>
+<tr><td class="mono">T_turn</td><td>Cumulative turn usage</td><td>Every token billed across every invocation of the turn, all four classes. <b>The cost figure — not the context size.</b> Arrives in <code>turn_finished.usage</code>.</td></tr>
+</table>
+
+<div class="warn"><b>The trap.</b> <code>usage.inputTokens</code> alone <i>under-reports</i> the context whenever prompt caching is on, because most of the window arrives as <code>cacheReadTokens</code>. That is why <code>contextTokens</code> is computed as the full input and shipped as its own field rather than left for the frontend to derive.</div>
+
+<h3>Who owns the ledger</h3>
+<p><code>SessionStats</code> is shared by a session and every subagent it spawns — children hold a reference to the parent's instance. So <code>/session</code> and the live meters cover the whole tree, not just the orchestrator. A child <b>adds to</b> the open phase; only the root opens and closes one.</p>
+<p>Only the <b>root conversation's</b> window is measured. A subagent's context never overwrites <code>B(t)</code> — otherwise a subagent reading a large file would make the user's own context meter jump.</p>
+
+<h3>Compaction</h3>
+<pre><code>maybeCompact() runs
+    • mid-turn, after every tool-result batch  (self-gates, so it is cheap)
+    • at the end of runTurn
+    • on demand via /compact
+
+trigger:  autoCompactLimit > 0  &&  stats.contextTokens >= autoCompactLimit
+warn   :  contextTokens >= floor(autoCompactLimit * 0.9)   → contextWarn
+
+effect :  summarize the OLDEST span through a dedicated call
+          (task state, decisions, files touched, open items),
+          replace it with one summary message,
+          keep the recent tail verbatim.
+
+The JSONL transcript is NEVER rewritten — compaction is a view.</code></pre>
+
+<div class="note"><b><code>autoCompactLimit</code> is an absolute token count, and its only source is the UI's <code>set_compact_limit</code> frame.</b> There is deliberately no settings key and no env override, so a stale value in a second channel can never shadow it. <code>docs/SETTINGS.md</code> still documents a <code>compactionThreshold: 0.8</code> fraction — that key is <b>not</b> in the current schema (§16).</div>
+</section>
+
+<!-- ═══════════════ 10 ═══════════════ -->
+<section>
+<h2>10 · Settings, credentials, state on disk</h2>
+
+<h3>Four layers, later wins per key</h3>
+<pre><code>1. schema defaults        settingsSchema in config/settings.ts
+2. ~/.magentra/settings.json                    (global)
+3. &lt;workspace&gt;/.magentra/settings.json          (project)
+4. environment variables                         (ENV_OVERRIDES)</code></pre>
+<p>Unknown keys warn, never crash. Invalid JSON is reported and that file is skipped. <code>/settings</code> with no arguments lists every effective leaf value <i>with the layer it came from</i>; secrets are redacted there.</p>
+
+<h3>The knobs that change behaviour most</h3>
+<table>
+<tr><th style="width:44mm">Key</th><th style="width:24mm">Default</th><th>Effect</th></tr>
+<tr><td class="mono">provider</td><td class="mono">openai-compatible</td><td><code>anthropic</code> or <code>openai-compatible</code></td></tr>
+<tr><td class="mono">model</td><td class="mono">DeepSeek-V4-Flash</td><td>The main model on every turn</td></tr>
+<tr><td class="mono">smallModel</td><td>—</td><td>WebFetch digestion + compaction summaries; falls back to <code>model</code></td></tr>
+<tr><td class="mono">vision / visionConnection</td><td class="mono">false / —</td><td>§8</td></tr>
+<tr><td class="mono">clarify</td><td class="mono">true</td><td>The open-ended-request question pre-layer</td></tr>
+<tr><td class="mono">maxTokensPerResponse</td><td class="mono">32768</td><td>Per-response ceiling; a cutoff triggers rung 3</td></tr>
+<tr><td class="mono">maxTokensPerTurn</td><td class="mono">200000</td><td><b>Child sessions only</b> — root turns run uncapped</td></tr>
+<tr><td class="mono">maxIterationsPerTurn</td><td class="mono">50</td><td>Same scope</td></tr>
+<tr><td class="mono">retention.sessions / .tasks</td><td class="mono">100 / 100</td><td>Pruned when a root session starts</td></tr>
+<tr><td class="mono">permissions.allow / deny / allowExact</td><td class="mono">[]</td><td>§7</td></tr>
+<tr><td class="mono">hooks</td><td class="mono">{}</td><td>PreToolUse · PostToolUse · UserPromptSubmit · Stop · SessionStart</td></tr>
+<tr><td class="mono">mcpServers</td><td class="mono">{}</td><td>Stdio servers; tools land as <code>mcp__&lt;name&gt;__&lt;tool&gt;</code></td></tr>
+<tr><td class="mono">reuseCheck.mode</td><td class="mono">remind</td><td>§11 — <code>"gate"</code> in an old file loads as <code>"remind"</code></td></tr>
+<tr><td class="mono">pricing</td><td class="mono">{}</td><td>Per-model rate card override. No rate card anywhere → token counts with <b>no</b> cost estimate, never a guessed price</td></tr>
+<tr><td class="mono">worktree.baseRef</td><td class="mono">fresh</td><td><code>fresh</code> = origin's default branch, <code>head</code> = current HEAD</td></tr>
+<tr><td class="mono">allowInsecureTls</td><td class="mono">false</td><td>Process-wide. The engine warns loudly at boot while it is on</td></tr>
+</table>
+
+<h3>Where credentials live</h3>
+<table>
+<tr><th style="width:56mm">Location</th><th>Holds</th></tr>
+<tr><td class="mono">~/.magentra/profiles.json</td><td>Named connection profiles <b>including API keys</b>, mode <code>0600</code>. That is the point of a profile: pick it and you are connected, no re-entry.</td></tr>
+<tr><td class="mono">&lt;workspace&gt;/.env</td><td><code>MAGENTRA_API_KEY</code>, <code>MAGENTRA_VISION_API_KEY</code>. Written by the app before it sends <code>set_connection</code>.</td></tr>
+<tr><td class="mono">~/.magentra/settings.json</td><td><code>apiKey</code> when set via <code>/settings global apiKey …</code>. Never the project file — that one is shareable.</td></tr>
+</table>
+<p>Resolution is always <b>env var first, then the stored value</b>. A keyless local endpoint actively <i>clears</i> every key variable the process knows, so “no key configured” and “no key sent” mean the same thing (ADR 0007).</p>
+
+<h3>The <span class="mono">.magentra/</span> directory</h3>
+<table>
+<tr><th style="width:44mm">Path</th><th>Contents</th></tr>
+<tr><td class="mono">settings.json</td><td>Project settings</td></tr>
+<tr><td class="mono">sessions/*.jsonl</td><td>Append-only transcripts — one record per line: <code>message</code>, <code>system_prompt</code>, <code>permission</code>, <code>compaction</code>, <code>meta</code></td></tr>
+<tr><td class="mono">sessions/subagents/</td><td>Child-session transcripts</td></tr>
+<tr><td class="mono">sessions/archive/</td><td>Archived transcripts — move a file back to restore it</td></tr>
+<tr><td class="mono">tasks/</td><td>Persisted task lists + background-task output files</td></tr>
+<tr><td class="mono">worktrees/</td><td>Git worktrees from EnterWorktree — <b>whole second checkouts</b></td></tr>
+<tr><td class="mono">addons/</td><td><code>name.md</code> or <code>name/ADDON.md</code></td></tr>
+<tr><td class="mono">logs/</td><td>Desktop launch logs, secrets redacted, pruned</td></tr>
+<tr><td class="mono">scheduled_tasks.json</td><td>Durable cron jobs</td></tr>
+<tr><td class="mono">graph.json · symbols.json</td><td>The import graph and symbol index behind GraphQuery</td></tr>
+<tr><td class="mono">tmp/</td><td>Engine scratch</td></tr>
+</table>
+<p><code>Glob</code> ignores <code>.magentra/</code> <b>even under <code>dot:true</code></b> unless the pattern names it explicitly — sweeping up transcripts and second checkouts by accident is a large and silent waste of context.</p>
+
+<h3><span class="mono">STANDARDS.md</span></h3>
+<p>Not a settings key. A file at the workspace root (or <code>.magentra/STANDARDS.md</code> — root wins) is injected into the system prompt under “Coding standards (user-provided — binding)”. They outrank any default style guidance, and rung 8's wrap-up nudge asks the model to confirm the diff complies. Truncated at 16 KB on a line boundary.</p>
+</section>
+
+<!-- ═══════════════ 11 ═══════════════ -->
+<section>
+<h2>11 · The knowledge layer</h2>
+
+<p class="lede">Cheap, deterministic, model-free facts about the workspace. Everything here is a regex scan with an mtime+size cache — there is no AST in this repository, by design.</p>
+
+<h3>The import graph — <span class="mono">knowledge/graph.ts</span></h3>
+<p>A directed graph over source files. Node ids are workspace-relative paths with forward slashes; <b>genuinely external</b> packages live under synthetic <code>pkg:&lt;name&gt;</code> nodes that participate in the graph but are never scanned. A bare specifier naming a sibling package of this workspace (from the root <code>package.json</code>'s <code>workspaces</code>) resolves to that package's <i>source</i> entry instead — its manifest <code>exports</code> points at <code>dist/</code>, which the scan skips. Persisted to <code>.magentra/graph.json</code>, refreshed incrementally.</p>
+
+<div class="warn"><b>Cache version 3 (2026-08-01).</b> Entries are reused whenever a file's mtime+size are unchanged, so a change to import <i>extraction</i> is invisible on any workspace that already has a <code>graph.json</code> — every untouched file keeps the edges the old scanner found. <code>GraphData.version</code> must therefore be bumped alongside any extraction change; that is what makes the fix reach existing installs. Version 2 fixed two scanner defects: multi-line braced imports produced no edge at all (<code>RE_FROM</code>'s <code>[^;\n]*?</code> cannot cross a newline), and workspace packages resolved to <code>pkg:</code> nodes, which made <code>slice</code>/<code>blastRadius</code> stop at every package boundary — <code>types.ts</code> measured 2 transitive importers against a true 55. Version 3 anchored the side-effect-import pattern to a statement position: <code>\bimport\s*["']</code> also matched the word inside a <i>string</i>, so <code>if (path === "/api/import" &amp;&amp; req.method === "POST")</code> invented a package node named <code>&amp;&amp; req.method === </code>.</div>
+<p>Pure analytics over it: <b>PageRank</b>, <b>blast radius</b>, <b>articulation points</b>, <b>dependency slicing</b>. This is what <code>GraphQuery</code> exposes.</p>
+
+<h4>Two tiers (ADR 0004)</h4>
+<table>
+<tr><th style="width:28mm">Tier</th><th>Languages</th><th>Edges?</th></tr>
+<tr><td><b>Tier 1</b></td><td>TS/JS, Python, C/C++/Obj-C, Ruby, PHP, Java, Kotlin, Go, Rust</td><td>Real edges — resolved directly (<code>#include "foo.h"</code>) or by convention (<code>com.example.Foo</code> → <code>**/com/example/Foo.java</code>)</td></tr>
+<tr><td><b>Tier 2</b></td><td>Everything else, notably Swift and C#</td><td>Nodes only. Swift imports modules, not files; a C# <code>using</code> names a namespace that need not match any path. Inventing edges there would be guessing.</td></tr>
+</table>
+<div class="note"><b>The rule that governs the whole scanner: drop the edge when unsure.</b> A conservative miss is cheap. An invented edge poisons PageRank, the blast radius, and every consumer downstream.</div>
+
+<h3>The symbol index — <span class="mono">knowledge/symbols.ts</span></h3>
+<p>Top-level exported names per file. Mirrors <code>graph.ts</code> exactly: same caps, same skip rules, same incremental refresh, sibling <code>.magentra/symbols.json</code>. <code>SCAN_EXTS</code> is shared, so widening one widens the other — and a Go file sent to the TypeScript extractor yields nothing, <i>silently</i>.</p>
+<p>For Tier 2 languages, symbols are the <b>only</b> seed source there is, since those files carry no edges for rank to spread through.</p>
+
+<h3>The reuse gate — <span class="mono">knowledge/reuseGate.ts</span></h3>
+<p>When the agent Writes a brand-new source file, this asks — with zero model calls — whether code by a similar name already exists <i>and</i> whether the agent did any related search or read this session.</p>
+<div class="note"><b>It reminds; it never blocks.</b> The old refuse-once <code>"gate"</code> mode was retired on 2026-07-20. A silent refusal was the root cause of “it suddenly stops”: the signal survives a reminder, the refusal doesn't. Fail-open on any uncertainty. The decision table in <code>evaluateReuseGate</code> is normative and first-match top-down.</div>
+
+<h3>Seeds — <span class="mono">knowledge/seeds.ts</span></h3>
+<p>The one place that decides “which files does this topic concern”. Personalised-PageRank seeds come from explicit files, plus query keywords matched against file <b>paths</b> and declared <b>symbol names</b>. Paths alone are weak — “make the approval card show progress” matches no filename in most repositories — so symbols carry it.</p>
+
+<h3>Workspace shape — <span class="mono">knowledge/workspace.ts</span></h3>
+<p>Depth-1, never recursive, no cache: cheap enough to call every turn. It gates how much of a codebase overview the clarify pre-layer can afford before putting a question to the user.</p>
+</section>
+
+<!-- ═══════════════ 12 ═══════════════ -->
+<section>
+<h2>12 · Extension surfaces</h2>
+
+<h3>The prompt registry — <span class="mono">protocol/prompts.ts</span></h3>
+<p>Every piece of model-facing prose the engine sends is declared once with <code>definePrompt({id, group, label, channel, …})</code>, next to the code that uses it, with its default text in the source so the repo stays readable on its own. The registry adds two things: an enumerable catalog for an external editor, and a <b>per-prompt override read from a plain <code>.txt</code> file</b>, re-read live so editing a file changes the next turn without restarting.</p>
+<p>Channels: <code>system</code> · <code>system-conditional</code> · <code>reminder</code> · <code>tool</code> · <code>side-call</code> · <code>side-call-user</code> · <code>subagent</code>.</p>
+
+<h4>System prompt assembly</h4>
+<pre><code>buildSystemPrompt() =
+    behaviorCore()          identity · harness · communication · acting with
+                            care · git · code style · task list · working
+                            method · autonomy
+  + environmentBlock()      cwd · is-git-repo · platform · model · date
+  + addonsBlock()           name + description ONLY, one line each
+  + extraSections           dynamic sections, plus STANDARDS.md when present
+
+An emptied section header removes the WHOLE section, body and all —
+injecting a file's contents with no header would hand the model an
+unlabelled wall of text.</code></pre>
+
+<h3>Addons</h3>
+<p>A procedure the agent loads on demand: a Markdown file whose frontmatter says <i>when to reach for it</i> and whose body says <i>what to do</i>. Loaded from built-ins → <code>~/.magentra/addons/</code> → <code>&lt;cwd&gt;/.magentra/addons/</code>, later tiers replacing earlier ones by name. Layout is either a flat <code>&lt;name&gt;.md</code> or a <code>&lt;name&gt;/ADDON.md</code> directory whose sibling files are advertised as paths and fetched only if the body calls for them.</p>
+<p>Two invariants:</p>
+<ul>
+  <li><b>Always available.</b> No enabled state, no toggle, nothing ever injected automatically.</li>
+  <li><b>Cheap until used.</b> Only <code>name</code> and <code>description</code> ride in the system prompt; the body is loaded exactly once, when the <code>Addon</code> tool invokes it. The description is therefore a <i>routing condition</i>, not a summary — and it is where an expensive addon declares its cost.</li>
+</ul>
+
+<h4>What the generator teaches</h4>
+<p>An addon exists to buy <b>predictability</b> — the same <i>process</i> every run, not the same output. <code>buildAddonPrompt</code> encodes four rules that carry most of it, so every generated addon inherits them: end each step on a <b>checkable</b> condition (an agent that cannot tell done from not-done stops early, and the stopping looks like success); state the target behaviour rather than the ban (<i>don't think of an elephant</i> names the elephant); reach for a word the model already holds (<i>reconnaissance pass</i>, <i>blast radius</i>) instead of three sentences describing it; and cut any line the agent already obeys by default. Full guidance in <code>docs/ADDONS.md</code>; the principles are adapted from Mat Pocock's “writing great skills”.</p>
+
+<div class="warn"><b>The frontmatter parser splits at the FIRST colon.</b> Both this document's ancestors and the generator prompt once claimed a colon-space inside a value “would start a new key”. It does not — <code>frontmatter.ts</code> uses <code>line.indexOf(":")</code>, so <code>description: Use when X happens: then do Y</code> parses as one key. That false rule was taught to every generated addon until 2026-08-01. The real constraint is one <b>physical line</b> per value; a value that wraps loses its remainder. Pinned by <code>addon-check.mjs</code>.</div>
+<h4>Precedence — the user is above the addon</h4>
+<p>An invoked addon's body is prefixed with one registered header (<code>addon.invoke-header</code>, rendered by <code>addonInvocationHeader</code>) shared by both entry paths. It says the addon outranks the agent's <i>default behaviour</i> — and that the <b>user outranks the addon</b>: a message handing a decision back, asking it to stop, or narrowing the request is followed, and the procedure adapts.</p>
+<div class="warn"><b>Why that clause exists.</b> The header once said only that an addon's instructions "take priority over general guidance", naming no limit, and it was written out separately at both call sites in two packages. A procedure authored to be relentless — an interview addon — then kept questioning straight through a user delegating the decision back four times and asking it to stop, because nothing anywhere in the system placed the user above a loaded addon. Pinned by <code>addon-check.mjs</code>, which also fails if either call site re-inlines its own copy.</div>
+
+<h4>Naming an addon is invoking it</h4>
+<p>A leading slash anywhere in a message names an addon: <code>bana /grill-me yap</code>, <code>use /magentron on this</code>. <code>addonNamedIn()</code> detects it on a word boundary (a path like <code>src/grill-me</code> does not count, and the longest name wins so <code>/review</code> cannot shadow <code>/review-sql</code>), the roster block says a named addon is a request to use it, and a reminder points the turn at it.</p>
+<div class="warn"><b>It also suppresses the clarify pre-layer for that turn.</b> A message naming an installed addon is not open-ended — the procedure is on disk and its description is already in the prompt. Without the skip, <code>bana /grill-me yap</code> was answered with a menu asking <i>what /grill-me ought to do</i>: the one question the addon itself already answers. The skip sits outside the <code>clarify</code> branch, so naming an addon reaches it whether the pre-layer is on or off.</div>
+
+<p>Users invoke one directly as <code>/&lt;name&gt;</code>, dispatched through the same path as the tool. <code>generate_addon</code> authors one from plain language: one focused inference call, validated with the real parser, retried with the error appended up to three times. <code>install_addon</code> <b>re-validates</b> — a draft the user edited is never trusted.</p>
+
+<h3>Hooks — <span class="mono">agent/hooks.ts</span></h3>
+<p>User shell commands at <code>PreToolUse</code> · <code>PostToolUse</code> · <code>UserPromptSubmit</code> · <code>Stop</code> · <code>SessionStart</code>. The JSON payload is piped to stdin; stdout/stderr captured. <b>Hooks never throw</b> — a spawn failure yields exit code 127. <b>Exit code 2 is the block signal</b>: it stops the action and feeds the hook's stderr back as the reason.</p>
+
+<h3>MCP — <span class="mono">integrations/mcp.ts</span></h3>
+<p>Hand-rolled stdio client speaking JSON-RPC 2.0. Per the spec the stdio transport is <b>newline-delimited JSON</b> (one message per line, no embedded newlines) — Content-Length framing is <i>not</i> used. Handshake stays at 10 s regardless of config; <code>tools/call</code> defaults to 60 s because real MCP tools legitimately run long. A malformed entry is skipped with a warning; a server that fails to start contributes no tools.</p>
+
+<h3>Scheduling and background work</h3>
+<table>
+<tr><th style="width:34mm">Piece</th><th>Behaviour</th></tr>
+<tr><td class="mono">background.ts</td><td>Bash jobs, monitors, background agents. Output streams to <code>.magentra/tasks/&lt;id&gt;.output</code>. Completion queues a <code>&lt;task-notification&gt;</code> system-reminder for the next turn <i>and</i> emits <code>background_notification</code> immediately.</td></tr>
+<tr><td class="mono">cron.ts</td><td>Fires only when the cron matches the current minute <b>and</b> the loop is idle. Session-only unless <code>durable</code>. Recurring jobs carry a stable per-job jitter of 0–15 minutes derived from a hash of the job id, to avoid a thundering herd on round times.</td></tr>
+<tr><td class="mono">workflow.ts</td><td>Deterministic multi-agent orchestration in a <code>node:vm</code> sandbox, with a run journal and resume — an unchanged prefix of <code>agent()</code> calls returns cached results instantly.</td></tr>
+</table>
+
+<h3>Subagents</h3>
+<p><code>Session.spawnAgent()</code>, max 8 live children. A child gets a restricted tool set, its own transcript under <code>sessions/subagents/</code>, and <b>a reference to the parent's <code>SessionStats</code></b>. <code>emitFromChild</code> filters the child's events: turn and text events must not leak into the top-level stream (a frontend waiting for the outer <code>turn_finished</code> would otherwise stop on the child's <code>t_1</code>), while tool-call events pass through tagged with <code>agentId</code> so the UI can still show the work.</p>
+</section>
+
+<!-- ═══════════════ 13 ═══════════════ -->
+<section>
+<h2>13 · Concurrent workspaces</h2>
+
+<p class="lede">Up to four workspaces run at once, each fully alive. The decision that made it cheap: <b>one engine process per tab. The engine core and the wire protocol do not change at all.</b></p>
+
+<h3>The vocabulary (used verbatim in code)</h3>
+<table>
+<tr><th style="width:28mm">Term</th><th>Meaning</th></tr>
+<tr><td><b>Workspace</b></td><td>A folder. One <code>cwd</code>, one <code>.magentra/</code>, one git repo.</td></tr>
+<tr><td><b>Session</b> (= Chat)</td><td>One conversation within a workspace, at <code>.magentra/sessions/&lt;id&gt;.jsonl</code>. The UI word “chat” and the code word “session” are the same thing.</td></tr>
+<tr><td><b>Engine</b></td><td>One OS subprocess bound to one workspace, hosting one live session.</td></tr>
+<tr><td><b>Tab</b></td><td>A live workspace: its engine + focused session + its slice of renderer state. The unit of concurrency, keyed by a <code>tabId</code> the main process mints.</td></tr>
+</table>
+
+<h3>The three rules</h3>
+<ol>
+  <li><b>Same-folder rule.</b> At most one live session per folder. Opening a folder that is already open <i>focuses its existing tab</i>. This eliminates every shared-<code>.magentra</code> and shared-git race <b>by construction</b>. Enforced in the main process, so the renderer cannot violate it.</li>
+  <li><b>Hard cap of 4.</b> A fifth open is refused — no eviction, no LRU sleep, no idle timeout. Global across all windows. Memory tops out at four engines.</li>
+  <li><b>No cross-tab awareness.</b> Tabs do not know about each other. No shared engine, no shared state, no messaging.</li>
+</ol>
+
+<h3>Why not multiplex sessions inside one engine?</h3>
+<p>Because the engine is hard single-session in three load-bearing places: a single <code>this.session</code> field (replaced, not registered), a <b>single-consumer</b> <code>AsyncQueue</code>, and one engine-level <code>busy</code>/<code>turnPromise</code>. Multiplexing would mean a session registry, per-session busy state, a <code>sessionId</code> on <i>every</i> frame (a protocol break) and a multi-consumer fan-out. And multi-<i>workspace</i> would <i>still</i> need a pool of those engines — so it buys both complexities and, under the same-folder rule, nothing at all.</p>
+
+<h3>Main process — the router</h3>
+<pre><code>engineTabs: Map&lt;tabId, EngineTab&gt;
+  EngineTab { id, workspace, model, child, dying, stdoutBuffer,
+              stderrBuffer, win }
+
+win.mgActiveTabId          per-WINDOW focused tab
+tab.win                    which window owns this tab
+
+outbound:  every engine stdout event is tagged with its tabId and
+           routed to tab.win
+inbound :  every renderer request names its tabId; an untagged one
+           resolves to the SENDER window's active tab
+
+tab.dying  holds a child from a previous stopEngine that has not exited
+           yet. A replacement for the SAME tab must never spawn while it
+           lives — two engines on one workspace race over its state.</code></pre>
+
+<h3>Renderer — the state swap</h3>
+<p>One renderer, not an iframe per tab (that would duplicate the whole UI on top of four engine processes). Instead <code>Map&lt;tabId, TabState&gt;</code>, where each <code>TabState</code> bundles that tab's console state <b>including its own detached <code>streamEl</code></b> — the transcript DOM subtree.</p>
+<pre><code>applyTabState(tabs[event.tabId]);
+handleEngineEvent(event);            ← handlers stay completely unchanged
+captureTabState(...);</code></pre>
+<p>Two rules make it correct:</p>
+<ol>
+  <li><b>Enumerate the bundle completely.</b> Any per-conversation singleton left out leaks across tabs. <code>TAB_ACCESSORS</code> is the single source of truth for “what is per-tab”: <code>streamEl</code>, <code>busy</code>, <code>currentSessionId</code>, <code>contextTokens</code>, <code>toolRows</code>, <code>backgroundJobs</code>, <code>permissionQueue</code>, <code>activePermission</code>, <code>currentTasks</code>, the live-turn DOM pointers…</li>
+  <li><b>Suppress shared-chrome writes for a non-focused tab.</b> <code>chromeIsFocused()</code> guards every chrome updater, so a background tab's turn cannot repaint the focused tab's composer, LED, meter or model picker. On focus change the chrome is re-rendered once from the newly focused state.</li>
+</ol>
+
+<h3>Per-tab correctness — the side effects that must stay right</h3>
+<ul>
+  <li><b>Questions and approvals route to the tab that asked.</b> The card renders into <i>that</i> tab's <code>streamEl</code>, and the reply goes to <i>that</i> tab's engine. In a split view two tabs can have a pending question at once.</li>
+  <li><b>Each tab may run a different model</b> and a different connection. The shared composer's model picker edits the <b>focused</b> tab. <code>currentConfig.model</code> in main is only the <i>default</i> a newly opened tab starts on.</li>
+  <li><b>Connection and vision act on the tab their menu was opened from</b>, never on whatever is focused — with several workspaces open, “the focused one” is a different workspace with a different connection, and acting on it would silently repoint the wrong engine. The attach picker follows the same rule.</li>
+</ul>
+
+<h3>Layout</h3>
+<p>Multiple open tabs <b>auto-tile</b> — the split is simply how multi-tab looks. 2 tabs = two columns; 3 = two on top, one full-width “big” pane below (the user chooses which is big); 4 = a 2×2 grid. Each pane has <b>its own message input</b> wired to that pane's engine, and the shared bottom composer hides. The inspector auto-hides past one tab but stays reopenable.</p>
+</section>
+
+<!-- ═══════════════ 14 ═══════════════ -->
+<section>
+<h2>14 · The desktop app</h2>
+
+<h3>Main process</h3>
+<table>
+<tr><th style="width:34mm">File</th><th>Owns</th></tr>
+<tr><td class="mono">main.js</td><td>Windows, the engine pool, all IPC handlers, the attach-file picker, connection application, workspace opening</td></tr>
+<tr><td class="mono">main/config.js</td><td><code>config.json</code> (recents, model, theme, window bounds), atomic JSON writes, settings-file readers, base-URL normalisation, <code>isLocalBaseUrl</code></td></tr>
+<tr><td class="mono">main/profiles.js</td><td><code>~/.magentra/profiles.json</code> — CRUD, mode <code>0600</code>, sanitising for IPC (the renderer never receives a raw key), vision-pointer resolution</td></tr>
+<tr><td class="mono">main/connection.js</td><td>Validating a connection payload, <code>.env</code> writing, resolving the vision selection</td></tr>
+<tr><td class="mono">main/logging.js</td><td>Per-workspace launch logs, secret redaction, pruning</td></tr>
+<tr><td class="mono">main/updates.js</td><td>The two update tiers (§15)</td></tr>
+<tr><td class="mono">main/changes.js</td><td>The review drawer and Undo</td></tr>
+</table>
+
+<h4>Two things main does that look odd until you know why</h4>
+<ul>
+  <li><b>It reads attachments itself.</b> Images and documents are read in main, not the renderer (sandboxed) and not the engine. Caps span the whole pending set — 15 files, 2 MB total — because attachments accumulate across repeated “+” clicks. Documents reuse the engine's own dependency-free extractor rather than a second implementation.</li>
+  <li><b>It writes <code>.env</code> and <code>settings.json</code> <i>before</i> sending <code>set_connection</code>.</b> The engine persists nothing on a swap. A second writer inside the engine would race the first over the same file (ADR 0007).</li>
+</ul>
+
+<h3>Preload</h3>
+<p><code>contextBridge</code> only. The renderer touches nothing else — no <code>require</code>, no <code>fs</code>, no direct IPC.</p>
+
+<h3>Renderer — 18 classic scripts, one global scope, no bundler</h3>
+<pre><code>dom · tokens · state · rain · util · math · markdown · views ·
+workbench · tasks · addons · overdrive · tour · stream · setup ·
+events · landing · session · updates · tabs · composer</code></pre>
+<p>Load order in <code>index.html</code> <b>is</b> the dependency order — there are no imports to express it. <code>state.js</code> declares the module-level singletons with <code>let</code> rather than <code>const</code> specifically so <code>tabs.js</code> can reassign them during the per-tab swap.</p>
+
+<table>
+<tr><th style="width:26mm">Module</th><th>Responsibility</th></tr>
+<tr><td class="mono">stream.js</td><td><code>handleEngineEvent</code> — the switch every <code>CoreEvent</code> lands in</td></tr>
+<tr><td class="mono">tabs.js</td><td><code>TabState</code>, <code>TAB_ACCESSORS</code>, focus/close, the tiling layout</td></tr>
+<tr><td class="mono">composer.js</td><td>Input, attachments, <code>imageFrameParts</code>, <code>composeWithAttachments</code>, send/steer, the slash palette</td></tr>
+<tr><td class="mono">setup.js</td><td>The connection wizard and profile management — including choosing a profile's vision model</td></tr>
+<tr><td class="mono">landing.js</td><td>The welcome page and recents</td></tr>
+<tr><td class="mono">workbench.js</td><td>Inspector, task rail, meters</td></tr>
+<tr><td class="mono">markdown.js / math.js</td><td>Hand-rolled rendering — no marked, no KaTeX</td></tr>
+<tr><td class="mono">tokens.js</td><td>The renderer's mirror of the token algebra (§9)</td></tr>
+</table>
+
+<h4>Attachments: text is inlined, images are not</h4>
+<pre><code>composeWithAttachments()   text/doc files → inlined into the message with
+                           a preamble telling the model they are SNAPSHOTS,
+                           not paths on disk (so it does not try to Read them)
+
+imageFrameParts()          images → the frame's `images` array, untouched.
+                           The engine replaces them with the vision model's
+                           description before the main model ever sees the
+                           message.</code></pre>
+
+<h4>The slash palette is caret-anchored, and the registry is never derived</h4>
+<p>The palette completes the <code>/word</code> under the <b>caret</b>, not the start of the input, so <code>/</code> offers commands anywhere in a message. The token must begin at a word boundary, which is what keeps <code>http://host</code> and <code>src/foo</code> from opening it. Completion splices just that token.</p>
+<p>Two behaviours split on whether the token is the whole message (<code>atStart</code>) — the same test the submit path uses, so the palette and what actually gets dispatched cannot disagree.</p>
+<table>
+<tr><th style="width:34mm">Where</th><th>Offers</th><th><kbd>Enter</kbd></th></tr>
+<tr><td>Start of message</td><td>every command — built-ins and addons</td><td>completes an unfinished name, then submits</td></tr>
+<tr><td>Mid-message</td><td><b>addons only</b> (<code>SlashCommandInfo.addon</code>)</td><td><b>sends</b>; <kbd>Tab</kbd> completes</td></tr>
+</table>
+<p>Mid-message the palette is helping you <i>name</i> something, not run it — nothing dispatches from inside a sentence, so completing <code>/compact</code> there writes a word that can never fire. An addon's name is the one thing worth completing in prose (“compare this with <code>/magentron</code>”). And stealing <kbd>Enter</kbd> to finish a word nobody asked to finish is the surprise <kbd>Tab</kbd> exists to avoid.</p>
+<p>Two commands are answered by the renderer rather than the engine. <code>/clear</code> wipes the local transcript alongside the frame it sends; <b><code>/settings</code> with no arguments opens the Settings view and sends nothing at all</b> — the engine's text listing is the right answer for a frontend with no UI and the wrong one here, where the values have a real editor. <code>/settings &lt;key&gt; &lt;value&gt;</code> still goes to the engine untouched: that path validates against the schema, writes the file and applies the value live, and no UI replaces it.</p>
+
+<div class="note"><b>The command list always comes from the engine.</b> The frontend never builds <code>/&lt;name&gt;</code> itself. That registry used to arrive only on <code>session_started</code>, so an addon installed mid-session appeared in the Addons view but not under <code>/</code> until a restart — the engine would have dispatched it perfectly well. <code>addons_updated</code> now carries the same list.</div>
+
+<h3>Three themes</h3>
+<p><code>light</code> · <code>workbench</code> · <code>matrix</code>. The theme name is mirrored into main because the window's pre-paint <code>backgroundColor</code> and the native titlebar overlay are both set before the renderer runs — that mirror is what stops a dark frame flashing ahead of a light UI, the one frame the renderer cannot repaint.</p>
+</section>
+
+<!-- ═══════════════ 15 ═══════════════ -->
+<section>
+<h2>15 · Build, packaging, release, update</h2>
+
+<h3>Where the engine comes from at runtime</h3>
+<pre><code>engineEntryPoint()                              app/main.js:204
+
+  packaged     process.execPath
+               + resources/engine/engine.cjs
+               + ELECTRON_RUN_AS_NODE=1
+               → one bundled CJS file, no node_modules on disk
+
+  development  node engine/host/dist/main.js
+               → the compiled host straight out of the workspace</code></pre>
+
+<div class="warn"><b>The dev launcher does not build.</b> <code>npm run app</code> → <code>app/scripts/launch.js</code> spawns Electron and nothing else. Main then spawns whatever <code>dist/</code> happens to be on disk. Engine source changes are invisible until you run <code>npm run build</code> (<code>tsc -b</code>) yourself — and the failure is silent, presenting as a feature that simply does not happen. This is a deliberate, known trade-off; it cost a full debugging session on 1 August 2026 (§8).</div>
+
+<h3>Packaging — <span class="mono">app/scripts/bundle-engine.js</span></h3>
+<ol>
+  <li><b>The engine</b> → one CommonJS file via esbuild.</li>
+  <li><b>ripgrep</b> → the right prebuilt <code>rg</code> per OS copied in beside the bundle. A missing <code>rg</code> for a <i>target</i> OS fails the build: shipping an artifact whose Grep is broken must never happen silently.</li>
+  <li><b>The app</b> → main/preload/renderer minified into <code>build-resources/app</code>. Dev keeps the readable sources.</li>
+  <li><b>doc-extract.mjs</b> → the engine's document extractor as a standalone ESM bundle, because the attach picker runs in main and reuses it.</li>
+  <li><b>tui.mjs</b> → the terminal UI (<code>tui/src/cli.tsx</code>, ink + react + yoga) as one ESM bundle — ESM because ink's reconciler and yoga-layout use top-level await; yoga's wasm rides base64-embedded, so no sidecar ships. <code>react-devtools-core</code> is aliased to <code>app/shims/devtools-shim.cjs</code>: ink gates devtools behind <code>process.env['DEV']</code>, whose bracket access dodges a define fold, and the never-installed optional peer would otherwise become an eager external import that breaks ESM linking at every launch.</li>
+</ol>
+
+<h3>The <code>magentra</code> terminal command</h3>
+<p>One name, dispatched by context. An interactive terminal (<code>-t 0 && -t 1</code>, no <code>--gui</code>) gets the terminal UI — <code>ELECTRON_RUN_AS_NODE=1 &lt;electron&gt; resources/engine/tui.mjs</code>, which starts no Chromium, so the sandbox question never arises on that branch. Everything else (desktop entries, double-clicks, <code>--gui</code>) gets the GUI exactly as before.</p>
+<table>
+<tr><th style="width:42mm">OS</th><th>Where the dispatch lives</th></tr>
+<tr><td>Linux</td><td>the <code>afterPack.js</code> wrapper (the file the deb symlinks to <code>/usr/bin/magentra</code> and AppImage execs); sandbox logic below the TUI branch is unchanged</td></tr>
+<tr><td>Windows</td><td>NSIS setup writes <code>bin\magentra.cmd</code> + appends <code>$INSTDIR\bin</code> to the HKCU PATH (<code>app/build/installer.nsh</code>, removed on uninstall; portable exe has no command). A cmd shim cannot test TTY, so the TUI itself hands no-TTY/<code>--gui</code> launches to the GUI</td></tr>
+<tr><td>macOS</td><td><code>Contents/Resources/bin/magentra</code>, written by <code>afterPack.js</code> (exec bit survives a Windows checkout that way); PATH = one documented symlink</td></tr>
+</table>
+
+<h3>The Windows sandbox rescue</h3>
+<p>Linux decides the sandbox question <i>in front of</i> the process, because Chromium makes that decision before any app code runs and no relaunch can save a packaged build. Windows has no wrapper to put there, so <code>app/main.js</code> does it reactively: a renderer that dies <b>before its first paint</b> with the sandbox on relaunches once with <code>--no-sandbox</code>, logged as <code>sandbox-rescue-relaunch</code>. The argv check is the loop guard — a crash <i>under</i> <code>--no-sandbox</code> is a real crash and stays fatal. It exists because per-user installs under <code>%LOCALAPPDATA%\\Programs</code> died at boot on machines whose AppData tree carries reshaped ACLs: every sandboxed child was killed at birth while the same bytes ran fine elsewhere.</p>
+
+<h3>What a terminal session establishes before it starts</h3>
+<p><code>magentra</code> starts wherever the shell happens to be standing, which is the one thing the desktop app never has to reason about — the IDE is always opened <i>at</i> something. So a terminal session settles two questions in a fixed order, in <code>tui/src/trust.ts</code> and <code>useEngine</code>:</p>
+<ol>
+<li><b>Trust.</b> A folder with no record in <code>~/.magentra/trusted-folders.json</code> gets a gate, and until it is answered <b>nothing is spawned and nothing is written</b>. Declining quits. The record is global and inherited by subfolders, matched on path <i>segments</i> so <code>…/work</code> never trusts <code>…/workspace</code>; a marker inside the workspace would be worthless, since the folder being judged could ship one and a clone would arrive pre-trusted. The gate runs <b>ahead of the profile picker</b> on purpose: picking a profile writes an API key into <code>&lt;ws&gt;/.env</code>, which is itself an act of trusting the folder.</li>
+<li><b>Stance.</b> A trusted folder's <i>fresh</i> session boots into OVERDRIVE — one <code>set_overdrive</code> on the first <code>session_started</code>. A <i>resumed</i> session is left alone: the engine deliberately restores the stance its transcript recorded, and a terminal default must not override a decision the user already made.</li>
+</ol>
+
+<h3>The terminal's layout core</h3>
+<p>Committed transcript lines live inside Ink's <code>&lt;Static&gt;</code>, which Ink lays out as an <b>absolutely positioned, content-sized</b> box. Two things follow, and both shipped broken: <code>flexGrow</code> spacers collapse there, so every right-aligned column printed jammed against its neighbour (<code>done.out 20 ↑</code>); and wrapped continuations did not stay under the text they belonged to. <code>tui/src/markdown.ts</code> therefore owns wrapping and column arithmetic in <b>display cells</b>, and <code>TranscriptLine</code> computes right alignment by hand from the terminal width. Because the live streaming line and the committed line now call that same function at the same width, a paragraph reaches its final shape <i>while</i> it streams instead of re-wrapping the instant the turn ends. <code>tui-layout-check.mjs</code> guards all of it.</p>
+
+<h3>Why the terminal repaints on a frame timer</h3>
+<p>Ink runs on a <b>legacy React root</b>, so updates arriving from the host's stdout are not batched: one <code>setState</code> per <code>text_delta</code> meant one full render, one yoga layout and one terminal repaint <i>per delta</i>. Measured against a scripted host on a 2000-delta answer — 10 KB of text the engine wrote in 12 ms — the frontend needed <b>1587 ms</b> and emitted <b>2510 writes / 2.2 MB</b> of escape output, 216× the text it was showing. That, not the model or the wire, is why the terminal felt slower than the desktop app. Deltas and committed lines now accumulate in refs and flush on a <b>leading-edge ~30 fps throttle</b>: the first token still paints immediately, and only a stream already painting inside the last frame is deferred. Same answer: <b>87 ms, 11 writes, 22 KB</b>.</p>
+
+<h3>Versioning (ADR 0008)</h3>
+<p>The version is <b>semver</b>, three parts. A break is MAJOR, a <code>feat</code> is MINOR, <b>everything else is PATCH</b> — including <code>docs</code>, <code>chore</code> and <code>style</code>, so every recognised commit moves the version and every push to <code>main</code> releases.</p>
+<p>The old fourth BUILD part was dropped because <code>dist.js</code> truncated it at packaging time, so two releases reported the same version and <code>semver.eq(latest, current)</code> answered “no update available” — <b>the updater was silently dead for every BUILD-only release.</b> Per-commit traceability moved to the git commit the build carries.</p>
+<p><code>version.config.json</code> lists all eight <code>package.json</code> targets kept in lockstep (the seven original workspaces plus <code>tui/</code>).</p>
+
+<h3>Updates — two tiers, decided by install format (ADR 0009)</h3>
+<table>
+<tr><th style="width:42mm">Format</th><th>Tier</th></tr>
+<tr><td>Windows NSIS</td><td><b>self-update</b></td></tr>
+<tr><td>Linux AppImage / writable</td><td><b>self-update</b></td></tr>
+<tr><td>Windows portable</td><td>assisted</td></tr>
+<tr><td>macOS dmg</td><td>assisted</td></tr>
+<tr><td>Linux deb, tar.gz</td><td>assisted</td></tr>
+</table>
+<p>MAGENTRA ships unsigned and will keep shipping unsigned — that is the constraint the mechanism is built on, not a gap. Squirrel.Mac validates the replacement bundle's signature against the running app, so an unsigned macOS build can <i>never</i> replace itself no matter how the updater is written.</p>
+<p><b>Self-update</b> asks first, then downloads with progress and installs on quit; nothing reaches the network before one click. <b>Assisted</b> opens the browser on the exact asset for that format — not the releases page — so the user never picks from a list of eight files.</p>
+<div class="note"><b>The assisted tier is a peer, not a fallback.</b> Roughly a third of installs live there permanently, so it does not sit in a <code>catch</code> block. And Windows <code>portable</code> must be detected by <code>PORTABLE_EXECUTABLE_DIR</code>, never by <code>process.platform === "win32"</code> — without that test a portable user is handed the NSIS installer, which silently installs a second copy that then diverges from the one they keep launching.</div>
+
+<h3>Testing</h3>
+<p>The engine is designed to run against <code>FakeProvider</code> — scripted turns, no network, no key — over a temp-dir workspace. Today's automated coverage: the version tool (<code>npm run test:version</code>) and the app suites (<code>npm run test:main</code> — changes, window, connection, reasoning, vision, updates — plus <code>test:ui</code>, 32 real Electron scenarios).</p>
+
+<p><code>engine/*</code> still has no unit suite, so its invariants are guarded by purpose-built checks under <code>.claude/skills/bigboycoding/</code>, each importing from <code>dist/</code> and asserting directly: <code>permission-check</code> (23), <code>addon-check</code> (28), <code>tools-check</code> (61 — every registered tool's contract, plus the read-only ones actually executed), and <code>glob-state-dir-check</code>. Write another on the same pattern when you change an engine invariant nothing else guards. <code>FEATURES.md</code> tracks per-feature test status honestly, and its rule is worth repeating: <i>a test that asserts a mock returned what the mock was told to return is not a test.</i></p>
+</section>
+
+<!-- ═══════════════ 16 ═══════════════ -->
+<section>
+<h2>16 · Invariants, tripwires and known drift</h2>
+
+<h3>Invariants — break one and the app breaks in a way that is hard to see</h3>
+<table>
+<tr><th style="width:46mm">Invariant</th><th>What breaks if you violate it</th></tr>
+<tr><td><b>The protocol is the only surface</b></td><td>A private reference from app into engine internals makes a second frontend impossible and the seam untestable.</td></tr>
+<tr><td><b>The event queue has one consumer</b></td><td>A second concurrent consumer silently steals events from the first. This is why multi-workspace is a process pool.</td></tr>
+<tr><td><b>One live session per folder</b></td><td>Two engines writing the same <code>.magentra/</code> and the same git repo.</td></tr>
+<tr><td><b>A tab's <code>dying</code> child must exit before a replacement spawns</b></td><td>Two engines race over one workspace's state.</td></tr>
+<tr><td><b>Every dangling <code>tool_use</code> gets a <code>tool_result</code></b></td><td>The provider rejects the next request, and <code>/resume</code> replays the wound forever.</td></tr>
+<tr><td><b><code>TAB_ACCESSORS</code> enumerates every per-conversation singleton</b></td><td>Anything left out leaks across tabs — one workspace's tool rows appearing in another's transcript.</td></tr>
+<tr><td><b>Chrome updaters no-op for a non-focused tab</b></td><td>A background tab's turn repaints the focused tab's composer, LED and meter.</td></tr>
+<tr><td><b>Never add B(t), D(t) and T_turn</b></td><td>A context meter that climbs forever, or a cost figure that is really a window size.</td></tr>
+<tr><td><b>State keys are additive-only</b></td><td>Going back one version stops being safe, and MAGENTRA has no migration machinery on purpose.</td></tr>
+<tr><td><b>Drop the graph edge when unsure</b></td><td>An invented edge poisons PageRank, blast radius and every consumer downstream.</td></tr>
+<tr><td><b>The finishing ladder's order</b></td><td>Anything ranked below self-verify never runs on a turn that goes well, because a DONE breaks the loop where it stands.</td></tr>
+<tr><td><b>Each rung fires once per turn</b></td><td>Every re-fire is a full-context round trip. The incomplete-tasks rung once charged six of them for one six-task plan.</td></tr>
+</table>
+
+<h3>Mirrored constants — change both or ship a silent contradiction</h3>
+<table>
+<tr><th style="width:40mm">Value</th><th style="width:40mm">Engine side</th><th>App side</th></tr>
+<tr><td>Image types</td><td class="mono">tools/src/read.ts</td><td class="mono">main.js IMAGE_TYPES</td></tr>
+<tr><td>Local/LAN endpoint test</td><td class="mono">config/providerFactory.ts</td><td class="mono">main/config.js isLocalBaseUrl</td></tr>
+<tr><td>Vision key env var</td><td class="mono">config/settings.ts</td><td class="mono">main/config.js VISION_API_KEY_ENV</td></tr>
+<tr><td>Default base URL</td><td class="mono">config/settings.ts</td><td class="mono">main/config.js DEFAULT_BASE_URL</td></tr>
+<tr><td>Theme names + order</td><td>—</td><td class="mono">main/config.js ↔ renderer/state.js</td></tr>
+<tr><td>Token algebra</td><td class="mono">protocol/tokens.ts</td><td class="mono">renderer/modules/tokens.js</td></tr>
+</table>
+<p>When <code>isLocalBaseUrl</code> and its twin disagreed, the app accepted a keyless LAN endpoint that the engine then refused to boot on. <code>app/tests/connection.test.js</code> asserts they agree.</p>
+
+<h3>Known drift — documentation behind the code, found while writing this</h3>
+<table>
+<tr><th style="width:44mm">Where</th><th>Drift</th></tr>
+<tr><td class="mono">docs/SETTINGS.md</td><td>Documents <code>compactionThreshold: 0.8</code>. <b>That key is not in <code>settingsSchema</code>.</b> The real mechanism is <code>autoCompactLimit</code> — an absolute token count whose only source is the UI's <code>set_compact_limit</code> frame.</td></tr>
+<tr><td class="mono">docs/PROTOCOL.md</td><td>Five frames exist in <code>types.ts</code> but are undocumented: <code>set_model</code>, <code>set_compact_limit</code>, <code>steer_message</code>, <code>session_report</code>, <code>overdrive_changed</code>. <code>set_connection</code> is named but has no section.</td></tr>
+<tr><td class="mono">docs/SETTINGS.md</td><td>The “Embeddings” section is an empty table with no keys.</td></tr>
+<tr><td class="mono">docs/ARCHITECTURE.md</td><td>Says per-project instruction files “are not read yet”, but <code>STANDARDS.md</code> is loaded into the system prompt (<code>knowledge/standards.ts</code>). It also says no engine test framework is wired up, while <code>app/tests/</code> now carries six suites.</td></tr>
+</table>
+<p>None of these change behaviour — they change what a reader believes the behaviour is, which is the more expensive kind of error.</p>
+</section>
+
+<!-- ═══════════════ 17 ═══════════════ -->
+<section>
+<h2>17 · Concept → file index</h2>
+
+<table>
+<tr><th style="width:50mm">If you are looking for…</th><th>Go to</th></tr>
+<tr><td>The turn loop, every rung, compaction, subagent spawn</td><td class="mono">engine/core/src/runtime/session.ts</td></tr>
+<tr><td>Request dispatch, slash commands, addon generation, session list/resume/rename/archive, live model &amp; connection swap</td><td class="mono">engine/core/src/runtime/engine.ts</td></tr>
+<tr><td>Every event and request shape</td><td class="mono">engine/protocol/src/types.ts</td></tr>
+<tr><td>Token definitions</td><td class="mono">engine/protocol/src/tokens.ts</td></tr>
+<tr><td>Prompt registry, override files, channels</td><td class="mono">engine/protocol/src/prompts.ts</td></tr>
+<tr><td>System-prompt sections</td><td class="mono">engine/core/src/agent/prompts.ts</td></tr>
+<tr><td>Finishing-rung prose and predicates</td><td class="mono">engine/core/src/runtime/finishing.ts</td></tr>
+<tr><td>Permission resolution, deletion guard, grant shapes</td><td class="mono">engine/core/src/runtime/permissions.ts</td></tr>
+<tr><td>The settings schema — the source of truth</td><td class="mono">engine/core/src/config/settings.ts</td></tr>
+<tr><td>Turning settings into a Provider</td><td class="mono">engine/core/src/config/providerFactory.ts</td></tr>
+<tr><td>Image parts on the wire</td><td class="mono">engine/providers/src/openai-compat.ts</td></tr>
+<tr><td>Tool registration list</td><td class="mono">engine/tools/src/index.ts</td></tr>
+<tr><td>NDJSON server, shutdown, interrupt-on-EOF</td><td class="mono">engine/host/src/serve.ts</td></tr>
+<tr><td>Engine pool, tab routing, IPC, attachments</td><td class="mono">app/main.js</td></tr>
+<tr><td>Profiles and the vision pointer</td><td class="mono">app/main/profiles.js</td></tr>
+<tr><td>Connection validation and <code>.env</code> writing</td><td class="mono">app/main/connection.js</td></tr>
+<tr><td><code>TabState</code>, the swap, tiling</td><td class="mono">app/renderer/modules/tabs.js</td></tr>
+<tr><td>The event switch</td><td class="mono">app/renderer/modules/stream.js</td></tr>
+<tr><td>Attachments and the send path</td><td class="mono">app/renderer/modules/composer.js</td></tr>
+<tr><td>The connection wizard</td><td class="mono">app/renderer/modules/setup.js</td></tr>
+<tr><td>Engine bundling and ripgrep</td><td class="mono">app/scripts/bundle-engine.js</td></tr>
+<tr><td>Why a decision was made</td><td class="mono">docs/adr/ · CONTEXT.md</td></tr>
+<tr><td>Honest test status</td><td class="mono">FEATURES.md</td></tr>
+</table>
+
+<h3>The five files that explain the most per line</h3>
+<ol>
+  <li><code>engine/protocol/src/types.ts</code> — 449 lines. The whole contract.</li>
+  <li><code>engine/core/src/runtime/session.ts:1238–1735</code> — <code>runTurn</code>. The agent's entire behaviour.</li>
+  <li><code>engine/core/src/config/settings.ts</code> — every knob, each with a comment saying <i>why</i> it exists.</li>
+  <li><code>docs/CONCURRENT-WORKSPACES.md</code> — the multi-tab design and the rejected alternative.</li>
+  <li><code>CONTEXT.md</code> — the ubiquitous language. Short, and it names the concepts the code assumes you already hold.</li>
+</ol>
+
+<div class="footer-note">
+MAGENTRA 0.16.6 · compiled 1 August 2026 from the working tree at <span class="mono">5da5d85</span>.<br>
+Source: <span class="mono">docs/big-picture/big-picture.html</span> · rebuild with <span class="mono">npx electron docs/big-picture/render.mjs</span>.<br>
+Where this document and the code disagree, the code is right.
+</div>
+</section>
+
+</body>
+</html>

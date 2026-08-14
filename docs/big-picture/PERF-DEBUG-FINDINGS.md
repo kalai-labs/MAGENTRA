@@ -1,6 +1,6 @@
 # Performance debugging findings — MAGENTRA on Terminal-Bench 2.0
 
-Answers to `PERF-DEBUG-BRIEF.md`, measured from the per-task event logs in
+Measured from the per-task event logs in
 `benchmarks/terminal-bench/jobs/tb2-GLM-5-20260810-2311-b*/`. 86 trials,
 18.04 h of agent wall clock, 1,996 model calls, 2,373 tool calls.
 
@@ -47,7 +47,7 @@ model call — is small and nearly flat in prompt size:
 Total prefill across the whole run is 0.98 h — 5.4%. Overall decode is
 44.8 tok/s and does **not** degrade as the conversation grows.
 
-This retires two of the brief's open questions. **Q4 (is the agent re-reading
+This retires two open questions. **Q4 (is the agent re-reading
 context it already has?)** — irrelevant to speed. The 96.9% cache-read rate is
 doing its job; growing context costs ~0.7 s of extra TTFT between an empty
 conversation and a 130k one. **Q5 (does `contextWindow` 202,752 help or hurt?)**
@@ -164,7 +164,7 @@ is GLM-5 reasoning runaway, and MAGENTRA has no guard against it.
 
 ## What the evidence supports
 
-The brief's hypothesis holds, with a sharper target than "throughput". Ranked by
+The throughput hypothesis holds, with a sharper target than "throughput". Ranked by
 measured hours recoverable:
 
 1. **Stop re-emitting whole files.** 3.22 h in `Write`, 26.3% of the timed-out
@@ -184,14 +184,22 @@ measured hours recoverable:
 Not worth doing, on this evidence: context-window A/B (Q5), context-growth work
 (Q4), and anything in the scheduling loop — engine overhead is unmeasurable.
 
-## What is still unknown
+## Resolved after this document was written
 
-The Terminus 2 control run is **not usable yet** — only batch b01 exists, 6
-tasks, 2 verifier rewards written. The brief is right that this number decides
-what the target is, and it does not exist. One suggestive data point:
-`break-filter-js-from-html`, which MAGENTRA timed out on, Terminus scored 1.
-That is n=1 and should not be leaned on.
+The Terminus 2 control run — unavailable when the above was measured — has since
+landed: **34/89 = 38.2%** against MAGENTRA's 36/89 = 40.4%, and Terminus timed
+out on **26/86 (30.2%)** against MAGENTRA's 22 (25.6%).
 
-The 42%-conversion arithmetic in the brief assumes the timed-out tasks are of
-average difficulty. They are not a random sample — they are the long ones. The
-honest read of "finish all 22 → ≈52%" is an upper bound, not an estimate.
+This does not change any measurement here, but it **bounds the conclusions**. A
+harness that never calls MAGENTRA's `Write` hits the wall at least as often, so
+whole-file re-emission cannot be the sole cause of the timeout ceiling — some of
+it is the endpoint's decode rate, which no harness change reaches. Size any
+expected gain from item 1 against that, and do not treat Terminus's published
+52.4% as a target: it did not reproduce here.
+
+The 42%-conversion arithmetic ("finish all 22 → ≈52%") assumes the timed-out
+tasks are of average difficulty. They are not a random sample — they are the long
+ones. Read it as an upper bound, not an estimate.
+
+See `HARNESS-PERF-STATE.md` for the reconciled picture and the comparison's
+audited caveats.

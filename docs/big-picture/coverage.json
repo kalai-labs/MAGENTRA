@@ -1,0 +1,304 @@
+{
+  "_comment": "Maps each BIG-PICTURE.pdf section to the source it documents. `hash` is a fingerprint of those files at the moment the section was last verified; `bigpicture.mjs check` compares it against the code now and names the sections that need re-reading. Add a section here when you add one to big-picture.html — an untracked section silently never goes stale.",
+  "source": "docs/big-picture/big-picture.html",
+  "output": "BIG-PICTURE.pdf",
+  "recordedAt": "2026-08-10",
+  "sections": [
+    {
+      "id": 2,
+      "title": "Repository map",
+      "paths": [
+        "package.json",
+        "tsconfig.base.json",
+        "engine/core/package.json",
+        "engine/protocol/package.json",
+        "engine/providers/package.json",
+        "engine/tools/package.json",
+        "engine/host/package.json",
+        "app/package.json",
+        "benchmarks/terminal-bench/driver.mjs",
+        "benchmarks/terminal-bench/build-bundle.mjs",
+        "benchmarks/terminal-bench/magentra_agent.py"
+      ],
+      "hash": "7c48d566deb5b1c5",
+      "fileHashes": {
+        "app/package.json": "77c8fd51243c10f5",
+        "benchmarks/terminal-bench/build-bundle.mjs": "2873e15f6b026379",
+        "benchmarks/terminal-bench/driver.mjs": "2def9559eb6e8dce",
+        "benchmarks/terminal-bench/magentra_agent.py": "49958376e82a7979",
+        "engine/core/package.json": "1c526bb20c76f27f",
+        "engine/host/package.json": "4dc51c017ce9b989",
+        "engine/protocol/package.json": "263108002e7b0b2b",
+        "engine/providers/package.json": "a9b3b4829f8b57cb",
+        "engine/tools/package.json": "c1f62b24b618a47a",
+        "package.json": "3c31ef814e99159b",
+        "tsconfig.base.json": "22126a62f1122735"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Process topology",
+      "paths": [
+        "engine/host/src/serve.ts",
+        "engine/host/src/main.ts",
+        "engine/host/src/bootstrap.ts",
+        "app/preload.js"
+      ],
+      "hash": "96789f83707f50c1",
+      "fileHashes": {
+        "app/preload.js": "42e3f001f04f2141",
+        "engine/host/src/bootstrap.ts": "bf63cde9bb4af481",
+        "engine/host/src/main.ts": "c820c087c7846ee1",
+        "engine/host/src/serve.ts": "caca70297ba9dd9e"
+      }
+    },
+    {
+      "id": 4,
+      "title": "The protocol — the seam",
+      "paths": [
+        "engine/protocol/src/types.ts",
+        "engine/protocol/src/ndjson.ts",
+        "engine/protocol/src/index.ts"
+      ],
+      "hash": "92e664393f8cad9e",
+      "fileHashes": {
+        "engine/protocol/src/index.ts": "5e2f092230309a94",
+        "engine/protocol/src/ndjson.ts": "46ec75884fb72c8e",
+        "engine/protocol/src/types.ts": "ad030f95fe7a9aae"
+      }
+    },
+    {
+      "id": 5,
+      "title": "The turn loop",
+      "paths": [
+        "engine/core/src/runtime/session.ts",
+        "engine/core/src/runtime/engine.ts"
+      ],
+      "hash": "9e5c7d723c778119",
+      "fileHashes": {
+        "engine/core/src/runtime/engine.ts": "7045d9effd561230",
+        "engine/core/src/runtime/session.ts": "e131c14aa6e404f5"
+      }
+    },
+    {
+      "id": 6,
+      "title": "The finishing ladder",
+      "paths": [
+        "engine/core/src/runtime/finishing.ts"
+      ],
+      "hash": "1e3d433aacd9c954",
+      "fileHashes": {
+        "engine/core/src/runtime/finishing.ts": "1e3d433aacd9c954"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Tools and the permission engine",
+      "paths": [
+        "engine/tools/src/index.ts",
+        "engine/core/src/runtime/permissions.ts",
+        "engine/core/src/agent/tool.ts"
+      ],
+      "hash": "5ab5038a022b4f9b",
+      "fileHashes": {
+        "engine/core/src/agent/tool.ts": "de1c188361d7eeb3",
+        "engine/core/src/runtime/permissions.ts": "5f4f79a9a1e1dc79",
+        "engine/tools/src/index.ts": "7e93fe3189f4fa36"
+      }
+    },
+    {
+      "id": 8,
+      "title": "The vision path",
+      "paths": [
+        "engine/providers/src/openai-compat.ts",
+        "engine/core/src/config/providerFactory.ts",
+        "app/main/profiles.js",
+        "app/main/connection.js"
+      ],
+      "hash": "ed57a056c525e580",
+      "fileHashes": {
+        "app/main/connection.js": "a355f46bcc32f46e",
+        "app/main/profiles.js": "914d2892e87eff7d",
+        "engine/core/src/config/providerFactory.ts": "ec8b1f2b66cfa8eb",
+        "engine/providers/src/openai-compat.ts": "3eaedda5b0b2cc8c"
+      }
+    },
+    {
+      "id": 9,
+      "title": "Token algebra and context",
+      "paths": [
+        "engine/protocol/src/tokens.ts",
+        "engine/core/src/runtime/sessionStats.ts",
+        "app/renderer/modules/tokens.js"
+      ],
+      "hash": "30629e74c1774900",
+      "fileHashes": {
+        "app/renderer/modules/tokens.js": "b789796a801549f0",
+        "engine/core/src/runtime/sessionStats.ts": "71cd39ad1e44cfbd",
+        "engine/protocol/src/tokens.ts": "67b5be000ec27d15"
+      }
+    },
+    {
+      "id": 10,
+      "title": "Settings, credentials, state on disk",
+      "paths": [
+        "engine/core/src/config/settings.ts",
+        "app/main/config.js"
+      ],
+      "hash": "b0c06d78906f9a3f",
+      "fileHashes": {
+        "app/main/config.js": "fdbdabb721f77255",
+        "engine/core/src/config/settings.ts": "3cc220d63428d4d5"
+      }
+    },
+    {
+      "id": 11,
+      "title": "The knowledge layer",
+      "paths": [
+        "engine/core/src/knowledge/**/*.ts"
+      ],
+      "hash": "486dcd5a49efeb65",
+      "fileHashes": {
+        "engine/core/src/knowledge/docs.ts": "7cfe2f676ff7fc8a",
+        "engine/core/src/knowledge/graph.ts": "e0b546c2d5a61fd4",
+        "engine/core/src/knowledge/reuseGate.ts": "71c16ba5eae151bd",
+        "engine/core/src/knowledge/seeds.ts": "76b0b8eeb3a0231d",
+        "engine/core/src/knowledge/standards.ts": "17aa90c397df2f61",
+        "engine/core/src/knowledge/symbols.ts": "0180a573fe7ed366",
+        "engine/core/src/knowledge/workspace.ts": "438b271126cda9a2"
+      }
+    },
+    {
+      "id": 12,
+      "title": "Extension surfaces",
+      "paths": [
+        "engine/core/src/agent/addons.ts",
+        "engine/core/src/agent/builtinAddons.ts",
+        "engine/tools/src/addon.ts",
+        "engine/core/src/config/frontmatter.ts",
+        "engine/core/src/agent/hooks.ts",
+        "engine/core/src/agent/prompts.ts",
+        "engine/protocol/src/prompts.ts",
+        "engine/core/src/integrations/mcp.ts",
+        "engine/core/src/scheduling/**/*.ts"
+      ],
+      "hash": "213f960ea32395a3",
+      "fileHashes": {
+        "engine/core/src/agent/addons.ts": "2e50af32a62ad484",
+        "engine/core/src/agent/builtinAddons.ts": "e1b1bfb900d4a0c7",
+        "engine/core/src/agent/hooks.ts": "b73e906a47bcfefd",
+        "engine/core/src/agent/prompts.ts": "ff2a26f90e975be9",
+        "engine/core/src/config/frontmatter.ts": "5bffbea3bacd1feb",
+        "engine/core/src/integrations/mcp.ts": "e686b4d6ae01c3d9",
+        "engine/core/src/scheduling/background.ts": "258a2f155e5ef32c",
+        "engine/core/src/scheduling/cron.ts": "73a11b2fa1728a0c",
+        "engine/core/src/scheduling/workflow.ts": "2784ac4834feace7",
+        "engine/protocol/src/prompts.ts": "30e208c9a3686869",
+        "engine/tools/src/addon.ts": "a61ed9fb7405e838"
+      }
+    },
+    {
+      "id": 13,
+      "title": "Concurrent workspaces",
+      "paths": [
+        "app/main.js",
+        "app/renderer/modules/tabs.js"
+      ],
+      "hash": "6ab1b658d48a605b",
+      "fileHashes": {
+        "app/main.js": "e9066571385c1a00",
+        "app/renderer/modules/tabs.js": "323d50cfd9a1d5f5"
+      }
+    },
+    {
+      "id": 14,
+      "title": "The desktop app",
+      "paths": [
+        "app/main/**/*.js",
+        "app/renderer/modules/**/*.js",
+        "app/renderer/index.html"
+      ],
+      "hash": "106fb892642001d5",
+      "fileHashes": {
+        "app/main/changes.js": "4620c28def4dc2b9",
+        "app/main/config.js": "fdbdabb721f77255",
+        "app/main/connection.js": "a355f46bcc32f46e",
+        "app/main/logging.js": "6cb31b8172ba9a7f",
+        "app/main/profiles.js": "914d2892e87eff7d",
+        "app/main/updates.js": "da218638e2a132ae",
+        "app/renderer/index.html": "f4588cfb421e506e",
+        "app/renderer/modules/addons.js": "b067af07c3a97070",
+        "app/renderer/modules/composer.js": "41ad3e73add738e9",
+        "app/renderer/modules/dom.js": "2804f39e32496f69",
+        "app/renderer/modules/events.js": "ad1a3dfe01e41c10",
+        "app/renderer/modules/landing.js": "fed1069d03ad26c8",
+        "app/renderer/modules/markdown.js": "9bcdf7ff72df5324",
+        "app/renderer/modules/math.js": "4bd5cff673f7539d",
+        "app/renderer/modules/overdrive.js": "b78206ac666de712",
+        "app/renderer/modules/rain.js": "1cd9b718a8561d72",
+        "app/renderer/modules/session.js": "7b330fc8a01eff15",
+        "app/renderer/modules/setup.js": "4660d375f2912c78",
+        "app/renderer/modules/state.js": "b1a47393b6dd354d",
+        "app/renderer/modules/stream.js": "97146f9dfbe2a557",
+        "app/renderer/modules/tabs.js": "323d50cfd9a1d5f5",
+        "app/renderer/modules/tasks.js": "85d60246fe354416",
+        "app/renderer/modules/tokens.js": "b789796a801549f0",
+        "app/renderer/modules/tour.js": "df306478389b7e5e",
+        "app/renderer/modules/updates.js": "bbe28be8972d6cd3",
+        "app/renderer/modules/util.js": "8411b7b1cfe079d6",
+        "app/renderer/modules/views.js": "fab643ffe8c40bf3",
+        "app/renderer/modules/workbench.js": "98f9e5dc9d3fcec0"
+      }
+    },
+    {
+      "id": 15,
+      "title": "Build, packaging, release, update",
+      "paths": [
+        "app/scripts/**/*.js",
+        "version.config.json",
+        "VERSION",
+        "app/main/updates.js",
+        "app/build/installer.nsh",
+        "app/build/magentra.cmd",
+        "tui/src/**/*.ts",
+        "tui/src/**/*.tsx",
+        "tui/package.json"
+      ],
+      "hash": "ea872d7f6c4544c3",
+      "fileHashes": {
+        "VERSION": "e591d3b43b06a121",
+        "app/build/installer.nsh": "f619e54d53737609",
+        "app/build/magentra.cmd": "3a4f8eade2221e9a",
+        "app/main/updates.js": "da218638e2a132ae",
+        "app/scripts/afterPack.js": "bbcee86c5210e34c",
+        "app/scripts/bundle-engine.js": "eebb3b874595b0d6",
+        "app/scripts/dist.js": "5a253d23882f2ca3",
+        "app/scripts/launch.js": "a56bb40e33e80cc9",
+        "tui/package.json": "6e35de0a614c3446",
+        "tui/src/app.tsx": "d23714a571685535",
+        "tui/src/cli.tsx": "db31b50959ab7775",
+        "tui/src/components/Activity.tsx": "19dc4ed0b585890b",
+        "tui/src/components/CommandPalette.tsx": "e859fa0801eeb0ce",
+        "tui/src/components/Composer.tsx": "1d2ac3c4e74dc988",
+        "tui/src/components/LiveLine.tsx": "ee39845ac5fc1c0d",
+        "tui/src/components/ProfilePicker.tsx": "1b814a9022fd6166",
+        "tui/src/components/Prompt.tsx": "12bd4c9459df1c47",
+        "tui/src/components/SessionPicker.tsx": "ca61af0a9140e67f",
+        "tui/src/components/TaskStrip.tsx": "b560daa22a744a19",
+        "tui/src/components/TranscriptLine.tsx": "1b7ae233e5d49025",
+        "tui/src/components/TrustGate.tsx": "59e96746a9587499",
+        "tui/src/config.ts": "e6662e3a1d4ae415",
+        "tui/src/engine/host.ts": "99815c9750c249f0",
+        "tui/src/engine/useEngine.ts": "7be15f70b86bde23",
+        "tui/src/format.ts": "0c6a3cc289f48f28",
+        "tui/src/markdown.ts": "86fc0c907126a443",
+        "tui/src/profiles.ts": "917b6f869d4eabdd",
+        "tui/src/protocol.ts": "b037cab45412491f",
+        "tui/src/theme.ts": "8acbff6219dc83b5",
+        "tui/src/trust.ts": "9aeaadad27677c5e",
+        "tui/src/types.ts": "eda8d0e4bcbc535f",
+        "version.config.json": "0abd9f4769685ef7"
+      }
+    }
+  ]
+}

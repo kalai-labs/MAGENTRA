@@ -10,8 +10,13 @@ below was measured against MAGENTRA 0.17.3 @ `5e5bf52`, stock.
 
 Companion docs:
 - `PERF-DEBUG-FINDINGS.md` — the measurement work, method and per-bucket numbers
-- `PERF-DEBUG-BRIEF.md` — the original brief (its 52.4% framing is retired; see below)
 - `benchmarks/terminal-bench/COMPARISON-GLM5.md` — the controlled harness comparison
+- `benchmarks/terminal-bench/README.md` — how to run either harness
+
+The original `PERF-DEBUG-BRIEF.md` was deleted: it framed the job as explaining a
+12-point gap to Terminus, and the control run showed no such gap exists. Its
+surviving content is in §2 and §6 here. Recover it from git history if you want
+the original wording.
 
 ---
 
