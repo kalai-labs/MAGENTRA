@@ -19,6 +19,20 @@ app/tests/.tmp/
 .DS_Store
 *.log
 
+# LaTeX intermediates — latexmk regenerates every one of these from the .tex on
+# each build, so they are noise. The .tex, references.bib and the built .pdf are
+# the real artifacts and stay. Note for an arXiv submission: it may want the
+# .bbl shipped alongside the source, so regenerate and include it deliberately
+# rather than relying on one being left over here.
+docs/paper/*.aux
+docs/paper/*.bbl
+docs/paper/*.blg
+docs/paper/*.fdb_latexmk
+docs/paper/*.fls
+docs/paper/*.out
+docs/paper/*.synctex.gz
+docs/paper/*.toc
+
 .magentra/*
 .claude/*
 # Skills are project tooling and belong in the repo — everything else under
