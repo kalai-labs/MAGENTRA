@@ -57,6 +57,14 @@ interface WireMessage {
 type NegotiableField = "stream_options" | "max_tokens" | "num_ctx";
 
 /**
+ * How many undecodable `data:` lines a stream may contain before we stop
+ * treating it as a working stream (see parseSse). Low enough that a genuinely
+ * broken endpoint still fails fast, high enough to absorb the stray keep-alive
+ * or truncated fragment that a healthy gateway occasionally emits.
+ */
+const MAX_BAD_SSE_LINES = 5;
+
+/**
  * Does this 400/422 body blame one of the negotiable fields? Providers word
  * these differently ("Unsupported parameter", "unknown field", "extra fields not
  * permitted"), so the field NAME appearing in a rejection is the signal — a
@@ -246,6 +254,29 @@ export class OpenAICompatProvider implements Provider {
       }
     };
 
+    // One bad line must not cost the whole turn. `JSON.parse` in handleChunk
+    // used to throw straight out of parseSse — past withRetry, which only ever
+    // wrapped the fetch, never the stream — and end the turn with
+    // stopReason "error". That also LOST the assistant message: blocks are
+    // local to the caller's stream loop and are not pushed to history until the
+    // stream completes, so text already on the user's screen vanished from the
+    // conversation. Gateways really do emit empty keep-alive `data:` lines and
+    // the occasional non-JSON fragment; skip those and keep the stream alive.
+    //
+    // Not silently, though: a stream that is mostly garbage is a real failure
+    // and must still surface, so a flood of undecodable lines throws.
+    let skipped = 0;
+    const feed = (data: string): void => {
+      try {
+        handleChunk(data);
+      } catch {
+        skipped++;
+        if (skipped >= MAX_BAD_SSE_LINES) {
+          throw new Error(`provider stream is not valid SSE JSON (${skipped} undecodable data: lines)`);
+        }
+      }
+    };
+
     for await (const raw of response.body as unknown as AsyncIterable<Uint8Array>) {
       signal.throwIfAborted();
       buffer += decoder.decode(raw, { stream: true });
@@ -255,8 +286,22 @@ export class OpenAICompatProvider implements Provider {
         buffer = buffer.slice(newline + 1);
         if (!line.startsWith("data:")) continue;
         const data = line.slice(5).trim();
-        if (data === "[DONE]") continue;
-        handleChunk(data);
+        if (data === "" || data === "[DONE]") continue; // keep-alive / terminator
+        feed(data);
+        yield* drain(events);
+      }
+    }
+
+    // A server that closes without a trailing newline leaves its last line in
+    // the buffer, and the decoder can still hold a partial multi-byte
+    // character. Both were dropped — and on this wire format the final chunk is
+    // the one carrying `usage`, so the cost was silently wrong token accounting.
+    buffer += decoder.decode();
+    const trailing = buffer.trim();
+    if (trailing.startsWith("data:")) {
+      const data = trailing.slice(5).trim();
+      if (data !== "" && data !== "[DONE]") {
+        feed(data);
         yield* drain(events);
       }
     }
@@ -368,20 +413,48 @@ function* drain(events: ProviderEvent[]): Iterable<ProviderEvent> {
   while (events.length > 0) yield events.shift()!;
 }
 
+/**
+ * Truncation reasons that are not the spec's `length`. "OpenAI-compatible"
+ * endpoints invent their own name for the output cap, and each one that lands in
+ * the `default` branch below reads as a deliberate, complete answer: the turn
+ * ends on a half-written response and Session's continuation layer never runs.
+ */
+const TRUNCATION_REASONS = new Set([
+  "length",
+  "max_tokens",
+  "max_output_tokens",
+  "max_completion_tokens",
+  "output_limit",
+  "truncated",
+  "content_length",
+  "model_context_window_exceeded",
+]);
+
+/** Reasons already known to mean a clean, deliberate stop. */
+const CLEAN_REASONS = new Set(["stop", "end_turn", "eos", "complete", "completed"]);
+
+const warnedFinishReasons = new Set<string>();
+
 function mapFinish(reason: string | undefined): StopReason {
-  switch (reason) {
-    case "tool_calls":
-      return "tool_use";
-    case "length":
-      return "max_tokens";
-    case "content_filter":
-      return "refusal";
-    case "stop":
-    case undefined:
-      return "end_turn";
-    default:
-      return "end_turn";
+  if (reason === undefined) return "end_turn";
+  if (reason === "tool_calls") return "tool_use";
+  if (reason === "content_filter") return "refusal";
+  if (TRUNCATION_REASONS.has(reason)) return "max_tokens";
+  if (CLEAN_REASONS.has(reason)) return "end_turn";
+
+  // An unrecognised reason still maps to end_turn, deliberately: every rung of
+  // Session's finishing ladder (Stop hook, error recovery, incomplete tasks,
+  // runtime evidence, self-verify, wrap-up) is gated on end_turn, so
+  // reinterpreting an unknown would silently disable all six. But guessing
+  // silently is how the truncation cases above went unnoticed — say it once, so
+  // the next unknown name shows up in a log instead of as a mystery short answer.
+  if (!warnedFinishReasons.has(reason)) {
+    warnedFinishReasons.add(reason);
+    process.stderr.write(
+      `warning provider reported unrecognized finish_reason "${reason}" — treated as end_turn\n`,
+    );
   }
+  return "end_turn";
 }
 
 function toWireTool(tool: ToolSchema) {

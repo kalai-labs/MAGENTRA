@@ -21,7 +21,8 @@
  *   MAGENTRA_TB_TIMEOUT_SEC  hard driver timeout, 0 = none        (default 0; Harbor owns task timeouts)
  *   MAGENTRA_MODEL / MAGENTRA_API_KEY / MAGENTRA_BASE_URL         read by the engine itself
  *
- * Exit codes: 0 turn finished · 1 fatal engine/provider error · 124 driver timeout.
+ * Exit codes: 0 turn finished cleanly · 1 turn ended in error (stopReason
+ * "error") or the engine failed outright · 124 driver timeout.
  */
 
 import { spawn } from "node:child_process";
@@ -61,6 +62,7 @@ const result = {
   contextTokens: null,
   model: null,
   costUsd: null,
+  failureReason: null,
   fatalError: null,
   durationMs: 0,
   toolCalls: 0,
@@ -91,12 +93,30 @@ const child = spawn(process.execPath, [enginePath, "--cwd", workspace], {
   stdio: ["pipe", "pipe", "pipe"],
 });
 
+// A frame can arrive AFTER finish() has ended stdin: readline keeps delivering
+// lines already buffered in the pipe, and question_request is reachable under
+// OVERDRIVE (AskUserQuestion is in the default registry). Writing to an ended
+// stream raises ERR_STREAM_WRITE_AFTER_END as an ASYNC 'error' event, not a
+// throw — which is why finish()'s try/catch never caught it, and why one trial
+// (train-fasttext) died here with the whole run's only non-timeout crash.
+// Dropping the response is safe: the engine resolves pending questions when it
+// is interrupted, so nothing is left waiting on us.
 function sendFrame(frame) {
+  if (finishing || !child.stdin.writable) {
+    logEvent("dropped", frame);
+    return;
+  }
   logEvent("out", frame);
   child.stdin.write(JSON.stringify(frame) + "\n");
 }
 
 let finishing = false;
+// Same hazard from the other direction: once the engine is gone, an in-flight
+// write surfaces as an unhandled 'error' and kills the driver with exit 1,
+// bypassing finish()'s own exit code.
+child.stdin.on("error", (err) => {
+  logEvent("stdin-error", { message: err.message, code: err.code });
+});
 function finish(code) {
   if (finishing) return;
   finishing = true;
@@ -204,14 +224,31 @@ createInterface({ input: child.stdout }).on("line", (line) => {
     case "question_request":
       sendFrame({ type: "question_response", id: frame.id, answers: answersFor(frame.questions ?? []) });
       break;
-    case "turn_finished":
-      result.ok = true;
+    case "turn_finished": {
       result.stopReason = frame.stopReason;
       result.usage = frame.usage;
       result.contextTokens = frame.contextTokens;
       result.costUsd = costOf(frame.usage, result.model);
-      finish(0);
+      // A turn that DIED is not a turn that finished. The engine emits
+      // error{fatal:false} and then turn_finished{stopReason:"error"} when a
+      // provider fails mid-turn, and mapping that to ok:true/exit 0 reported a
+      // clean agent run over an untouched workspace — 4 trials in one 89-task
+      // run, 2 of which never issued a single API request, all recorded as
+      // MAGENTRA's own capability failures. Exit non-zero so the runner records
+      // an agent exception instead; the verifier still runs either way.
+      const died = frame.stopReason === "error";
+      result.ok = !died;
+      if (died) {
+        // Deliberately short and free of HTTP status codes or billing words:
+        // the runner substring-scans this file for "401"/"quota"/"unauthorized"
+        // to detect a spent API key, and a per-task provider hiccup must not
+        // masquerade as a billing wall. The detailed message already reaches
+        // Harbor through the [engine error] stderr echo below.
+        result.failureReason = "turn ended in error";
+      }
+      finish(died ? 1 : 0);
       break;
+    }
     case "error":
       // Echo to stderr so Harbor's error classifiers see provider failures.
       console.error(`[engine error] ${frame.message}`);

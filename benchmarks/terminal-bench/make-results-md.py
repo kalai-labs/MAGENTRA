@@ -175,7 +175,14 @@ def main():
                     else "engine/agent error")
             other[task] = kind
     timeouts = sorted(timeout_set)
-    crashes = sorted(k for k in other if k not in timeout_set)
+    # A task that SCORED is not a task that "was never genuinely attempted" —
+    # the prose below says exactly that, so a won task must never reach this
+    # list. It can now: the driver exits non-zero when a turn ends in error, and
+    # a provider that dies after the work is already on disk still verifies 1.
+    # Ledger keys are "terminal-bench/<task>"; these keys come from the trial
+    # directory name, hence the split.
+    won = {k.rsplit("/", 1)[-1] for k, v in rows if (v.get("reward") or 0) > 0}
+    crashes = sorted(k for k in other if k not in timeout_set and k not in won)
 
     if timeouts or crashes:
         o("## Failure analysis")

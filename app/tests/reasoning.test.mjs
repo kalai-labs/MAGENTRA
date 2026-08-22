@@ -92,6 +92,22 @@ for (const work of [
   "1. first\n2. second",
   "The task is complete.",
   "</think> Let me confirm the task list is fully clean", // leaked reasoning must never read as DONE
+  // A lone word is NOT the sentinel. The round asks a yes/no question and the
+  // prompt demands the literal ASCII word DONE, "never translated or
+  // localized" — so a model answering the question instead of following the
+  // instruction must reveal its answer, not end the turn. "No" reading as
+  // "nothing left to do" was the exact inversion this guards.
+  "No",
+  "no",
+  "No.",
+  "NO",
+  "Nope",
+  "Unverified",
+  "Incomplete",
+  "Yes", // even agreement is not the sentinel — only DONE is
+  "Hayır", // localized negative
+  "Tamamlandı", // localized "done": costs one extra round, never a false finish
+  "完了",
 ]) {
   assert.equal(isSelfVerifyDone(work), false, `should NOT be DONE: ${JSON.stringify(work)}`);
 }

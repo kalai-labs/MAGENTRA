@@ -445,7 +445,11 @@ front→ question_response {id, answers: {"q:0": ["pnpm"]}}
   if (capped && iteration >= maxIterationsPerTurn)      break
   if (capped && turnUsage.output > maxTokensPerTurn)    break
         ↑ "capped" is CHILD SESSIONS ONLY. An interactive root turn runs
-          uncapped — the stall detector is the brake, not a number.
+          uncapped, so the brake is the ladder's per-turn fuses (§6), helped
+          by the stall detector below — which only ever REMINDS, and until
+          2026-08-22 could not even do that: its signature included each
+          result's toolUseId, a fresh provider-random id per call, so no two
+          rounds ever matched and it had never once fired.
 
   drainSteering()          ← queued steer_message lands at this boundary
 
@@ -467,7 +471,7 @@ front→ question_response {id, answers: {"q:0": ["pnpm"]}}
 
   lastBatchHadError = results.some(isError)
   STALL DETECTOR
-      sig = JSON.stringify([calls, results])
+      sig = JSON.stringify([calls, results-without-toolUseId])
       3 identical rounds in a row →  force a strategy pivot
       after 2 spent pivots         →  force one concrete question to the user
 
@@ -499,9 +503,9 @@ front→ question_response {id, answers: {"q:0": ["pnpm"]}}
 
 <li><span class="rname">Stop hook</span> — <span class="rcond">end_turn &amp;&amp; !stopHookFired &amp;&amp; hooks.has("Stop")</span><br>A blocking hook injects its reason as a system-reminder and continues.</li>
 
-<li><span class="rname">Layer 3 · length cutoff</span> — <span class="rcond">stopReason === "max_tokens"</span><br>The provider truncated the answer. Resume rather than end on half a sentence. Marker: <code>↻ continuing after output-length cutoff</code>.</li>
+<li><span class="rname">Layer 3 · length cutoff</span> — <span class="rcond">stopReason === "max_tokens" &amp;&amp; nudgeCount &lt; MAX_AUTO_NUDGES</span><br>The provider truncated the answer. Resume rather than end on half a sentence. Marker: <code>↻ continuing after output-length cutoff</code>. Bounded by <code>nudgeCount</code> since 2026-08-22 — a provider that answers <code>length</code> every time used to resume forever on an uncapped root turn.</li>
 
-<li><span class="rname">Layer 2 · error recovery</span> — <span class="rcond">end_turn &amp;&amp; lastBatchHadError</span><br>The last tool batch failed and the turn is ending anyway — weak models bury a failure under a long non-answer. Marker: <code>↻ auto-recovery…</code>. Unbounded on purpose; the stall detector terminates a model that keeps failing identically.</li>
+<li><span class="rname">Layer 2 · error recovery</span> — <span class="rcond">end_turn &amp;&amp; lastBatchHadError &amp;&amp; nudgeCount &lt; MAX_AUTO_NUDGES</span><br>The last tool batch failed and the turn is ending anyway — weak models bury a failure under a long non-answer. Marker: <code>↻ auto-recovery…</code>. <b>Bounded, and the flag is spent on the nudge</b> (2026-08-22). This rung was documented as "unbounded on purpose, the stall detector terminates a model that keeps failing identically" — and both halves of that were false. <code>lastBatchHadError</code> is only ever assigned after a tool batch, so on a no-tool-call answer it stayed true and the rung re-fired every iteration; and the stall detector neither terminated anything (it only ever <code>remind</code>s) nor fired at all (see §5). Because this rung sits above self-verify, a turn whose last batch failed also never self-verified. A later failing batch re-arms the flag, so genuine recovery is still nudged.</li>
 
 <li><span class="rname">Layer 1.5 · incomplete tasks</span> — <span class="rcond">end_turn &amp;&amp; !lastBatchHadError &amp;&amp; !incompleteTasksNudgeFired</span><br>Tasks still <code>pending</code>/<code>in_progress</code>. <b>Fires once per turn</b> — without the fuse it re-fired on every end attempt, and a six-task plan charged six extra full-context round trips for one turn's work. It deliberately does not touch <code>nudgeCount</code>, which is rung 8's budget.</li>
 
@@ -513,7 +517,7 @@ front→ question_response {id, answers: {"q:0": ["pnpm"]}}
   Both texts name an honest “I could not run this” as a <b>complete</b> answer — because the first shape alone pushes toward the very failure it catches: told “you ran nothing” about a dependency this machine cannot execute, the cheapest way to go quiet is to mock it and watch the mock pass.
   <br>Placed <i>above</i> self-verify deliberately: a self-verify that answers DONE breaks the loop where it stands, so anything below it would never run on the turns that go well.</li>
 
-<li><span class="rname">Self-verify</span> — <span class="rcond">end_turn &amp;&amp; !selfVerifyFired &amp;&amp; totalToolCalls &gt; 0 &amp;&amp; overdrive</span><br>Checks the outcome against the original query before the break is allowed. The reply streams <b>silently</b> (<code>suppressAssistantText</code>); a bare <code>DONE</code> ends the turn with no second message, anything else is revealed as genuine follow-up work.
+<li><span class="rname">Self-verify</span> — <span class="rcond">end_turn &amp;&amp; !selfVerifyFired &amp;&amp; totalToolCalls &gt; 0 &amp;&amp; overdrive</span><br>Checks the outcome against the original query before the break is allowed. The reply streams <b>silently</b> (<code>suppressAssistantText</code>); a bare <code>DONE</code> ends the turn with no second message, anything else is revealed as genuine follow-up work. <b>Literal <code>DONE</code> only</b> (2026-08-22): a lone word in any language used to count too, as a safety net for models that localize the sentinel, but that swallowed the one answer that must never end a turn — a model replying <code>No</code> to the rung's yes/no question was read as "nothing left to do" and its reply was never rendered. A localizing model now costs one extra round and shows its word.
   <br><b>OVERDRIVE only</b> (since 2026-07-26): an attended turn already has a checkpoint — the user reads the reply — and should not pay a round trip per turn for a second opinion. Skipped entirely for a purely conversational turn: nothing was built, so nothing can be left behind.</li>
 
 <li><span class="rname">Layer 1 · wrap-up</span> — <span class="rcond">≥ 5 tool calls &amp;&amp; final text &lt; 150 chars &amp;&amp; nudgeCount &lt; 3</span><br>Substantial work ended on a bare reply. Ask for a summary. When files were actually written and a <code>STANDARDS.md</code> exists, the nudge also asks the model to confirm the diff complies.</li>
@@ -1065,7 +1069,7 @@ imageFrameParts()          images → the frame's `images` array, untouched.
 <tr><td><b>State keys are additive-only</b></td><td>Going back one version stops being safe, and MAGENTRA has no migration machinery on purpose.</td></tr>
 <tr><td><b>Drop the graph edge when unsure</b></td><td>An invented edge poisons PageRank, blast radius and every consumer downstream.</td></tr>
 <tr><td><b>The finishing ladder's order</b></td><td>Anything ranked below self-verify never runs on a turn that goes well, because a DONE breaks the loop where it stands.</td></tr>
-<tr><td><b>Each rung fires once per turn</b></td><td>Every re-fire is a full-context round trip. The incomplete-tasks rung once charged six of them for one six-task plan.</td></tr>
+<tr><td><b>Every rung is bounded per turn</b></td><td>Every re-fire is a full-context round trip. The incomplete-tasks rung once charged six of them for one six-task plan. Most rungs use a one-shot boolean fuse; layers 2 and 3 share the <code>nudgeCount</code> budget (<code>MAX_AUTO_NUDGES</code>). Until 2026-08-22 those two checked no bound at all — they incremented <code>nudgeCount</code> without ever reading it, which on an uncapped root turn is a non-terminating loop.</td></tr>
 </table>
 
 <h3>Mirrored constants — change both or ship a silent contradiction</h3>

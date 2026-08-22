@@ -189,7 +189,10 @@ engine, turn caps — is stock MAGENTRA, byte-identical to the shipped engine.
 - The engine writes its usual state (`.magentra/` in the task workdir, session
   transcripts under `~/.magentra`) inside the container; it is discarded with
   the container and never touches task verification.
-- Driver exit codes: `0` turn finished, `1` fatal engine/provider error,
-  `124` driver self-timeout (`MAGENTRA_TB_TIMEOUT_SEC`, off by default —
-  Harbor owns task timeouts).
+- Driver exit codes: `0` turn finished cleanly, `1` the turn ended in error
+  (`stopReason: "error"`, e.g. the provider died mid-turn) or the engine failed
+  outright, `124` driver self-timeout (`MAGENTRA_TB_TIMEOUT_SEC`, off by
+  default — Harbor owns task timeouts). A non-zero exit makes Harbor record an
+  agent exception; the verifier still runs, so the task is graded rather than
+  re-queued.
 - Harbor needs Python ≥ 3.12: `uv tool install harbor --python 3.13`.

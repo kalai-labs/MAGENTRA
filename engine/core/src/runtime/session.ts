@@ -212,11 +212,13 @@ You are operating autonomously.
  * never when real prose rides along, since that prose is genuine continued work
  * that must reach the user.
  *
- * Safety net for weaker models that localize the sentinel despite the instruction
- * (`Tamamlandı.`, `Terminé.`, `完了`, …): a reply that reduces to one short word is
- * a translated "done", never genuine continued work. The caller only reaches here
- * with zero tool calls, and real continued work is always tool calls or a real
- * sentence — so a lone word can be safely swallowed in any language.
+ * Literal DONE only. A lone word in any other language used to count too, as a
+ * safety net for models that localize the sentinel — but the round's own prompt
+ * demands "exactly this literal ASCII word … never translated or localized",
+ * and that tolerance swallowed the one answer that must never end a turn: a
+ * model replying `No` to a yes/no self-check was read as "nothing left to do"
+ * and its reply was never rendered. A localizing model now costs one extra
+ * round and shows its word — wasted work, never a false completion.
  */
 export function isSelfVerifyDone(text: string): boolean {
   const tokens = text
@@ -226,9 +228,7 @@ export function isSelfVerifyDone(text: string): boolean {
     .split(/\s+/)
     .filter(Boolean);
   if (tokens.length === 0) return false;
-  if (tokens.every((t) => /^done$/i.test(t))) return true; // literal DONE, decorated or repeated
-  const [only] = tokens;
-  return tokens.length === 1 && only !== undefined && /^[\p{L}\p{M}]{1,24}$/u.test(only); // a lone word = localized "done"
+  return tokens.every((t) => /^done$/i.test(t)); // literal DONE, decorated or repeated
 }
 
 // ── Clarify pre-layer ───────────────────────────────────────────────────────
@@ -1490,8 +1490,10 @@ export class Session {
 
           // LAYER 3: the provider cut the response off at the output-token
           // limit with no tool calls pending — resume rather than ending the
-          // turn on a truncated answer.
-          if (stopReason === "max_tokens") {
+          // turn on a truncated answer. Bounded by MAX_AUTO_NUDGES: a model
+          // that answers "length" every time would otherwise resume forever,
+          // and the root turn has no iteration cap to catch it.
+          if (stopReason === "max_tokens" && nudgeCount < MAX_AUTO_NUDGES) {
             nudgeCount++;
             this.emit({ type: "command_output", text: "↻ continuing after output-length cutoff" });
             this.pushMessage({ role: "user", content: [{ type: "text", text: promptText(LENGTH_CONTINUATION_TEXT) }] });
@@ -1503,8 +1505,17 @@ export class Session {
           // models sometimes bury a failure under a long non-answer. Nudge
           // it to keep going; the stall detector terminates a model that
           // keeps failing identically.
-          if (stopReason === "end_turn" && lastBatchHadError) {
+          //
+          // The flag is spent on the nudge, and the whole rung is bounded by
+          // MAX_AUTO_NUDGES. Both matter: lastBatchHadError is only ever
+          // assigned after a tool batch, so on a no-tool-call answer it stays
+          // true forever — this rung used to re-fire every iteration of an
+          // uncapped turn, and because it sits above the self-verify rung, a
+          // turn whose last batch failed never self-verified at all. A later
+          // failing batch sets it again, so real recovery still gets nudged.
+          if (stopReason === "end_turn" && lastBatchHadError && nudgeCount < MAX_AUTO_NUDGES) {
             nudgeCount++;
+            lastBatchHadError = false;
             this.emit({
               type: "command_output",
               text: "↻ auto-recovery: nudging the agent to continue after a failed tool call",
@@ -1677,7 +1688,22 @@ export class Session {
         // stall — force a strategy pivot; after two spent pivots, force one
         // concrete question to the user instead of burning forever.
         {
-          const sig = JSON.stringify([toolCalls.map((c) => c.name + c.json), results]);
+          // The fingerprint must describe WORK, not identity. tool_result blocks
+          // carry toolUseId — the provider's per-call random id (`call_…`,
+          // `toolu_…`) — so serializing them whole made every round unique,
+          // pinned identicalRounds at 0, and meant this detector had never once
+          // fired in production. The tool-call half already omitted `c.id` for
+          // exactly this reason; the result half was the oversight.
+          //
+          // Two defeaters remain, deliberately unfixed here: results that mint
+          // their own fresh id (a background/monitor launch reports "task id:
+          // bash_<random>", scheduling/background.ts) and image results, which
+          // describeToolImages replaces with non-deterministic vision prose.
+          // Loops built out of those still will not be detected.
+          const sig = JSON.stringify([
+            toolCalls.map((c) => c.name + c.json),
+            results.map((r) => (r.type === "tool_result" ? [r.isError === true, r.content] : r.type)),
+          ]);
           identicalRounds = sig === lastRoundSig ? identicalRounds + 1 : 0;
           lastRoundSig = sig;
           if (identicalRounds >= 2) {
@@ -1971,7 +1997,14 @@ export class Session {
         });
         continue;
       }
-      const parsed = tool.inputSchema.safeParse(rawInput);
+      let parsed = tool.inputSchema.safeParse(rawInput);
+      if (!parsed.success) {
+        // One bounded repair pass before rejecting the call: models on
+        // OpenAI-compatible endpoints routinely JSON-encode scalars, and the
+        // call itself is otherwise well-formed. See repairPrimitiveTypes.
+        const repaired = repairPrimitiveTypes(rawInput, parsed.error.issues);
+        if (repaired !== undefined) parsed = tool.inputSchema.safeParse(repaired);
+      }
       if (!parsed.success) {
         const issues = parsed.error.issues
           .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
@@ -2002,7 +2035,7 @@ export class Session {
         parallel: tool.permissionClass === "read" || tool.parallelSafe === true,
         run: async () => {
           // Reuse gate: record any search/query evidence this call carries, then
-          // (for a Write) decide whether a new-file creation should be refused.
+          // (for a Write) decide whether a reuse reminder should ride along.
           if (tool.searchTerms) {
             try {
               this.searchLog.record(tool.searchTerms(input));
@@ -2797,6 +2830,91 @@ function safeParse(json: string): unknown {
  * which for a streamed tool call means the response was cut off mid-call. */
 function isUnparseable(input: unknown): boolean {
   return typeof input === "object" && input !== null && UNPARSEABLE_KEY in input;
+}
+
+/** The shape of a zod issue this repair pass reads — structural on purpose, so
+ * it does not depend on zod's issue union staying stable across versions. */
+type PrimitiveTypeIssue = {
+  readonly code: string;
+  readonly path: readonly PropertyKey[];
+  readonly expected?: string | undefined;
+};
+
+/**
+ * One bounded repair of tool arguments a model got *nearly* right.
+ *
+ * Models on OpenAI-compatible endpoints routinely JSON-encode scalars —
+ * `"replace_all": "true"`, `"limit": "5"` — and a strict schema rejected the
+ * whole call for it. That is a harness defect, not a model mistake: 7 of the 18
+ * Edit failures in one 89-task benchmark run were this and nothing else.
+ *
+ * Repair only what zod itself flagged as the wrong primitive, and only when the
+ * string is unambiguous. `"yes"`, `"abc"`, a missing required field and anything
+ * structurally wrong all stay errors — the point is to stop losing calls that
+ * were already correct, never to guess at what the model meant.
+ *
+ * Deliberately NOT `z.coerce.*`: `z.coerce.boolean().parse("false")` returns
+ * `true` (it is `Boolean(input)`), which would turn a declined `replace_all`
+ * into a destructive one. Same conservative reading as `coerceSettingValue`
+ * in config/settings.ts.
+ *
+ * Returns a repaired clone, or undefined when there was nothing safe to fix —
+ * so the caller can tell "try again" from "reject with the original error".
+ */
+function repairPrimitiveTypes(input: unknown, issues: readonly PrimitiveTypeIssue[]): unknown {
+  const targets = issues.filter(
+    (i) =>
+      i.code === "invalid_type" &&
+      (i.expected === "boolean" || i.expected === "number") &&
+      i.path.length > 0,
+  );
+  if (targets.length === 0) return undefined;
+
+  const clone: unknown = structuredClone(input);
+  let touched = false;
+  for (const issue of targets) {
+    // The issue's own path is followed, so a field nested inside an object or
+    // array (AskUserQuestion's questions[].multiSelect) is reached too.
+    const parent = resolveContainer(clone, issue.path.slice(0, -1));
+    if (parent === undefined) continue;
+    const key = issue.path[issue.path.length - 1];
+    if (key === undefined) continue;
+    const current = parent[key];
+    if (typeof current !== "string") continue;
+    const fixed = issue.expected === "boolean" ? asBoolean(current) : asNumber(current);
+    if (fixed === undefined) continue;
+    parent[key] = fixed;
+    touched = true;
+  }
+  return touched ? clone : undefined;
+}
+
+/** Walks a zod issue path to the container holding the offending field. */
+function resolveContainer(
+  root: unknown,
+  path: readonly PropertyKey[],
+): Record<PropertyKey, unknown> | undefined {
+  let node: unknown = root;
+  for (const key of path) {
+    if (node === null || typeof node !== "object") return undefined;
+    node = (node as Record<PropertyKey, unknown>)[key];
+  }
+  if (node === null || typeof node !== "object") return undefined;
+  return node as Record<PropertyKey, unknown>;
+}
+
+function asBoolean(raw: string): boolean | undefined {
+  const t = raw.trim().toLowerCase();
+  if (t === "true") return true;
+  if (t === "false") return false;
+  return undefined;
+}
+
+function asNumber(raw: string): number | undefined {
+  const t = raw.trim();
+  if (!/^-?\d+(\.\d+)?$/.test(t)) return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 function truncateResult(result: ToolResult, limit: number): ToolResult {

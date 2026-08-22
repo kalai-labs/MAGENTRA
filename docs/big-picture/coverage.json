@@ -2,7 +2,7 @@
   "_comment": "Maps each BIG-PICTURE.pdf section to the source it documents. `hash` is a fingerprint of those files at the moment the section was last verified; `bigpicture.mjs check` compares it against the code now and names the sections that need re-reading. Add a section here when you add one to big-picture.html — an untracked section silently never goes stale.",
   "source": "docs/big-picture/big-picture.html",
   "output": "BIG-PICTURE.pdf",
-  "recordedAt": "2026-08-10",
+  "recordedAt": "2026-08-22",
   "sections": [
     {
       "id": 2,
@@ -20,11 +20,11 @@
         "benchmarks/terminal-bench/build-bundle.mjs",
         "benchmarks/terminal-bench/magentra_agent.py"
       ],
-      "hash": "7c48d566deb5b1c5",
+      "hash": "ae480ff055c253e7",
       "fileHashes": {
         "app/package.json": "77c8fd51243c10f5",
         "benchmarks/terminal-bench/build-bundle.mjs": "2873e15f6b026379",
-        "benchmarks/terminal-bench/driver.mjs": "2def9559eb6e8dce",
+        "benchmarks/terminal-bench/driver.mjs": "a43c89013309facb",
         "benchmarks/terminal-bench/magentra_agent.py": "49958376e82a7979",
         "engine/core/package.json": "1c526bb20c76f27f",
         "engine/host/package.json": "4dc51c017ce9b989",
@@ -44,12 +44,12 @@
         "engine/host/src/bootstrap.ts",
         "app/preload.js"
       ],
-      "hash": "96789f83707f50c1",
+      "hash": "ccc7e06a5a2ebb9f",
       "fileHashes": {
         "app/preload.js": "42e3f001f04f2141",
         "engine/host/src/bootstrap.ts": "bf63cde9bb4af481",
-        "engine/host/src/main.ts": "c820c087c7846ee1",
-        "engine/host/src/serve.ts": "caca70297ba9dd9e"
+        "engine/host/src/main.ts": "741bac457ff6d796",
+        "engine/host/src/serve.ts": "d81501cffb2d35ca"
       }
     },
     {
@@ -74,10 +74,10 @@
         "engine/core/src/runtime/session.ts",
         "engine/core/src/runtime/engine.ts"
       ],
-      "hash": "9e5c7d723c778119",
+      "hash": "97dda61a8950390a",
       "fileHashes": {
         "engine/core/src/runtime/engine.ts": "7045d9effd561230",
-        "engine/core/src/runtime/session.ts": "e131c14aa6e404f5"
+        "engine/core/src/runtime/session.ts": "e2bcc1148afcf696"
       }
     },
     {
@@ -115,12 +115,12 @@
         "app/main/profiles.js",
         "app/main/connection.js"
       ],
-      "hash": "ed57a056c525e580",
+      "hash": "29f3e594fdfc9499",
       "fileHashes": {
         "app/main/connection.js": "a355f46bcc32f46e",
         "app/main/profiles.js": "914d2892e87eff7d",
         "engine/core/src/config/providerFactory.ts": "ec8b1f2b66cfa8eb",
-        "engine/providers/src/openai-compat.ts": "3eaedda5b0b2cc8c"
+        "engine/providers/src/openai-compat.ts": "7973a6cfd0c6f884"
       }
     },
     {
@@ -182,12 +182,12 @@
         "engine/core/src/integrations/mcp.ts",
         "engine/core/src/scheduling/**/*.ts"
       ],
-      "hash": "213f960ea32395a3",
+      "hash": "5f4b0596754caac3",
       "fileHashes": {
         "engine/core/src/agent/addons.ts": "2e50af32a62ad484",
         "engine/core/src/agent/builtinAddons.ts": "e1b1bfb900d4a0c7",
         "engine/core/src/agent/hooks.ts": "b73e906a47bcfefd",
-        "engine/core/src/agent/prompts.ts": "ff2a26f90e975be9",
+        "engine/core/src/agent/prompts.ts": "fd1b3a21fcbb67a3",
         "engine/core/src/config/frontmatter.ts": "5bffbea3bacd1feb",
         "engine/core/src/integrations/mcp.ts": "e686b4d6ae01c3d9",
         "engine/core/src/scheduling/background.ts": "258a2f155e5ef32c",

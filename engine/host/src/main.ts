@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
-import { encodeFrame } from "@magentra/protocol";
 import { MissingApiKeyError, bootstrapEngine } from "./bootstrap.js";
 import { runServe } from "./serve.js";
+import { writeFrameSync } from "./stdout.js";
 
 /**
  * The engine host: a headless process that runs the agent engine and speaks
@@ -19,9 +19,13 @@ interface HostArgs {
  * A fatal boot failure must reach the frontend in-band: the desktop app reads
  * NDJSON from stdout, so an error that only hits stderr leaves the user with a
  * dead process and no message. Emit the protocol frame first, stderr as backup.
+ *
+ * The write must be synchronous. stdout to a pipe is async, so the old
+ * `write()` + `process.exit(1)` pair discarded the frame it existed to deliver
+ * and the frontend was left inferring the failure from an exit code.
  */
 function fail(message: string): never {
-  process.stdout.write(encodeFrame({ type: "error", message, fatal: true }));
+  writeFrameSync({ type: "error", message, fatal: true });
   process.stderr.write(`Error: ${message}\n`);
   process.exit(1);
 }
@@ -67,7 +71,7 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  process.stdout.write(encodeFrame({ type: "error", message, fatal: true }));
+  writeFrameSync({ type: "error", message, fatal: true });
   process.stderr.write(`fatal: ${message}\n`);
   process.exit(1);
 });

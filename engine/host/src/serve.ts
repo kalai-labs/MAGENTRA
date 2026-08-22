@@ -1,6 +1,7 @@
-import { decodeFrames, encodeFrame } from "@magentra/protocol";
+import { decodeFrames } from "@magentra/protocol";
 import type { FrontendRequest } from "@magentra/protocol";
 import type { Engine } from "@magentra/core";
+import { writeFrame } from "./stdout.js";
 
 /**
  * NDJSON-over-stdio server: reads FrontendRequest frames from stdin, writes
@@ -14,7 +15,7 @@ export async function runServe(engine: Engine): Promise<void> {
   // Pump core events to stdout concurrently with reading requests.
   const pump = (async () => {
     for await (const event of engine.events) {
-      process.stdout.write(encodeFrame(event));
+      writeFrame(event);
     }
   })();
 
@@ -43,9 +44,7 @@ export async function runServe(engine: Engine): Promise<void> {
     if (isRequestLike(frame)) {
       engine.send(frame as FrontendRequest);
     } else {
-      process.stdout.write(
-        encodeFrame({ type: "error", message: "invalid request frame", fatal: false }),
-      );
+      writeFrame({ type: "error", message: "invalid request frame", fatal: false });
     }
   }
 
