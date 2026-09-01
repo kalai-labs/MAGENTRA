@@ -15,7 +15,7 @@
 //      a clean empty turn.
 // Every scenario runs on FakeProvider (no test may call a real API).
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -67,7 +67,7 @@ function makeSession(turns, settingsOverride = {}) {
   const finished = () => events.filter((e) => e.type === "turn_finished").pop();
   const errors = () => events.filter((e) => e.type === "error").map((e) => e.message);
   const cleanup = () => { try { rmSync(cwd, { recursive: true, force: true }); } catch { /* best effort */ } };
-  return { session, provider, events, outputs, finished, errors, cleanup, settings };
+  return { session, provider, events, outputs, finished, errors, cleanup, settings, cwd };
 }
 const glob = { name: "Glob", input: { pattern: "*.nothing" } };
 const round = (n, usage = {}) => ({ text: `round ${n}`, toolCalls: [glob], usage: { inputTokens: 100, ...usage } });
@@ -129,6 +129,63 @@ await check("4 tool rounds, 4th reports 90k input → compaction runs mid-turn w
     // The provider saw the summarizer prompt: 4 rounds + summary + final = 6 requests.
     assert(h.provider.requests.length === 6, `expected 6 requests, saw ${h.provider.requests.length}`);
     assert(h.session.messages[0].content[0].text.includes("compacted"), "history does not start with the compaction summary");
+  } finally { h.cleanup(); }
+});
+
+console.log("\nSummarizer budget — sized from the same window, not a fixed 2000\n");
+
+await check("100k window → summary reply budget 8192 tokens (10%, capped), seen on the summarizer request", async () => {
+  const h = makeSession([
+    round(1), round(2), round(3), round(4, { inputTokens: 90_000 }),
+    { text: "SUMMARY" }, { text: "done" },
+  ]);
+  try {
+    await h.session.runTurn("go");
+    const summary = h.provider.requests[4];
+    assert(summary.tools.length === 0 && summary.system.startsWith("Summarize this coding-agent conversation"), "request 4 is not the summarizer call");
+    assert(summary.maxTokens === 8192, `summarizer maxTokens ${summary.maxTokens}`);
+  } finally { h.cleanup(); }
+});
+await check("32k window → reply 3276 tokens and an input chunk that fits, so the summarizer cannot overflow itself", async () => {
+  const h = makeSession([], { contextWindow: 32_768 });
+  try {
+    const b = h.session.summarizerBudget();
+    assert(b.replyTokens === 3276, `replyTokens ${b.replyTokens}`);
+    // chunk + rolling summary + reply must fit inside the window at the shared κ
+    assert(b.chunkChars / 3.5 + 2 * b.replyTokens < 32_768, `chunk ${b.chunkChars} chars does not fit a 32k window`);
+    assert(b.chunkChars < 200_000, `chunk not reduced for a small window: ${b.chunkChars}`);
+  } finally { h.cleanup(); }
+});
+await check("8k window → reply floors at 2000 and the chunk floors at 4000 chars (never degenerate)", async () => {
+  const h = makeSession([], { contextWindow: 8192 });
+  try {
+    const b = h.session.summarizerBudget();
+    assert(b.replyTokens === 2000, `replyTokens ${b.replyTokens}`);
+    assert(b.chunkChars >= 4000, `chunkChars ${b.chunkChars}`);
+  } finally { h.cleanup(); }
+});
+await check("1M window → reply capped at 8192 and chunk capped at 200k chars", async () => {
+  const h = makeSession([], { contextWindow: 1_000_000 });
+  try {
+    const b = h.session.summarizerBudget();
+    assert(b.replyTokens === 8192 && b.chunkChars === 200_000, JSON.stringify(b));
+  } finally { h.cleanup(); }
+});
+await check("a 3,000-char tool result reaches the summarizer intact (old clip was 500 chars)", async () => {
+  // FakeProvider reads each turn object lazily, so the Read can be pointed at
+  // the session's own workspace after makeSession has created it.
+  const read = { name: "Read", input: { file_path: "" } };
+  const h = makeSession([
+    { text: "r1", toolCalls: [read], usage: { inputTokens: 100 } },
+    round(2), round(3), round(4, { inputTokens: 90_000 }),
+    { text: "SUMMARY" }, { text: "done" },
+  ]);
+  try {
+    writeFileSync(join(h.cwd, "big.txt"), "Z".repeat(3000));
+    read.input.file_path = join(h.cwd, "big.txt");
+    await h.session.runTurn("go");
+    const summaryInput = JSON.stringify(h.provider.requests[4].messages[0]);
+    assert(summaryInput.includes("Z".repeat(1200)), "the Read result reached the summarizer clipped to the old 500 chars");
   } finally { h.cleanup(); }
 });
 

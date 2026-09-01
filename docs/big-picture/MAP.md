@@ -20,10 +20,10 @@ Narrative and rationale are in `BIG-PICTURE.pdf`; this is the index.
 Changing one of these reaches the whole system. `↓N` = transitive importers.
 
 ### `engine/core/src/runtime/session.ts`
-*3091L · ↓27 transitive · ←2 direct*
+*3127L · ↓27 transitive · ←2 direct*
 
 **exports** `isSelfVerifyDone` `addonNamedIn` `SessionOptions` `Session`
-**members** `cleanSessionTitle:94 isSelfVerifyDone:239 graphSkeleton:308 addonNamedIn:341 remind:655 addContextMessage:664 setPromptSection:671 setDeletionPolicy:680 setOverdrive:698 setProvider:717 steer:726 isOverdrive:731 snapshotForOverdrive:739 runInference:768 visionUnavailableReason:842 describeImage:870 describeImageForContext:910 emitFromChild:927 spawnAgent:958 interrupt:1078 stopBackgroundTasks:1085 isBusy:1093 toolSchemas:1097 buildSystemPrompt:1105 section:1133 recentExchange:1152 maybeClarify:1173 askQuestionRound:1220 buildClarifySkim:1245 peekWorkspaceOverview:1268 runTurn:1298 streamAssistantTurn:1903 executeToolCalls:2038 describeToolImages:2274 toolContext:2309 observeTurnWork:2325 fileEditOutsideWorkspace:2356 fileEditProtectedPath:2377 evaluateWriteReuseGate:2394 loadSymbolIndex:2416` …+36
+**members** `cleanSessionTitle:95 isSelfVerifyDone:240 graphSkeleton:309 addonNamedIn:342 remind:656 addContextMessage:665 setPromptSection:672 setDeletionPolicy:681 setOverdrive:699 setProvider:718 steer:727 isOverdrive:732 snapshotForOverdrive:740 runInference:769 visionUnavailableReason:843 describeImage:871 describeImageForContext:911 emitFromChild:928 spawnAgent:959 interrupt:1079 stopBackgroundTasks:1086 isBusy:1094 toolSchemas:1098 buildSystemPrompt:1106 section:1134 recentExchange:1153 maybeClarify:1174 askQuestionRound:1221 buildClarifySkim:1246 peekWorkspaceOverview:1269 runTurn:1299 streamAssistantTurn:1904 executeToolCalls:2039 describeToolImages:2275 toolContext:2310 observeTurnWork:2326 fileEditOutsideWorkspace:2357 fileEditProtectedPath:2378 evaluateWriteReuseGate:2395 loadSymbolIndex:2417` …+38
 **imported by** `engine/core/src/index.ts` `engine/core/src/runtime/engine.ts`
 
 ### `engine/core/src/runtime/engine.ts`
@@ -702,7 +702,7 @@ before adding one.
 - `runtime/fileState.ts` · 48L · ↓28 — FileState
 - `runtime/finishing.ts` · 257L · ↓28 — codeFilesAmong, looksLikeTestDouble, runtimeEvidenceText, selfVerifyText
 - `runtime/permissions.ts` · 421L · ↓28 — PermissionRequestPayload, PermissionOutcome, ApprovalSource, protectedEditPath, ExactGrant, deriveAlwaysGrant, PermissionEngine
-- `runtime/session.ts` ⬢ · 3091L · ↓27 — isSelfVerifyDone, addonNamedIn, SessionOptions, Session
+- `runtime/session.ts` ⬢ · 3127L · ↓27 — isSelfVerifyDone, addonNamedIn, SessionOptions, Session
 - `runtime/sessionStats.ts` · 317L · ↓28 — ContextBreakdown, SessionStats
 - `scheduling/background.ts` · 102L · ↓28 — BackgroundManager
 - `scheduling/cron.ts` · 348L · ↓35 — CronFields, parseCron, matchesCron, nextCronMatch, CronJobSource, CronJob, CronSchedulerOptions, CronScheduler

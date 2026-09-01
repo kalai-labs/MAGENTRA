@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
+  CHARS_PER_TOKEN,
   STATE_DIR_NAME,
   addUsage,
   definePrompt,
@@ -2665,11 +2666,31 @@ export class Session {
    * never itself overflow the summarizer's window: each chunk is folded into a
    * rolling summary that carries forward what earlier chunks established.
    */
+  /**
+   * The summarizer's token budget, sized from the SAME window compaction plans
+   * around — a fixed 2000 was too small for a long session's four-part summary
+   * (it was cut off mid "open items"), and a fixed 200k-char input chunk was
+   * ~57k tokens: fine for 128k, an overflow of its own on a 32k local model,
+   * which made the recovery path fail exactly when it was needed.
+   *
+   *   reply  : 10% of the window, between 2k and 8k, never above the response cap
+   *   chunk  : what is left after the rolling summary + the reply + a margin,
+   *            capped at 200k chars so a huge window still gets focused prompts
+   */
+  private summarizerBudget(): { replyTokens: number; chunkChars: number } {
+    const window = contextWindowFor(this.settings.model, this.settings);
+    const replyTokens = Math.min(
+      this.settings.maxTokensPerResponse,
+      Math.max(2000, Math.min(8192, Math.floor(window * 0.1))),
+    );
+    // The rolling summary fed back in can be as long as one reply, so budget two.
+    const inputTokens = window - 2 * replyTokens - 1000;
+    const chunkChars = Math.max(4000, Math.min(200_000, Math.floor(inputTokens * CHARS_PER_TOKEN)));
+    return { replyTokens, chunkChars };
+  }
+
   private async summarizeForCompaction(head: Msg[]): Promise<string> {
-    // A character budget, not a token count: at the shared chars-per-token
-    // estimate this keeps each summarizer prompt (~57k tokens) well inside even
-    // a small 128k window, leaving room for the rolling summary + reply.
-    const MAX_CHUNK_CHARS = 200_000;
+    const { chunkChars: MAX_CHUNK_CHARS } = this.summarizerBudget();
     const serialized = head.map((m) => serializeForSummary([m]));
     const chunks: string[] = [];
     let current = "";
@@ -2705,7 +2726,7 @@ export class Session {
       system: promptText(COMPACTION_SYSTEM), // guarded by maybeCompact
       messages: [{ role: "user", content: [{ type: "text", text }] }],
       tools: [],
-      maxTokens: 2000,
+      maxTokens: this.summarizerBudget().replyTokens,
       signal: summarySignal,
     });
     for await (const event of stream) {
@@ -3056,6 +3077,16 @@ function preview(result: ToolResult): string {
   return text.length > 400 ? text.slice(0, 400) + "…" : text;
 }
 
+const SUMMARY_TOOL_CALL_CHARS = 1500;
+const SUMMARY_TOOL_RESULT_CHARS = 4000;
+
+/** Head and tail of an oversized block, so the summarizer sees how it started AND how it ended. */
+function clipForSummary(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const half = Math.floor(max / 2);
+  return `${text.slice(0, half)}\n[… ${text.length - max} chars omitted …]\n${text.slice(text.length - half)}`;
+}
+
 function serializeForSummary(messages: Msg[]): string {
   return messages
     .map((m) => {
@@ -3070,11 +3101,16 @@ function serializeForSummary(messages: Msg[]): string {
             return "[image]";
           case "thinking":
             return "";
+          // Per-block clips, not the budget: the chunker above bounds the whole
+          // prompt. These only stop one pathological block (a 250 KB Read, a
+          // whole file inside a Write) from being the entire chunk. 300/500
+          // chars — the old values — kept the path and little else, so the
+          // summary could name the file it edited but not what it had learned.
           case "tool_use":
-            return `[tool call ${b.name}: ${JSON.stringify(b.input).slice(0, 300)}]`;
+            return `[tool call ${b.name}: ${clipForSummary(JSON.stringify(b.input), SUMMARY_TOOL_CALL_CHARS)}]`;
           case "tool_result": {
             const c = typeof b.content === "string" ? b.content : "[non-text result]";
-            return `[tool result: ${c.slice(0, 500)}]`;
+            return `[tool result: ${clipForSummary(c, SUMMARY_TOOL_RESULT_CHARS)}]`;
           }
         }
       });

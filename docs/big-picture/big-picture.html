@@ -685,6 +685,11 @@ effect :  summarize the OLDEST span through a dedicated call
           (task state, decisions, files touched, open items),
           replace it with one summary message,
           keep the recent tail verbatim.
+budget :  summarizerBudget() — reply = 10% of the window (2k..8k, <= maxTokensPerResponse),
+          input chunk = window - 2*reply - margin, in chars at CHARS_PER_TOKEN, <= 200k chars;
+          per-block clips 1500 (tool call) / 4000 (tool result) chars, head+tail.
+          Was a fixed 2000-token reply and a fixed 200k-char chunk (~57k tokens):
+          too small a summary on a big window, an overflow of its own on a 32k one.
 
 The JSONL transcript is NEVER rewritten — compaction is a view.</code></pre>
 
