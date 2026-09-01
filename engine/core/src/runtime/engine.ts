@@ -93,6 +93,7 @@ export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTi
   maxTokensPerTurn: "nextTurn",
   maxIterationsPerTurn: "nextTurn",
   contextWindow: "nextTurn",
+  compactionThreshold: "nextTurn",
   retention: "session",
   // Rates are read at report time (/session, status bar), so a new price applies
   // to the whole session's accumulated usage the moment it is set.
@@ -289,19 +290,17 @@ export class Engine {
       addons: this.addonSummaries(),
     });
     this.emit({ type: "task_list_updated", tasks: this.session.tasks.list() });
-    // A tiny explicit contextWindow shadowing a model's real one causes
-    // constant compaction (the 4096-on-a-160k-model trap). One storage, one
-    // resolver — and a loud warning when the override looks like a leftover.
-    const override = this.opts.settings.contextWindow;
-    if (override !== undefined) {
-      const modelWindow = contextWindowFor(this.opts.settings.model);
-      if (override < modelWindow / 2) {
-        this.emit({
-          type: "error",
-          message: `contextWindow is overridden to ${override} tokens, but ${this.opts.settings.model} supports ~${Math.round(modelWindow / 1000)}K — expect constant compaction. Clear it with /settings contextWindow auto (the override exists for local servers only).`,
-          fatal: false,
-        });
-      }
+    // The context window is the user's number, never a guess: the connection
+    // wizard requires it, and auto-compaction plans around it. A connection
+    // written before the field was required (or a hand-edited settings file)
+    // may lack it — then the engine assumes 128k and says so, because a wrong
+    // assumption here is how a session silently dies at the model's wall.
+    if (this.opts.settings.contextWindow === undefined) {
+      this.emit({
+        type: "error",
+        message: `No context size is set for this connection — auto-compaction is planning around an assumed ${Math.round(contextWindowFor(this.opts.settings.model) / 1000)}K window. Set the model's real context window in the connection wizard (or /settings contextWindow <tokens>) so history is compacted before the model overflows.`,
+        fatal: false,
+      });
     }
     if (this.hookRunner.has("SessionStart")) {
       const session = this.session;

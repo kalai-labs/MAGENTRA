@@ -152,8 +152,9 @@ function mapStop(reason: string | null): StopReason {
     case "tool_use":
       return "tool_use";
     case "max_tokens":
-    case "model_context_window_exceeded":
       return "max_tokens";
+    case "model_context_window_exceeded":
+      return "context_overflow";
     case "refusal":
       return "refusal";
     default:

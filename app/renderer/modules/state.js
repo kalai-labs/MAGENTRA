@@ -119,10 +119,10 @@ const DEFAULT_UI_SETTINGS = {
   // destroy, …) still prompt. Setting `deletions` to "allow" is what removes
   // that last prompt.
   deletions: "ask", // "ask" (guard always prompts) | "allow" (deletions run freely)
-  // Auto-compact the conversation once its context reaches this many tokens;
-  // 0 turns auto-compaction off (manage it yourself with /compact). This is the
-  // ONLY place the limit is set — it rides to the engine as a set_compact_limit
-  // frame, never a settings.json key, so it can never disagree with this control.
+  // Optional CAP on auto-compaction: the engine compacts at 80% of the context
+  // size entered for the connection; a smaller number here compacts earlier,
+  // 0 turns auto-compaction off (manage it yourself with /compact). Rides to
+  // the engine as a set_compact_limit frame, never a settings.json key.
   //
   // A DEFAULT, so it applies to fresh installs only: any saved value — including
   // one that merely equals an older default — is the user's and is left alone.

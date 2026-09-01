@@ -20,7 +20,7 @@ import {
   type Usage,
 } from "@magentra/protocol";
 import type { ContentBlock, Msg, Provider, StopReason, ToolResultPart, ToolSchema } from "@magentra/providers";
-import { friendlyProviderError } from "@magentra/providers";
+import { friendlyProviderError, isContextOverflowError } from "@magentra/providers";
 import { zodToJsonSchema } from "../util/zodToJsonSchema.js";
 import {
   AGENT_TYPES,
@@ -49,6 +49,7 @@ import { SessionStats, type ContextBreakdown } from "./sessionStats.js";
 import type { Settings } from "../config/settings.js";
 import { addExactPermission, resolveVisionApiKey } from "../config/settings.js";
 import { createProviderForEndpoint, endpointSpecFromSettings } from "../config/providerFactory.js";
+import { contextWindowFor } from "../config/pricing.js";
 import type { Addon } from "../agent/addons.js";
 import { TaskStore } from "../state/taskStore.js";
 import { isToolDisabled, toolDescriptionText } from "../agent/tool.js";
@@ -101,8 +102,23 @@ function cleanSessionTitle(raw: string): string {
   return s.slice(0, 60);
 }
 
-/** Per-turn cap on auto-recovery / length-continuation nudges (see runTurn). */
+/** Per-turn cap on auto-recovery / wrap-up nudges (see runTurn). */
 const MAX_AUTO_NUDGES = 3;
+/**
+ * How many output-length cutoffs IN A ROW a turn rides out before it ends
+ * visibly. Each cutoff is resumed (text) or reissued (tool call); a model that
+ * is cut off this many consecutive times is rewriting the same oversized
+ * response — the transcript pattern of "↻ continuing" forever — and no further
+ * resume will land it. Any complete response resets the streak.
+ */
+const MAX_CUTOFF_STREAK = 3;
+/**
+ * How many times one turn may recover from a context overflow by compacting
+ * and retrying. Two: the first compaction can be defeated by a single huge
+ * tool result still in the kept tail; a second forced pass squeezes that too.
+ * A third overflow means the window cannot hold even the compacted history.
+ */
+const MAX_OVERFLOW_RECOVERIES = 2;
 
 const ERROR_BATCH_REMINDER = definePrompt({
   id: "reminder.error-batch",
@@ -502,10 +518,12 @@ export class Session {
    * Session-scoped, persisted in the meta snapshot so /resume restores it.
    */
   private overdrive = false;
-  /** Auto-compact at this many context tokens; 0 = off (nothing auto-compacts).
-   *  Its ONLY source is the UI's set_compact_limit frame — no settings key, no
-   *  /settings path — so the value can never disagree with what the UI shows. */
-  private autoCompactLimit = 0;
+  /** The UI's optional auto-compact cap (set_compact_limit frame): undefined
+   *  until a frontend sends one (TUI, headless), 0 = the user switched
+   *  auto-compaction off, >0 = compact no later than this many context tokens.
+   *  The limit that actually fires is {@link effectiveCompactLimit}: this cap
+   *  can only LOWER the window-derived limit, never raise it past the model. */
+  private autoCompactLimit: number | undefined = undefined;
   private suppressAssistantText = false;
   /** Usage totals of the most recently completed turn (undefined before the first turn ends). */
   lastTurnUsage: Usage | undefined;
@@ -1370,6 +1388,10 @@ export class Session {
     let stopHookFired = false;
     let lastBatchHadError = false;
     let nudgeCount = 0;
+    // Consecutive output-length cutoffs (see MAX_CUTOFF_STREAK) and context
+    // overflows recovered by compaction (see MAX_OVERFLOW_RECOVERIES).
+    let cutoffStreak = 0;
+    let overflowRecoveries = 0;
     // The interactive root turn runs uncapped — the stall detector is the
     // brake. Only children keep the numeric budgets, so an explicit
     // spawn-time child cap is still enforced.
@@ -1431,7 +1453,26 @@ export class Session {
         // call — the earliest boundary the protocol has.
         drainSteering();
 
-        const { assistant, toolCalls, end } = await this.streamAssistantTurn(signal);
+        let streamed: Awaited<ReturnType<Session["streamAssistantTurn"]>>;
+        try {
+          streamed = await this.streamAssistantTurn(signal);
+        } catch (err) {
+          // The request itself outgrew the model's window (HTTP 400/413, or an
+          // in-band error chunk). The auto-compaction threshold is meant to
+          // fire first, but a huge tool result or a stale estimate can leap
+          // past it — so recover the way /compact would, then retry the same
+          // call. Nothing was streamed: an overflow is refused before output.
+          if (!signal.aborted && isContextOverflowError(err) && overflowRecoveries < MAX_OVERFLOW_RECOVERIES) {
+            overflowRecoveries++;
+            this.emit({
+              type: "command_output",
+              text: `↻ the request exceeded the model's context window — compacting older history and retrying (${overflowRecoveries}/${MAX_OVERFLOW_RECOVERIES})`,
+            });
+            if (await this.maybeCompact(true)) continue;
+          }
+          throw err;
+        }
+        const { assistant, toolCalls, end } = streamed;
         // turnUsage ACCUMULATES (it is billed cost for this turn). The context
         // size does NOT — streamAssistantTurn already set stats.contextTokens
         // from this one response's own input. Never sum the two concepts.
@@ -1463,6 +1504,31 @@ export class Session {
         if (assistant.content.length > 0) this.pushMessage(assistant);
         stopReason = end.stopReason;
 
+        // Input plus output filled the window mid-response. The response is
+        // truncated exactly as at max_tokens, but "continue" alone would
+        // overflow again on a bigger history — compact first, then let the
+        // cutoff rungs below resume it. Beyond the recovery budget, end the
+        // turn with a visible reason instead of a silent break.
+        if (stopReason === "context_overflow") {
+          if (overflowRecoveries >= MAX_OVERFLOW_RECOVERIES || !(await this.maybeCompact(true))) {
+            this.emit({
+              type: "error",
+              message:
+                "The model's context window is full and the conversation cannot be compacted further. Start a fresh session with /clear, or set this connection's Context size to the model's real window.",
+              fatal: false,
+            });
+            if (toolCalls.length > 0) this.pushMessage({ role: "user", content: this.withReminders(syntheticToolResults(unansweredToolUseIds(assistant))) });
+            break;
+          }
+          overflowRecoveries++;
+          this.emit({
+            type: "command_output",
+            text: `↻ the response hit the model's context window — compacted older history (${overflowRecoveries}/${MAX_OVERFLOW_RECOVERIES}), resuming`,
+          });
+          stopReason = "max_tokens";
+        }
+        cutoffStreak = stopReason === "max_tokens" ? cutoffStreak + 1 : 0;
+
         if (toolCalls.length === 0) {
           // Pending steering outranks every end-of-turn decision: the user's
           // mid-run guidance must be acted on, not dropped by a clean break.
@@ -1490,14 +1556,22 @@ export class Session {
 
           // LAYER 3: the provider cut the response off at the output-token
           // limit with no tool calls pending — resume rather than ending the
-          // turn on a truncated answer. Bounded by MAX_AUTO_NUDGES: a model
-          // that answers "length" every time would otherwise resume forever,
-          // and the root turn has no iteration cap to catch it.
-          if (stopReason === "max_tokens" && nudgeCount < MAX_AUTO_NUDGES) {
-            nudgeCount++;
-            this.emit({ type: "command_output", text: "↻ continuing after output-length cutoff" });
-            this.pushMessage({ role: "user", content: [{ type: "text", text: promptText(LENGTH_CONTINUATION_TEXT) }] });
-            continue;
+          // turn on a truncated answer. Bounded by MAX_CUTOFF_STREAK, its own
+          // counter: a model that answers "length" every time would otherwise
+          // resume forever (the root turn has no iteration cap to catch it),
+          // and sharing the nudge budget meant an error-recovery nudge spent
+          // earlier could silently end a turn that only needed resuming.
+          if (stopReason === "max_tokens") {
+            if (cutoffStreak <= MAX_CUTOFF_STREAK) {
+              this.emit({ type: "command_output", text: "↻ continuing after output-length cutoff" });
+              this.pushMessage({ role: "user", content: [{ type: "text", text: promptText(LENGTH_CONTINUATION_TEXT) }] });
+              continue;
+            }
+            this.emit({
+              type: "command_output",
+              text: `⏸ the response was cut off ${cutoffStreak} times in a row — ending the turn. Ask for the work in smaller pieces, or raise maxTokensPerResponse.`,
+            });
+            break;
           }
 
           // LAYER 2: the previous tool-result batch had a failure and the
@@ -1674,6 +1748,8 @@ export class Session {
         // off mid-tool-call. Surface the same continuation marker the text path
         // shows (Layer 3); the truncated call is rejected with TOOL_CUTOFF_TEXT
         // inside executeToolCalls, and complete calls in the batch still run.
+        // The streak check lives after the results are pushed (below), so the
+        // history never ends on a tool_use without its results.
         if (stopReason === "max_tokens") {
           this.emit({ type: "command_output", text: "↻ continuing after output-length cutoff" });
         }
@@ -1729,6 +1805,17 @@ export class Session {
           );
         }
         this.pushMessage({ role: "user", content: this.withReminders(results) });
+        // The tool-call twin of LAYER 3's bound: a model that is cut off
+        // mid-call this many times running is reissuing the same oversized
+        // call (a whole file in one Write) and will be cut off again. This
+        // path used to be unbounded — the endless "↻ continuing" transcript.
+        if (stopReason === "max_tokens" && cutoffStreak > MAX_CUTOFF_STREAK) {
+          this.emit({
+            type: "command_output",
+            text: `⏸ the response was cut off mid tool call ${cutoffStreak} times in a row — ending the turn. Ask for the work in smaller pieces (e.g. write the file in parts), or raise maxTokensPerResponse.`,
+          });
+          break;
+        }
         // Mid-turn compaction: a long tool loop must squeeze the window when it
         // fills instead of dying on a provider context error at the next call.
         // (maybeCompact self-gates on the threshold, so this is cheap.)
@@ -1870,7 +1957,7 @@ export class Session {
         type: "context_update",
         contextTokens: liveContext,
         outputTokens: output,
-        ...(this.autoCompactLimit > 0 && liveContext >= Math.floor(this.autoCompactLimit * 0.9)
+        ...(this.effectiveCompactLimit() > 0 && liveContext >= Math.floor(this.effectiveCompactLimit() * 0.9)
           ? { contextWarn: true }
           : {}),
       });
@@ -2442,7 +2529,7 @@ export class Session {
     const systemPrompt = Math.max(0, estimateTokens(this.buildSystemPrompt()) - addons);
     const tools = estimateTokens(JSON.stringify(this.toolSchemas()));
     const messages = this.estimateContextTokens();
-    return { systemPrompt, tools, addons, messages, limit: this.autoCompactLimit };
+    return { systemPrompt, tools, addons, messages, limit: this.effectiveCompactLimit() };
   }
 
   /** An estimate of the whole context right now — system prompt + tool schemas +
@@ -2455,31 +2542,57 @@ export class Session {
     return b.systemPrompt + b.tools + b.addons + b.messages;
   }
 
-  /** Set the auto-compact token limit. 0 (or invalid) disables auto-compaction.
-   * The ONLY source of this value is the UI's set_compact_limit frame — there is
-   * deliberately no settings key or /settings path, so it can never disagree. */
+  /** The UI's auto-compact cap (set_compact_limit frame). 0 (or invalid) switches
+   * auto-compaction off; a positive value compacts no later than that. It is a
+   * cap on {@link effectiveCompactLimit}, not the limit itself. */
   setAutoCompactLimit(limit: number): void {
     this.autoCompactLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
   }
 
-  /** True when the context is within 10% of the user's auto-compact limit — the
-   * UI tints its counter as it approaches. False when no limit is set. The engine
-   * never guesses the model window; this is purely the user's own chosen number. */
-  contextOverWarnThreshold(): boolean {
-    return this.autoCompactLimit > 0 && this.stats.contextTokens >= Math.floor(this.autoCompactLimit * 0.9);
+  /** compactionThreshold × the context window the user set for this connection
+   * (`settings.contextWindow`, via contextWindowFor — 128k when unset, and the
+   * engine warns at start about that assumption). */
+  private derivedCompactLimit(): number {
+    return Math.floor(contextWindowFor(this.settings.model, this.settings) * this.settings.compactionThreshold);
   }
 
   /**
-   * Compaction is either MANUAL (`/compact`, force) or fires at a limit the user
-   * set in the UI. With no limit set (the default) nothing is compacted
-   * automatically — the engine never guesses the model's usable window (it varies
-   * by provider, tier, and endpoint, so any guess misinforms). The user knows
-   * their own model's size and sets the limit if they want one. Returns whether
-   * it compacted.
+   * The context size at which auto-compaction fires: the window-derived limit
+   * (see {@link derivedCompactLimit}), lowered by the UI cap when one is set.
+   * 0 = off, only when the user explicitly set the cap to 0. Derived from the
+   * connection so the TUI, headless runs and subagents — none of which send
+   * set_compact_limit — compact too, instead of dying at the model's wall.
+   */
+  effectiveCompactLimit(): number {
+    const derived = this.derivedCompactLimit();
+    if (this.autoCompactLimit === undefined) return derived;
+    if (this.autoCompactLimit <= 0) return 0;
+    return Math.min(this.autoCompactLimit, derived);
+  }
+
+  /** True when the context is within 10% of the effective auto-compact limit —
+   * the UI tints its counter as it approaches. False when auto-compaction is off. */
+  contextOverWarnThreshold(): boolean {
+    const limit = this.effectiveCompactLimit();
+    return limit > 0 && this.stats.contextTokens >= Math.floor(limit * 0.9);
+  }
+
+  /**
+   * Compaction is either MANUAL (`/compact`, force) or fires when the context
+   * reaches {@link effectiveCompactLimit} — a fraction of the window the user
+   * entered for this connection, so the engine never guesses the model's size.
+   * Between tool rounds the measured size (last call's input) lags the real
+   * one by the response and the results just appended, so the gate takes the
+   * larger of the measurement and a fresh estimate. Returns whether it compacted.
    */
   async maybeCompact(force = false): Promise<boolean> {
     if (!force) {
-      if (this.autoCompactLimit <= 0 || this.stats.contextTokens < this.autoCompactLimit) return false;
+      const limit = this.effectiveCompactLimit();
+      if (limit <= 0) return false;
+      // A child shares the root's ledger, so stats.contextTokens is the ROOT's
+      // window — a child gates on its own estimate alone.
+      const measured = this.opts.child ? 0 : this.stats.contextTokens;
+      if (Math.max(measured, this.estimateContextNow()) < limit) return false;
     }
 
     // Compaction REPLACES history with the summary, so this is the one place
@@ -2534,9 +2647,14 @@ export class Session {
     // names WHY it happened (the user's limit) and where to change it, so it is
     // never a mystery. Forced /compact prints its own confirmation elsewhere.
     if (!force) {
+      const limit = this.effectiveCompactLimit();
+      const cappedByUi = this.autoCompactLimit !== undefined && this.autoCompactLimit > 0 && this.autoCompactLimit < this.derivedCompactLimit();
+      const why = cappedByUi
+        ? `your auto-compact limit of ${formatTokens(limit)} tokens (Settings → Context)`
+        : `${Math.round(this.settings.compactionThreshold * 100)}% of the ${formatTokens(contextWindowFor(this.settings.model, this.settings))}-token context window set for this connection`;
       this.emit({
         type: "command_output",
-        text: `Auto-compacted (~${formatTokens(before)} tokens summarized): the context reached your auto-compact limit of ${formatTokens(this.autoCompactLimit)} tokens. Raise or turn it off in Settings → Context.`,
+        text: `Auto-compacted (~${formatTokens(before)} tokens summarized): the context reached ${why}.`,
       });
     }
     return true;

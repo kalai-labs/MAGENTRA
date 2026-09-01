@@ -8,7 +8,7 @@ import type {
   StreamRequest,
   ToolSchema,
 } from "./types.js";
-import { ProviderHttpError, parseRetryAfter, withRetry } from "./retry.js";
+import { ProviderHttpError, looksLikeContextOverflow, parseRetryAfter, withRetry } from "./retry.js";
 
 export interface OpenAICompatOptions {
   /** Bearer token. Empty string for keyless local servers (e.g. Ollama). */
@@ -71,6 +71,10 @@ const MAX_BAD_SSE_LINES = 5;
  * server that accepted a field does not name it in an error.
  */
 function rejectedField(errorText: string): NegotiableField | undefined {
+  // "max_tokens + prompt exceed the context length" names max_tokens without
+  // rejecting the field. Treating it as a rejection would silently rename the
+  // field and re-send the same oversized request.
+  if (looksLikeContextOverflow(errorText)) return undefined;
   const text = errorText.toLowerCase();
   if (text.includes("stream_options")) return "stream_options";
   if (text.includes("max_completion_tokens")) return "max_tokens";
@@ -198,7 +202,19 @@ export class OpenAICompatProvider implements Provider {
           completion_tokens?: number;
           prompt_tokens_details?: { cached_tokens?: number };
         };
+        error?: { message?: string; code?: unknown; status?: unknown; type?: string } | string;
       };
+      // Many gateways answer 200, open the stream, and then deliver the failure
+      // — a context overflow, an upstream 5xx — as an `{"error":…}` chunk with
+      // no `choices`. Ignoring it ended the stream as a clean, empty turn with
+      // stopReason end_turn and zero usage: the silent death. Surface it as
+      // the HTTP error it stands for so the caller's classification runs.
+      if (chunk.error !== undefined) {
+        const e = typeof chunk.error === "string" ? { message: chunk.error } : chunk.error;
+        const status =
+          typeof e.status === "number" ? e.status : typeof e.code === "number" && e.code >= 400 ? e.code : 400;
+        throw new ProviderHttpError(status, `provider returned ${status}: ${JSON.stringify(chunk.error).slice(0, 500)}`);
+      }
       if (chunk.usage) {
         // Normalize to Usage's disjoint-classes contract (see @magentra/protocol):
         // inputTokens must be the FRESH prompt tokens only, with cache reads
@@ -269,7 +285,9 @@ export class OpenAICompatProvider implements Provider {
     const feed = (data: string): void => {
       try {
         handleChunk(data);
-      } catch {
+      } catch (err) {
+        // A decoded in-band error is the stream's real verdict, not a bad line.
+        if (err instanceof ProviderHttpError) throw err;
         skipped++;
         if (skipped >= MAX_BAD_SSE_LINES) {
           throw new Error(`provider stream is not valid SSE JSON (${skipped} undecodable data: lines)`);
@@ -427,7 +445,17 @@ const TRUNCATION_REASONS = new Set([
   "output_limit",
   "truncated",
   "content_length",
+]);
+
+/**
+ * The INPUT outgrew the window (as opposed to the output cap above). Session
+ * compacts and retries on this rather than asking the model to "continue" —
+ * a continuation only adds to a history that is already too large.
+ */
+const CONTEXT_OVERFLOW_REASONS = new Set([
   "model_context_window_exceeded",
+  "context_window_exceeded",
+  "context_length_exceeded",
 ]);
 
 /** Reasons already known to mean a clean, deliberate stop. */
@@ -440,6 +468,7 @@ function mapFinish(reason: string | undefined): StopReason {
   if (reason === "tool_calls") return "tool_use";
   if (reason === "content_filter") return "refusal";
   if (TRUNCATION_REASONS.has(reason)) return "max_tokens";
+  if (CONTEXT_OVERFLOW_REASONS.has(reason)) return "context_overflow";
   if (CLEAN_REASONS.has(reason)) return "end_turn";
 
   // An unrecognised reason still maps to end_turn, deliberately: every rung of

@@ -250,9 +250,10 @@ export type CoreEvent =
        */
       overdriveSnapshot?: string;
       /**
-       * True once the context has grown past the "run /compact" warn threshold
-       * (~200k, capped under the model window). The frontend tints its context
-       * counter on this; absent while the context is comfortably small.
+       * True once the context is within 10% of the effective auto-compact
+       * limit (compactionThreshold × the connection's contextWindow, lowered by
+       * any set_compact_limit cap). The frontend tints its context counter on
+       * this; absent while the context is comfortably small.
        */
       contextWarn?: boolean;
     }
@@ -398,9 +399,10 @@ export type FrontendRequest =
   /** Toggles OVERDRIVE: the fully-autonomous turn-loop policy (caps lifted,
    *  self-verify end check). */
   | { type: "set_overdrive"; enabled: boolean }
-  /** Auto-compact the conversation at this many context tokens (0 = off). The
-   *  ONLY way to set it — no settings key or /settings path — so it stays
-   *  consistent with the UI control that owns it. */
+  /** Optional cap on auto-compaction: compact no later than this many context
+   *  tokens (0 = off). The engine's own limit is compactionThreshold × the
+   *  connection's contextWindow; this frame can only lower it. Frontends that
+   *  never send it (TUI, headless) get the derived limit. */
   | { type: "set_compact_limit"; limit: number }
   /**
    * Change the session's model live (takes effect on the next turn) WITHOUT

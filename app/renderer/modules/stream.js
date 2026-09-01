@@ -306,6 +306,7 @@ const STOP_REASON_LABELS = {
   aborted: "stopped by you",
   error: "ended with an error",
   max_tokens: "hit the response length limit",
+  context_overflow: "the model's context window overflowed",
   max_iterations: "hit the tool-round limit",
   refusal: "the model declined",
 };

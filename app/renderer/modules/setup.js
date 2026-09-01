@@ -57,9 +57,11 @@ function applyWizPreset(preset) {
       wizModelsEl.appendChild(opt);
     }
   }
-  // Local servers need no key and expose a context-size field instead.
+  // Local servers need no key. The context size is asked of EVERY connection:
+  // it is the number auto-compaction plans around, and the engine must not
+  // guess it (a wrong guess is how a session dies silently at the model's wall).
   if (wizApiKeyFieldEl) wizApiKeyFieldEl.hidden = meta.local;
-  if (wizContextFieldEl) wizContextFieldEl.hidden = !meta.local;
+  if (wizContextFieldEl) wizContextFieldEl.hidden = false;
   // Custom endpoints: full-URL paste hint + the self-signed TLS opt-in.
   if (wizBaseUrlHintEl) wizBaseUrlHintEl.hidden = preset !== "custom";
   if (wizInsecureRowEl) {
@@ -463,7 +465,7 @@ function wizPayload() {
     model: wizModelEl.value.trim(),
     provider: meta.provider,
   };
-  if (meta.local && wizContextEl && wizContextEl.value) payload.contextWindow = wizContextEl.value;
+  if (wizContextEl && wizContextEl.value) payload.contextWindow = wizContextEl.value;
   if (currentWizPreset === "custom" && wizInsecureEl && wizInsecureEl.checked) payload.insecureTls = true;
   // The vision model belongs to the PROFILE: saved with it, applied with it.
   // TEST ignores it — it probes this endpoint, and the describer is a separate
@@ -562,6 +564,14 @@ if (wizStartBtnEl) {
     if (!wizModelEl.value.trim()) {
       wizStatusEl.textContent = "model required — pick one from the list or type an id";
       wizStatusEl.className = "err";
+      return;
+    }
+    // Required for every connection — see applyWizPreset. Main re-validates the
+    // number's range; this only refuses to save a connection without one.
+    if (!wizContextEl || !(Number(wizContextEl.value) > 0)) {
+      wizStatusEl.textContent = "context size required — the model's context window in tokens (e.g. 32768)";
+      wizStatusEl.className = "err";
+      if (wizContextEl) wizContextEl.focus();
       return;
     }
 

@@ -1238,6 +1238,11 @@ async function run() {
       const model = document.querySelector('#wizModel');
       model.value = 'deepseek-ai/DeepSeek-V4-Flash';
       model.dispatchEvent(new Event('input'));
+      // Required for every connection, hosted included: the window
+      // auto-compaction plans around is the user's number, never a guess.
+      const ctx = document.querySelector('#wizContext');
+      ctx.value = '131072';
+      ctx.dispatchEvent(new Event('input'));
       document.querySelector('#wizApiKey').value = 'wizard-test-key';
       document.querySelector('#wizApiKey').dispatchEvent(new Event('input'));
       document.querySelector('#wizTestBtn').click();
@@ -1249,6 +1254,7 @@ async function run() {
     await pause();
     const savedProfile = calls.filter((call) => call.name === "saveProfile").pop();
     assert.equal(savedProfile.args[0].name, "My Endpoint");
+    assert.equal(savedProfile.args[0].contextWindow, "131072", "a hosted connection carries its context size too");
     assert.ok(calls.some((call) => call.name === "applyProfile"));
     assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
   });
@@ -1286,6 +1292,9 @@ async function run() {
       const model = document.querySelector('#wizModel');
       model.value = 'qwen3.6-35b-a3b';
       model.dispatchEvent(new Event('input'));
+      const ctx = document.querySelector('#wizContext');
+      ctx.value = '32768';
+      ctx.dispatchEvent(new Event('input'));
       document.querySelector('#wizTestBtn').click();
     })()`);
     await pause();

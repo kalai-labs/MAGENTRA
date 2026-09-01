@@ -313,7 +313,7 @@
                    inputmode="numeric" aria-describedby="setCompactNote">
             <span class="set-suffix">tokens</span>
           </div>
-          <p class="set-note" id="setCompactNote">When the conversation reaches this many context tokens, older history is summarized automatically to keep it flowing. Set to <strong>0</strong> to turn auto-compaction off and manage it yourself with <code>/compact</code>. This is the only place it's set — pick a value you know fits your model (real context size varies by provider).</p>
+          <p class="set-note" id="setCompactNote">Optional cap. Auto-compaction normally fires at 80% of the <strong>Context size</strong> entered for the connection, summarizing older history so the model never overflows. Enter a smaller number here to compact earlier than that; a larger one changes nothing. Set to <strong>0</strong> to turn auto-compaction off and manage it yourself with <code>/compact</code>.</p>
         </div>
 
         <div class="set-card">
@@ -610,8 +610,9 @@
         <!-- options are filled per provider preset by setup.js -->
         <datalist id="wizModels"></datalist>
       </label>
-      <label class="wiz-field" id="wizContextField" hidden><span>CONTEXT SIZE</span>
-        <input id="wizContext" type="number" min="256" step="256" placeholder="auto — set e.g. 8192 for local servers" spellcheck="false" />
+      <label class="wiz-field" id="wizContextField"><span>CONTEXT SIZE <small>— required</small></span>
+        <input id="wizContext" type="number" min="256" step="256" placeholder="the model's context window in tokens, e.g. 32768" spellcheck="false" required />
+        <span class="wiz-field-hint">The model's real context window, from its model card or your server's settings. Magentra never guesses it: older history is summarized automatically at 80% of this number so the model never overflows mid-task, and a local server (Ollama) is asked to load the model with this window.</span>
       </label>
       <label class="wiz-field"><span>VISION MODEL <small>— optional</small></span>
         <select id="wizVisionProfile">

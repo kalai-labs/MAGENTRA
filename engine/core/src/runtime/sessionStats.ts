@@ -42,8 +42,8 @@ import type { Settings } from "../config/settings.js";
  * A per-part estimate of what fills the context now, sourced from the live
  * session (system prompt, tool schemas, addons, message history). It is the
  * category-sum form of the input context — the parts are disjoint, so they add.
- * Every field is an estimate; `limit` is the user's auto-compact token limit
- * (0 = none set).
+ * Every field is an estimate; `limit` is the effective auto-compact limit
+ * (derived from the connection's context window, 0 = auto-compaction off).
  */
 export interface ContextBreakdown {
   systemPrompt: number;
@@ -309,7 +309,7 @@ export class SessionStats {
           ` (${percent}% of the ~${formatTokens(b.limit)} auto-compact limit used)`,
       );
     } else {
-      lines.push("      (no auto-compact limit set — no fixed window to measure free space against; set one in Settings → Context)");
+      lines.push("      (auto-compaction is off — no limit to measure free space against; set the connection's Context size, or a cap in Settings → Context)");
     }
     return lines;
   }

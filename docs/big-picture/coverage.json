@@ -2,7 +2,7 @@
   "_comment": "Maps each BIG-PICTURE.pdf section to the source it documents. `hash` is a fingerprint of those files at the moment the section was last verified; `bigpicture.mjs check` compares it against the code now and names the sections that need re-reading. Add a section here when you add one to big-picture.html — an untracked section silently never goes stale.",
   "source": "docs/big-picture/big-picture.html",
   "output": "BIG-PICTURE.pdf",
-  "recordedAt": "2026-08-22",
+  "recordedAt": "2026-09-01",
   "sections": [
     {
       "id": 2,
@@ -60,11 +60,11 @@
         "engine/protocol/src/ndjson.ts",
         "engine/protocol/src/index.ts"
       ],
-      "hash": "92e664393f8cad9e",
+      "hash": "225d77c518e31e60",
       "fileHashes": {
         "engine/protocol/src/index.ts": "5e2f092230309a94",
         "engine/protocol/src/ndjson.ts": "46ec75884fb72c8e",
-        "engine/protocol/src/types.ts": "ad030f95fe7a9aae"
+        "engine/protocol/src/types.ts": "7c50e66764ebbb11"
       }
     },
     {
@@ -74,10 +74,10 @@
         "engine/core/src/runtime/session.ts",
         "engine/core/src/runtime/engine.ts"
       ],
-      "hash": "97dda61a8950390a",
+      "hash": "e33a59e9e14af2e7",
       "fileHashes": {
-        "engine/core/src/runtime/engine.ts": "7045d9effd561230",
-        "engine/core/src/runtime/session.ts": "e2bcc1148afcf696"
+        "engine/core/src/runtime/engine.ts": "254446e591747338",
+        "engine/core/src/runtime/session.ts": "7caa2635ab1849f3"
       }
     },
     {
@@ -115,12 +115,12 @@
         "app/main/profiles.js",
         "app/main/connection.js"
       ],
-      "hash": "29f3e594fdfc9499",
+      "hash": "253a0737cf0e5898",
       "fileHashes": {
         "app/main/connection.js": "a355f46bcc32f46e",
         "app/main/profiles.js": "914d2892e87eff7d",
         "engine/core/src/config/providerFactory.ts": "ec8b1f2b66cfa8eb",
-        "engine/providers/src/openai-compat.ts": "7973a6cfd0c6f884"
+        "engine/providers/src/openai-compat.ts": "d55f1d6db2a141cb"
       }
     },
     {
@@ -131,10 +131,10 @@
         "engine/core/src/runtime/sessionStats.ts",
         "app/renderer/modules/tokens.js"
       ],
-      "hash": "30629e74c1774900",
+      "hash": "f28774cf816123c2",
       "fileHashes": {
         "app/renderer/modules/tokens.js": "b789796a801549f0",
-        "engine/core/src/runtime/sessionStats.ts": "71cd39ad1e44cfbd",
+        "engine/core/src/runtime/sessionStats.ts": "3942e7e9011c860e",
         "engine/protocol/src/tokens.ts": "67b5be000ec27d15"
       }
     },
@@ -145,10 +145,10 @@
         "engine/core/src/config/settings.ts",
         "app/main/config.js"
       ],
-      "hash": "b0c06d78906f9a3f",
+      "hash": "d342abab23cefd5e",
       "fileHashes": {
         "app/main/config.js": "fdbdabb721f77255",
-        "engine/core/src/config/settings.ts": "3cc220d63428d4d5"
+        "engine/core/src/config/settings.ts": "5b440eea31cb8cf3"
       }
     },
     {
@@ -218,7 +218,7 @@
         "app/renderer/modules/**/*.js",
         "app/renderer/index.html"
       ],
-      "hash": "106fb892642001d5",
+      "hash": "dafb2a0bff9481e6",
       "fileHashes": {
         "app/main/changes.js": "4620c28def4dc2b9",
         "app/main/config.js": "fdbdabb721f77255",
@@ -226,7 +226,7 @@
         "app/main/logging.js": "6cb31b8172ba9a7f",
         "app/main/profiles.js": "914d2892e87eff7d",
         "app/main/updates.js": "da218638e2a132ae",
-        "app/renderer/index.html": "f4588cfb421e506e",
+        "app/renderer/index.html": "9ed872bd52c57dcb",
         "app/renderer/modules/addons.js": "b067af07c3a97070",
         "app/renderer/modules/composer.js": "41ad3e73add738e9",
         "app/renderer/modules/dom.js": "2804f39e32496f69",
@@ -237,9 +237,9 @@
         "app/renderer/modules/overdrive.js": "b78206ac666de712",
         "app/renderer/modules/rain.js": "1cd9b718a8561d72",
         "app/renderer/modules/session.js": "7b330fc8a01eff15",
-        "app/renderer/modules/setup.js": "4660d375f2912c78",
-        "app/renderer/modules/state.js": "b1a47393b6dd354d",
-        "app/renderer/modules/stream.js": "97146f9dfbe2a557",
+        "app/renderer/modules/setup.js": "3002e68a0b56c809",
+        "app/renderer/modules/state.js": "df5f0f8cb630c1ab",
+        "app/renderer/modules/stream.js": "6641554c792c49b6",
         "app/renderer/modules/tabs.js": "323d50cfd9a1d5f5",
         "app/renderer/modules/tasks.js": "85d60246fe354416",
         "app/renderer/modules/tokens.js": "b789796a801549f0",
@@ -264,9 +264,9 @@
         "tui/src/**/*.tsx",
         "tui/package.json"
       ],
-      "hash": "ea872d7f6c4544c3",
+      "hash": "0b5324f77f69844b",
       "fileHashes": {
-        "VERSION": "e591d3b43b06a121",
+        "VERSION": "5fd527410bef7c57",
         "app/build/installer.nsh": "f619e54d53737609",
         "app/build/magentra.cmd": "3a4f8eade2221e9a",
         "app/main/updates.js": "da218638e2a132ae",
@@ -274,8 +274,8 @@
         "app/scripts/bundle-engine.js": "eebb3b874595b0d6",
         "app/scripts/dist.js": "5a253d23882f2ca3",
         "app/scripts/launch.js": "a56bb40e33e80cc9",
-        "tui/package.json": "6e35de0a614c3446",
-        "tui/src/app.tsx": "d23714a571685535",
+        "tui/package.json": "ea7ae3f27e781aea",
+        "tui/src/app.tsx": "f112c32d8a41aff9",
         "tui/src/cli.tsx": "db31b50959ab7775",
         "tui/src/components/Activity.tsx": "19dc4ed0b585890b",
         "tui/src/components/CommandPalette.tsx": "e859fa0801eeb0ce",
@@ -285,18 +285,20 @@
         "tui/src/components/Prompt.tsx": "12bd4c9459df1c47",
         "tui/src/components/SessionPicker.tsx": "ca61af0a9140e67f",
         "tui/src/components/TaskStrip.tsx": "b560daa22a744a19",
-        "tui/src/components/TranscriptLine.tsx": "1b7ae233e5d49025",
+        "tui/src/components/ToolTail.tsx": "a50d17628495eddf",
+        "tui/src/components/TranscriptLine.tsx": "b76a4cc9282693e6",
         "tui/src/components/TrustGate.tsx": "59e96746a9587499",
         "tui/src/config.ts": "e6662e3a1d4ae415",
         "tui/src/engine/host.ts": "99815c9750c249f0",
-        "tui/src/engine/useEngine.ts": "7be15f70b86bde23",
+        "tui/src/engine/useEngine.ts": "daf9727537632188",
         "tui/src/format.ts": "0c6a3cc289f48f28",
         "tui/src/markdown.ts": "86fc0c907126a443",
         "tui/src/profiles.ts": "917b6f869d4eabdd",
-        "tui/src/protocol.ts": "b037cab45412491f",
+        "tui/src/protocol.ts": "d2ec6f9d4c3c5e4c",
         "tui/src/theme.ts": "8acbff6219dc83b5",
+        "tui/src/toolLabel.ts": "e68aa83e473b6f09",
         "tui/src/trust.ts": "9aeaadad27677c5e",
-        "tui/src/types.ts": "eda8d0e4bcbc535f",
+        "tui/src/types.ts": "c12a5ad4511d43ca",
         "version.config.json": "0abd9f4769685ef7"
       }
     }

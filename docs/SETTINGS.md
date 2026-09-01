@@ -74,8 +74,8 @@ shareable project settings file.
 | `maxTokensPerTurn` | `200000` | Output-token budget per turn. Applies only to child sessions — interactive root turns run uncapped (the stall detector is the brake). |
 | `clarify` | `true` | Clarify pre-layer: on a genuinely open-ended request ("build a game", "improve this app"), the main model asks up to three shape-defining multiple-choice questions before any work starts. Concrete or trivial requests never trigger it; fail-open on any error; root attended sessions only. |
 | `maxIterationsPerTurn` | `50` | Loop-safety cap on model↔tool round-trips. Same scope: unattended runs and explicitly capped children only. |
-| `contextWindow` | *(unset)* | Explicit context-size override — **for local servers only**. |
-| `compactionThreshold` | `0.8` | Fraction of the effective context window (0.1–1) at which the conversation is compacted (oldest span summarized, recent tail kept verbatim). |
+| `contextWindow` | *(unset)* | The model's context window in tokens. **Entered by the user** in the connection wizard (required there) — the engine never guesses it. Drives auto-compaction (below) and is sent as `num_ctx` to a local server. When unset the engine assumes 128k and warns at session start. |
+| `compactionThreshold` | `0.8` | Fraction of `contextWindow` (0.1–1) at which the conversation is compacted automatically (oldest span summarized, recent tail kept verbatim). The desktop app's *Auto-compact at* setting can only lower the resulting limit. On an overflow the engine still compacts and retries the call, at most twice per turn. |
 
 ## Retention
 

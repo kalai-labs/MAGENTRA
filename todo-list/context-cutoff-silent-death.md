@@ -1,6 +1,6 @@
 # Context sınırına ulaşınca sessiz ölüm ve sonsuz "output-length cutoff" döngüsü
 
-- **Durum:** Not alındı, düzeltme ertelendi.
+- **Durum:** ✅ Düzeltildi — 2026-09-01 (`research/lab-1`).
 - **Tarih:** 2026-09-01
 - **Branş:** `research/lab-1`
 - **Nasıl görüldü:** Lokal bir modelle (Qwen 3.6 35B, OpenAI-uyumlu endpoint) uzun bir
@@ -8,130 +8,66 @@
   arka arkaya bastı, model her seferinde aynı dosyayı "sıfırdan yazıyorum" diyerek
   yeniden başlattı, sonunda tur görünür bir hata vermeden bitti.
 
-## Zincir
+## Ne yapıldı (özet)
 
-### 1. Context penceresi compaction'a hiç bağlı değil
+İlke: **context penceresi tahmin edilmez, kullanıcı girer.** Bağlantı sihirbazındaki
+CONTEXT SIZE alanı artık her bağlantı için (Ollama, LM Studio, hosted) zorunlu; motor bu
+sayıdan kendi compaction limitini türetir ve pencere aşılırsa compact edip aynı çağrıyı
+yeniden dener.
 
-- `engine/core/src/config/pricing.ts:57` — `MODEL_CONTEXT_WINDOWS` **boş bir dizi**.
-  Dolayısıyla `contextWindowFor()` (`pricing.ts:66`) her model için sabit `128_000`
-  döndürüyor.
-- `contextWindowFor()` yalnızca iki yerde çağrılıyor: `engine/core/src/runtime/engine.ts:297`
-  (bir uyarı metni) ve `engine.ts:1605` (rate card). **Compaction yolunda hiç çağrılmıyor.**
-- `Session.maybeCompact()` (`engine/core/src/runtime/session.ts:2480`) yalnızca
-  `autoCompactLimit`e bakıyor:
+| # | Zincirdeki halka | Düzeltme | Dosya |
+|---|---|---|---|
+| 1 | Compaction limiti yalnızca UI'ın `set_compact_limit` frame'inden geliyordu (TUI/headless/alt-ajanlar: kapalı) | `Session.effectiveCompactLimit()` = `compactionThreshold × contextWindowFor(model, settings)`; UI frame'i artık yalnızca bir **tavan** (düşürür, yükseltemez; `0` = kapalı anlamını korur) | `engine/core/src/runtime/session.ts` |
+| 2 | `compactionThreshold` dokümanda vardı, şemada yoktu | Şemaya eklendi (`0.8`, 0.1–1), `SETTING_TIMING`'e `nextTurn` | `engine/core/src/config/settings.ts`, `runtime/engine.ts` |
+| 3 | Gate yalnızca son çağrının ölçülen girdisine bakıyordu; büyük tool sonuçları ölçümü geride bırakıyordu | Gate `max(ölçüm, estimateContextNow())` kullanır; çocuk oturum yalnızca kendi tahminine bakar (paylaşılan ledger kökün penceresidir) | `session.ts` `maybeCompact` |
+| 4 | `model_context_window_exceeded` → `max_tokens` (çıktı kesilmesi sanılıyor, "devam et" ile context daha da büyüyordu) | Yeni `StopReason` `"context_overflow"`; oturum önce **zorla compact eder**, sonra kesilme olarak sürdürür | `engine/providers/src/{types,anthropic,openai-compat}.ts` |
+| 5 | HTTP 400/413 context taşması turu bitiriyordu, ham `provider returned 400` metniyle | `isContextOverflowError()` / `looksLikeContextOverflow()` sınıflandırıcısı; oturum compact edip **aynı çağrıyı yeniden dener** (tur başına en fazla 2); `friendlyProviderError`'a overflow + 400/422 dalları | `engine/providers/src/retry.ts`, `session.ts` |
+| 6 | 200 SSE akışı içindeki `{"error":…}` chunk'ı sessizce yutuluyordu → boş, "temiz" tur | `handleChunk` chunk'ı `ProviderHttpError` olarak fırlatır; `feed` bunu "bozuk satır" saymaz | `openai-compat.ts` |
+| 7 | "max_tokens … invalid … exceed context" 400'ü alan reddi sanılıp `max_completion_tokens`'a çevriliyordu | `rejectedField` overflow metnini önce dışlar | `openai-compat.ts` |
+| 8 | Site B (tool-call kesilmesi) sınırsızdı; Site A paylaşımlı `nudgeCount` kullanıyordu; bütçe bitince sessiz `break` | Kendi sayacı `cutoffStreak` (ardışık, tam yanıtta sıfırlanır, `MAX_CUTOFF_STREAK = 3`) iki site için de; aşılınca görünür `⏸ … cut off N times in a row` — tool yolunda sonuçlar push edildikten **sonra**, geçmiş hiçbir zaman sonuçsuz bir `tool_use` ile bitmez | `session.ts` |
+| 9 | Motor başlangıcında "override < model/2" uyarısı boş tabloya karşı çalışıyordu | Yerine: `contextWindow` **yoksa** "128K varsayılıyor, sihirbazdan gir" uyarısı | `engine.ts` |
+| 10 | Sihirbaz CONTEXT SIZE alanı yalnızca lokal preset'lerde görünüyor ve isteğe bağlıydı | Her preset'te görünür ve **zorunlu** (SAVE & CONNECT geçersiz/boşsa durur); payload'a her zaman eklenir | `app/renderer/index.html`, `modules/setup.js` |
+| 11 | UI varsayılanı `compactLimit: 1024000` tek kaynaktı | Anlamı değişmedi (Additive-Only State): türetilen limite tavan; not metni güncellendi | `index.html`, `modules/state.js` |
+| 12 | TUI `✓ max_tokens`; renderer'da `context_overflow` etiketi yoktu | TUI: temiz olmayan bitişte `✕` glifi; renderer: `context_overflow` etiketi | `tui/src/components/TranscriptLine.tsx`, `app/renderer/modules/stream.js` |
 
-  ```ts
-  if (this.autoCompactLimit <= 0 || this.stats.contextTokens < this.autoCompactLimit) return false;
-  ```
+Doğrulama: `npm run build` temiz; yeni `.claude/skills/bigboycoding/compaction-check.mjs`
+(23 senaryo, FakeProvider) — motor değişiklikleri stash'lenip çalıştırıldığında
+başarısız, geri alınınca geçiyor; mevcut 5 check + `run-ui-tests.js` (32 senaryo) +
+`window/connection/reasoning/vision` testleri geçiyor.
 
-- `autoCompactLimit`in tek kaynağı UI'ın `set_compact_limit` frame'i
-  (`session.ts:505-508`, `session.ts:2458`). Varsayılan `0` = kapalı.
+## Bilinçli olarak yapılmayanlar
 
-### 2. Hardcoded varsayılanlar gerçek modelle uyuşmuyor
+- `app/main/connection.js` `validateCredentialPayload` **hâlâ** `contextWindow`'u isteğe
+  bağlı kabul ediyor: alan zorunlu hale gelmeden önce kaydedilmiş profiller `USE` ile
+  uygulanabilsin diye. Bu profiller motor başlangıcında "No context size is set…"
+  uyarısını alır; sihirbazdan düzenlenip kaydedilince alan zorunlu.
+- `MODEL_CONTEXT_WINDOWS` tablosu boş bırakıldı — pencere tahmin edilmez.
+- Madde 7 (clarify / auto-name / katalog / hook `catch {}` yutmaları) ve madde 8
+  (alt-ajan hatası `isError` olmadan `agent_finished`) bu kapsamda değil; ayrı iş.
+- `docs/query-lifecycle.html` "MAX_AUTO_NUDGES yalnızca wrap-up'ı sınırlar" iddiası
+  hâlâ LAYER 2 için yanlış (LAYER 3 artık kendi sayacında). Tarihsel doküman.
 
-- `app/renderer/modules/state.js:129` — UI varsayılanı `compactLimit: 1024000`.
-  32k'lık bir lokal modelde bu eşiğe asla ulaşılmaz, yani auto-compact hiç tetiklenmez.
-- `app/renderer/index.html:312` — aynı sabit `value="1024000"` olarak formda da duruyor.
-- `tui/src/**` `set_compact_limit` frame'ini **hiç göndermiyor** → TUI ve headless
-  kullanımda auto-compaction tamamen kapalı, yalnızca elle `/compact` çalışıyor.
+## Orijinal analiz (referans)
 
-### 3. Context taşması "çıktı kesilmesi" sanılıyor — döngüyü besleyen hata
+### Zincir
 
-- `engine/providers/src/openai-compat.ts:430` (`TRUNCATION_REASONS`) ve
-  `engine/providers/src/anthropic.ts:155` (`mapStop`), `model_context_window_exceeded`
-  değerini `"max_tokens"`e map ediyor.
-- `session.ts:1496` (LAYER 3) bunu görünce `LENGTH_CONTINUATION_TEXT` mesajını
-  **geçmişe ekleyip** döngüye devam ediyor. Yani context taşmasına verilen yanıt,
-  context'i biraz daha büyütmek oluyor.
+1. Context penceresi compaction'a bağlı değildi — `MODEL_CONTEXT_WINDOWS` boş,
+   `contextWindowFor()` compaction yolunda hiç çağrılmıyordu, `maybeCompact()` yalnızca
+   UI'dan gelen `autoCompactLimit`e bakıyordu (varsayılan 0 = kapalı).
+2. UI varsayılanı `1024000`; TUI frame'i hiç göndermiyordu.
+3. `model_context_window_exceeded` → `"max_tokens"` → `LENGTH_CONTINUATION_TEXT` eklenip
+   context daha da büyütülüyordu.
+4. İki cutoff emit noktası; tool-call yolu sınırsız; `nudgeCount` üç rung arasında paylaşımlı.
+5. Bütçe bitince sessiz `break`; TUI `✓ max_tokens`.
+6. SSE gövdesindeki `{"error":…}` chunk'ı `choices` olmadığı için yutuluyordu;
+   `friendlyProviderError`'da 400/413 dalı yoktu; `max_tokens` içeren 400 alan reddi sanılıyordu.
+7. Yardımcı çağrılar (`clarify`, auto-name, katalog, SessionStart hook) hataları yutuyor.
+8. Alt-ajan hataları `isError` olmadan başarı gibi raporlanıyor.
 
-### 4. İki cutoff emit noktası var; biri sınırsız
+### Doküman / kod çelişkileri (o günkü hali)
 
-- Site A — `session.ts:1498`, metin yolu. `nudgeCount < MAX_AUTO_NUDGES` (3) ile sınırlı.
-- Site B — `session.ts:1678`, tool_call'lu kesilme yolu. **Sayaç yok, sınır yok**;
-  `stopReason === "max_tokens"` olduğu her iterasyonda basılıyor. Transkriptte görülen
-  tekrar bu.
-- Site B ayrıca `TOOL_CUTOFF_TEXT` sonucunu `isError: true` üretiyor → `lastBatchHadError`
-  true oluyor → LAYER 2 nudge'ı da aynı 3'lük bütçeden harcanıyor.
-- `nudgeCount` üç rung arasında **paylaşımlı** (LAYER 3 kesilme, LAYER 2 hata kurtarma,
-  LAYER 1 wrap-up), bu yüzden hata kurtarmaya harcanan nudge, kesilen yanıtı sürdürmek
-  için kalan bütçeyi azaltıyor.
-
-### 5. Bütçe bitince sessiz `break`
-
-- `session.ts:1670` — hiçbir şey emit etmeden `break`. Alttaki her rung
-  `stopReason === "end_turn"` istediği için `max_tokens` (ve `refusal`) hiçbirine uymuyor.
-- Kullanıcıya kalan tek iz: `turn_finished.stopReason: "max_tokens"`.
-  - `tui/src/components/TranscriptLine.tsx:266` bunu **başarı glifiyle** `✓ max_tokens`
-    diye gösteriyor.
-  - `app/renderer/modules/stream.js:305-326` "hit the response length limit" yazıyor.
-
-### 6. Asıl "sessiz patlama"
-
-- `engine/providers/src/openai-compat.ts:221` — SSE gövdesi içinde gelen
-  `{"error":{...}}` chunk'ında `choices` alanı yok; `handleChunk` sessizce `return`
-  ediyor. Stream `mapFinish(undefined)` = `end_turn` ve sıfır usage ile bitiyor.
-  **Hiç `error` olayı yok, stderr satırı yok, boş asistan mesajıyla tur temiz görünüyor.**
-  Birçok gateway context taşmasını tam olarak bu biçimde bildiriyor.
-- HTTP 400 yolunda ise: `retry.ts:71` doğru şekilde 400'ü retry etmiyor, ama
-  `friendlyProviderError` (`retry.ts:97-135`) 401/403/404/429/408/504/5xx dallarına
-  sahipken **400 ve 413 dalı yok** → kullanıcı ham `provider returned 400: {...}`
-  metnini görüyor, `/compact` ya da limit düşürme önerisi almıyor.
-- `openai-compat.ts:78` — gövdede `max_tokens` geçen ve `invalid` içeren bir 400
-  (ör. "max_tokens is too large") yanlışlıkla "sunucu `max_tokens` alan adını
-  reddetti" diye okunuyor; alan kalıcı olarak `max_completion_tokens`e çevriliyor.
-
-### 7. Yardımcı çağrılar hataları tamamen yutuyor
-
-- Clarify ön katmanı `session.ts:1180` → `catch { return undefined; }`
-- Otomatik isimlendirme `session.ts:2421` → `catch { ... return undefined; }`
-- Model kataloğu `engine.ts:267` → `.catch(() => {})`
-- SessionStart hook `engine.ts:318` → `.catch(() => {})`
-
-Bu çağrılardaki bir context-overflow 400'ü ya da 401 hiçbir iz bırakmıyor.
-
-### 8. Alt-ajan hataları başarı gibi raporlanıyor
-
-- `Session.runTurn` her şeyi kendi içinde yakaladığı için (`session.ts:1737`) throw etmiyor.
-- `spawnAgent`in `catch`i (`session.ts:1035`) hiç ateşlenmiyor, `failed` false kalıyor,
-  `agent_finished` **`isError` olmadan** yayılıyor (`session.ts:1041`) ve orkestratöre
-  boş/kısmi metin başarılı sonuç gibi dönüyor.
-
-## Doküman / kod çelişkileri
-
-- `docs/SETTINGS.md:78` `compactionThreshold: 0.8` anahtarını belgeliyor —
-  bu anahtar **şemada yok** (`engine/core/src/config/settings.ts`), yazılırsa
-  `loadSettings` "unknown key" uyarısı veriyor.
-- `docs/query-lifecycle.html` "MAX_AUTO_NUDGES artık yalnızca wrap-up nudge'ını
-  sınırlıyor" diyor; kod LAYER 3'ü de aynı sayaçla sınırlıyor.
-- `docs/LOCAL-MODELS.md:35-51,73` "Context size alanı Magentra'nın compaction
-  penceresi olur" diyor — mevcut kodda doğru değil, o alan yalnızca `num_ctx` ve
-  uyarı metni için kullanılıyor.
-- `engine/protocol/src/types.ts:253` `contextWarn`i "~200k, model penceresinin altında
-  kırpılmış" diye belgeliyor; gerçek uygulama `0.9 * autoCompactLimit`.
-- `engine/` altında **hiç test dosyası yok**.
-
-## Düzeltme yönü (karar verilmedi)
-
-Yeni fonksiyon gerekmiyor; mevcut olanları geliştirmek yeterli görünüyor:
-
-1. `MODEL_CONTEXT_WINDOWS` tablosunu doldur (veri, kod değil).
-2. `maybeCompact()` / `setAutoCompactLimit()`: açık bir kullanıcı değeri yoksa limiti
-   `contextWindowFor(model, settings)` üzerinden türet. Sabit sayı hiçbir yerde kalmasın.
-3. `compactionThreshold` anahtarını `settingsSchema`'ya ekle (dokümanda zaten var).
-4. `app/renderer/modules/state.js` + `index.html`: `1024000` sabitini "auto"ya çevir.
-   Dikkat: `CONTEXT.md`'deki **Additive-Only State** kuralı, `compactLimit: 0`'ın
-   anlamını "kapalı"dan "auto"ya çevirmeyi yasaklıyor — yeni bir anahtar gerekir.
-5. `tui/src`: TUI'nin de limiti bildirmesi ya da motorun kendi türetmesi.
-6. Site B'yi (`session.ts:1678`) Site A ile aynı bütçeye bağla; bütçe bitince
-   `session.ts:1670`'teki `break` sessiz olmasın, görünür bir sebep bassın.
-7. `model_context_window_exceeded`i `max_tokens`ten ayır — bu bir çıktı kesilmesi değil,
-   girdi taşması; yanıtı "devam et" değil, "compact et" olmalı.
-8. `openai-compat.ts:221`'de gövde içi `{"error":...}` chunk'ını tanı ve yay.
-9. `friendlyProviderError`e 400/413 dalı ekle, `/compact` önerisiyle.
-
-## Açık kalan sorular
-
-- Hardcoded limit hangi koşulda kullanıcıya bırakılsın? ("kullanıcı özellikle ___"
-  cümlesi tamamlanmadı.)
-- Kapsam: yalnızca context/compact tarafı mı, dört arıza yolunun hepsi mi?
-- Katman: yalnızca `engine/core` mü, yoksa `app/renderer` ve `tui/src` de dahil mi?
+- `docs/SETTINGS.md` `compactionThreshold: 0.8` → şemada yoktu (**çözüldü**).
+- `docs/LOCAL-MODELS.md` "Context size alanı compaction penceresi olur" → doğru değildi (**artık doğru**).
+- `engine/protocol/src/types.ts` `contextWarn` "~200k" açıklaması (**güncellendi**).
+- `docs/query-lifecycle.html` MAX_AUTO_NUDGES iddiası (kısmen; bkz. yukarı).
+- `engine/` altında test yoktu → `compaction-check.mjs` eklendi.

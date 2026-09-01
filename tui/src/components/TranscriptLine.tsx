@@ -263,7 +263,10 @@ export function TranscriptLine({ line, width }: { line: Line; width: number }) {
     // one glance separates this turn from the next.
     case 'done': {
       const right = `out ${tokens(line.outputTokens)} ${glyph.up} · ctx ${tokens(line.contextTokens)}`;
-      const left = `${glyph.ok} ${line.stopReason === 'end_turn' ? 'done' : line.stopReason}`;
+      // Only a clean end earns the tick: "✓ max_tokens" read as success and
+      // hid a turn that had died at the output wall.
+      const clean = line.stopReason === 'end_turn';
+      const left = `${clean ? glyph.ok : glyph.fail} ${clean ? 'done' : line.stopReason}`;
       // left + ' ' + rule + ' ' + right must land exactly on the right edge.
       const dashes = Math.max(1, width - displayWidth(left) - displayWidth(right) - 2);
       return (

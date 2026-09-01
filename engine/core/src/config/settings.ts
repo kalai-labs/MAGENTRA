@@ -100,8 +100,15 @@ export const settingsSchema = z
     /** Output-token budget per turn (input/context tokens are not counted — they are dominated by per-iteration context re-sends). */
     maxTokensPerTurn: z.number().int().positive().default(200_000),
     maxIterationsPerTurn: z.number().int().positive().default(50),
-    /** Explicit override; when absent the engine uses the known window for the model (128k fallback). */
+    /** The model's context window in tokens — entered by the user when the
+     * connection is set up (the wizard requires it). Drives auto-compaction
+     * (see compactionThreshold) and is sent as `num_ctx` to a local server.
+     * When absent the engine plans around a conservative 128k and warns. */
     contextWindow: z.number().int().positive().optional(),
+    /** Fraction of the context window at which older history is compacted
+     * automatically (0.1–1). Compaction runs between tool rounds, so the
+     * remaining fifth is headroom for the next response plus its tool results. */
+    compactionThreshold: z.number().min(0.1).max(1).default(0.8),
     /** Bounds append-only workspace state; pruning runs whenever a root session starts. */
     retention: z
       .object({

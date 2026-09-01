@@ -24,6 +24,36 @@ export class ProviderHttpError extends Error {
   }
 }
 
+/**
+ * Does this error text say the PROMPT was too big for the model's window?
+ * Every server words it differently — OpenAI `context_length_exceeded`,
+ * Anthropic "prompt is too long", vLLM "maximum context length is N tokens",
+ * llama.cpp "exceeds the available context size", LM Studio "context length"
+ * — and a gateway may deliver it as an HTTP 400/413 or as an `{"error":…}`
+ * chunk inside a 200 SSE stream. The phrasing, not the status, is the signal.
+ *
+ * Also used to keep the OpenAI-compat field negotiation honest: a 400 saying
+ * "max_tokens + prompt exceed the context" names `max_tokens` without
+ * rejecting the field.
+ */
+const CONTEXT_OVERFLOW_RE =
+  /context[_ -]?(length|window|size)|maximum context|prompt is too long|input is too long|too many (input )?tokens|(input|prompt) (length|tokens?) (is |are )?(too long|exceed)|exceeds? the (available |model'?s? )?context|reduce (the length of )?the (messages|prompt|input)|request (is )?too large|payload too large|token limit/i;
+
+export function looksLikeContextOverflow(text: string): boolean {
+  return CONTEXT_OVERFLOW_RE.test(text);
+}
+
+/** True for a provider failure that means the request outgrew the model's window. */
+export function isContextOverflowError(err: unknown): boolean {
+  const status = statusOf(err);
+  if (status === 413) return true;
+  // 4xx only: a 5xx whose body happens to mention "context" is a server fault,
+  // and compacting the conversation is the wrong reflex for it.
+  if (status !== undefined && (status < 400 || status >= 500)) return false;
+  const message = err instanceof Error ? err.message : String(err);
+  return looksLikeContextOverflow(message);
+}
+
 /** HTTP status of a provider failure — ours or an SDK's (both carry .status). */
 function statusOf(err: unknown): number | undefined {
   if (err instanceof ProviderHttpError) return err.status;
@@ -103,6 +133,12 @@ export function friendlyProviderError(err: unknown, host?: string): string {
         ? (err as { status: number }).status
         : undefined;
 
+  // The one failure the engine can act on itself: it compacts and retries
+  // (Session.runTurn). Reaching the user means that was not enough, so name
+  // the two levers left.
+  if (isContextOverflowError(err))
+    return `The request exceeded the model's context window${where}. Run /compact to summarize older history, or set this connection's Context size to the model's real window so auto-compaction fires before the model overflows.`;
+
   // A wrong base URL answers 401 as readily as a wrong key does: most gateways
   // authenticate before they route. Naming only the key sends people to check
   // the one thing that was fine, so both causes are stated, URL first — it is
@@ -114,6 +150,13 @@ export function friendlyProviderError(err: unknown, host?: string): string {
   if (status === 429) return `Rate limited by the provider${where}. It will retry; if this persists, slow down or check your plan.`;
   if (status === 408 || status === 504) return `The provider timed out${where}. Try again.`;
   if (typeof status === "number" && status >= 500) return `The provider had a server error (${status})${where}. Try again shortly.`;
+  // A generic 400/422 is a request the server would not accept as shaped.
+  // Keep the server's own words — they name the field — but framed, so the
+  // user knows it was the request that was refused, not the connection.
+  if (status === 400 || status === 422) {
+    const detail = err instanceof Error ? err.message.replace(/^provider returned \d+:\s*/, "") : "";
+    return `The provider${where} rejected the request (HTTP ${status})${detail ? `: ${detail.slice(0, 300)}` : "."}`;
+  }
 
   // Node's fetch wraps a network failure in a TypeError whose `.cause` holds
   // the real errno, so check both levels.

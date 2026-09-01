@@ -45,6 +45,13 @@ export type StopReason =
   | "end_turn"
   | "tool_use"
   | "max_tokens"
+  /**
+   * Input plus output filled the model's context window. Distinct from
+   * `max_tokens` on purpose: that one is an OUTPUT cap the caller resumes past
+   * with "continue", while this one means the INPUT is too big — resuming
+   * grows the history and overflows again. The caller must compact first.
+   */
+  | "context_overflow"
   | "refusal"
   | "aborted"
   | "error";

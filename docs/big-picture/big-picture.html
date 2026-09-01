@@ -460,6 +460,8 @@ front→ question_response {id, answers: {"q:0": ["pnpm"]}}
   if (verifyBuffered) { … }           ← the silent self-verify reply (§6)
 
   push(assistant);  stopReason = end.stopReason
+  context_overflow → maybeCompact(force), then treated as max_tokens (§9)
+  cutoffStreak = max_tokens ? +1 : 0
 
   if (toolCalls.length === 0)  → THE FINISHING LADDER (§6)
 
@@ -503,7 +505,7 @@ front→ question_response {id, answers: {"q:0": ["pnpm"]}}
 
 <li><span class="rname">Stop hook</span> — <span class="rcond">end_turn &amp;&amp; !stopHookFired &amp;&amp; hooks.has("Stop")</span><br>A blocking hook injects its reason as a system-reminder and continues.</li>
 
-<li><span class="rname">Layer 3 · length cutoff</span> — <span class="rcond">stopReason === "max_tokens" &amp;&amp; nudgeCount &lt; MAX_AUTO_NUDGES</span><br>The provider truncated the answer. Resume rather than end on half a sentence. Marker: <code>↻ continuing after output-length cutoff</code>. Bounded by <code>nudgeCount</code> since 2026-08-22 — a provider that answers <code>length</code> every time used to resume forever on an uncapped root turn.</li>
+<li><span class="rname">Layer 3 · length cutoff</span> — <span class="rcond">stopReason === "max_tokens" &amp;&amp; cutoffStreak ≤ MAX_CUTOFF_STREAK</span><br>The provider truncated the answer. Resume rather than end on half a sentence. Marker: <code>↻ continuing after output-length cutoff</code>. Bounded by its <b>own</b> streak counter since 2026-09-01 (it shared <code>nudgeCount</code> from 2026-08-22, so an error-recovery nudge spent earlier could end a turn that only needed resuming). The streak counts <i>consecutive</i> cutoffs on both emit sites — this one and the tool-call path, which was unbounded — resets on any complete response, and when exhausted the turn ends with a visible <code>⏸ … cut off N times in a row</code> instead of a silent <code>break</code>. A <code>context_overflow</code> stop (input + output filled the window) is compacted first and then handled here as a cutoff; a provider error the classifier reads as overflow (400/413, or an in-band <code>{"error"}</code> chunk) compacts and retries the same call, at most twice per turn.</li>
 
 <li><span class="rname">Layer 2 · error recovery</span> — <span class="rcond">end_turn &amp;&amp; lastBatchHadError &amp;&amp; nudgeCount &lt; MAX_AUTO_NUDGES</span><br>The last tool batch failed and the turn is ending anyway — weak models bury a failure under a long non-answer. Marker: <code>↻ auto-recovery…</code>. <b>Bounded, and the flag is spent on the nudge</b> (2026-08-22). This rung was documented as "unbounded on purpose, the stall detector terminates a model that keeps failing identically" — and both halves of that were false. <code>lastBatchHadError</code> is only ever assigned after a tool batch, so on a no-tool-call answer it stayed true and the rung re-fired every iteration; and the stall detector neither terminated anything (it only ever <code>remind</code>s) nor fired at all (see §5). Because this rung sits above self-verify, a turn whose last batch failed also never self-verified. A later failing batch re-arms the flag, so genuine recovery is still nudged.</li>
 
@@ -671,8 +673,13 @@ Engine.send("user_message")
     • at the end of runTurn
     • on demand via /compact
 
-trigger:  autoCompactLimit > 0  &&  stats.contextTokens >= autoCompactLimit
-warn   :  contextTokens >= floor(autoCompactLimit * 0.9)   → contextWarn
+limit  :  effectiveCompactLimit()
+          = floor(contextWindowFor(model, settings) * compactionThreshold)   // 0.8 × the user's window
+            lowered by the UI's set_compact_limit cap when one was sent (0 = off)
+trigger:  limit > 0  &&  max(stats.contextTokens, estimateContextNow()) >= limit
+warn   :  contextTokens >= floor(limit * 0.9)   → contextWarn
+recover:  a context_overflow stop, or a 400/413 / in-band {"error"} the provider
+          classifies as overflow  → maybeCompact(force) and retry, ≤ 2 per turn
 
 effect :  summarize the OLDEST span through a dedicated call
           (task state, decisions, files touched, open items),
@@ -681,7 +688,7 @@ effect :  summarize the OLDEST span through a dedicated call
 
 The JSONL transcript is NEVER rewritten — compaction is a view.</code></pre>
 
-<div class="note"><b><code>autoCompactLimit</code> is an absolute token count, and its only source is the UI's <code>set_compact_limit</code> frame.</b> There is deliberately no settings key and no env override, so a stale value in a second channel can never shadow it. <code>docs/SETTINGS.md</code> still documents a <code>compactionThreshold: 0.8</code> fraction — that key is <b>not</b> in the current schema (§16).</div>
+<div class="note"><b>The window is the user's number, never a guess.</b> <code>contextWindow</code> is required by the connection wizard and stored once (the settings key); <code>compactionThreshold</code> (default 0.8) turns it into the limit. The UI's <code>set_compact_limit</code> frame is an optional <i>cap</i> on that limit — it can lower it, never raise it — so the TUI, headless runs and subagents, none of which send the frame, compact too. Before this (2026-09-01) the limit's only source was the frame, the UI default was 1,024,000, and a 32k local model ran with auto-compaction effectively off until it died at its wall.</div>
 </section>
 
 <!-- ═══════════════ 10 ═══════════════ -->
@@ -1087,7 +1094,7 @@ imageFrameParts()          images → the frame's `images` array, untouched.
 <h3>Known drift — documentation behind the code, found while writing this</h3>
 <table>
 <tr><th style="width:44mm">Where</th><th>Drift</th></tr>
-<tr><td class="mono">docs/SETTINGS.md</td><td>Documents <code>compactionThreshold: 0.8</code>. <b>That key is not in <code>settingsSchema</code>.</b> The real mechanism is <code>autoCompactLimit</code> — an absolute token count whose only source is the UI's <code>set_compact_limit</code> frame.</td></tr>
+<tr><td class="mono">docs/SETTINGS.md</td><td><s>Documents <code>compactionThreshold: 0.8</code>, which was not in <code>settingsSchema</code>.</s> Resolved 2026-09-01: the key exists and is the mechanism (§9).</td></tr>
 <tr><td class="mono">docs/PROTOCOL.md</td><td>Five frames exist in <code>types.ts</code> but are undocumented: <code>set_model</code>, <code>set_compact_limit</code>, <code>steer_message</code>, <code>session_report</code>, <code>overdrive_changed</code>. <code>set_connection</code> is named but has no section.</td></tr>
 <tr><td class="mono">docs/SETTINGS.md</td><td>The “Embeddings” section is an empty table with no keys.</td></tr>
 <tr><td class="mono">docs/ARCHITECTURE.md</td><td>Says per-project instruction files “are not read yet”, but <code>STANDARDS.md</code> is loaded into the system prompt (<code>knowledge/standards.ts</code>). It also says no engine test framework is wired up, while <code>app/tests/</code> now carries six suites.</td></tr>
