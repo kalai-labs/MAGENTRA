@@ -10,6 +10,33 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.17.4 — 2026-09-05
+
+### Bug fixes
+
+- **build:** repair bundle build; add GLM-5 Terminal-Bench results ([7808279](https://github.com/kalai-labs/MAGENTRA/commit/78082790e441f16b0dfe18f528d97762fdc18f00))
+- **build:** key must reach native harbor agents; add perf-debug brief ([d7a50cf](https://github.com/kalai-labs/MAGENTRA/commit/d7a50cf82495657534667cdbba052930a0212334))
+- **build:** job names must be unique on resume; add Terminus 2 control ([1ac05ca](https://github.com/kalai-labs/MAGENTRA/commit/1ac05caf0b6a7fad54bdf692b4b92bdd240cfe4e))
+- **engine:** compact at the user's context window, recover overflow ([273f1dc](https://github.com/kalai-labs/MAGENTRA/commit/273f1dc630a70fce92518c83a1c6cc82b31e42c6))
+- **engine:** size the compaction summarizer from the context window ([5e0ae76](https://github.com/kalai-labs/MAGENTRA/commit/5e0ae76ef81c65ad4b48d9e286b6cb3f1b123cc8))
+
+### Performance
+
+- improvement in general to the harness - Prompt and Bugfix ([93ec4de](https://github.com/kalai-labs/MAGENTRA/commit/93ec4de53f8355cb3dc60557c7e0183672bae1ec))
+
+### Documentation
+
+- **docs:** retire the 52.4% target in the perf-debug brief ([b586f6b](https://github.com/kalai-labs/MAGENTRA/commit/b586f6b6888f7136702ad83e0b8c51db69084f46))
+- **docs:** converged harness-performance state ([006f731](https://github.com/kalai-labs/MAGENTRA/commit/006f73110469baadc6aeb6c3f3ee7408254423f9))
+- **docs:** delete four superseded benchmark documents ([3e85bc9](https://github.com/kalai-labs/MAGENTRA/commit/3e85bc9f8cd06de2ed4a673e881247c8b647d7b4))
+- **docs:** note the context-limit silent death and cutoff loop ([184c3cb](https://github.com/kalai-labs/MAGENTRA/commit/184c3cbfc58a142f03cd358217ed1ff5650b4c5c))
+
+### Chores
+
+- **build:** ignore LaTeX intermediates under docs/paper ([01f3a1a](https://github.com/kalai-labs/MAGENTRA/commit/01f3a1a26fc86bcfb5827f369020d9f6a4f0eecf))
+
+[Compare with v0.17.3](https://github.com/kalai-labs/MAGENTRA/compare/v0.17.3...v0.17.4)
+
 ## 0.17.3 — 2026-08-09
 
 ### Bug fixes
