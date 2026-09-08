@@ -93,7 +93,15 @@ function apiResult(name, args) {
       // field-rewrite behavior is exercised.
       const raw = (args[0] && args[0].baseUrl) || "";
       const baseUrl = raw.replace(/\/+$/, "").replace(/\/(chat\/completions|models)$/i, "");
-      return { ok: true, models: [MODEL], ...(baseUrl ? { baseUrl } : {}) };
+      // A local Ollama reports the model's own context ceiling, as main's
+      // discoverContextLimit does; hosted endpoints report none.
+      const local = /:11434\b/.test(baseUrl);
+      return {
+        ok: true,
+        models: [MODEL],
+        ...(baseUrl ? { baseUrl } : {}),
+        ...(local ? { contextLimit: 65536, contextLimitSource: "Ollama (this model's context_length)" } : {}),
+      };
     }
     case "pickContextFiles":
       return { ok: true, files: [{ name: "context.md", ok: true, bytes: 24, kind: "text", text: "hello from an attached file" }] };
@@ -118,6 +126,7 @@ function apiResult(name, args) {
         // The vision model is part of the profile — saved with it, applied with it.
         visionProfileId: typeof payload.visionProfileId === "string" ? payload.visionProfileId : "",
         contextWindow: payload.contextWindow ? String(payload.contextWindow) : "",
+        reasoningEffort: typeof payload.reasoningEffort === "string" ? payload.reasoningEffort : "",
         allowInsecureTls: payload.insecureTls === true,
         hasKey: typeof payload.apiKey === "string" && payload.apiKey.trim() !== "",
       };
@@ -323,6 +332,16 @@ async function run() {
     })()`);
     await pause();
     assert.ok(calls.some((call) => call.name === "setModel" && call.args[0] === "local/custom-model"));
+    // Thinking effort: session_started carries the connection's level, and the
+    // composer control changes it through the engine's own /settings door.
+    await emit({ type: "session_started", sessionId: "active-session", model: MODEL, reasoningEffort: "low", commands: [], rateCard: {} });
+    assert.equal(await evaluate(`document.querySelector('#effortSelect').value`), "low", "the effort control reflects the session's level");
+    await evaluate(`(() => { const select = document.querySelector('#effortSelect'); select.value = 'max'; select.dispatchEvent(new Event('change')); })()`);
+    await pause();
+    assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.command === "settings" && frame.args === "reasoningEffort max"), "the level rides to the engine as /settings reasoningEffort");
+    await evaluate(`(() => { const select = document.querySelector('#effortSelect'); select.value = ''; select.dispatchEvent(new Event('change')); })()`);
+    await pause();
+    assert.ok(frames.some((frame) => frame.type === "slash_command" && frame.command === "settings" && frame.args === "reasoningEffort auto"), "default is the command's auto");
     await evaluate(`(() => { const input = document.querySelector('#promptInput'); input.value = '! npm test'; input.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true})); })()`);
     await pause();
     assert.ok(frames.some((frame) => frame.type === "bang_command" && frame.cmd === "npm test"));
@@ -1243,6 +1262,10 @@ async function run() {
       const ctx = document.querySelector('#wizContext');
       ctx.value = '131072';
       ctx.dispatchEvent(new Event('input'));
+      // Optional: the thinking depth this connection runs at.
+      const effort = document.querySelector('#wizEffort');
+      effort.value = 'high';
+      effort.dispatchEvent(new Event('change'));
       document.querySelector('#wizApiKey').value = 'wizard-test-key';
       document.querySelector('#wizApiKey').dispatchEvent(new Event('input'));
       document.querySelector('#wizTestBtn').click();
@@ -1255,6 +1278,7 @@ async function run() {
     const savedProfile = calls.filter((call) => call.name === "saveProfile").pop();
     assert.equal(savedProfile.args[0].name, "My Endpoint");
     assert.equal(savedProfile.args[0].contextWindow, "131072", "a hosted connection carries its context size too");
+    assert.equal(savedProfile.args[0].reasoningEffort, "high", "the chosen thinking depth is saved with the profile");
     assert.ok(calls.some((call) => call.name === "applyProfile"));
     assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
   });
@@ -1325,6 +1349,51 @@ async function run() {
     assert.deepEqual(state, { select: "__custom__", custom: "qwen3.6-35b-a3b", customVisible: true });
     // Restore the default model for the remaining scenarios.
     await emit({ type: "session_started", sessionId: "sess-restore", model: MODEL, commands: [], rateCard: {} });
+  });
+
+  await test("local context size: TEST fills an empty field from the server and caps a larger one", async () => {
+    windowRef.webContents.send("test:setup-required", { workspace: WORKSPACE });
+    await pause(80);
+    await evaluate(`document.querySelector('[data-preset="ollama"]').click()`);
+    await pause();
+    // Empty field: TEST fills it with the server's figure.
+    await evaluate(`(() => {
+      const model = document.querySelector('#wizModel'); model.value = 'qwen3:8b'; model.dispatchEvent(new Event('input'));
+      const ctx = document.querySelector('#wizContext'); ctx.value = ''; ctx.dispatchEvent(new Event('input'));
+      document.querySelector('#wizTestBtn').click();
+    })()`);
+    await pause();
+    assert.equal(await evaluate(`document.querySelector('#wizContext').value`), "65536", "an empty context size is filled from the server");
+    assert.match(await evaluate(`document.querySelector('#wizStatus').textContent`), /context size set to 65,536/);
+    // Larger than the ceiling: capped, and the status says so.
+    await evaluate(`(() => {
+      const ctx = document.querySelector('#wizContext'); ctx.value = '200000'; ctx.dispatchEvent(new Event('input'));
+      document.querySelector('#wizTestBtn').click();
+    })()`);
+    await pause();
+    assert.equal(await evaluate(`document.querySelector('#wizContext').value`), "65536", "over the maximum, the maximum is taken");
+    assert.match(await evaluate(`document.querySelector('#wizStatus').textContent`), /capped at 65,536/);
+    // Smaller than the ceiling: the user's number stands.
+    await evaluate(`(() => {
+      const ctx = document.querySelector('#wizContext'); ctx.value = '16384'; ctx.dispatchEvent(new Event('input'));
+      document.querySelector('#wizTestBtn').click();
+    })()`);
+    await pause();
+    assert.equal(await evaluate(`document.querySelector('#wizContext').value`), "16384", "a smaller window is the user's choice");
+    assert.equal(await evaluate(`document.querySelector('#wizStatus').textContent`), "link established");
+    // Raised after TEST: SAVE & CONNECT re-applies the remembered ceiling.
+    await evaluate(`(() => {
+      document.querySelector('#wizName').value = 'Local Qwen';
+      const ctx = document.querySelector('#wizContext'); ctx.value = '999999'; ctx.dispatchEvent(new Event('input'));
+      document.querySelector('#wizStartBtn').click();
+    })()`);
+    await pause();
+    const saved = calls.filter((call) => call.name === "saveProfile").pop();
+    assert.equal(saved.args[0].contextWindow, "65536", "the saved profile carries the capped window");
+    assert.equal(await evaluate(`document.querySelector('#setupWizard').classList.contains('hidden')`), true);
+    // Leave the fake profile store as the later profile scenarios expect it:
+    // this profile existed only to prove the SAVE-time cap.
+    profiles.splice(profiles.findIndex((p) => p.name === "Local Qwen"), 1);
   });
 
   await test("connection profiles: dock opens the picker, USE applies, delete removes", async () => {

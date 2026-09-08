@@ -10,7 +10,7 @@ cannot drift apart.
 **Read this to find where something already lives before writing a second one.**
 Narrative and rationale are in `BIG-PICTURE.pdf`; this is the index.
 
-- files scanned **500** — engine 72, app 44, other 384
+- files scanned **504** — engine 75, app 44, other 385
 - `app/` is typechecked by **nothing**; `tsc -b` covers `engine/*` only.
 
 ---
@@ -20,54 +20,54 @@ Narrative and rationale are in `BIG-PICTURE.pdf`; this is the index.
 Changing one of these reaches the whole system. `↓N` = transitive importers.
 
 ### `engine/core/src/runtime/session.ts`
-*3127L · ↓27 transitive · ←2 direct*
+*3151L · ↓27 transitive · ←2 direct*
 
 **exports** `isSelfVerifyDone` `addonNamedIn` `SessionOptions` `Session`
-**members** `cleanSessionTitle:95 isSelfVerifyDone:240 graphSkeleton:309 addonNamedIn:342 remind:656 addContextMessage:665 setPromptSection:672 setDeletionPolicy:681 setOverdrive:699 setProvider:718 steer:727 isOverdrive:732 snapshotForOverdrive:740 runInference:769 visionUnavailableReason:843 describeImage:871 describeImageForContext:911 emitFromChild:928 spawnAgent:959 interrupt:1079 stopBackgroundTasks:1086 isBusy:1094 toolSchemas:1098 buildSystemPrompt:1106 section:1134 recentExchange:1153 maybeClarify:1174 askQuestionRound:1221 buildClarifySkim:1246 peekWorkspaceOverview:1269 runTurn:1299 streamAssistantTurn:1904 executeToolCalls:2039 describeToolImages:2275 toolContext:2310 observeTurnWork:2326 fileEditOutsideWorkspace:2357 fileEditProtectedPath:2378 evaluateWriteReuseGate:2395 loadSymbolIndex:2417` …+38
+**members** `cleanSessionTitle:95 isSelfVerifyDone:240 graphSkeleton:309 addonNamedIn:342 remind:656 addContextMessage:665 setPromptSection:672 setDeletionPolicy:681 setOverdrive:699 setProvider:718 steer:727 isOverdrive:732 snapshotForOverdrive:740 runInference:769 visionUnavailableReason:843 describeImage:871 describeImageForContext:911 emitFromChild:928 spawnAgent:959 interrupt:1079 stopBackgroundTasks:1086 isBusy:1094 toolSchemas:1098 buildSystemPrompt:1106 section:1134 recentExchange:1153 maybeClarify:1174 askQuestionRound:1221 buildClarifySkim:1246 peekWorkspaceOverview:1269 runTurn:1299 streamAssistantTurn:1904 executeToolCalls:2043 describeToolImages:2279 toolContext:2314 observeTurnWork:2330 fileEditOutsideWorkspace:2361 fileEditProtectedPath:2382 evaluateWriteReuseGate:2399 loadSymbolIndex:2421` …+39
 **imported by** `engine/core/src/index.ts` `engine/core/src/runtime/engine.ts`
 
-### `engine/core/src/runtime/engine.ts`
-*1807L · ↓26 transitive · ←1 direct*
-
-**exports** `SETTING_TIMING` `EngineOptions` `Engine` `reconstructForDisplay`
-**members** `SETTING_TIMING:76 createSession:203 start:244 publishModelCatalog:259 announceSession:277 idle:322 stopBackgroundJobs:332 addonSummaries:339 addonCommands:348 emitAddonsUpdated:367 reloadAddons:381 handleAddonCommand:401 startAddonGeneration:426 generateAddon:456 installAddon:509 exportAddon:538 startExclusive:574 maybeAutoNameSession:603 currentSession:621 send:625 handleSlash:801 renderAddons:931 extensionLines:956 handleSettings:961 renderSettings:993 withImageDescriptions:1024 handleSetModel:1086 applySettingLive:1102 handleSetConnection:1136 rebuildProvider:1220 applyInsecureTls:1234 handleBang:1249 flushPendingBangs:1260 runBang:1266 gcStateFiles:1287 pruneStateDirectory:1336 listSessions:1374 resumeSession:1418 renameSession:1462 archiveSession:1492` …+10
-**imported by** `engine/core/src/index.ts`
-
 ### `engine/protocol/src/types.ts`
-*476L · ↓57 transitive · ←2 direct*
+*500L · ↓59 transitive · ←2 direct*
 
-**exports** `PROTOCOL_VERSION` `TaskStatus` `TaskItem` `Usage` `QuestionOption` `Question` `SessionSummary` `PermissionDecision` `SlashCommandInfo` `CoreEvent` `RestoredToolCall` `RestoredMessage` `ConnectionSpec` `VisionConnectionSpec` `ImageAttachment` `FrontendRequest` `Frame`
-**members** `PROTOCOL_VERSION:1`
+**exports** `PROTOCOL_VERSION` `TaskStatus` `TaskItem` `Usage` `QuestionOption` `Question` `SessionSummary` `PermissionDecision` `SlashCommandInfo` `CoreEvent` `RestoredToolCall` `RestoredMessage` `ConnectionSpec` `VisionConnectionSpec` `REASONING_EFFORTS` `ReasoningEffort` `ImageAttachment` `FrontendRequest` `Frame`
+**members** `PROTOCOL_VERSION:1 REASONING_EFFORTS:385`
 **imported by** `engine/protocol/src/index.ts` `engine/protocol/src/tokens.ts`
 
+### `engine/core/src/runtime/engine.ts`
+*1819L · ↓26 transitive · ←1 direct*
+
+**exports** `SETTING_TIMING` `EngineOptions` `Engine` `reconstructForDisplay`
+**members** `SETTING_TIMING:77 createSession:206 start:247 publishModelCatalog:262 announceSession:280 idle:326 stopBackgroundJobs:336 addonSummaries:343 addonCommands:352 emitAddonsUpdated:371 reloadAddons:385 handleAddonCommand:405 startAddonGeneration:430 generateAddon:460 installAddon:513 exportAddon:542 startExclusive:578 maybeAutoNameSession:607 currentSession:625 send:629 handleSlash:805 renderAddons:935 extensionLines:960 handleSettings:965 renderSettings:997 withImageDescriptions:1029 handleSetModel:1091 applySettingLive:1107 handleSetConnection:1141 rebuildProvider:1232 applyInsecureTls:1246 handleBang:1261 flushPendingBangs:1272 runBang:1278 gcStateFiles:1299 pruneStateDirectory:1348 listSessions:1386 resumeSession:1430 renameSession:1474 archiveSession:1504` …+10
+**imported by** `engine/core/src/index.ts`
+
 ### `engine/protocol/src/prompts.ts`
-*257L · ↓56 transitive · ←1 direct*
+*257L · ↓58 transitive · ←1 direct*
 
 **exports** `PromptChannel` `PromptMeta` `PromptEntry` `promptsDir` `promptFile` `definePrompt` `promptText` `renderPrompt` `promptTextIfEnabled` `isPromptDisabled` `promptCatalog` `writePromptOverride` `clearPromptOverride` `setPromptDefault` `orphanedPromptFiles`
 **members** `promptsDir:84 promptFile:90 definePrompt:101 overrideText:111 promptText:147 renderPrompt:158 promptTextIfEnabled:173 isPromptDisabled:179 promptCatalog:184 writePromptOverride:210 clearPromptOverride:225 setPromptDefault:238 orphanedPromptFiles:245`
 **imported by** `engine/protocol/src/index.ts`
 
 ### `engine/protocol/src/index.ts`
-*6L · ↓55 transitive · ←22 direct*
+*6L · ↓57 transitive · ←24 direct*
 
-**imported by** `engine/core/src/agent/addons.ts` `engine/core/src/agent/agents.ts` `engine/core/src/agent/prompts.ts` `engine/core/src/agent/tool.ts` `engine/core/src/config/settings.ts` `engine/core/src/knowledge/graph.ts` `engine/core/src/runtime/engine.ts` `engine/core/src/runtime/finishing.ts` …+14
+**imported by** `engine/core/src/agent/addons.ts` `engine/core/src/agent/agents.ts` `engine/core/src/agent/prompts.ts` `engine/core/src/agent/tool.ts` `engine/core/src/config/settings.ts` `engine/core/src/knowledge/graph.ts` `engine/core/src/runtime/engine.ts` `engine/core/src/runtime/finishing.ts` …+16
 
 ### `engine/protocol/src/tokens.ts`
-*119L · ↓56 transitive · ←1 direct*
+*119L · ↓58 transitive · ←1 direct*
 
 **exports** `emptyUsage` `addUsage` `inputTokensOf` `CHARS_PER_TOKEN` `estimateTokens` `formatTokens` `contextPercentOf` `freeContextOf`
 **members** `emptyUsage:30 addUsage:39 inputTokensOf:59 CHARS_PER_TOKEN:69 estimateTokens:77 formatTokens:92 contextPercentOf:105 freeContextOf:116`
 **imported by** `engine/protocol/src/index.ts`
 
 ### `engine/protocol/src/branding.ts`
-*6L · ↓57 transitive · ←2 direct*
+*6L · ↓59 transitive · ←2 direct*
 
 **exports** `PRODUCT_NAME` `PRODUCT_REPO_URL` `CLI_NAME` `STATE_DIR_NAME`
 **members** `PRODUCT_NAME:1 PRODUCT_REPO_URL:3 CLI_NAME:4 STATE_DIR_NAME:5`
 **imported by** `engine/protocol/src/index.ts` `engine/protocol/src/prompts.ts`
 
 ### `engine/protocol/src/ndjson.ts`
-*36L · ↓56 transitive · ←1 direct*
+*36L · ↓58 transitive · ←1 direct*
 
 **exports** `encodeFrame` `decodeFrames`
 **members** `encodeFrame:3 parseLine:29`
@@ -79,11 +79,18 @@ Changing one of these reaches the whole system. `↓N` = transitive importers.
 **exports** `writeFileAtomic` `AsyncQueue` `zodToJsonSchema`
 **imported by** `engine/host/src/bootstrap.ts` `engine/host/src/serve.ts` `engine/tools/src/addon.ts` `engine/tools/src/agent.ts` `engine/tools/src/askUserQuestion.ts` `engine/tools/src/bash.ts` `engine/tools/src/cron.ts` `engine/tools/src/edit.ts` …+15
 
+### `engine/providers/src/openai-compat.ts`
+*579L · ↓38 transitive · ←1 direct*
+
+**exports** `OpenAICompatOptions` `ThinkTagSplitter` `OpenAICompatProvider`
+**members** `rejectedField:93 buildBody:132 ollamaNative:164 listModels:260 mapFinish:478 toWireTool:501 toWireMessages:512 joinText:566 flattenToolResult:573`
+**imported by** `engine/providers/src/index.ts`
+
 ### `engine/core/src/config/settings.ts`
-*657L · ↓40 transitive · ←9 direct*
+*665L · ↓40 transitive · ←9 direct*
 
 **exports** `DEFAULT_OPENAI_BASE_URL` `DEFAULT_API_KEY_ENV` `settingsSchema` `Settings` `Hooks` `HookEvent` `HookMatcherEntry` `SettingsWarning` `globalSettingsPath` `projectSettingsPath` `loadSettings` `SettingSourceKind` `EffectiveSetting` `describeSettings` `setSettingPath` `deleteSettingPath` `coerceSettingValue` `AppliedSetting` `SettingsTarget` `setSetting` `addExactPermission` `ApiKeySource` `resolveApiKeySource` `resolveApiKey` `VISION_API_KEY_ENV` `resolveVisionApiKey`
-**members** `DEFAULT_OPENAI_BASE_URL:14 DEFAULT_API_KEY_ENV:21 settingsSchema:42 globalSettingsPath:232 projectSettingsPath:237 loadSettings:265 readJson:288 deepMerge:303 applyEnvOverrides:321 isSecretPath:345 redactSecret:353 flattenLeaves:359 describeSettings:377 setSettingPath:398 deleteSettingPath:411 coerceSettingValue:422 setSetting:448 mergedLayersAreValid:509 writeSettingsFile:534 addExactPermission:548 isSameGrant:565 envKey:586 resolveApiKeySource:606 resolveApiKey:634 VISION_API_KEY_ENV:644 resolveVisionApiKey:654`
+**members** `DEFAULT_OPENAI_BASE_URL:14 DEFAULT_API_KEY_ENV:21 settingsSchema:42 globalSettingsPath:240 projectSettingsPath:245 loadSettings:273 readJson:296 deepMerge:311 applyEnvOverrides:329 isSecretPath:353 redactSecret:361 flattenLeaves:367 describeSettings:385 setSettingPath:406 deleteSettingPath:419 coerceSettingValue:430 setSetting:456 mergedLayersAreValid:517 writeSettingsFile:542 addExactPermission:556 isSameGrant:573 envKey:594 resolveApiKeySource:614 resolveApiKey:642 VISION_API_KEY_ENV:652 resolveVisionApiKey:662`
 **imported by** `engine/core/src/agent/hooks.ts` `engine/core/src/agent/tool.ts` `engine/core/src/config/pricing.ts` `engine/core/src/config/providerFactory.ts` `engine/core/src/index.ts` `engine/core/src/knowledge/reuseGate.ts` `engine/core/src/runtime/engine.ts` `engine/core/src/runtime/session.ts` …+1
 
 ### `engine/core/src/knowledge/graph.ts`
@@ -93,69 +100,62 @@ Changing one of these reaches the whole system. `↓N` = transitive importers.
 **members** `MAX_FILE_BYTES:45 SCAN_EXTS:60 langOf:95 shouldSkipDir:105 normalizeToId:119 extOf:124 extractJsSpecs:163 extractPySpecs:177 fileExists:200 pkgNodeId:208 resolveJsSpec:216 resolveWorkspaceSpec:255 resolvePySpec:283 pushInto:344 readGoModule:350 readWorkspacePkgs:371 buildResolveContext:415 bySuffix:438 bySuffixProgressive:451 jsEdges:483 pyEdges:491 cEdges:496 rubyEdges:523 phpEdges:545 jvmEdges:570 goPkgNodeId:588 goEdges:593 rustCrateRoot:622 rustModuleFile:629 rustEdges:639 extractImports:683 buildGraph:709 graphPath:775 saveGraph:779 isValidGraph:789 graphsEqual:795 loadOrBuildGraph:815 isPkg:837 allNodes:842 undirectedAdjacency:852` …+8
 **imported by** `engine/core/src/index.ts` `engine/core/src/knowledge/reuseGate.ts` `engine/core/src/knowledge/seeds.ts` `engine/core/src/knowledge/symbols.ts` `engine/core/src/runtime/session.ts`
 
-### `engine/providers/src/openai-compat.ts`
-*567L · ↓38 transitive · ←1 direct*
+### `engine/providers/src/ollama.ts`
+*293L · ↓39 transitive · ←2 direct*
 
-**exports** `OpenAICompatOptions` `OpenAICompatProvider` `ThinkTagSplitter`
-**members** `rejectedField:73 buildBody:104 listModels:158 matchThinkTag:347 isThinkTagPrefix:356 push:385 flush:422 mapFinish:466 toWireTool:489 toWireMessages:500 joinText:554 flattenToolResult:561`
-**imported by** `engine/providers/src/index.ts`
-
-### `engine/core/src/util/fsAtomic.ts`
-*35L · ↓44 transitive · ←5 direct*
-
-**exports** `writeFileAtomic`
-**members** `writeFileAtomic:17`
-**imported by** `engine/core/src/config/settings.ts` `engine/core/src/index.ts` `engine/core/src/knowledge/graph.ts` `engine/core/src/knowledge/symbols.ts` `engine/core/src/state/taskStore.ts`
+**exports** `OllamaOptions` `OllamaProvider`
+**members** `thinkFor:44 describeThink:55 buildBody:65 mapDone:212 toOllamaTool:218 toOllamaMessages:242 joinText:282 flattenToolResult:289`
+**imported by** `engine/providers/src/index.ts` `engine/providers/src/openai-compat.ts`
 
 ### `engine/providers/src/anthropic.ts`
-*216L · ↓38 transitive · ←1 direct*
+*273L · ↓38 transitive · ←1 direct*
 
 **exports** `AnthropicOptions` `AnthropicProvider`
-**members** `listModels:126 countTokens:131 mapStop:150 toAnthropicMessage:165 toAnthropicImage:174 toAnthropicBlock:185`
+**members** `listModels:165 countTokens:170 describeAnthropicEffort:190 mapStop:207 toAnthropicMessage:222 toAnthropicImage:231 toAnthropicBlock:242`
 **imported by** `engine/providers/src/index.ts`
 
-### `engine/providers/src/types.ts`
-*93L · ↓41 transitive · ←4 direct*
+### `engine/providers/src/index.ts`
+*9L · ↓37 transitive · ←6 direct*
 
-**exports** `ContentBlock` `ToolResultPart` `Msg` `ToolSchema` `StopReason` `ProviderEvent` `StreamRequest` `Provider`
-**imported by** `engine/providers/src/anthropic.ts` `engine/providers/src/fake.ts` `engine/providers/src/index.ts` `engine/providers/src/openai-compat.ts`
+**exports** `FakeProvider` `FakeToolCall` `FakeTurn` `OpenAICompatOptions` `OpenAICompatProvider` `OllamaOptions` `OllamaProvider` `ThinkTagSplitter` `EffortClamp` `toWireEffort` `WIRE_EFFORTS` `WireEffort` `AnthropicOptions` `AnthropicProvider`
+**imported by** `engine/core/src/agent/tool.ts` `engine/core/src/config/providerFactory.ts` `engine/core/src/runtime/engine.ts` `engine/core/src/runtime/session.ts` `engine/core/src/state/transcript.ts` `engine/host/src/bootstrap.ts`
 
 ### `app/main.js`
-*1969L · ↓0 transitive · ←0 direct*
+*1983L · ↓0 transitive · ←0 direct*
 
-**members** `winOf:116 activeTab:126 ensureActiveTab:133 createTab:140 tabForWorkspace:152 focusTab:162 closeTab:177 engineEntryPoint:204 sendToRenderer:219 broadcastToRenderers:226 stopEngine:235 stopAllEngines:274 redactFrameForLog:305 writeToEngine:332 hasCredentials:364 clearGlobalSettingsKeys:400 classifyEngineStderr:432 startEngine:456 loadDocExtractor:631 formatBytes:648 readAttachment:660 savedWindowBounds:786 rememberWindowState:812 applyOpeningPosture:853 wireWindowChrome:877 createWindow:891 platformTitleBarOptions:1026 closeTabsForWindow:1039 createExtraWindow:1052 applyValidatedConnection:1094 commandOnPath:1259 probeLocal:1280 detectLocalServers:1295 tabFromPayload:1465 savedWorkspaceKey:1484 savedWorkspaceModel:1501 persistWorkspaceModel:1510 openWorkspace:1758`
+**members** `winOf:116 activeTab:126 ensureActiveTab:133 createTab:140 tabForWorkspace:152 focusTab:162 closeTab:177 engineEntryPoint:204 sendToRenderer:219 broadcastToRenderers:226 stopEngine:235 stopAllEngines:274 redactFrameForLog:305 writeToEngine:332 hasCredentials:364 clearGlobalSettingsKeys:400 classifyEngineStderr:432 startEngine:456 loadDocExtractor:631 formatBytes:648 readAttachment:660 savedWindowBounds:786 rememberWindowState:812 applyOpeningPosture:853 wireWindowChrome:877 createWindow:891 platformTitleBarOptions:1026 closeTabsForWindow:1039 createExtraWindow:1052 applyValidatedConnection:1094 commandOnPath:1271 probeLocal:1292 detectLocalServers:1307 tabFromPayload:1479 savedWorkspaceKey:1498 savedWorkspaceModel:1515 persistWorkspaceModel:1524 openWorkspace:1772`
 
 ### `app/renderer/modules/landing.js`
-*1165L · ↓0 transitive · ←0 direct*
+*1167L · ↓0 transitive · ←0 direct*
 
-**members** `openWorkspaceByPath:9 renderRecentList:17 requestSessionList:53 formatSessionDate:58 sessionDisplayName:67 renderSessions:71 onSessionList:158 onSessionRestored:174 onSessionStarted:214 syncActivityUi:264 onTurnStarted:295 onBackgroundNotification:324 renderJobRows:355 renderBackgroundJobs:391 onTurnFinished:404 onTextDelta:457 onThinkingDelta:495 onToolCallStarted:517 onToolCallFinished:552 onAgentSpawned:574 onAgentFinished:582 onCommandOutput:591 renderSessionReport:608 openSessionModal:642 closeSessionModal:648 onPermissionRequest:663 sendPermissionDecision:671 permissionTabId:678 showNextPermission:686 renderPermissionUi:694 fillPermissionModal:711 resolvePermission:742 clearPermissionState:758 onEngineGone:770 questionAnsweredNote:789 onQuestionRequest:798 handleEngineEvent:1003`
+**members** `openWorkspaceByPath:9 renderRecentList:17 requestSessionList:53 formatSessionDate:58 sessionDisplayName:67 renderSessions:71 onSessionList:158 onSessionRestored:174 onSessionStarted:214 syncActivityUi:266 onTurnStarted:297 onBackgroundNotification:326 renderJobRows:357 renderBackgroundJobs:393 onTurnFinished:406 onTextDelta:459 onThinkingDelta:497 onToolCallStarted:519 onToolCallFinished:554 onAgentSpawned:576 onAgentFinished:584 onCommandOutput:593 renderSessionReport:610 openSessionModal:644 closeSessionModal:650 onPermissionRequest:665 sendPermissionDecision:673 permissionTabId:680 showNextPermission:688 renderPermissionUi:696 fillPermissionModal:713 resolvePermission:744 clearPermissionState:760 onEngineGone:772 questionAnsweredNote:791 onQuestionRequest:800 handleEngineEvent:1005`
 
 ### `app/renderer/modules/tabs.js`
-*1065L · ↓0 transitive · ←0 direct*
+*1067L · ↓0 transitive · ←0 direct*
 
-**members** `createTabState:89 captureInto:96 applyFrom:101 chromeIsFocused:116 runInTab:128 routeEngineEvent:159 unmountFocusedStream:175 tabStreamPanes:191 autoGrowInput:195 buildPaneComposer:203 openPaneOverflowMenu:385 wirePaneScrollPill:396 syncPaneActivity:411 liveTabId:434 tabIsBusy:438 paneNowState:444 renderPaneNowLine:452 paneNowTick:490 ensurePaneNowTicker:504 enqueuePaneCommand:512 renderPaneQueue:522 flushTabCommandQueue:535 paneFor:547 paneJobsContainer:636 setTabTaskBubbles:651 paintTabBubbles:659 resolvePanePermission:691 buildPaneApproval:707 showPaneApproval:741 hidePaneApproval:768 syncChromeSafetyFromFocusedTab:787 syncTabOverdrive:796 setTabOverdrive:815 toggleTabOverdrive:828 openPaneCtxMenu:842 applyLayout:878 repaintChromeFromFocusedTab:958 onTabOpenedFromMain:988 focusPaneInput:1008 onTabFocusedFromMain:1021` …+1
-
-### `app/renderer/modules/composer.js`
-*861L · ↓0 transitive · ←0 direct*
-
-**members** `autoGrow:31 makeSlashPalette:44 resetLocalViewForClear:185 sendSlashCommand:209 sendBangCommand:246 runTabCommand:258 messageOverCap:287 renderAttachChips:300 clearAttachments:330 composeWithAttachments:340 imageFrameParts:366 attachmentSummary:375 openAttachPicker:385 renderQueueRows:437 renderQueueChip:461 dispatch:474 flushMessageQueue:515 clearMessageQueue:524 sendMessage:529 hardStop:614 requestClear:692 toggleShortcutSheet:738 dismissSetupWizard:831`
+**members** `createTabState:90 captureInto:97 applyFrom:102 chromeIsFocused:117 runInTab:129 routeEngineEvent:160 unmountFocusedStream:176 tabStreamPanes:192 autoGrowInput:196 buildPaneComposer:204 openPaneOverflowMenu:386 wirePaneScrollPill:397 syncPaneActivity:412 liveTabId:435 tabIsBusy:439 paneNowState:445 renderPaneNowLine:453 paneNowTick:491 ensurePaneNowTicker:505 enqueuePaneCommand:513 renderPaneQueue:523 flushTabCommandQueue:536 paneFor:548 paneJobsContainer:637 setTabTaskBubbles:652 paintTabBubbles:660 resolvePanePermission:692 buildPaneApproval:708 showPaneApproval:742 hidePaneApproval:769 syncChromeSafetyFromFocusedTab:788 syncTabOverdrive:797 setTabOverdrive:816 toggleTabOverdrive:829 openPaneCtxMenu:843 applyLayout:879 repaintChromeFromFocusedTab:959 onTabOpenedFromMain:990 focusPaneInput:1010 onTabFocusedFromMain:1023` …+1
 
 ### `app/main/connection.js`
-*552L · ↓2 transitive · ←2 direct*
+*639L · ↓2 transitive · ←2 direct*
 
-**members** `validateCredentialPayload:45 stripApiSuffix:152 candidateBaseUrls:169 describeFetchError:198 fetchWithTimeout:223 testEndpoint:247 probeChatRoute:350 modelIds:370 readWorkspaceEnvKeys:398 writeWorkspaceEnvKeys:437 resolveVisionSelection:485 currentVisionConnection:522`
+**members** `validateCredentialPayload:46 stripApiSuffix:164 candidateBaseUrls:181 describeFetchError:210 fetchWithTimeout:235 testEndpoint:259 probeChatRoute:372 modelIds:392 modelCatalog:397 discoverContextLimit:428 readWorkspaceEnvKeys:484 writeWorkspaceEnvKeys:523 resolveVisionSelection:571 currentVisionConnection:608`
 **imported by** `app/main.js` `app/tests/connection.test.js`
 
+### `app/renderer/modules/composer.js`
+*865L · ↓0 transitive · ←0 direct*
+
+**members** `autoGrow:35 makeSlashPalette:48 resetLocalViewForClear:189 sendSlashCommand:213 sendBangCommand:250 runTabCommand:262 messageOverCap:291 renderAttachChips:304 clearAttachments:334 composeWithAttachments:344 imageFrameParts:370 attachmentSummary:379 openAttachPicker:389 renderQueueRows:441 renderQueueChip:465 dispatch:478 flushMessageQueue:519 clearMessageQueue:528 sendMessage:533 hardStop:618 requestClear:696 toggleShortcutSheet:742 dismissSetupWizard:835`
+
 ### `app/main/config.js`
-*305L · ↓5 transitive · ←5 direct*
+*314L · ↓5 transitive · ←5 direct*
 
 **members** `configPath:49 apiKeyEnvVarFor:58 writeJsonAtomic:72 workspaceSettingsPath:97 globalSettingsPath:103 readWorkspaceSettings:113 readGlobalSettings:118 readEffectiveWorkspaceSettings:128 readSettingsFile:132 updateWorkspaceSettings:154 shouldStartFullScreen:171 readConfig:175 rememberWorkspace:227 isLocalBaseUrl:243 normalizeBaseUrl:263 writeConfig:270`
 **imported by** `app/main/connection.js` `app/main/profiles.js` `app/main.js` `app/tests/connection.test.js` `app/tests/window.test.js`
 
-### `app/renderer/modules/stream.js`
-*615L · ↓0 transitive · ←0 direct*
+### `app/renderer/modules/setup.js`
+*665L · ↓0 transitive · ←0 direct*
 
-**members** `markdownCommitPoint:25 commitStreamedMarkdown:44 finalizeAssistantEl:65 finalizeThinkingEl:88 appendSysNote:94 showCompactingCard:110 removeCompactingCard:131 appendSysError:137 appendSysNotice:154 clearTransientNotices:172 messageClock:180 createMessageEl:186 appendUserMessage:207 workStream:230 closeWorkGroup:259 appendPhaseBanner:268 trimStream:280 appendTurnSeparator:314 cinematicHint:335 createToolRow:345 ensureToolTicker:403 makeRowExpandable:421 findToolRow:450 onToolOutputDelta:461 finishToolRow:478 ensureAgentsRow:513 updateAgentMeter:523 getOrCreateAgentCard:535 finalizeCard:599 finalizeAllAgentCards:609`
+**members** `applyWizPreset:44 applyContextLimit:125 selectWizPreset:150 resetWizForm:156 renderVisionOptions:182 loadProfileIntoForm:201 renderWizProfiles:230 refreshWizProfiles:281 applyLocalDetection:301 refreshLocalDetection:313 applyWizModeUi:325 openConnectionsWizard:343 openSetupWizard:361 markConnectionApplied:376 useProfile:389 saveWizProfile:414 deleteProfileRow:454 wizPayload:491 describeTestFailure:511 wizPayloadKey:525 wizConnectionChanged:529`
 
 ---
 
@@ -167,7 +167,7 @@ before adding one.
 
 **app/main.js/**
 
-- `` ⬢ · 1969L · ↓0
+- `` ⬢ · 1983L · ↓0
 
 **app/main/changes.js/**
 
@@ -175,11 +175,11 @@ before adding one.
 
 **app/main/config.js/**
 
-- `` ⬢ · 305L · ↓5
+- `` ⬢ · 314L · ↓5
 
 **app/main/connection.js/**
 
-- `` ⬢ · 552L · ↓2
+- `` ⬢ · 639L · ↓2
 
 **app/main/logging.js/**
 
@@ -187,7 +187,7 @@ before adding one.
 
 **app/main/profiles.js/**
 
-- `` · 127L · ↓3
+- `` · 128L · ↓3
 
 **app/main/updates.js/**
 
@@ -200,19 +200,19 @@ before adding one.
 **app/renderer/modules/**
 
 - `addons.js` · 317L · ↓0
-- `composer.js` ⬢ · 861L · ↓0
-- `dom.js` · 241L · ↓0
+- `composer.js` ⬢ · 865L · ↓0
+- `dom.js` · 243L · ↓0
 - `events.js` · 243L · ↓0
-- `landing.js` ⬢ · 1165L · ↓0
+- `landing.js` ⬢ · 1167L · ↓0
 - `markdown.js` · 425L · ↓0
 - `math.js` · 493L · ↓0
 - `overdrive.js` · 183L · ↓0
 - `rain.js` · 223L · ↓0
-- `session.js` · 310L · ↓0
-- `setup.js` · 611L · ↓0
+- `session.js` · 339L · ↓0
+- `setup.js` ⬢ · 665L · ↓0
 - `state.js` · 456L · ↓0
-- `stream.js` ⬢ · 615L · ↓0
-- `tabs.js` ⬢ · 1065L · ↓0
+- `stream.js` · 615L · ↓0
+- `tabs.js` ⬢ · 1067L · ↓0
 - `tasks.js` · 148L · ↓0
 - `tokens.js` · 49L · ↓0
 - `tour.js` · 168L · ↓0
@@ -251,7 +251,7 @@ before adding one.
 
 **app/tests/connection.test.js/**
 
-- `` · 429L · ↓0
+- `` · 526L · ↓0
 
 **app/tests/reasoning.test.mjs/**
 
@@ -267,7 +267,7 @@ before adding one.
 
 **app/tests/ui.e2e.js/**
 
-- `` · 1991L · ↓0
+- `` · 2057L · ↓0
 
 **app/tests/updates.test.js/**
 
@@ -688,7 +688,7 @@ before adding one.
 - `config/frontmatter.ts` · 66L · ↓29 — FrontmatterEntry, Frontmatter, parseFrontmatter
 - `config/pricing.ts` · 84L · ↓29 — ModelPricing, MODEL_PRICING, pricingFor, contextWindowFor, formatDuration
 - `config/providerFactory.ts` · 105L · ↓28 — ProviderKind, EndpointSpec, isLocalBaseUrl, ConnectionSettings, endpointSpecFromSettings, createProviderForEndpoint
-- `config/settings.ts` ⬢ · 657L · ↓40 — DEFAULT_OPENAI_BASE_URL, DEFAULT_API_KEY_ENV, settingsSchema, Settings, Hooks, HookEvent, HookMatcherEntry, SettingsWarning, globalSettingsPath, projectSettingsPath, …
+- `config/settings.ts` ⬢ · 665L · ↓40 — DEFAULT_OPENAI_BASE_URL, DEFAULT_API_KEY_ENV, settingsSchema, Settings, Hooks, HookEvent, HookMatcherEntry, SettingsWarning, globalSettingsPath, projectSettingsPath, …
 - `index.ts` ⬢ · 30L · ↓25 — writeFileAtomic, AsyncQueue, zodToJsonSchema
 - `integrations/mcp.ts` · 323L · ↓26 — McpServerConfig, mcpServerConfigSchema, McpToolInfo, McpToolError, McpClient, createMcpTools
 - `knowledge/docs.ts` · 889L · ↓26 — extractPdfText, extractDocxText, extractPptxText, extractXlsxText, extractRtfText, extractOdtText, extractEpubText, extractDocumentText
@@ -698,11 +698,11 @@ before adding one.
 - `knowledge/standards.ts` · 32L · ↓28 — STANDARDS_FILENAMES, loadStandards
 - `knowledge/symbols.ts` · 442L · ↓30 — SymbolFileEntry, SymbolIndexData, a, c, D, NAME, SymbolSite, extractSymbolSites, extractSymbols, buildSymbolIndex, …
 - `knowledge/workspace.ts` · 50L · ↓28 — workspaceLooksNonTrivial, projectName
-- `runtime/engine.ts` ⬢ · 1807L · ↓26 — SETTING_TIMING, EngineOptions, Engine, reconstructForDisplay
+- `runtime/engine.ts` ⬢ · 1819L · ↓26 — SETTING_TIMING, EngineOptions, Engine, reconstructForDisplay
 - `runtime/fileState.ts` · 48L · ↓28 — FileState
 - `runtime/finishing.ts` · 257L · ↓28 — codeFilesAmong, looksLikeTestDouble, runtimeEvidenceText, selfVerifyText
 - `runtime/permissions.ts` · 421L · ↓28 — PermissionRequestPayload, PermissionOutcome, ApprovalSource, protectedEditPath, ExactGrant, deriveAlwaysGrant, PermissionEngine
-- `runtime/session.ts` ⬢ · 3127L · ↓27 — isSelfVerifyDone, addonNamedIn, SessionOptions, Session
+- `runtime/session.ts` ⬢ · 3151L · ↓27 — isSelfVerifyDone, addonNamedIn, SessionOptions, Session
 - `runtime/sessionStats.ts` · 317L · ↓28 — ContextBreakdown, SessionStats
 - `scheduling/background.ts` · 102L · ↓28 — BackgroundManager
 - `scheduling/cron.ts` · 348L · ↓35 — CronFields, parseCron, matchesCron, nextCronMatch, CronJobSource, CronJob, CronSchedulerOptions, CronScheduler
@@ -710,7 +710,7 @@ before adding one.
 - `state/taskStore.ts` · 126L · ↓28 — TaskStore
 - `state/transcript.ts` · 225L · ↓28 — stripSystemReminders, unansweredToolUseIds, syntheticToolResults, repairToolPairing, TranscriptRecord, Transcript
 - `util/asyncQueue.ts` · 32L · ↓27 — AsyncQueue
-- `util/fsAtomic.ts` ⬢ · 35L · ↓44 — writeFileAtomic
+- `util/fsAtomic.ts` · 35L · ↓44 — writeFileAtomic
 - `util/zodToJsonSchema.ts` · 8L · ↓28 — zodToJsonSchema
 
 **engine/host/src/**
@@ -724,21 +724,24 @@ before adding one.
 
 **engine/protocol/src/**
 
-- `branding.ts` ⬢ · 6L · ↓57 — PRODUCT_NAME, PRODUCT_REPO_URL, CLI_NAME, STATE_DIR_NAME
-- `index.ts` ⬢ · 6L · ↓55
-- `ndjson.ts` ⬢ · 36L · ↓56 — encodeFrame, decodeFrames
-- `prompts.ts` ⬢ · 257L · ↓56 — PromptChannel, PromptMeta, PromptEntry, promptsDir, promptFile, definePrompt, promptText, renderPrompt, promptTextIfEnabled, isPromptDisabled, …
-- `tokens.ts` ⬢ · 119L · ↓56 — emptyUsage, addUsage, inputTokensOf, CHARS_PER_TOKEN, estimateTokens, formatTokens, contextPercentOf, freeContextOf
-- `types.ts` ⬢ · 476L · ↓57 — PROTOCOL_VERSION, TaskStatus, TaskItem, Usage, QuestionOption, Question, SessionSummary, PermissionDecision, SlashCommandInfo, CoreEvent, …
+- `branding.ts` ⬢ · 6L · ↓59 — PRODUCT_NAME, PRODUCT_REPO_URL, CLI_NAME, STATE_DIR_NAME
+- `index.ts` ⬢ · 6L · ↓57
+- `ndjson.ts` ⬢ · 36L · ↓58 — encodeFrame, decodeFrames
+- `prompts.ts` ⬢ · 257L · ↓58 — PromptChannel, PromptMeta, PromptEntry, promptsDir, promptFile, definePrompt, promptText, renderPrompt, promptTextIfEnabled, isPromptDisabled, …
+- `tokens.ts` ⬢ · 119L · ↓58 — emptyUsage, addUsage, inputTokensOf, CHARS_PER_TOKEN, estimateTokens, formatTokens, contextPercentOf, freeContextOf
+- `types.ts` ⬢ · 500L · ↓59 — PROTOCOL_VERSION, TaskStatus, TaskItem, Usage, QuestionOption, Question, SessionSummary, PermissionDecision, SlashCommandInfo, CoreEvent, …
 
 **engine/providers/src/**
 
-- `anthropic.ts` ⬢ · 216L · ↓38 — AnthropicOptions, AnthropicProvider
+- `anthropic.ts` ⬢ · 273L · ↓38 — AnthropicOptions, AnthropicProvider
+- `effort.ts` · 126L · ↓40 — WIRE_EFFORTS, WireEffort, toWireEffort, EffortClamp, mentionsReasoningEffort, looksLikeUnknownField
 - `fake.ts` · 85L · ↓38 — FakeToolCall, FakeTurn, FakeProvider
-- `index.ts` · 6L · ↓37 — FakeProvider, FakeToolCall, FakeTurn, OpenAICompatOptions, OpenAICompatProvider, AnthropicOptions, AnthropicProvider
-- `openai-compat.ts` ⬢ · 567L · ↓38 — OpenAICompatOptions, OpenAICompatProvider, ThinkTagSplitter
-- `retry.ts` · 231L · ↓40 — RetryOptions, RetryInfo, ProviderHttpError, looksLikeContextOverflow, isContextOverflowError, isRetryable, retryReason, friendlyProviderError, withRetry, parseRetryAfter
-- `types.ts` ⬢ · 93L · ↓41 — ContentBlock, ToolResultPart, Msg, ToolSchema, StopReason, ProviderEvent, StreamRequest, Provider
+- `index.ts` ⬢ · 9L · ↓37 — FakeProvider, FakeToolCall, FakeTurn, OpenAICompatOptions, OpenAICompatProvider, OllamaOptions, OllamaProvider, ThinkTagSplitter, EffortClamp, toWireEffort, …
+- `ollama.ts` ⬢ · 293L · ↓39 — OllamaOptions, OllamaProvider
+- `openai-compat.ts` ⬢ · 579L · ↓38 — OpenAICompatOptions, ThinkTagSplitter, OpenAICompatProvider
+- `retry.ts` · 231L · ↓41 — RetryOptions, RetryInfo, ProviderHttpError, looksLikeContextOverflow, isContextOverflowError, isRetryable, retryReason, friendlyProviderError, withRetry, parseRetryAfter
+- `think.ts` · 93L · ↓40 — ThinkTagSplitter
+- `types.ts` · 108L · ↓42 — ContentBlock, ToolResultPart, Msg, ToolSchema, StopReason, ProviderEvent, StreamRequest, Provider
 
 **engine/tools/src/**
 
@@ -835,7 +838,7 @@ before adding one.
 
 **tui/src/profiles.ts/**
 
-- `` · 167L · ↓7 — Profile, profilesPath, readProfiles, workspaceConnected, applyProfile, describeProfile, hasEnvFile
+- `` · 174L · ↓7 — Profile, profilesPath, readProfiles, workspaceConnected, applyProfile, describeProfile, hasEnvFile
 
 **tui/src/protocol.ts/**
 
@@ -856,6 +859,10 @@ before adding one.
 **tui/src/types.ts/**
 
 - `` · 56L · ↓7 — ToolStatus, LineBody, Line
+
+**vision_probe.py/**
+
+- `` · 269L · ↓0 — load_profiles, resolve_connection, post, answer_of, image_parts, probe, list_models, main
 
 ---
 

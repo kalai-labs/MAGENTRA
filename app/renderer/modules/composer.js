@@ -28,6 +28,10 @@ customModelEl.addEventListener("keydown", (e) => {
 });
 customModelEl.addEventListener("blur", commitCustomModel);
 
+if (effortSelectEl) {
+  effortSelectEl.addEventListener("change", () => applyEffortChange(effortSelectEl.value));
+}
+
 function autoGrow(el) {
   el.style.height = "auto";
   el.style.height = el.scrollHeight + "px";

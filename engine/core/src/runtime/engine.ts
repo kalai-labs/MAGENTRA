@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, wri
 import { basename, join, relative } from "node:path";
 import {
   PROTOCOL_VERSION,
+  REASONING_EFFORTS,
   STATE_DIR_NAME,
   definePrompt,
   promptTextIfEnabled,
@@ -93,6 +94,8 @@ export const SETTING_TIMING: Record<keyof typeof settingsSchema.shape, SettingTi
   maxTokensPerTurn: "nextTurn",
   maxIterationsPerTurn: "nextTurn",
   contextWindow: "nextTurn",
+  // Read per provider call from the shared settings object, like the model.
+  reasoningEffort: "nextTurn",
   compactionThreshold: "nextTurn",
   retention: "session",
   // Rates are read at report time (/session, status bar), so a new price applies
@@ -286,6 +289,7 @@ export class Engine {
       sessionId: this.session.id,
       cwd: this.opts.cwd,
       model: this.opts.settings.model,
+      ...(this.opts.settings.reasoningEffort !== undefined ? { reasoningEffort: this.opts.settings.reasoningEffort } : {}),
       overdrive: this.session.isOverdrive(),
       addons: this.addonSummaries(),
     });
@@ -1005,6 +1009,7 @@ export class Engine {
       'Prefix with "global" to save to ~/.magentra/settings.json instead of this project, e.g. /settings global apiKey <your-key>.',
       "retention.sessions caps saved transcripts; retention.tasks caps saved task lists/background outputs. Oldest files are pruned on session start and after foreground work.",
       'An optional key returns to its default with "auto" — e.g. /settings contextWindow auto restores the model-aware window.',
+      `reasoningEffort sets how hard the model thinks (${REASONING_EFFORTS.join(" | ")}); a level the endpoint lacks is clamped to its nearest one, and "auto" leaves the endpoint's default.`,
     ].join("\n");
   }
 
@@ -1152,6 +1157,13 @@ export class Engine {
       settings.contextWindow = connection.contextWindow;
     } else {
       delete settings.contextWindow;
+    }
+    // Same rule as the window: the frame is the whole connection, so an absent
+    // level means "the endpoint's default", not "keep the previous one".
+    if (typeof connection.reasoningEffort === "string" && (REASONING_EFFORTS as readonly string[]).includes(connection.reasoningEffort)) {
+      settings.reasoningEffort = connection.reasoningEffort;
+    } else {
+      delete settings.reasoningEffort;
     }
 
     // The key: one storage (the environment), so resolveApiKeySource keeps being

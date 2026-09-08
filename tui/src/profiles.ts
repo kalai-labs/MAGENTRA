@@ -23,6 +23,8 @@ export interface Profile {
   model?: string;
   apiKey?: string;
   contextWindow?: number | string;
+  /** One of the engine's reasoning-effort levels; absent = the endpoint's default. */
+  reasoningEffort?: string;
   insecureTls?: boolean;
 }
 
@@ -139,6 +141,11 @@ export function applyProfile(ws: string, profile: Profile): void {
   const ctx = Number(profile.contextWindow);
   if (Number.isFinite(ctx) && ctx > 0) settings.contextWindow = ctx;
   else delete settings.contextWindow;
+  // The IDE's validator vouched for the level when the profile was saved; the
+  // engine's schema re-checks it on load.
+  const effort = typeof profile.reasoningEffort === 'string' ? profile.reasoningEffort.trim() : '';
+  if (effort) settings.reasoningEffort = effort;
+  else delete settings.reasoningEffort;
   if (profile.insecureTls === true && profile.provider !== 'anthropic') settings.allowInsecureTls = true;
   else delete settings.allowInsecureTls;
   // A pin left by a previous provider would send key resolution right past the

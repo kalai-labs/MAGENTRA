@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { emptyUsage } from "@magentra/protocol";
 import { withRetry } from "./retry.js";
+import { EffortClamp, type WireEffort } from "./effort.js";
 import type {
   ContentBlock,
   Msg,
@@ -16,9 +17,19 @@ export interface AnthropicOptions {
   maxRetries?: number;
 }
 
+/**
+ * Reasoning effort on Anthropic is `output_config.effort` (low … max). This
+ * provider never touches the `thinking` parameter — it did not before, and
+ * turning it on would require replaying signed thinking blocks through tool
+ * loops, which the history here does not carry — so "off" and "minimal" clamp
+ * UP to Claude's lowest level, "low", and the user is told. A level a model
+ * lacks (xhigh on Opus 4.6, any effort on Haiku 4.5) is learned from the 400
+ * and clamped like everywhere else; see {@link EffortClamp}.
+ */
 export class AnthropicProvider implements Provider {
   private readonly client: Anthropic;
   private readonly maxRetries: number;
+  private readonly effort = new EffortClamp();
 
   constructor(opts: AnthropicOptions = {}) {
     this.maxRetries = opts.maxRetries ?? 4;
@@ -45,24 +56,52 @@ export class AnthropicProvider implements Provider {
       (lastBlock as { cache_control?: unknown }).cache_control = { type: "ephemeral" };
     }
     const stream = await withRetry(
-      () =>
-        this.client.messages.create(
-          {
-            model: req.model,
-            max_tokens: req.maxTokens,
-            system: req.system
-              ? [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }]
-              : undefined,
-            messages,
-            tools: req.tools.map((t) => ({
-              name: t.name,
-              description: t.description,
-              input_schema: t.inputSchema as Anthropic.Tool["input_schema"],
-            })),
-            stream: true,
-          },
-          { signal: req.signal },
-        ),
+      async () => {
+        // Loops only to re-send after a 400 taught the effort clamp something;
+        // the ladder is finite and only narrows, so this terminates.
+        for (;;) {
+          const wire = req.reasoningEffort !== undefined ? this.effort.resolve(req.reasoningEffort) : undefined;
+          const effort = wire === undefined ? undefined : wire === "none" || wire === "minimal" ? "low" : wire;
+          try {
+            const accepted = await this.client.messages.create(
+              {
+                model: req.model,
+                max_tokens: req.maxTokens,
+                system: req.system
+                  ? [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }]
+                  : undefined,
+                messages,
+                tools: req.tools.map((t) => ({
+                  name: t.name,
+                  description: t.description,
+                  input_schema: t.inputSchema as Anthropic.Tool["input_schema"],
+                })),
+                // Not in this SDK version's types yet; the API is the authority.
+                ...(effort !== undefined ? { output_config: { effort } } : {}),
+                stream: true,
+              } as Anthropic.MessageCreateParamsStreaming,
+              { signal: req.signal },
+            );
+            // Told on the accepted request only — see OpenAICompatProvider.
+            if (req.reasoningEffort !== undefined) {
+              const note = describeAnthropicEffort(req.reasoningEffort, wire, effort);
+              if (note) req.onNegotiated?.(note);
+            }
+            return accepted;
+          } catch (err) {
+            const status = (err as { status?: unknown }).status;
+            const message = err instanceof Error ? err.message : String(err);
+            if (status === 400 && wire !== undefined && /effort|output_config/i.test(message)) {
+              // Anthropic has no per-value floor: if `low` is refused the model
+              // has no effort setting at all, so anything at or below `high`
+              // refused means "drop the field", and only xhigh/max step down.
+              const unknownField = wire !== "xhigh" && wire !== "max";
+              if (this.effort.reject(wire, unknownField)) continue;
+            }
+            throw err;
+          }
+        }
+      },
       req.signal,
       { maxRetries: this.maxRetries, ...(req.onRetry ? { onRetry: req.onRetry } : {}) },
     );
@@ -145,6 +184,24 @@ export class AnthropicProvider implements Provider {
     });
     return res.input_tokens;
   }
+}
+
+/** The one-line note when what Anthropic is sent differs from what the user chose. */
+function describeAnthropicEffort(
+  level: string,
+  wire: WireEffort | undefined,
+  effort: string | undefined,
+): string | undefined {
+  if (effort === undefined) {
+    return `reasoning effort "${level}" — this Claude model has no effort setting; it runs at its default`;
+  }
+  if (level === "off" || level === "minimal") {
+    return `reasoning effort "${level}" — Claude's lowest effort level is "low", so that is what is sent (thinking itself is not switched off here)`;
+  }
+  if (wire !== undefined && effort !== level) {
+    return `reasoning effort "${level}" is not available on this Claude model — using "${effort}", the nearest level it accepts`;
+  }
+  return undefined;
 }
 
 function mapStop(reason: string | null): StopReason {

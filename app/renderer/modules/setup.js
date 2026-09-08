@@ -113,6 +113,32 @@ wizPresetEls.forEach((btn) => {
 // built/saved; nothing to connect to yet.
 let wizMode = "apply";
 let wizProfiles = []; // sanitized profiles from main (never the raw key)
+// The server's own context ceiling for the model TEST last probed — keyed by
+// base URL + model so a stale figure for another model is never applied.
+let wizContextLimit = null;
+
+/**
+ * Cap CONTEXT SIZE at what the server said it can run this model with — "over
+ * the maximum, the maximum is taken" — and fill an empty field with it. Returns
+ * a status line describing what happened, or "" when nothing changed.
+ */
+function applyContextLimit(limit, source) {
+  if (!wizContextEl || !(Number.isInteger(limit) && limit > 0)) return "";
+  const typed = Number(wizContextEl.value);
+  const where = source ? ` from ${source}` : "";
+  // A fixed locale: the figure is a token count the user compares with model
+  // cards and server logs, which all group thousands with a comma.
+  const shown = limit.toLocaleString("en-US");
+  if (!(typed > 0)) {
+    wizContextEl.value = String(limit);
+    return `context size set to ${shown}${where}`;
+  }
+  if (typed > limit) {
+    wizContextEl.value = String(limit);
+    return `context size capped at ${shown} — the server's maximum for this model${where}`;
+  }
+  return "";
+}
 let wizEditingId = null; // id of the profile loaded into the form, or null for a fresh build
 // The tab USE / SAVE & CONNECT connects. Empty means the focused workspace —
 // what the dock button and the first-run prompt mean. Set when the wizard is
@@ -135,6 +161,9 @@ function resetWizForm() {
   // "Save as new" only makes sense while an existing profile is loaded (fork it);
   // on a blank build the plain SAVE already creates a new profile.
   if (wizSaveAsNewBtnEl) wizSaveAsNewBtnEl.hidden = true;
+  // A level belongs to the profile it was chosen for; a blank build starts at
+  // the endpoint's default.
+  if (wizEffortEl) wizEffortEl.value = "";
   renderVisionOptions("");
 }
 
@@ -178,6 +207,7 @@ function loadProfileIntoForm(p) {
   if (p.baseUrl) wizBaseUrlEl.value = p.baseUrl;
   if (p.model) wizModelEl.value = p.model;
   if (wizContextEl) wizContextEl.value = p.contextWindow || "";
+  if (wizEffortEl) wizEffortEl.value = p.reasoningEffort || "";
   if (wizInsecureEl) wizInsecureEl.checked = p.allowInsecureTls === true;
   if (wizApiKeyEl) {
     wizApiKeyEl.value = "";
@@ -223,7 +253,8 @@ function renderWizProfiles() {
     // The describer is part of the connection, so the row says so — otherwise
     // "can this connection read images" is invisible until something fails.
     const vision = p.visionModel ? ` · 👁 ${p.visionModel}` : "";
-    meta.textContent = `${p.model || "—"} · ${endpoint}${p.hasKey ? "" : " · keyless"}${vision}`;
+    const effort = p.reasoningEffort ? ` · think ${p.reasoningEffort}` : "";
+    meta.textContent = `${p.model || "—"} · ${endpoint}${p.hasKey ? "" : " · keyless"}${effort}${vision}`;
     info.append(name, meta);
     info.addEventListener("click", () => loadProfileIntoForm(p));
     row.appendChild(info);
@@ -466,6 +497,7 @@ function wizPayload() {
     provider: meta.provider,
   };
   if (wizContextEl && wizContextEl.value) payload.contextWindow = wizContextEl.value;
+  if (wizEffortEl && wizEffortEl.value) payload.reasoningEffort = wizEffortEl.value;
   if (currentWizPreset === "custom" && wizInsecureEl && wizInsecureEl.checked) payload.insecureTls = true;
   // The vision model belongs to the PROFILE: saved with it, applied with it.
   // TEST ignores it — it probes this endpoint, and the describer is a separate
@@ -533,6 +565,18 @@ if (wizTestBtnEl) {
       // A note flags a reachable-but-quirky endpoint (e.g. no /models catalog).
       wizStatusEl.textContent = result.note || "link established";
       wizStatusEl.className = "ok";
+      // The server told us the largest window it will run this model with: cap
+      // the field at it (and fill an empty one), remembering it for SAVE.
+      if (Number.isInteger(result.contextLimit) && result.contextLimit > 0) {
+        wizContextLimit = {
+          baseUrl: wizBaseUrlEl.value.trim(),
+          model: wizModelEl.value.trim(),
+          limit: result.contextLimit,
+          source: result.contextLimitSource || "",
+        };
+        const changed = applyContextLimit(result.contextLimit, wizContextLimit.source);
+        if (changed) wizStatusEl.textContent = `${wizStatusEl.textContent} — ${changed}`;
+      }
       // The endpoint just told us its real catalog — replace the preset's
       // static suggestion list (an Ollama user sees their local models).
       if (Array.isArray(result.models) && result.models.length > 0 && wizModelsEl) {
@@ -565,6 +609,16 @@ if (wizStartBtnEl) {
       wizStatusEl.textContent = "model required — pick one from the list or type an id";
       wizStatusEl.className = "err";
       return;
+    }
+    // A figure TEST learned for THIS endpoint and model still caps the field —
+    // the user may have raised it since.
+    if (
+      wizContextLimit &&
+      wizContextLimit.baseUrl === wizBaseUrlEl.value.trim() &&
+      wizContextLimit.model === wizModelEl.value.trim()
+    ) {
+      const changed = applyContextLimit(wizContextLimit.limit, wizContextLimit.source);
+      if (changed) appendSysNote(changed);
     }
     // Required for every connection — see applyWizPreset. Main re-validates the
     // number's range; this only refuses to save a connection without one.
