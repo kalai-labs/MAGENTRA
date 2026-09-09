@@ -10,6 +10,18 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.18.0 — 2026-09-09
+
+### Features
+
+- new context feature ([e7cb971](https://github.com/kalai-labs/MAGENTRA/commit/e7cb9718d25cae27a309b76665f398c3c315d1dc))
+
+### Bug fixes
+
+- added missing scripts ([5ff1b69](https://github.com/kalai-labs/MAGENTRA/commit/5ff1b6909f0966d32d1903b6ca1f2f4156088d97))
+
+[Compare with v0.17.4](https://github.com/kalai-labs/MAGENTRA/compare/v0.17.4...v0.18.0)
+
 ## 0.17.4 — 2026-09-05
 
 ### Bug fixes
