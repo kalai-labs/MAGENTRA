@@ -2,7 +2,7 @@
   "_comment": "Maps each BIG-PICTURE.pdf section to the source it documents. `hash` is a fingerprint of those files at the moment the section was last verified; `bigpicture.mjs check` compares it against the code now and names the sections that need re-reading. Add a section here when you add one to big-picture.html — an untracked section silently never goes stale.",
   "source": "docs/big-picture/big-picture.html",
   "output": "BIG-PICTURE.pdf",
-  "recordedAt": "2026-09-01",
+  "recordedAt": "2026-09-08",
   "sections": [
     {
       "id": 2,
@@ -20,12 +20,12 @@
         "benchmarks/terminal-bench/build-bundle.mjs",
         "benchmarks/terminal-bench/magentra_agent.py"
       ],
-      "hash": "ae480ff055c253e7",
+      "hash": "ae518229387638a5",
       "fileHashes": {
         "app/package.json": "77c8fd51243c10f5",
-        "benchmarks/terminal-bench/build-bundle.mjs": "2873e15f6b026379",
-        "benchmarks/terminal-bench/driver.mjs": "a43c89013309facb",
-        "benchmarks/terminal-bench/magentra_agent.py": "49958376e82a7979",
+        "benchmarks/terminal-bench/build-bundle.mjs": "166c523ef97e34a3",
+        "benchmarks/terminal-bench/driver.mjs": "473ed0a6d9f9d49c",
+        "benchmarks/terminal-bench/magentra_agent.py": "c4a1eb831f6d2e74",
         "engine/core/package.json": "1c526bb20c76f27f",
         "engine/host/package.json": "4dc51c017ce9b989",
         "engine/protocol/package.json": "263108002e7b0b2b",
@@ -60,11 +60,11 @@
         "engine/protocol/src/ndjson.ts",
         "engine/protocol/src/index.ts"
       ],
-      "hash": "225d77c518e31e60",
+      "hash": "8e135cc3d519a98f",
       "fileHashes": {
         "engine/protocol/src/index.ts": "5e2f092230309a94",
         "engine/protocol/src/ndjson.ts": "46ec75884fb72c8e",
-        "engine/protocol/src/types.ts": "7c50e66764ebbb11"
+        "engine/protocol/src/types.ts": "6b6a7fc9ac0655f9"
       }
     },
     {
@@ -74,10 +74,10 @@
         "engine/core/src/runtime/session.ts",
         "engine/core/src/runtime/engine.ts"
       ],
-      "hash": "0984e1719ce9d86f",
+      "hash": "3c37dac17198be71",
       "fileHashes": {
-        "engine/core/src/runtime/engine.ts": "254446e591747338",
-        "engine/core/src/runtime/session.ts": "e8fd1e43d83d9789"
+        "engine/core/src/runtime/engine.ts": "970d39b4095cc8ba",
+        "engine/core/src/runtime/session.ts": "18e4a46c3cfa1a13"
       }
     },
     {
@@ -111,16 +111,24 @@
       "title": "The vision path",
       "paths": [
         "engine/providers/src/openai-compat.ts",
+        "engine/providers/src/ollama.ts",
+        "engine/providers/src/anthropic.ts",
+        "engine/providers/src/effort.ts",
+        "engine/providers/src/think.ts",
         "engine/core/src/config/providerFactory.ts",
         "app/main/profiles.js",
         "app/main/connection.js"
       ],
-      "hash": "253a0737cf0e5898",
+      "hash": "60186f0fc7651273",
       "fileHashes": {
-        "app/main/connection.js": "a355f46bcc32f46e",
-        "app/main/profiles.js": "914d2892e87eff7d",
+        "app/main/connection.js": "0061b166f70cc612",
+        "app/main/profiles.js": "18105a1ba4cb2aa4",
         "engine/core/src/config/providerFactory.ts": "ec8b1f2b66cfa8eb",
-        "engine/providers/src/openai-compat.ts": "d55f1d6db2a141cb"
+        "engine/providers/src/anthropic.ts": "699256e8dfa9a1c1",
+        "engine/providers/src/effort.ts": "564f5934240d99fe",
+        "engine/providers/src/ollama.ts": "9c15b713098b09d8",
+        "engine/providers/src/openai-compat.ts": "5fd4f9270d8734de",
+        "engine/providers/src/think.ts": "730458219177ed71"
       }
     },
     {
@@ -145,10 +153,10 @@
         "engine/core/src/config/settings.ts",
         "app/main/config.js"
       ],
-      "hash": "d342abab23cefd5e",
+      "hash": "0c7bc94623fa1423",
       "fileHashes": {
-        "app/main/config.js": "fdbdabb721f77255",
-        "engine/core/src/config/settings.ts": "5b440eea31cb8cf3"
+        "app/main/config.js": "94c0f28852a0f0b4",
+        "engine/core/src/config/settings.ts": "a0c61621941f7df7"
       }
     },
     {
@@ -204,10 +212,10 @@
         "app/main.js",
         "app/renderer/modules/tabs.js"
       ],
-      "hash": "6ab1b658d48a605b",
+      "hash": "be3950a9832af068",
       "fileHashes": {
-        "app/main.js": "e9066571385c1a00",
-        "app/renderer/modules/tabs.js": "323d50cfd9a1d5f5"
+        "app/main.js": "b011c9473e083b1e",
+        "app/renderer/modules/tabs.js": "82df8f22bf7154ed"
       }
     },
     {
@@ -218,29 +226,29 @@
         "app/renderer/modules/**/*.js",
         "app/renderer/index.html"
       ],
-      "hash": "dafb2a0bff9481e6",
+      "hash": "5d1b8146ca40e59c",
       "fileHashes": {
         "app/main/changes.js": "4620c28def4dc2b9",
-        "app/main/config.js": "fdbdabb721f77255",
-        "app/main/connection.js": "a355f46bcc32f46e",
+        "app/main/config.js": "94c0f28852a0f0b4",
+        "app/main/connection.js": "0061b166f70cc612",
         "app/main/logging.js": "6cb31b8172ba9a7f",
-        "app/main/profiles.js": "914d2892e87eff7d",
+        "app/main/profiles.js": "18105a1ba4cb2aa4",
         "app/main/updates.js": "da218638e2a132ae",
-        "app/renderer/index.html": "9ed872bd52c57dcb",
+        "app/renderer/index.html": "2f100a8754a39659",
         "app/renderer/modules/addons.js": "b067af07c3a97070",
-        "app/renderer/modules/composer.js": "41ad3e73add738e9",
-        "app/renderer/modules/dom.js": "2804f39e32496f69",
+        "app/renderer/modules/composer.js": "64a639afa4681d8e",
+        "app/renderer/modules/dom.js": "177319605b41423c",
         "app/renderer/modules/events.js": "ad1a3dfe01e41c10",
-        "app/renderer/modules/landing.js": "fed1069d03ad26c8",
+        "app/renderer/modules/landing.js": "50f53196bbd87a21",
         "app/renderer/modules/markdown.js": "9bcdf7ff72df5324",
         "app/renderer/modules/math.js": "4bd5cff673f7539d",
         "app/renderer/modules/overdrive.js": "b78206ac666de712",
         "app/renderer/modules/rain.js": "1cd9b718a8561d72",
-        "app/renderer/modules/session.js": "7b330fc8a01eff15",
-        "app/renderer/modules/setup.js": "3002e68a0b56c809",
+        "app/renderer/modules/session.js": "2786ffad125cc066",
+        "app/renderer/modules/setup.js": "54e4a39d9f1f4b93",
         "app/renderer/modules/state.js": "df5f0f8cb630c1ab",
         "app/renderer/modules/stream.js": "6641554c792c49b6",
-        "app/renderer/modules/tabs.js": "323d50cfd9a1d5f5",
+        "app/renderer/modules/tabs.js": "82df8f22bf7154ed",
         "app/renderer/modules/tasks.js": "85d60246fe354416",
         "app/renderer/modules/tokens.js": "b789796a801549f0",
         "app/renderer/modules/tour.js": "df306478389b7e5e",
@@ -264,7 +272,7 @@
         "tui/src/**/*.tsx",
         "tui/package.json"
       ],
-      "hash": "0b5324f77f69844b",
+      "hash": "c87eeee96d6c2efc",
       "fileHashes": {
         "VERSION": "5fd527410bef7c57",
         "app/build/installer.nsh": "f619e54d53737609",
@@ -286,14 +294,14 @@
         "tui/src/components/SessionPicker.tsx": "ca61af0a9140e67f",
         "tui/src/components/TaskStrip.tsx": "b560daa22a744a19",
         "tui/src/components/ToolTail.tsx": "a50d17628495eddf",
-        "tui/src/components/TranscriptLine.tsx": "b76a4cc9282693e6",
+        "tui/src/components/TranscriptLine.tsx": "e9fa6cbb96fe576a",
         "tui/src/components/TrustGate.tsx": "59e96746a9587499",
         "tui/src/config.ts": "e6662e3a1d4ae415",
         "tui/src/engine/host.ts": "99815c9750c249f0",
         "tui/src/engine/useEngine.ts": "daf9727537632188",
         "tui/src/format.ts": "0c6a3cc289f48f28",
         "tui/src/markdown.ts": "86fc0c907126a443",
-        "tui/src/profiles.ts": "917b6f869d4eabdd",
+        "tui/src/profiles.ts": "f2e4e4b787be6edd",
         "tui/src/protocol.ts": "d2ec6f9d4c3c5e4c",
         "tui/src/theme.ts": "8acbff6219dc83b5",
         "tui/src/toolLabel.ts": "e68aa83e473b6f09",

@@ -277,9 +277,18 @@ function writeConfig(config) {
   }
 }
 
+/**
+ * The thinking-depth levels a connection may choose, least to most. MIRRORED
+ * from REASONING_EFFORTS in engine/protocol/src/types.ts — the app cannot
+ * import from the engine (it ships as a bundled child process), so the list is
+ * repeated here on purpose and app/tests/connection.test.js asserts the parity.
+ */
+const REASONING_EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
 module.exports = {
   DEFAULT_MODEL,
   DEFAULT_BASE_URL,
+  REASONING_EFFORTS,
   DEFAULT_API_KEY_ENV,
   LEGACY_API_KEY_ENV_VARS,
   VISION_API_KEY_ENV,

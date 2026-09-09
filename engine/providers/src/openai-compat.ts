@@ -9,16 +9,31 @@ import type {
   ToolSchema,
 } from "./types.js";
 import { ProviderHttpError, looksLikeContextOverflow, parseRetryAfter, withRetry } from "./retry.js";
+import { EffortClamp, looksLikeUnknownField, mentionsReasoningEffort, type WireEffort } from "./effort.js";
+import { OllamaProvider } from "./ollama.js";
+import { ThinkTagSplitter } from "./think.js";
+
+// Still exported from here: app/tests/reasoning.test.mjs imports it by this path.
+export { ThinkTagSplitter };
 
 export interface OpenAICompatOptions {
   /** Bearer token. Empty string for keyless local servers (e.g. Ollama). */
   apiKey: string;
   baseUrl: string;
   maxRetries?: number;
-  /** When set, sent as `num_ctx` so a local server loads the model with this
-   *  context window. Ignored by hosted providers that don't recognize it. */
+  /**
+   * The context window a local server should load the model with. Sent as
+   * `num_ctx` on the /v1 body for servers that might read it there — and,
+   * because Ollama's /v1 layer provably does NOT (its request struct has no
+   * options field), an endpoint that turns out to be Ollama is driven through
+   * its native API instead, where `options.num_ctx` is honoured. See
+   * {@link OpenAICompatProvider.ollamaNative}.
+   */
   numCtx?: number;
 }
+
+/** How long the one-time "is this Ollama?" probe may take before we assume not. */
+const OLLAMA_PROBE_TIMEOUT_MS = 1500;
 
 /** Multimodal user content: the array form of `content`, sent only when a
  *  message actually carries an image (a plain string is what every server
@@ -49,12 +64,17 @@ interface WireMessage {
  *   max_tokens      — renamed to `max_completion_tokens` by OpenAI's reasoning
  *                     models, which reject the old name outright.
  *   num_ctx         — Ollama's context-window hint; not a standard field.
+ *   chat_template_kwargs — the local-server (vLLM, llama.cpp, SGLang) switch that
+ *                     turns a hybrid model's thinking off; hosted APIs reject it.
+ *
+ * `reasoning_effort` is negotiated too, but by VALUE as well as by presence —
+ * see {@link EffortClamp}: a level the model lacks is clamped, not dropped.
  *
  * Nothing that changes what the model can DO is negotiable this way — `tools` is
  * never dropped, because a silently tool-less agent looks like a broken model
  * rather than an unsupported endpoint.
  */
-type NegotiableField = "stream_options" | "max_tokens" | "num_ctx";
+type NegotiableField = "stream_options" | "max_tokens" | "num_ctx" | "chat_template_kwargs";
 
 /**
  * How many undecodable `data:` lines a stream may contain before we stop
@@ -79,6 +99,7 @@ function rejectedField(errorText: string): NegotiableField | undefined {
   if (text.includes("stream_options")) return "stream_options";
   if (text.includes("max_completion_tokens")) return "max_tokens";
   if (text.includes("num_ctx")) return "num_ctx";
+  if (text.includes("chat_template_kwargs")) return "chat_template_kwargs";
   if (text.includes("max_tokens") && /unsupported|not supported|unknown|unrecognized|not permitted|invalid/.test(text)) {
     return "max_tokens";
   }
@@ -98,11 +119,19 @@ function rejectedField(errorText: string): NegotiableField | undefined {
 export class OpenAICompatProvider implements Provider {
   /** Fields this endpoint has rejected, learned from its own 400s. */
   private readonly rejected = new Set<NegotiableField>();
+  /** Which reasoning levels this endpoint accepts, learned the same way. */
+  private readonly effort = new EffortClamp();
+  /**
+   * Resolved once per instance: the native Ollama transport when the endpoint
+   * is Ollama AND a context window was asked for, else null. See ollamaNative.
+   */
+  private ollama: Promise<OllamaProvider | null> | undefined;
 
   constructor(private readonly opts: OpenAICompatOptions) {}
 
   private buildBody(req: StreamRequest): Record<string, unknown> {
     const maxTokensKey = this.rejected.has("max_tokens") ? "max_completion_tokens" : "max_tokens";
+    const wireEffort = req.reasoningEffort !== undefined ? this.effort.resolve(req.reasoningEffort) : undefined;
     return {
       model: req.model,
       [maxTokensKey]: req.maxTokens,
@@ -110,17 +139,74 @@ export class OpenAICompatProvider implements Provider {
       ...(this.rejected.has("stream_options") ? {} : { stream_options: { include_usage: true } }),
       messages: toWireMessages(req.system, req.messages),
       ...(this.opts.numCtx && !this.rejected.has("num_ctx") ? { num_ctx: this.opts.numCtx } : {}),
+      // The one field most servers read for reasoning depth (our "off" is its
+      // "none"); a rejected level is clamped by EffortClamp on the next pass.
+      ...(wireEffort !== undefined ? { reasoning_effort: wireEffort } : {}),
+      // "off" also flips the chat-template switch that hybrid models (Qwen3,
+      // DeepSeek) actually read on vLLM/llama.cpp/SGLang — servers where
+      // `reasoning_effort: "none"` alone may leave thinking on. Hosted APIs
+      // that reject the unknown field teach us to drop it, once.
+      ...(req.reasoningEffort === "off" && !this.rejected.has("chat_template_kwargs")
+        ? { chat_template_kwargs: { enable_thinking: false } }
+        : {}),
       ...(req.tools.length > 0 ? { tools: req.tools.map(toWireTool) } : {}),
     };
   }
 
+  /**
+   * Is this endpoint Ollama? Probed once (`GET <origin>/api/version`, which only
+   * Ollama answers with a `version`), and only when a context window was asked
+   * for — the sole thing the /v1 layer cannot carry. A `/v1` base URL is the
+   * only shape probed: Ollama serves its compat layer there, and anything else
+   * is not Ollama's own address. Any failure means "not Ollama": the /v1 path
+   * keeps working exactly as before, just without the window.
+   */
+  private ollamaNative(): Promise<OllamaProvider | null> {
+    if (this.ollama) return this.ollama;
+    this.ollama = (async () => {
+      if (this.opts.numCtx === undefined) return null;
+      const m = /^(.*?)\/v1\/?$/.exec(this.opts.baseUrl);
+      if (!m) return null;
+      const origin = m[1]!;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), OLLAMA_PROBE_TIMEOUT_MS);
+      try {
+        const res = await fetch(`${origin}/api/version`, {
+          signal: controller.signal,
+          headers: this.opts.apiKey ? { authorization: `Bearer ${this.opts.apiKey}` } : {},
+        });
+        if (!res.ok) return null;
+        const body = (await res.json()) as { version?: unknown };
+        if (typeof body.version !== "string") return null;
+        return new OllamaProvider({
+          baseUrl: origin,
+          numCtx: this.opts.numCtx,
+          ...(this.opts.apiKey ? { apiKey: this.opts.apiKey } : {}),
+          ...(this.opts.maxRetries !== undefined ? { maxRetries: this.opts.maxRetries } : {}),
+        });
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+    return this.ollama;
+  }
+
   async *stream(req: StreamRequest): AsyncIterable<ProviderEvent> {
+    const native = await this.ollamaNative();
+    if (native) {
+      yield* native.stream(req);
+      return;
+    }
     const response = await withRetry(
       async () => {
-        // Loops only to re-send after learning that a field is unsupported. Each
-        // field is learned at most once and the set is finite, so this
-        // terminates — an unrecognized 400 throws on the first pass.
+        // Loops only to re-send after learning that a field is unsupported (or a
+        // reasoning level is out of range). Each field is learned at most once,
+        // the effort ladder is finite and only ever narrows, so this terminates
+        // — an unrecognized 400 throws on the first pass.
         for (;;) {
+          const body = this.buildBody(req);
           const res = await fetch(`${this.opts.baseUrl}/chat/completions`, {
             method: "POST",
             headers: {
@@ -128,16 +214,32 @@ export class OpenAICompatProvider implements Provider {
               // Keyless local servers (Ollama) reject an empty Bearer; omit it.
               ...(this.opts.apiKey ? { authorization: `Bearer ${this.opts.apiKey}` } : {}),
             },
-            body: JSON.stringify(this.buildBody(req)),
+            body: JSON.stringify(body),
             signal: req.signal,
           });
-          if (res.ok) return res;
+          if (res.ok) {
+            // Told on the request that was ACCEPTED, not on each attempt: the
+            // user should read "max became high", never "max became xhigh"
+            // followed by a correction.
+            if (req.reasoningEffort !== undefined) {
+              const note = this.effort.describe(req.reasoningEffort, body.reasoning_effort as WireEffort | undefined);
+              if (note) req.onNegotiated?.(note);
+            }
+            return res;
+          }
           const text = await res.text().catch(() => "");
           if (res.status === 400 || res.status === 422) {
             const field = rejectedField(text);
             if (field !== undefined && !this.rejected.has(field)) {
               this.rejected.add(field);
               continue;
+            }
+            // The effort ladder: a value complaint clamps toward `high`; a
+            // "no such field" drops it. Either way the next pass sends
+            // something different, or reject() says nothing is left to try.
+            const sentEffort = body.reasoning_effort as WireEffort | undefined;
+            if (sentEffort !== undefined && mentionsReasoningEffort(text)) {
+              if (this.effort.reject(sentEffort, looksLikeUnknownField(text))) continue;
             }
           }
           throw new ProviderHttpError(
@@ -334,96 +436,6 @@ export class OpenAICompatProvider implements Provider {
       if (entry.started) yield { type: "tool_use_end", id: entry.id };
     }
     yield { type: "message_end", stopReason: mapFinish(finishReason), usage };
-  }
-}
-
-const THINK_TAGS: { text: string; kind: "open" | "close" }[] = [
-  { text: "<think>", kind: "open" },
-  { text: "</think>", kind: "close" },
-  { text: "<thinking>", kind: "open" },
-  { text: "</thinking>", kind: "close" },
-];
-
-function matchThinkTag(s: string, i: number): { length: number; kind: "open" | "close" } | null {
-  for (const tag of THINK_TAGS) {
-    if (s.startsWith(tag.text, i)) return { length: tag.text.length, kind: tag.kind };
-  }
-  return null;
-}
-
-/** True when `sub` is a non-empty, still-incomplete prefix of some think tag —
- *  i.e. it could still grow into one once the next chunk arrives. */
-function isThinkTagPrefix(sub: string): boolean {
-  return THINK_TAGS.some((tag) => tag.text.length > sub.length && tag.text.startsWith(sub));
-}
-
-/**
- * Separates inline <think>…</think> reasoning from the answer in a streamed
- * content channel. Some reasoning models served over an OpenAI-compatible
- * endpoint do not populate the `reasoning_content` field:
- * they inline their chain of thought straight into `content`, wrapped in
- * <think>…</think> — and some emit only a stray closing </think> when the chat
- * template opened the block implicitly. Left untouched those tags and the
- * reasoning prose leak into the visible answer (and get replayed as assistant
- * text next turn). This splitter reroutes inline reasoning through the same
- * thinking channel as a native reasoning field.
- *
- * Stream-safe: a tag can straddle two SSE chunks, so a trailing partial that
- * could still become a tag is held back until the next chunk (or `flush`)
- * resolves it. A stray </think> with no matching open is simply dropped, and a
- * literal `<` that is not a tag is passed through untouched.
- *
- * (Cost: the astronomically rare answer that legitimately contains a literal
- * <think>/<thinking> tag would have it stripped — the accepted trade every such
- * client makes to keep reasoning models' scratchpads out of the transcript.)
- */
-export class ThinkTagSplitter {
-  private inThink = false;
-  private held = "";
-
-  /** Route one content chunk into answer text and/or reasoning text. */
-  push(chunk: string): { text: string; thinking: string } {
-    const s = this.held + chunk;
-    this.held = "";
-    let text = "";
-    let thinking = "";
-    let segStart = 0;
-    const emit = (end: number) => {
-      const piece = s.slice(segStart, end);
-      if (!piece) return;
-      if (this.inThink) thinking += piece;
-      else text += piece;
-    };
-    let i = 0;
-    while (i < s.length) {
-      if (s[i] === "<") {
-        const tag = matchThinkTag(s, i);
-        if (tag) {
-          emit(i);
-          this.inThink = tag.kind === "open";
-          i += tag.length;
-          segStart = i;
-          continue;
-        }
-        // A tag fragment at the very tail: keep it for the next chunk.
-        if (isThinkTagPrefix(s.slice(i))) {
-          emit(i);
-          this.held = s.slice(i);
-          return { text, thinking };
-        }
-      }
-      i++;
-    }
-    emit(s.length);
-    return { text, thinking };
-  }
-
-  /** Stream ended: release any held fragment as ordinary text/reasoning. */
-  flush(): { text: string; thinking: string } {
-    const piece = this.held;
-    this.held = "";
-    if (!piece) return { text: "", thinking: "" };
-    return this.inThink ? { text: "", thinking: piece } : { text: piece, thinking: "" };
   }
 }
 

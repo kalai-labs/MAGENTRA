@@ -177,6 +177,16 @@
               <option value="__custom__">Custom…</option>
             </select>
             <input id="customModel" class="composer-select hidden" type="text" placeholder="provider/model-id" spellcheck="false" />
+            <select id="effortSelect" class="composer-select" title="Thinking effort — how hard the model reasons before it answers. Applies to your next message; a level this model lacks is clamped to its nearest one.">
+              <option value="">Think: default</option>
+              <option value="off">Think: off</option>
+              <option value="minimal">Think: minimal</option>
+              <option value="low">Think: low</option>
+              <option value="medium">Think: medium</option>
+              <option value="high">Think: high</option>
+              <option value="xhigh">Think: very high</option>
+              <option value="max">Think: max</option>
+            </select>
             <span id="hintUsage" class="hint-usage hidden" title="Context in the window now · session cost so far"></span>
             <div class="composer-actions">
               <button id="clearBtn" class="composer-tool" title="New conversation (Ctrl+L)" disabled aria-label="New conversation">↺</button>
@@ -613,6 +623,19 @@
       <label class="wiz-field" id="wizContextField"><span>CONTEXT SIZE <small>— required</small></span>
         <input id="wizContext" type="number" min="256" step="256" placeholder="the model's context window in tokens, e.g. 32768" spellcheck="false" required />
         <span class="wiz-field-hint">The model's real context window, from its model card or your server's settings. Magentra never guesses it: older history is summarized automatically at 80% of this number so the model never overflows mid-task, and a local server (Ollama) is asked to load the model with this window.</span>
+      </label>
+      <label class="wiz-field" id="wizEffortField"><span>THINKING EFFORT <small>— optional</small></span>
+        <select id="wizEffort">
+          <option value="">Endpoint default</option>
+          <option value="off">Off — no reasoning</option>
+          <option value="minimal">Minimal</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="xhigh">Very high</option>
+          <option value="max">Max</option>
+        </select>
+        <span class="wiz-field-hint">How hard the model thinks before it answers. Sent as the endpoint's own knob (<code>reasoning_effort</code>, Anthropic's effort, or a chat template's thinking switch), and a level this model does not have is clamped to the nearest one it does — MAX on a three-level model means its highest. Changeable live later from the composer.</span>
       </label>
       <label class="wiz-field"><span>VISION MODEL <small>— optional</small></span>
         <select id="wizVisionProfile">

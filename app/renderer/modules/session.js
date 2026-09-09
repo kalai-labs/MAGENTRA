@@ -243,6 +243,9 @@ async function handleChooseWorkspace() {
 // The model the engine is actually running now. Guards against no-op changes
 // (re-selecting the same model).
 let activeModel = null;
+// The connection's thinking depth ("" = the endpoint's default), per tab like
+// the model; arrives in session_started and in a profile-apply result.
+let activeEffort = "";
 
 async function applyModelChange(model) {
   if (!model || model === activeModel) return; // nothing changed
@@ -259,6 +262,32 @@ async function applyModelChange(model) {
 function commitCustomModel() {
   const val = customModelEl.value.trim();
   if (val) applyModelChange(val);
+}
+
+/** Reflect the session's thinking depth in the composer's effort control. */
+function applyEffort(level) {
+  activeEffort = typeof level === "string" ? level : "";
+  if (!effortSelectEl) return;
+  // The shared control only reflects the focused tab, like the model picker.
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
+  const options = Array.from(effortSelectEl.options).map((o) => o.value);
+  effortSelectEl.value = options.includes(activeEffort) ? activeEffort : "";
+}
+
+/**
+ * The user picked a thinking depth in the composer. One door into the engine:
+ * the same `/settings reasoningEffort <level>` a typed command takes, so the
+ * value is validated against the engine's schema, persisted to THIS workspace
+ * and applied to the next turn — and the transcript shows the command and the
+ * engine's reply exactly as if it had been typed. "auto" is that command's
+ * word for "back to the endpoint's default".
+ */
+function applyEffortChange(level) {
+  const next = typeof level === "string" ? level : "";
+  if (next === activeEffort) return;
+  activeEffort = next;
+  if (typeof sendSlashCommand !== "function") return;
+  sendSlashCommand(`/settings reasoningEffort ${next || "auto"}`, { inputEl: null, slash: null });
 }
 
 async function boot() {

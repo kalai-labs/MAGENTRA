@@ -226,6 +226,8 @@ function onSessionStarted(event) {
   // after a wizard IGNITE, a /clear, or a resume, the user must never have to
   // re-select what they already configured.
   if (event.model) applyModel(event.model);
+  // The connection's thinking depth travels with the model; absent = default.
+  if (typeof applyEffort === "function") applyEffort(event.reasoningEffort || "");
   // The addons available in this workspace ride along here.
   if (Array.isArray(event.addons)) {
     addons = event.addons;

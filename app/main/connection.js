@@ -21,6 +21,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   DEFAULT_MODEL,
+  REASONING_EFFORTS,
   VISION_API_KEY_ENV,
   isLocalBaseUrl,
   normalizeBaseUrl,
@@ -47,7 +48,7 @@ function validateCredentialPayload(payload) {
     return { ok: false, error: "invalid payload" };
   }
 
-  const { apiKey, model, provider, baseUrl, contextWindow, insecureTls } = payload;
+  const { apiKey, model, provider, baseUrl, contextWindow, reasoningEffort, insecureTls } = payload;
 
   if (typeof apiKey !== "string") {
     return { ok: false, error: "apiKey is required" };
@@ -107,6 +108,16 @@ function validateCredentialPayload(payload) {
     resolvedContextWindow = n;
   }
 
+  // The thinking depth: one of the engine's levels, or absent for the
+  // endpoint's default. An empty select option arrives as "" and means absent.
+  let resolvedReasoningEffort;
+  if (reasoningEffort !== undefined && reasoningEffort !== null && reasoningEffort !== "") {
+    if (typeof reasoningEffort !== "string" || !REASONING_EFFORTS.includes(reasoningEffort)) {
+      return { ok: false, error: "invalid thinking effort" };
+    }
+    resolvedReasoningEffort = reasoningEffort;
+  }
+
   let resolvedModel = DEFAULT_MODEL;
   if (model !== undefined && model !== null && model !== "") {
     if (typeof model !== "string" || model.length > 200) {
@@ -122,6 +133,7 @@ function validateCredentialPayload(payload) {
     provider: resolvedProvider,
     baseUrl: resolvedBaseUrl,
     contextWindow: resolvedContextWindow,
+    reasoningEffort: resolvedReasoningEffort,
     insecureTls: insecureTls === true,
   };
 }
@@ -286,7 +298,15 @@ async function testEndpoint(validated, defaultBaseUrl, opts = {}) {
     if (res.ok) {
       // Report the candidate that WORKED, not the one that was typed — the
       // caller persists this, and echoing the input threw the discovery away.
-      return { ok: true, status: res.status, models: await modelIds(res), baseUrl: candidate };
+      const catalog = await modelCatalog(res);
+      const context = await discoverContextLimit(candidate, validated.model, headers, timeoutMs, fetchImpl, insecureTls, catalog);
+      return {
+        ok: true,
+        status: res.status,
+        models: catalog.map((m) => m.id),
+        baseUrl: candidate,
+        ...(context ? { contextLimit: context.limit, contextLimitSource: context.source } : {}),
+      };
     }
     // 401/403 is the most informative answer there is: the route exists and
     // answered, it just refused this key. Remember it, but keep walking — a
@@ -302,12 +322,14 @@ async function testEndpoint(validated, defaultBaseUrl, opts = {}) {
     if (res.status === 404 || res.status === 405) {
       const verdict = await probeChatRoute(candidate, headers, timeoutMs, fetchImpl, insecureTls);
       if (verdict === "exists") {
+        const context = await discoverContextLimit(candidate, validated.model, headers, timeoutMs, fetchImpl, insecureTls, []);
         return {
           ok: true,
           status: res.status,
           models: [],
           baseUrl: candidate,
           note: "server reachable — it has no /models catalog, so type the model id manually",
+          ...(context ? { contextLimit: context.limit, contextLimitSource: context.source } : {}),
         };
       }
       if (verdict === "unauthorized") {
@@ -368,16 +390,80 @@ async function probeChatRoute(baseUrl, headers, timeoutMs, fetchImpl, insecureTl
 
 /** Both API shapes list models as data[].id; a missing catalog is not an error. */
 async function modelIds(res) {
+  return (await modelCatalog(res)).map((m) => m.id);
+}
+
+/** The catalog's entries whole (vLLM and SGLang put `max_model_len` beside the id). */
+async function modelCatalog(res) {
   if (!res.ok) return [];
   try {
     const body = await res.json();
     if (body && Array.isArray(body.data)) {
-      return body.data.map((m) => m && m.id).filter((id) => typeof id === "string");
+      return body.data.filter((m) => m && typeof m.id === "string");
     }
   } catch {
     // a catalog is a bonus; the reachability result stands on its own
   }
   return [];
+}
+
+/**
+ * The largest context window this server will actually run `model` with — the
+ * number the user's CONTEXT SIZE is capped at ("over the maximum, the maximum is
+ * taken") and filled in with when the field is empty. Returns `{ limit, source }`
+ * or null when the server does not say.
+ *
+ * Every local server publishes it somewhere different, so each shape is asked in
+ * parallel and the first that names this model wins:
+ *   vLLM / SGLang   `GET  /models`        → data[].max_model_len (already fetched by TEST)
+ *   Ollama          `POST /api/show`      → model_info.<arch>.context_length
+ *   LM Studio       `GET  /api/v0/models` → loaded_context_length (what it runs
+ *                                            with now) else max_context_length
+ *   llama.cpp       `GET  /props`         → default_generation_settings.n_ctx (the
+ *                                            server's --ctx-size — fixed at launch)
+ * Only a LOCAL base URL is probed beyond the catalog: hosted APIs have none of
+ * these routes and a stray POST at a paid endpoint is not a probe worth making.
+ * Any failure is "unknown" — the connection test's verdict never depends on it.
+ */
+async function discoverContextLimit(baseUrl, model, headers, timeoutMs, fetchImpl, insecureTls, catalog) {
+  const fromCatalog = (catalog || []).find((m) => m.id === model);
+  if (fromCatalog && Number.isInteger(fromCatalog.max_model_len) && fromCatalog.max_model_len > 0) {
+    return { limit: fromCatalog.max_model_len, source: "the server's model catalog (max_model_len)" };
+  }
+  if (!isLocalBaseUrl(baseUrl)) return null;
+  const origin = stripApiSuffix(baseUrl);
+  const get = async (url, init) => {
+    try {
+      const res = await fetchWithTimeout(url, headers, timeoutMs, fetchImpl, insecureTls, init);
+      return res.ok ? await res.json() : null;
+    } catch {
+      return null;
+    }
+  };
+  const [ollama, lmstudio, llamacpp] = await Promise.all([
+    get(`${origin}/api/show`, { method: "POST", body: JSON.stringify({ model }), headers: { ...headers, "Content-Type": "application/json" } }),
+    get(`${origin}/api/v0/models`),
+    get(`${origin}/props`),
+  ]);
+  if (ollama && ollama.model_info && typeof ollama.model_info === "object") {
+    const key = Object.keys(ollama.model_info).find((k) => k.endsWith(".context_length"));
+    const n = key ? ollama.model_info[key] : undefined;
+    if (Number.isInteger(n) && n > 0) return { limit: n, source: "Ollama (this model's context_length)" };
+  }
+  if (lmstudio && Array.isArray(lmstudio.data)) {
+    const entry = lmstudio.data.find((m) => m && m.id === model);
+    if (entry) {
+      if (Number.isInteger(entry.loaded_context_length) && entry.loaded_context_length > 0) {
+        return { limit: entry.loaded_context_length, source: "LM Studio (the context length the model is loaded with — raise it in LM Studio to go higher)" };
+      }
+      if (Number.isInteger(entry.max_context_length) && entry.max_context_length > 0) {
+        return { limit: entry.max_context_length, source: "LM Studio (this model's max_context_length)" };
+      }
+    }
+  }
+  const nCtx = llamacpp && llamacpp.default_generation_settings && llamacpp.default_generation_settings.n_ctx;
+  if (Number.isInteger(nCtx) && nCtx > 0) return { limit: nCtx, source: "llama.cpp (the server's --ctx-size)" };
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -543,6 +629,7 @@ function currentVisionConnection(workspace) {
 module.exports = {
   validateCredentialPayload,
   testEndpoint,
+  discoverContextLimit,
   candidateBaseUrls,
   readWorkspaceEnvKeys,
   writeWorkspaceEnvKeys,

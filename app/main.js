@@ -1092,7 +1092,7 @@ function createExtraWindow() {
  * re-pointed, false when an engine was started.
  */
 function applyValidatedConnection(workspace, validated, visionSelection) {
-  const { apiKey, model, provider, baseUrl, contextWindow, insecureTls } = validated;
+  const { apiKey, model, provider, baseUrl, contextWindow, reasoningEffort, insecureTls } = validated;
 
   // The vision endpoint, resolved before anything is written: a bad selection
   // must not leave the main connection half-saved.
@@ -1164,6 +1164,15 @@ function applyValidatedConnection(workspace, validated, visionSelection) {
       delete settings.contextWindow;
       staleGlobalKeys.push("contextWindow");
     }
+    // Thinking depth: the same absent-means-cleared rule as the window, for the
+    // same reason — a level left behind in either layer would keep applying to
+    // a connection whose profile chose the endpoint's default.
+    if (reasoningEffort !== undefined) {
+      settings.reasoningEffort = reasoningEffort;
+    } else {
+      delete settings.reasoningEffort;
+      staleGlobalKeys.push("reasoningEffort");
+    }
 
     // The key this wizard just saved goes to the workspace .env as
     // MAGENTRA_API_KEY, which makes any `apiKeyEnv` pin left behind by a
@@ -1216,6 +1225,7 @@ function applyValidatedConnection(workspace, validated, visionSelection) {
           apiKey,
           model,
           ...(contextWindow !== undefined ? { contextWindow } : {}),
+          ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
           ...(insecureTls ? { insecureTls: true } : {}),
           // Absent means cleared, on purpose — the engine drops its vision
           // endpoint when this key is missing, matching what was just written
@@ -1240,10 +1250,12 @@ function applyValidatedConnection(workspace, validated, visionSelection) {
       tab.id,
     );
     logEvent("sys", { ev: "connection-swapped", provider, live: true, vision: vision.connection ? vision.enabled === true : false });
-    return { ok: true, live: true, model };
+    // The level rides back so the composer's effort control can show it: a live
+    // swap emits no session_started, which is where it would otherwise arrive.
+    return { ok: true, live: true, model, reasoningEffort: reasoningEffort || "" };
   }
   startEngine(workspace, model);
-  return { ok: true, live: false, model };
+  return { ok: true, live: false, model, reasoningEffort: reasoningEffort || "" };
 }
 
 // ---------------------------------------------------------------------------
@@ -1404,6 +1416,7 @@ ipcMain.handle("profiles:save", (_evt, payload) => {
     model: validated.model,
     provider: validated.provider,
     ...(validated.contextWindow !== undefined ? { contextWindow: validated.contextWindow } : {}),
+    ...(validated.reasoningEffort !== undefined ? { reasoningEffort: validated.reasoningEffort } : {}),
     ...(validated.insecureTls ? { insecureTls: true } : {}),
     ...(visionProfileId ? { visionProfileId } : {}),
   });
@@ -1445,6 +1458,7 @@ ipcMain.handle("profiles:apply", (_evt, payload) => {
     model: profile.model,
     provider: profile.provider,
     contextWindow: profile.contextWindow,
+    reasoningEffort: profile.reasoningEffort,
     insecureTls: profile.insecureTls === true,
   });
   if (!validated.ok) return validated;

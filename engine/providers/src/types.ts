@@ -1,4 +1,4 @@
-import type { Usage } from "@magentra/protocol";
+import type { ReasoningEffort, Usage } from "@magentra/protocol";
 
 export type ContentBlock =
   | { type: "text"; text: string }
@@ -79,9 +79,24 @@ export interface StreamRequest {
   messages: Msg[];
   tools: ToolSchema[];
   maxTokens: number;
+  /**
+   * Thinking depth the user chose for this connection. Per request, not per
+   * provider instance: it is a body field on every API that has one, and the
+   * same endpoint serves calls that want it (the turn) and calls that do not.
+   * Absent = send nothing, so the endpoint's default applies.
+   */
+  reasoningEffort?: ReasoningEffort;
   signal: AbortSignal;
   /** Observes connection retries (rate limit / server error / network) so the UI can say why it's waiting. */
   onRetry?: (info: { attempt: number; delayMs: number; reason: string }) => void;
+  /**
+   * The provider changed the request to fit the endpoint — a reasoning level
+   * clamped to the nearest one the model has, a setting the server refused and
+   * the model now runs without. One human-readable line each; the caller
+   * decides how often to show it. A silently altered request is the failure
+   * these settings exist to prevent, so every provider that negotiates says so.
+   */
+  onNegotiated?: (note: string) => void;
 }
 
 export interface Provider {

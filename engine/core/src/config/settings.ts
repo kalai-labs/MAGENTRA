@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { STATE_DIR_NAME } from "@magentra/protocol";
+import { REASONING_EFFORTS, STATE_DIR_NAME } from "@magentra/protocol";
 import { writeFileAtomic } from "../util/fsAtomic.js";
 
 /**
@@ -105,6 +105,14 @@ export const settingsSchema = z
      * (see compactionThreshold) and is sent as `num_ctx` to a local server.
      * When absent the engine plans around a conservative 128k and warns. */
     contextWindow: z.number().int().positive().optional(),
+    /**
+     * How hard the model thinks — chosen per connection in the wizard, or
+     * `/settings reasoningEffort <level>` live. The providers map it onto
+     * their own knob and clamp to the nearest level the endpoint supports
+     * (see ReasoningEffort in the protocol). Absent = the endpoint's default,
+     * i.e. nothing is sent and behaviour is exactly as before this key existed.
+     */
+    reasoningEffort: z.enum(REASONING_EFFORTS).optional(),
     /** Fraction of the context window at which older history is compacted
      * automatically (0.1–1). Compaction runs between tool rounds, so the
      * remaining fifth is headroom for the next response plus its tool results. */

@@ -1970,10 +1970,14 @@ export class Session {
       messages: this.messages,
       tools: this.toolSchemas(),
       maxTokens: this.settings.maxTokensPerResponse,
+      // The connection's thinking depth rides every turn call; absent means the
+      // endpoint's default, exactly as before the setting existed.
+      ...(this.settings.reasoningEffort !== undefined ? { reasoningEffort: this.settings.reasoningEffort } : {}),
       signal,
       // A silent backoff looks like a frozen spinner — narrate every retry.
       onRetry: (info) =>
         this.emit({ type: "retry_status", attempt: info.attempt, delayMs: info.delayMs, reason: info.reason }),
+      onNegotiated: (note) => this.noteNegotiation(note),
     });
 
     for await (const event of stream) {
@@ -2718,6 +2722,21 @@ export class Session {
     return summary;
   }
 
+  /** Provider notes already shown this session, so a clamp is said once, not per call. */
+  private readonly negotiationNotes = new Set<string>();
+
+  /**
+   * A provider changed the request to fit the endpoint (see
+   * StreamRequest.onNegotiated). Told once per distinct note per session:
+   * the user must learn that MAX became HIGH on this model, and must not be
+   * told again on every one of the turn's tool rounds.
+   */
+  private noteNegotiation(note: string): void {
+    if (this.negotiationNotes.has(note)) return;
+    this.negotiationNotes.add(note);
+    this.emit({ type: "command_output", text: `⚙ ${note}` });
+  }
+
   private async runSummarizer(text: string): Promise<string> {
     const summarySignal = new AbortController().signal;
     let summaryText = "";
@@ -2727,7 +2746,12 @@ export class Session {
       messages: [{ role: "user", content: [{ type: "text", text }] }],
       tools: [],
       maxTokens: this.summarizerBudget().replyTokens,
+      // The summarizer runs on the same connection, so a user who switched
+      // thinking off for a slow local model gets a summary that does not think
+      // either — otherwise compaction would be the one call that ignores them.
+      ...(this.settings.reasoningEffort !== undefined ? { reasoningEffort: this.settings.reasoningEffort } : {}),
       signal: summarySignal,
+      onNegotiated: (note) => this.noteNegotiation(note),
     });
     for await (const event of stream) {
       if (event.type === "text_delta") summaryText += event.text;

@@ -72,6 +72,7 @@ const TAB_ACCESSORS = [
   ["contextWarn", () => contextWarn, (v) => { contextWarn = v; }, () => false],
   ["sessionModel", () => sessionModel, (v) => { sessionModel = v; }, () => ""],
   ["activeModel", () => activeModel, (v) => { activeModel = v; }, () => null],
+  ["activeEffort", () => activeEffort, (v) => { activeEffort = v; }, () => ""],
   // addons
   ["addons", () => addons, (v) => { addons = v; }, () => []],
   // changes review
@@ -961,6 +962,7 @@ function repaintChromeFromFocusedTab() {
     workspacePathEl.title = activeWorkspace;
   }
   if (typeof applyModel === "function") applyModel(activeModel || sessionModel || (modelSelectEl ? modelSelectEl.value : ""));
+  if (typeof applyEffort === "function") applyEffort(activeEffort);
   syncActivityUi();
   updateSessionMeter();
   renderSidebarWorkspaces();

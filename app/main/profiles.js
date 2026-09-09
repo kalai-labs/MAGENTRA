@@ -98,6 +98,7 @@ function sanitizeProfile(p, all) {
     model: typeof p.model === "string" ? p.model : "",
     provider: p.provider === "anthropic" ? "anthropic" : "openai-compat",
     contextWindow: p.contextWindow !== undefined && p.contextWindow !== null ? String(p.contextWindow) : "",
+    reasoningEffort: typeof p.reasoningEffort === "string" ? p.reasoningEffort : "",
     allowInsecureTls: p.insecureTls === true,
     hasKey: typeof p.apiKey === "string" && p.apiKey.trim() !== "",
     // The vision model this profile connects alongside itself: the id it points

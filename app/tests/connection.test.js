@@ -11,6 +11,7 @@ const os = require("node:os");
 const path = require("node:path");
 const {
   testEndpoint,
+  discoverContextLimit,
   candidateBaseUrls,
   validateCredentialPayload,
   readWorkspaceEnvKeys,
@@ -20,6 +21,7 @@ const {
 } = require("../main/connection.js");
 const {
   DEFAULT_API_KEY_ENV,
+  REASONING_EFFORTS,
   VISION_API_KEY_ENV,
   isLocalBaseUrl,
   normalizeBaseUrl,
@@ -190,6 +192,101 @@ async function main() {
     "anthropic always requires a key");
   assert.equal(validateCredentialPayload({ apiKey: "k", baseUrl: "https://x.example/v1" }).insecureTls, false,
     "insecureTls defaults to false");
+
+  // ── reasoningEffort: one of the engine's levels, or absent ──────────────
+  {
+    const { REASONING_EFFORTS: engineLevels } = await import(
+      require("node:url").pathToFileURL(path.join(__dirname, "..", "..", "engine", "protocol", "dist", "index.js")).href
+    );
+    assert.deepEqual([...REASONING_EFFORTS], [...engineLevels], "app/main/config.js must mirror the engine's REASONING_EFFORTS");
+    for (const level of REASONING_EFFORTS) {
+      const v = validateCredentialPayload({ apiKey: "k", baseUrl: "https://x.example/v1", reasoningEffort: level });
+      assert.equal(v.ok, true, `${level} must validate`);
+      assert.equal(v.reasoningEffort, level);
+    }
+    assert.equal(validateCredentialPayload({ apiKey: "k", baseUrl: "https://x.example/v1" }).reasoningEffort, undefined, "absent stays absent");
+    assert.equal(validateCredentialPayload({ apiKey: "k", baseUrl: "https://x.example/v1", reasoningEffort: "" }).reasoningEffort, undefined, "the select's empty option means absent");
+    assert.equal(validateCredentialPayload({ apiKey: "k", baseUrl: "https://x.example/v1", reasoningEffort: "ultra" }).ok, false, "an unknown level is refused");
+  }
+
+  // ── context ceiling discovery: each local server's own shape ───────────────
+  {
+    // Ollama: /models catalog without lengths, /api/show with the model's context_length.
+    const ollama = http.createServer((req, res) => {
+      if (req.url === "/v1/models") return res.end(JSON.stringify({ data: [{ id: "qwen3:8b" }] }));
+      if (req.url === "/api/show" && req.method === "POST") {
+        let raw = "";
+        req.on("data", (c) => (raw += c));
+        return req.on("end", () => {
+          const wanted = JSON.parse(raw).model === "qwen3:8b";
+          res.writeHead(wanted ? 200 : 404);
+          res.end(wanted ? JSON.stringify({ model_info: { "general.architecture": "qwen3", "qwen3.context_length": 40960 } }) : "{}");
+        });
+      }
+      res.writeHead(404); res.end();
+    });
+    const port = await listen(ollama);
+    const r = await testEndpoint({ apiKey: "", provider: "openai-compat", baseUrl: `http://127.0.0.1:${port}/v1`, model: "qwen3:8b", insecureTls: false }, "https://hosted.example/v1");
+    assert.equal(r.ok, true);
+    assert.equal(r.contextLimit, 40960, "Ollama's context_length is the ceiling");
+    assert.match(r.contextLimitSource, /Ollama/);
+    const other = await testEndpoint({ apiKey: "", provider: "openai-compat", baseUrl: `http://127.0.0.1:${port}/v1`, model: "not-pulled", insecureTls: false }, "https://hosted.example/v1");
+    assert.equal(other.contextLimit, undefined, "a model the server does not know yields no ceiling");
+    ollama.close();
+  }
+  {
+    // vLLM: the catalog itself carries max_model_len — no second request needed.
+    const vllm = http.createServer((req, res) => {
+      if (req.url === "/v1/models") return res.end(JSON.stringify({ data: [{ id: "Qwen/Qwen3.6-35B-A3B", max_model_len: 131072 }] }));
+      res.writeHead(404); res.end();
+    });
+    const port = await listen(vllm);
+    const r = await testEndpoint({ apiKey: "", provider: "openai-compat", baseUrl: `http://127.0.0.1:${port}/v1`, model: "Qwen/Qwen3.6-35B-A3B", insecureTls: false }, "https://hosted.example/v1");
+    assert.equal(r.contextLimit, 131072, "max_model_len is the ceiling");
+    vllm.close();
+  }
+  {
+    // LM Studio: the LOADED length wins over the architectural max — it is what the server runs with.
+    const lms = http.createServer((req, res) => {
+      if (req.url === "/v1/models") return res.end(JSON.stringify({ data: [{ id: "qwen3.6-35b" }] }));
+      if (req.url === "/api/v0/models") return res.end(JSON.stringify({ data: [{ id: "qwen3.6-35b", max_context_length: 262144, loaded_context_length: 8192 }] }));
+      res.writeHead(404); res.end();
+    });
+    const port = await listen(lms);
+    const r = await testEndpoint({ apiKey: "", provider: "openai-compat", baseUrl: `http://127.0.0.1:${port}/v1`, model: "qwen3.6-35b", insecureTls: false }, "https://hosted.example/v1");
+    assert.equal(r.contextLimit, 8192, "LM Studio's loaded length is the effective ceiling");
+    assert.match(r.contextLimitSource, /LM Studio/);
+    lms.close();
+  }
+  {
+    // llama.cpp: no catalog lengths, /props names the server's --ctx-size.
+    const llama = http.createServer((req, res) => {
+      if (req.url === "/v1/models") return res.end(JSON.stringify({ data: [{ id: "model.gguf" }] }));
+      if (req.url === "/props") return res.end(JSON.stringify({ default_generation_settings: { n_ctx: 32768 } }));
+      res.writeHead(404); res.end();
+    });
+    const port = await listen(llama);
+    const r = await testEndpoint({ apiKey: "", provider: "openai-compat", baseUrl: `http://127.0.0.1:${port}/v1`, model: "model.gguf", insecureTls: false }, "https://hosted.example/v1");
+    assert.equal(r.contextLimit, 32768, "llama.cpp's n_ctx is the ceiling");
+    llama.close();
+  }
+  {
+    // A server that publishes nothing: TEST still passes, just without a ceiling — and
+    // a hosted base URL is never probed beyond the catalog.
+    const bare = http.createServer((req, res) => {
+      if (req.url === "/v1/models") return res.end(JSON.stringify({ data: [{ id: "m" }] }));
+      res.writeHead(404); res.end();
+    });
+    const port = await listen(bare);
+    const r = await testEndpoint({ apiKey: "", provider: "openai-compat", baseUrl: `http://127.0.0.1:${port}/v1`, model: "m", insecureTls: false }, "https://hosted.example/v1");
+    assert.equal(r.ok, true);
+    assert.equal(r.contextLimit, undefined);
+    bare.close();
+    let probed = 0;
+    const hosted = await discoverContextLimit("https://api.example.com/v1", "m", {}, 100, async () => { probed++; throw new Error("must not be called"); }, false, []);
+    assert.equal(hosted, null);
+    assert.equal(probed, 0, "hosted endpoints get no server-shape probes");
+  }
 
   // ── insecureTls: set only around the request, always restored ────────────
   delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;

@@ -95,6 +95,8 @@ export type CoreEvent =
       sessionId: string;
       cwd: string;
       model: string;
+      /** The connection's thinking depth, so a frontend's effort control can show the live value. Absent = the endpoint's default. */
+      reasoningEffort?: ReasoningEffort;
       /** Whether OVERDRIVE (the fully-autonomous stance) is active for this session. */
       overdrive: boolean;
       /** The engine's slash-command registry, so the palette can never drift. */
@@ -334,6 +336,8 @@ export interface ConnectionSpec {
   model: string;
   /** Context window to run the model with; also `num_ctx` for a local server. */
   contextWindow?: number;
+  /** Thinking depth for this connection (see {@link ReasoningEffort}); absent = the endpoint's default. */
+  reasoningEffort?: ReasoningEffort;
   /** Skip TLS verification for this endpoint (self-signed home-lab gateway). */
   insecureTls?: boolean;
   /**
@@ -360,6 +364,26 @@ export interface VisionConnectionSpec {
   contextWindow?: number;
   insecureTls?: boolean;
 }
+
+/**
+ * How hard the model should think before it answers, as the user chose it for
+ * a connection. One vocabulary for every provider, ordered from least to most:
+ * each provider maps it onto its own knob (`reasoning_effort`, Anthropic's
+ * `output_config.effort`, a chat template's `enable_thinking`) and CLAMPS a
+ * level the endpoint does not have to the nearest one it does — a request is
+ * never refused over a level, and never silently sent with the wrong one.
+ *
+ *   off      — no reasoning at all (a model that cannot switch it off runs at
+ *              its lowest level instead)
+ *   minimal … max — the provider's ladder; a level above the model's top is
+ *              taken as its top, per the user's rule "over the maximum, the
+ *              maximum is taken".
+ *
+ * Absent everywhere means "the endpoint's default": nothing is sent, so a
+ * connection that never chose a level behaves exactly as before.
+ */
+export const REASONING_EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 
 /** An image attached to a user message. Base64, because it comes from the
  *  frontend over a line-delimited JSON protocol. */
