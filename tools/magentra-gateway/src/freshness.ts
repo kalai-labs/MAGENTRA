@@ -32,6 +32,17 @@ import type { Feature, FeatureRecord, FreshnessStamp } from "./schema.js";
  *
  * The path goes into the digest before the bytes, which is why the rollup is
  * order-sensitive and why `entryFiles` order is part of a record's identity.
+ *
+ * ONE DEPARTURE from the bigpicture copy, 2026-09-09: CRLF is folded to LF
+ * before digesting. This repo has `core.autocrlf=true` and no `.gitattributes`,
+ * so a plain `git pull` on Windows checks every text file out as CRLF while the
+ * blob — and the machine that stamped the records — has LF. Raw bytes then
+ * reported 159 of 164 records stale on a clean tree, and the only way through
+ * was to re-record everything without reviewing anything, which is exactly the
+ * move the gate exists to forbid. A line ending is a checkout artifact, not
+ * content; the same reasoning that rejected mtime rejects it. Binary files
+ * (anything containing a NUL byte, git's own text heuristic) are digested
+ * untouched, because a CR LF pair inside a PNG is data.
  */
 export function hashFiles(root: string, files: readonly string[]): string {
   const h = createHash("sha256");
@@ -39,12 +50,30 @@ export function hashFiles(root: string, files: readonly string[]): string {
     h.update(f);
     h.update("\0");
     try {
-      h.update(readFileSync(join(root, f)));
+      h.update(normalizeEol(readFileSync(join(root, f))));
     } catch {
       h.update("MISSING");
     }
   }
   return h.digest("hex").slice(0, 16);
+}
+
+/**
+ * Fold CRLF to LF in a text buffer; return binary buffers as they are. Works on
+ * bytes, not on a decoded string, so a file that is not valid UTF-8 still
+ * hashes deterministically instead of through U+FFFD replacement.
+ */
+export function normalizeEol(buf: Buffer): Buffer {
+  if (buf.includes(0)) return buf;
+  if (!buf.includes(0x0d)) return buf;
+  const out = Buffer.allocUnsafe(buf.length);
+  let n = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const b = buf[i]!;
+    if (b === 0x0d && buf[i + 1] === 0x0a) continue;
+    out[n++] = b;
+  }
+  return out.subarray(0, n);
 }
 
 /** Recompute a record's stamp from what is on disk right now. */
