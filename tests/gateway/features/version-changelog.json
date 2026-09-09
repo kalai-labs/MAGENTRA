@@ -1,0 +1,23 @@
+{
+  "id": "version-changelog",
+  "name": "The changelog is generated",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "CHANGELOG.md is written by the tool, never by hand.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "tools/version/lib/changelog.mjs"
+  ],
+  "invariant": "renderRelease groups commits into their configured sections and prependRelease inserts without disturbing earlier entries.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "41ae417ec1b070e6",
+    "fileHashes": {
+      "tools/version/lib/changelog.mjs": "41ae417ec1b070e6"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

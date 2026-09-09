@@ -1,0 +1,25 @@
+{
+  "id": "slash-registry-single-source",
+  "name": "The palette cannot drift from the engine",
+  "area": "protocol",
+  "section": "Protocol & host",
+  "prose": "A frontend that derives slash commands itself drifts from what the engine will actually dispatch.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/engine.ts",
+    "engine/protocol/src/types.ts"
+  ],
+  "invariant": "/help and the frontend palette both render from one registry, and addons_updated re-ships it so a newly installed addon appears.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "6b2c55de4404c234",
+    "fileHashes": {
+      "engine/core/src/runtime/engine.ts": "114232a5bf174d79",
+      "engine/protocol/src/types.ts": "11d32208f2241da2"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "reasoning-effort-clamp",
+  "name": "Effort levels clamp, never refuse",
+  "area": "protocol",
+  "section": "Protocol & host",
+  "prose": "One vocabulary of seven levels for every provider, each mapping onto its own knob.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/types.ts",
+    "engine/providers/src/effort.ts"
+  ],
+  "invariant": "A level the endpoint does not have maps to the nearest one it does; a request is never refused over a level and never silently sent with the wrong one.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7877495829318388",
+    "fileHashes": {
+      "engine/protocol/src/types.ts": "11d32208f2241da2",
+      "engine/providers/src/effort.ts": "564f5934240d99fe"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

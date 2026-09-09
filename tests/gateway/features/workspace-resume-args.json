@@ -1,0 +1,23 @@
+{
+  "id": "workspace-resume-args",
+  "name": "Workspace + resume args",
+  "area": "tui",
+  "section": "Terminal UI (tui/)",
+  "prose": "`magentra <path>` opens that directory (error on a missing one); `--resume` lists this workspace's sessions, `--resume <id>` restores one, riding the engine's own session store.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "tui/src/cli.tsx"
+  ],
+  "invariant": "The workspace is the positional path if given, else the launch directory; --resume takes an optional id.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "4d03a316afbcce2c",
+    "fileHashes": {
+      "tui/src/cli.tsx": "4d03a316afbcce2c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

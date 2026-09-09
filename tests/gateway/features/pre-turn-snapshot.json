@@ -1,0 +1,23 @@
+{
+  "id": "pre-turn-snapshot",
+  "name": "Pre-turn snapshot",
+  "area": "engine",
+  "section": "OVERDRIVE — fully-autonomous stance",
+  "prose": "a `git stash create` ref is parked before each root turn and reported as `overdriveSnapshot` on `turn_finished` (tracked files only; absent on a clean tree).",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "An uncapped OVERDRIVE turn captures a pre-turn git stash ref, absent when the tree was clean or the workspace is not a repo.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7c7930bc5724d79f",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

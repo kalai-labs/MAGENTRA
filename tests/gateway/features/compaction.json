@@ -1,0 +1,23 @@
+{
+  "id": "compaction",
+  "name": "Compaction",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "the oldest span is summarized when context crosses the threshold; the summary replaces it and context resets.",
+  "kinds": [
+    "llm"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "Crossing the threshold summarizes the oldest span, replaces it, and resets the context.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7c7930bc5724d79f",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "provider-usage-normalization",
+  "name": "Provider usage normalization",
+  "area": "providers",
+  "section": "Runtime — the turn loop",
+  "prose": "OpenAI-compatible `prompt_tokens` (whole prompt) minus `cached_tokens` (a subset) yields disjoint classes; Anthropic already reports them disjoint. Getting this wrong double-counts cache.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/providers/src/openai-compat.ts",
+    "engine/providers/src/anthropic.ts"
+  ],
+  "invariant": "OpenAI-compatible prompt_tokens minus cached_tokens yields disjoint classes; Anthropic already reports them disjoint.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "53f72fc284778401",
+    "fileHashes": {
+      "engine/providers/src/openai-compat.ts": "e95e6026ce0bd921",
+      "engine/providers/src/anthropic.ts": "e1a94424a5f0baf4"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

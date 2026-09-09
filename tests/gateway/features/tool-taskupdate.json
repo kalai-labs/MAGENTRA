@@ -1,0 +1,23 @@
+{
+  "id": "tool-taskupdate",
+  "name": "TaskUpdate",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Mark in_progress before starting and completed the moment it is fully done.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/tools/src/tasks.ts"
+  ],
+  "invariant": "An update changes only the fields given and never marks completed work that is still partial.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "77a380779a3e9d01",
+    "fileHashes": {
+      "engine/tools/src/tasks.ts": "77a380779a3e9d01"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

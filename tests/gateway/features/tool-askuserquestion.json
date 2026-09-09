@@ -1,0 +1,23 @@
+{
+  "id": "tool-askuserquestion",
+  "name": "AskUserQuestion",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "The UI always adds an \"Other\" free-text option.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/tools/src/askUserQuestion.ts"
+  ],
+  "invariant": "Up to five questions block until answered, and the answers key positionally.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "928c6c50835c4f14",
+    "fileHashes": {
+      "engine/tools/src/askUserQuestion.ts": "928c6c50835c4f14"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

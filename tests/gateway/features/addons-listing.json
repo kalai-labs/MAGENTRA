@@ -1,0 +1,23 @@
+{
+  "id": "addons-listing",
+  "name": "`/addons` listing",
+  "area": "engine",
+  "section": "Addons",
+  "prose": "names each addon, the actual file it came from, and how many files it bundles.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/engine.ts"
+  ],
+  "invariant": "/addons names each addon, the file it came from, and how many files it bundles.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "114232a5bf174d79",
+    "fileHashes": {
+      "engine/core/src/runtime/engine.ts": "114232a5bf174d79"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "prompt-contract",
+  "name": "Prompt contract",
+  "area": "engine",
+  "section": "OVERDRIVE — fully-autonomous stance",
+  "prose": "the OVERDRIVE system-prompt section (plan-first, consequence-thinking, query-shaped evidence, ask-rubric, cleanup license) is present exactly while ON.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/agent/prompts.ts"
+  ],
+  "invariant": "The OVERDRIVE stance is stated in the prompt, so the model knows nothing will stop to ask.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "c9b93e743f4cabbf",
+    "fileHashes": {
+      "engine/core/src/agent/prompts.ts": "c9b93e743f4cabbf"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

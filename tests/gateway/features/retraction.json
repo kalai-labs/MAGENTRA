@@ -1,0 +1,25 @@
+{
+  "id": "retraction",
+  "name": "Retraction",
+  "area": "app",
+  "section": "Packaging",
+  "prose": "`gh release edit <tag> --prerelease` takes a release out of `/releases/latest`, and clients are offered the previous one again.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "app/main/updates.js",
+    ".github/workflows/release.yml"
+  ],
+  "invariant": "A retracted release stops being offered.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "4dfed59d6b83f73c",
+    "fileHashes": {
+      "app/main/updates.js": "924ffeb15d514ced",
+      ".github/workflows/release.yml": "78261d09d87b7002"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

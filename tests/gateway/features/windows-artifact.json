@@ -1,0 +1,27 @@
+{
+  "id": "windows-artifact",
+  "name": "Windows artifact",
+  "area": "app",
+  "section": "Packaging",
+  "prose": "the portable `.exe` launches, with a working Grep (the bundled `rg.exe`).",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/package.json",
+    "app/scripts/dist.js",
+    "app/build/installer.nsh"
+  ],
+  "invariant": "The Windows build produces both a portable exe and an NSIS installer with the documented names.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "0f94ddbc0d06175b",
+    "fileHashes": {
+      "app/package.json": "93c1974d3675fe15",
+      "app/scripts/dist.js": "4cfce29a6cfe7b3d",
+      "app/build/installer.nsh": "9fdcc7568c78b236"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

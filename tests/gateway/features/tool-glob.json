@@ -1,0 +1,23 @@
+{
+  "id": "tool-glob",
+  "name": "Glob",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Filename and path matching only. node_modules and .git always skipped. An accidental .magentra match would spend the user's context on session transcripts and worktree checkouts. Capped at 1000 with a truncation notice; an empty result is not an error.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/tools/src/glob.ts"
+  ],
+  "invariant": "Glob keeps .magentra out of results unless the pattern or path names it, matched on a path SEGMENT, and orders by mtime descending.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "e3c275f1bdd221a5",
+    "fileHashes": {
+      "engine/tools/src/glob.ts": "e3c275f1bdd221a5"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

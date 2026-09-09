@@ -1,0 +1,23 @@
+{
+  "id": "tty-dispatch",
+  "name": "TTY dispatch",
+  "area": "tui",
+  "section": "Terminal UI (tui/)",
+  "prose": "an interactive terminal gets the TUI; no TTY (desktop entry, `< NUL`) hands over to the GUI; `--gui` forces the GUI from a terminal. Per OS: linux wrapper, mac `Resources/bin/magentra`, and the TUI's own fallback on Windows.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "tui/src/cli.tsx"
+  ],
+  "invariant": "--gui or the absence of an interactive TTY hands over to the desktop app and exits, which is the universal fallback the Windows cmd shim cannot provide.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "4d03a316afbcce2c",
+    "fileHashes": {
+      "tui/src/cli.tsx": "4d03a316afbcce2c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

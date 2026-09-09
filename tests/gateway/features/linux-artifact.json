@@ -1,0 +1,25 @@
+{
+  "id": "linux-artifact",
+  "name": "Linux artifact",
+  "area": "app",
+  "section": "Packaging",
+  "prose": "AppImage/tar.gz launches on a clean machine, with a working Grep (the bundled `rg`).",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/package.json",
+    "app/scripts/dist.js"
+  ],
+  "invariant": "The Linux build produces AppImage, tar.gz and deb with the documented artifact names.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "ddf9d3d8f7f2f700",
+    "fileHashes": {
+      "app/package.json": "93c1974d3675fe15",
+      "app/scripts/dist.js": "4cfce29a6cfe7b3d"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

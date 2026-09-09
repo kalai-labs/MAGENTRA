@@ -1,0 +1,25 @@
+{
+  "id": "version-sync",
+  "name": "One version reaches all eight manifests",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "Root, the five engine packages, app and tui. A missed target ships a build whose parts disagree about what they are.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "tools/version/lib/sync.mjs",
+    "version.config.json"
+  ],
+  "invariant": "syncTargets writes the same version into all eight configured package.json files.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "87bf979d9ba23bcd",
+    "fileHashes": {
+      "tools/version/lib/sync.mjs": "9ff4fab20ed6d0ec",
+      "version.config.json": "6358e31ff6a09510"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

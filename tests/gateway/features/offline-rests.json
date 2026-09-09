@@ -1,0 +1,23 @@
+{
+  "id": "offline-rests",
+  "name": "Offline rests",
+  "area": "app",
+  "section": "Packaging",
+  "prose": "with no network, or against a release whose channel file is missing, the footer reads \"Up to date\" rather than showing an error.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/main/updates.js"
+  ],
+  "invariant": "The check uses the releases feed, never api.github.com, and a platform with no artifact opens the release page rather than guessing a file name.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "924ffeb15d514ced",
+    "fileHashes": {
+      "app/main/updates.js": "924ffeb15d514ced"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

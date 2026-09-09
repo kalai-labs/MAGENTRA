@@ -1,0 +1,23 @@
+{
+  "id": "a-404-on-models-is-disambiguated-not-assumed",
+  "name": "A 404 on `/models` is disambiguated, not assumed",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "a catalog-less server and a wrong base URL both answer 404 there, and assuming the benign reading meant TEST reported success on a URL that could never work, sending the user to check an API key that was fine. The chat route is probed directly: 400/422/200 proves it exists, 401/403 proves it exists and refused the key, 404/405 means this is not the API.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "app/main/connection.js"
+  ],
+  "invariant": "A 404 on /models is disambiguated by probing the chat route: 400/422/200 proves it exists, 401/403 proves it refused the key, 404/405 means this is not the API.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "d4a9fb670267f05c",
+    "fileHashes": {
+      "app/main/connection.js": "d4a9fb670267f05c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

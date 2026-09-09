@@ -1,0 +1,24 @@
+{
+  "id": "approval-note",
+  "name": "Approval note",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "the approval card takes an optional note with ANY decision: on deny it becomes the refusal reason the model reads; on allow it reaches the model as a reminder with that round's results.",
+  "kinds": [
+    "llm",
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/permissions.ts"
+  ],
+  "invariant": "A note the user attaches while APPROVING must reach the model.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "5e675cbefa29932b",
+    "fileHashes": {
+      "engine/core/src/runtime/permissions.ts": "5e675cbefa29932b"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

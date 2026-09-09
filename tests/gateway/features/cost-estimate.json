@@ -1,0 +1,25 @@
+{
+  "id": "cost-estimate",
+  "name": "Cost estimate",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "four token classes billed at four different rates; no rate card ⇒ no cost shown (never a fabricated `$0.00`).",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/config/pricing.ts",
+    "engine/core/src/runtime/sessionStats.ts"
+  ],
+  "invariant": "Four token classes bill at four rates, and no rate card means no cost shown — never a fabricated $0.00.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "c2f9a90e337239c1",
+    "fileHashes": {
+      "engine/core/src/config/pricing.ts": "5ab992344cb4eb35",
+      "engine/core/src/runtime/sessionStats.ts": "4ecc8795d6575450"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

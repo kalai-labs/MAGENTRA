@@ -1,0 +1,25 @@
+{
+  "id": "mirror-default-base-url",
+  "name": "The default base URL agrees",
+  "area": "protocol",
+  "section": "Mirrored constants",
+  "prose": "A drift sends a fresh workspace to a different endpoint depending on which half filled the blank.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/config/settings.ts",
+    "app/main/config.js"
+  ],
+  "invariant": "DEFAULT_BASE_URL is the same string in both halves.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "01ea71c8a6a6a8f0",
+    "fileHashes": {
+      "engine/core/src/config/settings.ts": "d3f06cfa52514272",
+      "app/main/config.js": "b023d6d155878fb9"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

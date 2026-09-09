@@ -1,0 +1,23 @@
+{
+  "id": "promptlab-build-guard",
+  "name": "The compiler is never spawned through npx",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "On Windows npx is npx.cmd and execFile without a shell cannot spawn it. That failed invisibly twice: promote swallowed the ENOENT as a type error, and startup printed \"BUILD FAILED\" with nothing after it while the lab served defaults from a stale dist.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "tools/prompt-lab/server.mjs"
+  ],
+  "invariant": "The TypeScript entry script runs under the already-executing node binary, with no shell in the path, on every platform.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "079c153726f6073e",
+    "fileHashes": {
+      "tools/prompt-lab/server.mjs": "079c153726f6073e"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

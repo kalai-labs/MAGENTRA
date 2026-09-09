@@ -1,0 +1,25 @@
+{
+  "id": "changes-panel",
+  "name": "Changes panel",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "accumulated `file_edited` diffs render.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/renderer/modules/workbench.js",
+    "app/renderer/modules/events.js"
+  ],
+  "invariant": "Changed files are listed with counts, expandable diffs, and a transactional Undo.",
+  "deferred": true,
+  "tests": [],
+  "freshness": {
+    "hash": "4cf908ff9dc80255",
+    "fileHashes": {
+      "app/renderer/modules/workbench.js": "3807dcc0769945d4",
+      "app/renderer/modules/events.js": "4d38dcbafdd92f2b"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

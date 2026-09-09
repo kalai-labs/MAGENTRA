@@ -1,0 +1,23 @@
+{
+  "id": "name-invocation",
+  "name": "`/<name>` invocation",
+  "area": "engine",
+  "section": "Addons",
+  "prose": "typing an addon's name runs a turn with its instructions loaded; an unclaimed name is still an unknown command.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/engine.ts"
+  ],
+  "invariant": "Typing an addon's name runs a turn with its instructions loaded; an unclaimed name stays an unknown command.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "114232a5bf174d79",
+    "fileHashes": {
+      "engine/core/src/runtime/engine.ts": "114232a5bf174d79"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

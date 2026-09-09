@@ -1,0 +1,23 @@
+{
+  "id": "clear",
+  "name": "Clear",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "the CLEAR button / Ctrl+L clears the chat *and* the engine's context (a fresh session), and is refused mid-turn.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/renderer/modules/composer.js"
+  ],
+  "invariant": "Clear resets the local view and starts a fresh session.",
+  "deferred": true,
+  "tests": [],
+  "freshness": {
+    "hash": "d3c39cd158b8b979",
+    "fileHashes": {
+      "app/renderer/modules/composer.js": "d3c39cd158b8b979"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

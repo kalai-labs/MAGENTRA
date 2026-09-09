@@ -1,0 +1,23 @@
+{
+  "id": "tool-croncreate",
+  "name": "CronCreate",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Schedules a recurring or one-shot job that fires a prompt while the REPL is idle.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/tools/src/cron.ts"
+  ],
+  "invariant": "A created job records its expression, recurrence and durability, and rejects an unparseable expression.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7a287af2d9d76db8",
+    "fileHashes": {
+      "engine/tools/src/cron.ts": "7a287af2d9d76db8"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

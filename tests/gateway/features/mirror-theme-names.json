@@ -1,0 +1,25 @@
+{
+  "id": "mirror-theme-names",
+  "name": "Theme names and order agree",
+  "area": "protocol",
+  "section": "Mirrored constants",
+  "prose": "An index-based mismatch applies the wrong theme.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "app/main/config.js",
+    "app/renderer/modules/state.js"
+  ],
+  "invariant": "The theme list and its order match between main and the renderer.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "4be17a7c2f15b47b",
+    "fileHashes": {
+      "app/main/config.js": "b023d6d155878fb9",
+      "app/renderer/modules/state.js": "e3fd32bcbee947b7"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

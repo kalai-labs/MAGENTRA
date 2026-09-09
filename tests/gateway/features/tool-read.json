@@ -1,0 +1,23 @@
+{
+  "id": "tool-read",
+  "name": "Read",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Absolute paths only. cat -n output with a 2000-line window and a continuation offset. Images go to the vision endpoint and come back as a description, or are refused. Documents (PDF/DOCX/PPTX/XLSX/RTF/ODT/EPUB) are text-extracted under a 20MB cap. A NUL byte in the first 8KB means binary — refused honestly rather than returned as mojibake.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/tools/src/read.ts"
+  ],
+  "invariant": "Read returns line-numbered text, refuses a directory/missing/binary file with a distinct explanatory error, extracts documents, and never hands an image to the coding model.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "6d92f6e4ae10d9dd",
+    "fileHashes": {
+      "engine/tools/src/read.ts": "6d92f6e4ae10d9dd"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "cheap-until-used",
+  "name": "Cheap until used",
+  "area": "engine",
+  "section": "Addons",
+  "prose": "only names and descriptions enter the system prompt; no addon body ever rides in the standing prompt.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/agent/prompts.ts",
+    "engine/core/src/agent/addons.ts"
+  ],
+  "invariant": "Only names and descriptions enter the standing system prompt; no addon body ever rides in it.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "b88c200efa0ffe96",
+    "fileHashes": {
+      "engine/core/src/agent/prompts.ts": "c9b93e743f4cabbf",
+      "engine/core/src/agent/addons.ts": "ff424ed1464098d4"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

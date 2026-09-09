@@ -1,0 +1,23 @@
+{
+  "id": "runtime-evidence-floor",
+  "name": "Runtime evidence floor",
+  "area": "engine",
+  "section": "Finishing rungs — what stands between \"stopped talking\" and \"delivered\"",
+  "prose": "a turn that wrote runnable source (by file suffix; documentation and config do not count) and executed no command at all gets exactly one reminder to prove the change by running it: fast gate first, then the changed path and the callers it reaches, a throwaway harness in the system temp dir deleted in the same turn, judged on exit codes/stdout/logs rather than on a screenshot it cannot see. Deterministic, once per turn, and a reminder rather than a block. A command that ran and exited nonzero still counts as an observation.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/finishing.ts"
+  ],
+  "invariant": "A turn that edited source and ran no command gets one reminder naming the files; it reminds, never blocks.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "81dd55bfbeb78d6c",
+    "fileHashes": {
+      "engine/core/src/runtime/finishing.ts": "81dd55bfbeb78d6c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "id": "setup-wizard",
+  "name": "Setup wizard",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "first-run credential entry writes `.env` and tests the connection.",
+  "kinds": [
+    "net",
+    "ui"
+  ],
+  "entryFiles": [
+    "app/renderer/modules/setup.js",
+    "app/main/connection.js"
+  ],
+  "invariant": "The setup wizard tests, saves and applies a connection, and refuses to save an invalid one.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "6ef4a7218af8ff10",
+    "fileHashes": {
+      "app/renderer/modules/setup.js": "ce3adc6655145389",
+      "app/main/connection.js": "d4a9fb670267f05c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

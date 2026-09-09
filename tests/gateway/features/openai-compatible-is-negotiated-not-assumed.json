@@ -1,0 +1,25 @@
+{
+  "id": "openai-compatible-is-negotiated-not-assumed",
+  "name": "\"OpenAI-compatible\" is negotiated, not assumed",
+  "area": "providers",
+  "section": "Desktop app",
+  "prose": "optional body fields are where servers differ. A 400 naming `stream_options`, `max_tokens` (OpenAI's reasoning models want `max_completion_tokens`) or `num_ctx` drops or renames that field and re-sends once, then remembers for the life of the provider. Cost of an unfamiliar API: one extra request, once — instead of a dead turn. Nothing that changes what the model can do is negotiable (`tools` is never dropped).",
+  "kinds": [
+    "net"
+  ],
+  "entryFiles": [
+    "engine/providers/src/openai-compat.ts",
+    "engine/providers/src/effort.ts"
+  ],
+  "invariant": "A 400 naming stream_options, max_tokens or num_ctx drops or renames that field and re-sends once, then remembers; tools is never dropped.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "bb8d4a9912129214",
+    "fileHashes": {
+      "engine/providers/src/openai-compat.ts": "e95e6026ce0bd921",
+      "engine/providers/src/effort.ts": "564f5934240d99fe"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

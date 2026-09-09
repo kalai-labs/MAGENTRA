@@ -1,0 +1,25 @@
+{
+  "id": "packaged-boot",
+  "name": "Packaged boot",
+  "area": "tui",
+  "section": "Terminal UI (tui/)",
+  "prose": "`ELECTRON_RUN_AS_NODE=1 <electron> resources/engine/tui.mjs <ws>` boots the TUI against the sibling `engine.cjs`; a turn streams; `/exit` tears both processes down.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "tui/src/cli.tsx",
+    "tui/src/config.ts"
+  ],
+  "invariant": "A packaged TUI resolves its engine as the sibling engine.cjs and runs through Electron's own Node.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "d98fe19ff27ea1b9",
+    "fileHashes": {
+      "tui/src/cli.tsx": "4d03a316afbcce2c",
+      "tui/src/config.ts": "57a6c7b06c65c212"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

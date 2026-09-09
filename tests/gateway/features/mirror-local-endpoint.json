@@ -1,0 +1,25 @@
+{
+  "id": "mirror-local-endpoint",
+  "name": "The local/LAN test agrees",
+  "area": "protocol",
+  "section": "Mirrored constants",
+  "prose": "When they disagreed, the app accepted a keyless http://192.168.1.20:1234/v1 and the engine then refused to boot with \"No API key found\".",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/config/providerFactory.ts",
+    "app/main/config.js"
+  ],
+  "invariant": "isLocalBaseUrl decides identically in both halves for loopback, .local, the private ranges and host.docker.internal.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "af0a5b3e42b7ff2f",
+    "fileHashes": {
+      "engine/core/src/config/providerFactory.ts": "3aafa51a04f9f878",
+      "app/main/config.js": "b023d6d155878fb9"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

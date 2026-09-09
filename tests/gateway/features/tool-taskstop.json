@@ -1,0 +1,23 @@
+{
+  "id": "tool-taskstop",
+  "name": "TaskStop",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Stops a backgrounded Bash command, a Monitor, or a background Agent by id.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/tools/src/taskControl.ts"
+  ],
+  "invariant": "TaskStop reports whether the task was running, and an unknown or finished id is reported rather than raised as an error to retry.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "1acc572d32244efb",
+    "fileHashes": {
+      "engine/tools/src/taskControl.ts": "1acc572d32244efb"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

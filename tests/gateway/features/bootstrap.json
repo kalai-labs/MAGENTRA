@@ -1,0 +1,23 @@
+{
+  "id": "bootstrap",
+  "name": "Bootstrap",
+  "area": "engine",
+  "section": "Protocol & host",
+  "prose": "settings, provider, registry, MCP tools and addons assemble; a missing API key raises `MissingApiKeyError` rather than exiting.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/host/src/bootstrap.ts"
+  ],
+  "invariant": "The engine boots from the workspace: the key in .env, everything else in .magentra/settings.json.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "6a9dc3fea672182c",
+    "fileHashes": {
+      "engine/host/src/bootstrap.ts": "6a9dc3fea672182c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

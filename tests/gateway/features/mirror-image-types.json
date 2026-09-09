@@ -1,0 +1,25 @@
+{
+  "id": "mirror-image-types",
+  "name": "Image types agree",
+  "area": "protocol",
+  "section": "Mirrored constants",
+  "prose": "Mirrored because the app cannot import the engine — it ships as a bundled child process. A drift means the picker offers a file Read will refuse, or hides one it would accept.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/tools/src/read.ts",
+    "app/main.js"
+  ],
+  "invariant": "The extensions Read sends to the vision endpoint and the extensions the attach picker offers are the same set.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "c827e81292be4016",
+    "fileHashes": {
+      "engine/tools/src/read.ts": "6d92f6e4ae10d9dd",
+      "app/main.js": "7e664025a5da3100"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

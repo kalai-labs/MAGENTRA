@@ -1,0 +1,24 @@
+{
+  "id": "bounded-runs-stay-bounded",
+  "name": "Bounded runs stay bounded",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "explicitly capped children respect `maxIterationsPerTurn`/`maxTokensPerTurn`, with the final-round warning.",
+  "kinds": [
+    "llm",
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "An explicitly capped child respects maxIterationsPerTurn and maxTokensPerTurn and gets the final-round warning.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7c7930bc5724d79f",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

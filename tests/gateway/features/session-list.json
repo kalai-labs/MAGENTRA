@@ -1,0 +1,25 @@
+{
+  "id": "session-list",
+  "name": "Session list",
+  "area": "engine",
+  "section": "State",
+  "prose": "sessions are listed with a human-readable label (the first real user message), not just a timestamp.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/state/transcript.ts",
+    "engine/core/src/runtime/engine.ts"
+  ],
+  "invariant": "Sessions can be listed, renamed, archived and deleted.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "d5cfc040a9a413c3",
+    "fileHashes": {
+      "engine/core/src/state/transcript.ts": "07a6ca3aedda6222",
+      "engine/core/src/runtime/engine.ts": "114232a5bf174d79"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

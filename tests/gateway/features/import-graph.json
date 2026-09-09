@@ -1,0 +1,23 @@
+{
+  "id": "import-graph",
+  "name": "Import graph",
+  "area": "engine",
+  "section": "Knowledge",
+  "prose": "built lazily on first query; `blast` finds importers, `deps` finds dependencies.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/knowledge/graph.ts"
+  ],
+  "invariant": "The import graph is built and cached, and GraphData.version must be bumped on any extraction change or cached entries hide the fix.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "e0b546c2d5a61fd4",
+    "fileHashes": {
+      "engine/core/src/knowledge/graph.ts": "e0b546c2d5a61fd4"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

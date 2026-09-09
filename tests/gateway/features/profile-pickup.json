@@ -1,0 +1,23 @@
+{
+  "id": "profile-pickup",
+  "name": "Profile pickup",
+  "area": "tui",
+  "section": "Terminal UI (tui/)",
+  "prose": "a folder with no credentials offers `~/.magentra/profiles.json` profiles and connecting writes the same `.env` + `.magentra/settings.json` the IDE writes.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "tui/src/profiles.ts"
+  ],
+  "invariant": "A folder with no credentials picks up a saved profile by writing .env and .magentra/settings.json exactly as the IDE writes them.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "01e93e8aacb39a26",
+    "fileHashes": {
+      "tui/src/profiles.ts": "01e93e8aacb39a26"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

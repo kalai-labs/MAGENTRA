@@ -1,0 +1,25 @@
+{
+  "id": "mirror-reasoning-efforts",
+  "name": "The reasoning-effort list agrees",
+  "area": "protocol",
+  "section": "Mirrored constants",
+  "prose": "The order carries meaning — clamping picks the nearest level — so a reordered copy clamps to the wrong one.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/types.ts",
+    "app/main/config.js"
+  ],
+  "invariant": "REASONING_EFFORTS holds the same seven levels in the same order on both sides.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "aca7d17438bd3c75",
+    "fileHashes": {
+      "engine/protocol/src/types.ts": "11d32208f2241da2",
+      "app/main/config.js": "b023d6d155878fb9"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "promptlab-self-write",
+  "name": "The watcher ignores its own writes",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "Without this the lab loops on every save.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "tools/prompt-lab/server.mjs"
+  ],
+  "invariant": "A write the lab makes itself does not retrigger its own file watcher.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "079c153726f6073e",
+    "fileHashes": {
+      "tools/prompt-lab/server.mjs": "079c153726f6073e"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

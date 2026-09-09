@@ -1,0 +1,23 @@
+{
+  "id": "version-git",
+  "name": "Git interrogation is read-only and correct",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "The tool reads tags and commits to decide a release; it must never rewrite history to do so.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "tools/version/lib/git.mjs"
+  ],
+  "invariant": "versionTags, commitsSince, originUrl, githubHttpsUrl and hasUncommittedChanges answer correctly and never mutate the repository.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "6bc91c56abdeaa21",
+    "fileHashes": {
+      "tools/version/lib/git.mjs": "6bc91c56abdeaa21"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

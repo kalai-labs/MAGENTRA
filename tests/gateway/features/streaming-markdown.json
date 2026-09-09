@@ -1,0 +1,25 @@
+{
+  "id": "streaming-markdown",
+  "name": "Streaming Markdown",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "each block renders as soon as it is complete, not when the turn ends; a half-streamed fence, table or formula stays plain text until its closing delimiter arrives, so nothing flickers through a partial parse.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/renderer/modules/stream.js",
+    "app/renderer/modules/markdown.js"
+  ],
+  "invariant": "Each block renders when complete, so a half-streamed fence, table or formula stays plain text until its closing delimiter arrives.",
+  "deferred": true,
+  "tests": [],
+  "freshness": {
+    "hash": "1416f05a9000107d",
+    "fileHashes": {
+      "app/renderer/modules/stream.js": "deac3e58ece6e0d6",
+      "app/renderer/modules/markdown.js": "de272c667ad672ee"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

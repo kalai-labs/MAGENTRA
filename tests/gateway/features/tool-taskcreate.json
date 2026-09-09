@@ -1,0 +1,23 @@
+{
+  "id": "tool-taskcreate",
+  "name": "TaskCreate",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Adds a task so the user can follow progress. Built in logically feasible order.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/tools/src/tasks.ts"
+  ],
+  "invariant": "A created task lands in the session list with its dependency edges intact.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "77a380779a3e9d01",
+    "fileHashes": {
+      "engine/tools/src/tasks.ts": "77a380779a3e9d01"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "promptlab-override-roundtrip",
+  "name": "An edit lands on the next turn",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "The override directory is configurable with --dir, so an experiment set can be kept separate.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "tools/prompt-lab/server.mjs",
+    "engine/protocol/src/prompts.ts"
+  ],
+  "invariant": "Editing a prompt in the browser writes an override .txt the engine re-reads live, with no restart.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "e2315d2c650eeecc",
+    "fileHashes": {
+      "tools/prompt-lab/server.mjs": "079c153726f6073e",
+      "engine/protocol/src/prompts.ts": "cd3be27b66ec95fc"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

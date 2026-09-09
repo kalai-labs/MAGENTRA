@@ -1,0 +1,25 @@
+{
+  "id": "markdown-before-a-question-card",
+  "name": "Markdown before a question card",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "a `question_request` closes the streaming message first, so the text above an approval card is rendered while the user is deciding on it rather than after.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/renderer/modules/stream.js",
+    "app/renderer/modules/landing.js"
+  ],
+  "invariant": "A question_request closes the streaming message first, so text above an approval card is rendered while the user decides.",
+  "deferred": true,
+  "tests": [],
+  "freshness": {
+    "hash": "fdafeaedd5cada9c",
+    "fileHashes": {
+      "app/renderer/modules/stream.js": "deac3e58ece6e0d6",
+      "app/renderer/modules/landing.js": "4e7fbe06fa9a6471"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

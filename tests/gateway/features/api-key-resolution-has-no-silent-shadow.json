@@ -1,0 +1,25 @@
+{
+  "id": "api-key-resolution-has-no-silent-shadow",
+  "name": "API key resolution has no silent shadow",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "order is the pinned `apiKeyEnv`, then the standard env names (`MAGENTRA_API_KEY`, `OPENAI_API_KEY`, …), then the stored key. `apiKeyEnv` used to be a PIN: naming a variable meant nothing else was consulted, so a pin left behind by a previous provider sent resolution past the key the app had just written and down to a stored key belonging to a different endpoint. Blank env vars no longer count as set. The resolved key reports its source, and a dangling pin raises a boot warning.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/config/settings.ts",
+    "app/main/config.js"
+  ],
+  "invariant": "Key order is pinned apiKeyEnv, then standard env names, then the stored key; a pin never shadows the key just written, and blank env vars do not count as set.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "01ea71c8a6a6a8f0",
+    "fileHashes": {
+      "engine/core/src/config/settings.ts": "d3f06cfa52514272",
+      "app/main/config.js": "b023d6d155878fb9"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "state-files-are-written-atomically",
+  "name": "State files are written atomically",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "`settings.json`, `graph.json`, `symbols.json`, `profiles.json` and `config.json` all go through one write-then-rename helper per half of the app. `settings.json` has two writers (the engine and the app), and the app SIGKILLs the engine 3s into a shutdown: a truncated file reads as \"no settings\", which presents as a workspace that lost its endpoint and key.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/util/fsAtomic.ts",
+    "app/main/config.js"
+  ],
+  "invariant": "settings.json, graph.json, symbols.json, profiles.json and config.json all go through one write-then-rename helper per half of the app.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "a20b36c7b82b423e",
+    "fileHashes": {
+      "engine/core/src/util/fsAtomic.ts": "97863c8d9eec78da",
+      "app/main/config.js": "b023d6d155878fb9"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

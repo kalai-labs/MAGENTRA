@@ -1,0 +1,23 @@
+{
+  "id": "promptlab-catalog",
+  "name": "Prompt Lab serves the live catalog",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "A local console for every prompt the engine sends, on 127.0.0.1:4319.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "tools/prompt-lab/server.mjs"
+  ],
+  "invariant": "/api/catalog reflects the registry as built, and /api/events streams changes as they happen.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "079c153726f6073e",
+    "fileHashes": {
+      "tools/prompt-lab/server.mjs": "079c153726f6073e"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

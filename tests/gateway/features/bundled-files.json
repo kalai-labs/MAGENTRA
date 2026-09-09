@@ -1,0 +1,23 @@
+{
+  "id": "bundled-files",
+  "name": "Bundled files",
+  "area": "engine",
+  "section": "Addons",
+  "prose": "a directory addon advertises its sibling notes and scripts as paths, never inlining their contents.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/agent/addons.ts"
+  ],
+  "invariant": "A directory addon advertises sibling notes and scripts as paths, never inlining their contents.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "ff424ed1464098d4",
+    "fileHashes": {
+      "engine/core/src/agent/addons.ts": "ff424ed1464098d4"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

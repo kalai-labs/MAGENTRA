@@ -1,0 +1,23 @@
+{
+  "id": "allow-all-stance",
+  "name": "Allow-all stance",
+  "area": "engine",
+  "section": "OVERDRIVE — fully-autonomous stance",
+  "prose": "commands, network, everything runs unprompted; only the deletion guard and the `.magentra` protection still ask.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/permissions.ts"
+  ],
+  "invariant": "OVERDRIVE means nothing asks, literally — except a deny rule, which refuses rather than asks.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "5e675cbefa29932b",
+    "fileHashes": {
+      "engine/core/src/runtime/permissions.ts": "5e675cbefa29932b"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

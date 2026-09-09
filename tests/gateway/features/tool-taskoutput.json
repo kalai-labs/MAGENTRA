@@ -1,0 +1,23 @@
+{
+  "id": "tool-taskoutput",
+  "name": "TaskOutput",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Reads the accumulated output of a background task.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/tools/src/taskControl.ts"
+  ],
+  "invariant": "block:true waits for finish or timeout; block:false returns whatever output exists right now.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "1acc572d32244efb",
+    "fileHashes": {
+      "engine/tools/src/taskControl.ts": "1acc572d32244efb"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

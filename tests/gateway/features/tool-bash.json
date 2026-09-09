@@ -1,0 +1,23 @@
+{
+  "id": "tool-bash",
+  "name": "Bash",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Combined stdout/stderr. Ten single-word deletion keywords and twelve phrases, matched case-insensitively as whole tokens, so `npm run del-lint` never trips `del`. Three patterns are special-cased because the shared one cannot express them: `git branch -D` case-sensitively so safe `-d` never fires, `git checkout -- <path>`, and `find … -delete`. `mv` counts only with force or a destination outside the workspace.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/tools/src/bash.ts"
+  ],
+  "invariant": "The deletion matcher fires on standalone destructive tokens and phrases without false-positiving on substrings, and a timeout kills the whole process tree.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "b45fd5c652cc6bd9",
+    "fileHashes": {
+      "engine/tools/src/bash.ts": "b45fd5c652cc6bd9"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

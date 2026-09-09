@@ -1,0 +1,23 @@
+{
+  "id": "sandbox-unaffected",
+  "name": "Sandbox unaffected",
+  "area": "app",
+  "section": "Terminal UI (tui/)",
+  "prose": "the linux TUI branch starts no Chromium; the GUI path's sandbox detection is byte-identical to before, and the TUI's GUI handoff re-enters the wrapper, not `magentra-bin`.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "app/scripts/afterPack.js"
+  ],
+  "invariant": "Packaging does not disturb Electron's sandbox detection on Linux.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "595c98f900fe14eb",
+    "fileHashes": {
+      "app/scripts/afterPack.js": "595c98f900fe14eb"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

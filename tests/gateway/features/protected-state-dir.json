@@ -1,0 +1,23 @@
+{
+  "id": "protected-state-dir",
+  "name": "Protected state dir",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "deleting a folder *named* `.magentra` (or a glob/unparseable command that could hit one) always asks, in both stances; it beats the \"allow deletions\" setting, explicit allow rules, OVERDRIVE, and never offers \"always allow\". Deeper paths like `.magentra/worktrees/foo` stay routine.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/permissions.ts"
+  ],
+  "invariant": "An edit into a .magentra path segment or a .env* file confirms every time; broad grants and OVERDRIVE never satisfy it.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "5e675cbefa29932b",
+    "fileHashes": {
+      "engine/core/src/runtime/permissions.ts": "5e675cbefa29932b"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

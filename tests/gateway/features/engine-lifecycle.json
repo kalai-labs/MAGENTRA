@@ -1,0 +1,24 @@
+{
+  "id": "engine-lifecycle",
+  "name": "Engine lifecycle",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "the child engine spawns on workspace open, restarts on model change, and is killed on quit.",
+  "kinds": [
+    "proc",
+    "ui"
+  ],
+  "entryFiles": [
+    "app/main.js"
+  ],
+  "invariant": "The engine child is spawned, restarted and reaped per tab, and a dying child exits before a replacement spawns.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7e664025a5da3100",
+    "fileHashes": {
+      "app/main.js": "7e664025a5da3100"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

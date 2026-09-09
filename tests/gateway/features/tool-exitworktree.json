@@ -1,0 +1,23 @@
+{
+  "id": "tool-exitworktree",
+  "name": "ExitWorktree",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "keep preserves the worktree and its branch; remove deletes both unless discard_changes overrides the refusal. No-op when no worktree session is active.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/tools/src/worktree.ts"
+  ],
+  "invariant": "remove refuses and lists the work when there are uncommitted changes or commits not in the base ref, and a worktree entered by existing path is never removed.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "a6838b7237489b7c",
+    "fileHashes": {
+      "engine/tools/src/worktree.ts": "a6838b7237489b7c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

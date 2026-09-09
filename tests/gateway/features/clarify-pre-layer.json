@@ -1,0 +1,23 @@
+{
+  "id": "clarify-pre-layer",
+  "name": "Clarify pre-layer",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "a genuinely open-ended request (\"build a game\", \"improve this app\") triggers up to three shape-defining multiple-choice questions BEFORE any work, judged by the main model; concrete/trivial/follow-up requests never trigger it; fail-open on any error; root attended turns only; `clarify: false` disables.",
+  "kinds": [
+    "llm"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "The clarify pre-layer runs before the turn when settings.clarify is on.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7c7930bc5724d79f",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "precedence",
+  "name": "Precedence",
+  "area": "engine",
+  "section": "Addons",
+  "prose": "built-in, then `~/.magentra/addons/`, then the workspace; a later tier replaces an earlier addon of the same name.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/agent/addons.ts",
+    "engine/core/src/agent/builtinAddons.ts"
+  ],
+  "invariant": "Precedence is builtin, then ~/.magentra/addons, then the workspace; a later tier replaces an earlier addon of the same name.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "624a959fac7a2b2d",
+    "fileHashes": {
+      "engine/core/src/agent/addons.ts": "ff424ed1464098d4",
+      "engine/core/src/agent/builtinAddons.ts": "12f143188c4b9b7b"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

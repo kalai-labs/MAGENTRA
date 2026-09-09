@@ -1,0 +1,26 @@
+{
+  "id": "deletion-guard",
+  "name": "Deletion guard",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "destructive Bash always asks, *in both stances*, until explicitly disabled. Covers `rm`, `mv`, force-push, `DROP TABLE`, …",
+  "kinds": [
+    "proc",
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/permissions.ts",
+    "engine/tools/src/bash.ts"
+  ],
+  "invariant": "Anything that removes a file, folder or worktree always asks, in both stances, overridable only by an explicit literal subject grant.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "a0c96b9ea713850c",
+    "fileHashes": {
+      "engine/core/src/runtime/permissions.ts": "5e675cbefa29932b",
+      "engine/tools/src/bash.ts": "b45fd5c652cc6bd9"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

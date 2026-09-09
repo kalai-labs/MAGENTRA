@@ -1,0 +1,25 @@
+{
+  "id": "windows-path-lifecycle",
+  "name": "Windows PATH lifecycle",
+  "area": "app",
+  "section": "Terminal UI (tui/)",
+  "prose": "the NSIS setup writes `bin\\magentra.cmd` and appends `$INSTDIR\\bin` to the HKCU PATH exactly once; uninstall removes both and leaves the rest of PATH byte-identical.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "app/build/installer.nsh",
+    "app/scripts/afterPack.js"
+  ],
+  "invariant": "The Windows installer adds and removes its PATH entry across install, upgrade and uninstall.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "29432c24518a20cc",
+    "fileHashes": {
+      "app/build/installer.nsh": "9fdcc7568c78b236",
+      "app/scripts/afterPack.js": "595c98f900fe14eb"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

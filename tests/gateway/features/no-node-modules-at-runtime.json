@@ -1,0 +1,23 @@
+{
+  "id": "no-node-modules-at-runtime",
+  "name": "No `node_modules` at runtime",
+  "area": "app",
+  "section": "Packaging",
+  "prose": "the packaged engine is one self-contained file.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "app/scripts/bundle-engine.js"
+  ],
+  "invariant": "The shipped app carries no node_modules: the engine is bundled to a single engine.cjs.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "3e912cb4bc15ac7e",
+    "fileHashes": {
+      "app/scripts/bundle-engine.js": "3e912cb4bc15ac7e"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

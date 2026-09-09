@@ -1,0 +1,25 @@
+{
+  "id": "full-screen-can-always-be-left",
+  "name": "Full screen can always be left",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "every launch opens full screen, which removes the native title bar; on Windows the overlaid minimize/restore/close buttons go with it, and packaged builds have no menu, so the window had no visible way out. Three ways out now, none of them native chrome: F11 (handled in main, not by a menu accelerator), VIEW → Toggle Full Screen, and the app's own minimize / exit-full-screen / close buttons in the top strip, shown only while full screen.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/main.js",
+    "app/renderer/modules/views.js"
+  ],
+  "invariant": "Full screen can always be left by three routes that are not native chrome: F11 handled in main, the VIEW menu, and the app's own top-strip buttons.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "5c3234fb3fad80b3",
+    "fileHashes": {
+      "app/main.js": "7e664025a5da3100",
+      "app/renderer/modules/views.js": "5b08f42b45600fe7"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

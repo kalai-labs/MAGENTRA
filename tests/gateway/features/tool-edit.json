@@ -1,0 +1,23 @@
+{
+  "id": "tool-edit",
+  "name": "Edit",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Exact string replacement. Identical old/new is refused. The error tells the caller never to include the Read line-number prefix.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/tools/src/edit.ts"
+  ],
+  "invariant": "Edit requires a prior Read, requires old_string to be unique unless replace_all, and reports 0 and >1 occurrences differently.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7b8ef13cac18cb18",
+    "fileHashes": {
+      "engine/tools/src/edit.ts": "7b8ef13cac18cb18"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

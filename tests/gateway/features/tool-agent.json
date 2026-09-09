@@ -1,0 +1,25 @@
+{
+  "id": "tool-agent",
+  "name": "Agent",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Delegates a task to a fresh subagent and returns its final report. Parallel calls in one turn run concurrently. It shares the working directory but starts with no memory of the conversation.",
+  "kinds": [
+    "llm"
+  ],
+  "entryFiles": [
+    "engine/tools/src/agent.ts",
+    "engine/core/src/agent/agents.ts"
+  ],
+  "invariant": "A subagent runs with its own context and a restricted tool set, cannot spawn further subagents, and cannot ask the user questions.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "de7627bed4c471f8",
+    "fileHashes": {
+      "engine/tools/src/agent.ts": "3a034a6c1522e0fe",
+      "engine/core/src/agent/agents.ts": "23e3022b0e512330"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

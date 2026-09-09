@@ -1,0 +1,23 @@
+{
+  "id": "symbol-index",
+  "name": "Symbol index",
+  "area": "engine",
+  "section": "Knowledge",
+  "prose": "updates incrementally as files change, with no explicit rebuild.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/knowledge/symbols.ts"
+  ],
+  "invariant": "The symbol index locates definitions and finds similar symbols across the workspace.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "fefe5592edeb5a6e",
+    "fileHashes": {
+      "engine/core/src/knowledge/symbols.ts": "fefe5592edeb5a6e"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

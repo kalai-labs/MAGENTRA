@@ -1,0 +1,25 @@
+{
+  "id": "version-hook",
+  "name": "The commit-msg hook and CI checks agree",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "A maintainer squashes a PR into one commit whose message is the PR title, so the title must pass the same rule as a commit.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "tools/version/bin/magentra-version.mjs",
+    ".githooks/commit-msg"
+  ],
+  "invariant": "The same check runs in the local hook, on the PR title, and over the PR's commit range, and all three agree.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "f2079f2dcb3d7648",
+    "fileHashes": {
+      "tools/version/bin/magentra-version.mjs": "493bc54095a4eec4",
+      ".githooks/commit-msg": "35fe9ca46c61839e"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

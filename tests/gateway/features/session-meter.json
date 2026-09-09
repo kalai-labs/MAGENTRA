@@ -1,0 +1,25 @@
+{
+  "id": "session-meter",
+  "name": "Session meter",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "the hint line shows the true context size and running cost.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/renderer/modules/session.js",
+    "app/renderer/modules/tokens.js"
+  ],
+  "invariant": "The session meter shows context now and this turn's output, never their sum.",
+  "deferred": true,
+  "tests": [],
+  "freshness": {
+    "hash": "4e91d8ee0e5d2aed",
+    "fileHashes": {
+      "app/renderer/modules/session.js": "da582004580447a5",
+      "app/renderer/modules/tokens.js": "a7a7fd38e7727583"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

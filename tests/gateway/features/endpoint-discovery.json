@@ -1,0 +1,23 @@
+{
+  "id": "endpoint-discovery",
+  "name": "Endpoint discovery",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "TEST walks the base URL as given, then a localhost→127.0.0.1 swap, then every known OpenAI-compatible path shape (`/v1`, `/v1/openai`, `/inference/v1`, `/openai/v1`, `/api/v1`) for ANY host, local or hosted. The URL that actually answered is returned and written back to the field, so it is what gets saved and what every tab's engine then uses.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "app/main/connection.js"
+  ],
+  "invariant": "TEST walks the base URL as given, a localhost-to-127.0.0.1 swap, then every known OpenAI-compatible path shape for any host, and returns the URL that actually answered.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "d4a9fb670267f05c",
+    "fileHashes": {
+      "app/main/connection.js": "d4a9fb670267f05c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

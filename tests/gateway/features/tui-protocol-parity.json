@@ -1,0 +1,25 @@
+{
+  "id": "tui-protocol-parity",
+  "name": "The TUI's protocol copy matches the engine's",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "tui/src/protocol.ts is a hand-copied duplicate of the wire contract with nothing keeping it in step — a second definition of the seam this repo calls its most dangerous. Found while reading, not previously recorded.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "tui/src/protocol.ts",
+    "engine/protocol/src/types.ts"
+  ],
+  "invariant": "PROTOCOL_VERSION and every event and request type in the TUI's copy match engine/protocol.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "321a343878d74aa6",
+    "fileHashes": {
+      "tui/src/protocol.ts": "d2ec6f9d4c3c5e4c",
+      "engine/protocol/src/types.ts": "11d32208f2241da2"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

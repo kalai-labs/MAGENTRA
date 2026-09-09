@@ -1,0 +1,25 @@
+{
+  "id": "saving-a-connection-clears-the-stale-pin-in-both-layers",
+  "name": "Saving a connection clears the stale pin in BOTH layers",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "project settings merge over global, so a leftover `apiKeyEnv` in `~/.magentra/settings.json` wins straight back. The wizard now clears it wherever it lives, via one helper rather than a copy of the `contextWindow` clear.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "app/main.js",
+    "app/main/config.js"
+  ],
+  "invariant": "Saving a connection clears a stale apiKeyEnv pin in BOTH the project and global layers, through one helper.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "c5e1d57e4bc44f6d",
+    "fileHashes": {
+      "app/main.js": "7e664025a5da3100",
+      "app/main/config.js": "b023d6d155878fb9"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "on-invoke-load",
+  "name": "On-invoke load",
+  "area": "engine",
+  "section": "Addons",
+  "prose": "the `Addon` tool returns the body, substitutes `$ARGUMENTS` (or appends args when there is no placeholder), and errors with the real roster on an unknown name.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/tools/src/addon.ts",
+    "engine/core/src/agent/addons.ts"
+  ],
+  "invariant": "The Addon tool returns the body, substitutes $ARGUMENTS or appends args, and errors with the real roster on an unknown name.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "86ae0d4310b652fa",
+    "fileHashes": {
+      "engine/tools/src/addon.ts": "205536e65e08365b",
+      "engine/core/src/agent/addons.ts": "ff424ed1464098d4"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

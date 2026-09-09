@@ -1,0 +1,23 @@
+{
+  "id": "tool-write",
+  "name": "Write",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Creates a new file or fully replaces one already Read. Overwriting an unread or externally changed file fails rather than clobbering it.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/tools/src/write.ts"
+  ],
+  "invariant": "Write refuses to overwrite a file not Read this session or changed on disk since, creates parent directories, and emits a file_edited diff.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "e9e86241c1a3e90a",
+    "fileHashes": {
+      "engine/tools/src/write.ts": "e9e86241c1a3e90a"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

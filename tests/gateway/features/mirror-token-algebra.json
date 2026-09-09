@@ -1,0 +1,25 @@
+{
+  "id": "mirror-token-algebra",
+  "name": "The renderer's token algebra agrees",
+  "area": "protocol",
+  "section": "Mirrored constants",
+  "prose": "The renderer cannot import the protocol, so the algebra is repeated. A drift makes the meter disagree with the report about the same session.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/tokens.ts",
+    "app/renderer/modules/tokens.js"
+  ],
+  "invariant": "estimateTokens and formatTokens produce identical output in the renderer and the protocol.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "58cdc372bc4ac58e",
+    "fileHashes": {
+      "engine/protocol/src/tokens.ts": "034eedec535e4a01",
+      "app/renderer/modules/tokens.js": "a7a7fd38e7727583"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

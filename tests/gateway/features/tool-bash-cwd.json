@@ -1,0 +1,25 @@
+{
+  "id": "tool-bash-cwd",
+  "name": "Bash cwd vs session cwd",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "The working directory persists across calls; shell state does not. This is the distinction that makes worktree switching coherent.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/tools/src/bash.ts",
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "A cd in one Bash call carries to the next, while env vars and shell functions do not, and the session cwd stays authoritative for other tools.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "db5e2d76ad6f22f1",
+    "fileHashes": {
+      "engine/tools/src/bash.ts": "b45fd5c652cc6bd9",
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

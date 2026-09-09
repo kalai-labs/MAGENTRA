@@ -1,0 +1,25 @@
+{
+  "id": "setting-timing",
+  "name": "Setting timing",
+  "area": "engine",
+  "section": "Config",
+  "prose": "a change takes effect when `SETTING_TIMING` says it does (live / next turn / restart / needs clear).",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/engine.ts",
+    "engine/core/src/config/settings.ts"
+  ],
+  "invariant": "Every one of the 24 settings keys declares when it takes effect, and the note printed is the only thing telling the user whether the change took.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "a3a29d5048322e75",
+    "fileHashes": {
+      "engine/core/src/runtime/engine.ts": "114232a5bf174d79",
+      "engine/core/src/config/settings.ts": "d3f06cfa52514272"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "version-commit-check",
+  "name": "Conventional commits are enforced",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "Only feat bumps minor; everything else is a patch. This runs in the commit-msg hook and on every PR title.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "tools/version/lib/commits.mjs"
+  ],
+  "invariant": "checkMessage accepts the 11 configured types and 10 scopes, rejects an over-length subject, and exempts git-generated messages.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "ed7e21237097e0a6",
+    "fileHashes": {
+      "tools/version/lib/commits.mjs": "ed7e21237097e0a6"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

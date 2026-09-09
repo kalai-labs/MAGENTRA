@@ -1,0 +1,25 @@
+{
+  "id": "connections-live-in-one-place",
+  "name": "Connections live in ONE place",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "the Settings view has no endpoint, key, model, TEST or save controls at all; the connection wizard owns every one of them. A key can no longer be typed in two places that disagree, and \"which surface did I configure this on\" stops being a question. Vision is switched per workspace from the sidebar/pane context menu — the same menu that connects it — and moves the same `vision` setting the engine reads.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/renderer/index.html",
+    "app/renderer/modules/setup.js"
+  ],
+  "invariant": "The Settings view carries no endpoint, key, model, TEST or save controls at all; the connection wizard owns every one.",
+  "deferred": true,
+  "tests": [],
+  "freshness": {
+    "hash": "49e308fe8a25e63d",
+    "fileHashes": {
+      "app/renderer/index.html": "a84edad7b4d5fba1",
+      "app/renderer/modules/setup.js": "ce3adc6655145389"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "self-check-sharpening",
+  "name": "Self-check sharpening",
+  "area": "engine",
+  "section": "Finishing rungs — what stands between \"stopped talking\" and \"delivered\"",
+  "prose": "the self-verify text flips its closing clause once the turn changed code: instead of warning off invented rituals it demands evidence about the real thing, names the changed files, and refuses \"compiled\", \"re-read\", or \"a stand-in agreed with me\" as proof — while accepting a stated gap.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/finishing.ts"
+  ],
+  "invariant": "The self-check's closing clause flips on whether the turn changed code: demand evidence if it did, forbid invented rituals if it did not.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "81dd55bfbeb78d6c",
+    "fileHashes": {
+      "engine/core/src/runtime/finishing.ts": "81dd55bfbeb78d6c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

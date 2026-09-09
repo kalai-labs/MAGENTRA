@@ -1,0 +1,23 @@
+{
+  "id": "update-tier-per-format",
+  "name": "Update tier per format",
+  "area": "app",
+  "section": "Packaging",
+  "prose": "an NSIS install and a writable AppImage self-update; the portable `.exe`, the `.dmg`, the `.deb` and the `.tar.gz` open their own asset in the browser. A read-only AppImage moves to the assisted tier instead of failing.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/main/updates.js"
+  ],
+  "invariant": "Install format decides the update tier for the life of the install, and Windows portable is detected by PORTABLE_EXECUTABLE_DIR, never by platform.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "924ffeb15d514ced",
+    "fileHashes": {
+      "app/main/updates.js": "924ffeb15d514ced"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

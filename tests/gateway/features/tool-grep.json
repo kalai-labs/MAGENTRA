@@ -1,0 +1,23 @@
+{
+  "id": "tool-grep",
+  "name": "Grep",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Content search on the bundled ripgrep. Three output modes, case/line-number/context flags, glob and type filters, multiline, head_limit. Respects .gitignore.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/tools/src/grep.ts"
+  ],
+  "invariant": "Grep maps ripgrep exit codes correctly — 1 is \"no matches\", not an error — and treats a blown 20MB buffer as a truncated RESULT rather than a failure.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "08daf0977698cf28",
+    "fileHashes": {
+      "engine/tools/src/grep.ts": "08daf0977698cf28"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

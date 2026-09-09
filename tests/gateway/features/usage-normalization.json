@@ -1,0 +1,25 @@
+{
+  "id": "usage-normalization",
+  "name": "Usage normalizes to four disjoint classes",
+  "area": "protocol",
+  "section": "Protocol & host",
+  "prose": "OpenAI-compatible APIs report prompt_tokens as the whole prompt with cached_tokens a subset of it. Getting this wrong double-counts cache and misprices the session, because each class bills at its own rate.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/types.ts",
+    "engine/providers/src/openai-compat.ts"
+  ],
+  "invariant": "Input, output, cacheRead and cacheWrite are disjoint and additive, and the OpenAI-compatible adapter subtracts cached_tokens from prompt_tokens.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "fa9ac43492af06d7",
+    "fileHashes": {
+      "engine/protocol/src/types.ts": "11d32208f2241da2",
+      "engine/providers/src/openai-compat.ts": "e95e6026ce0bd921"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

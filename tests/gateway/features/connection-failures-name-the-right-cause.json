@@ -1,0 +1,23 @@
+{
+  "id": "connection-failures-name-the-right-cause",
+  "name": "Connection failures name the right cause",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "a 401 says the base URL *or* the key may be wrong (gateways authenticate before routing, so a wrong URL returns 401 too) and points at TEST, which can tell them apart; a 404 says the model id may need to be fully qualified.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "app/main/connection.js"
+  ],
+  "invariant": "A 401 says the base URL or the key may be wrong and points at TEST; a 404 says the model id may need qualifying.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "d4a9fb670267f05c",
+    "fileHashes": {
+      "app/main/connection.js": "d4a9fb670267f05c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

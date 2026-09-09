@@ -1,0 +1,23 @@
+{
+  "id": "workflow-meta-literal",
+  "name": "Workflow meta must be a pure literal",
+  "area": "engine",
+  "section": "Scheduling",
+  "prose": "The permission dialog and the phase list are read from meta before the script runs, so it has to be statically readable.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/scheduling/workflow.ts"
+  ],
+  "invariant": "A meta block containing a variable, call or interpolation is rejected before any agent is spawned.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "4a893e4a13ee8b3a",
+    "fileHashes": {
+      "engine/core/src/scheduling/workflow.ts": "4a893e4a13ee8b3a"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

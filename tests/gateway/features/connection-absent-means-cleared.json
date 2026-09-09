@@ -1,0 +1,23 @@
+{
+  "id": "connection-absent-means-cleared",
+  "name": "Absent means cleared on a connection",
+  "area": "protocol",
+  "section": "Protocol & host",
+  "prose": "Without this, a workspace keeps describing images through an endpoint the user just removed.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/types.ts"
+  ],
+  "invariant": "A connection saved with no vision model leaves none behind, following the same rule as baseUrl.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "11d32208f2241da2",
+    "fileHashes": {
+      "engine/protocol/src/types.ts": "11d32208f2241da2"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

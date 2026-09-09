@@ -1,0 +1,23 @@
+{
+  "id": "permission-stances",
+  "name": "Permission stances",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "exactly two: normal (reads/interactions/file edits allowed, commands ask with once/session/always grants) and OVERDRIVE (everything allowed); deny-rule beats allow-rule beats stance.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/permissions.ts"
+  ],
+  "invariant": "Resolution order is deny rules > protected-path guard > deletion guard > allow rules > stance default.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "5e675cbefa29932b",
+    "fileHashes": {
+      "engine/core/src/runtime/permissions.ts": "5e675cbefa29932b"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

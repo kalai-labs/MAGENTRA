@@ -1,0 +1,25 @@
+{
+  "id": "tool-registry-contract",
+  "name": "Tool registry contract",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Every registered tool has a complete contract, and the read-only ones are actually RUN against a temp workspace so \"registered\" is never mistaken for \"working\".",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/tools/src/index.ts",
+    "engine/core/src/agent/tool.ts"
+  ],
+  "invariant": "createDefaultRegistry registers exactly 27 tools, each with a name, description, real zod schema, valid permission class and execute.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "5ba26cf8988a447b",
+    "fileHashes": {
+      "engine/tools/src/index.ts": "014afda5d9dbf689",
+      "engine/core/src/agent/tool.ts": "789027d09aaa17fd"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

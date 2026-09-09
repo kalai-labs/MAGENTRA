@@ -1,0 +1,25 @@
+{
+  "id": "mirror-vision-key-env",
+  "name": "The vision key env var agrees",
+  "area": "protocol",
+  "section": "Mirrored constants",
+  "prose": "A mismatch means the app writes a key the engine never reads.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/config/settings.ts",
+    "app/main/config.js"
+  ],
+  "invariant": "VISION_API_KEY_ENV names the same variable on both sides.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "01ea71c8a6a6a8f0",
+    "fileHashes": {
+      "engine/core/src/config/settings.ts": "d3f06cfa52514272",
+      "app/main/config.js": "b023d6d155878fb9"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

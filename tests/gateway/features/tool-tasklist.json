@@ -1,0 +1,23 @@
+{
+  "id": "tool-tasklist",
+  "name": "TaskList",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Lists every task with id, subject, status, owner and blockedBy.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/tools/src/tasks.ts"
+  ],
+  "invariant": "Pending tasks are tagged READY or BLOCKED by resolving blockedBy against completion, not by declaration order.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "77a380779a3e9d01",
+    "fileHashes": {
+      "engine/tools/src/tasks.ts": "77a380779a3e9d01"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "transcript",
+  "name": "Transcript",
+  "area": "engine",
+  "section": "State",
+  "prose": "every message/permission/compaction is appended; replay reconstructs history exactly.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/state/transcript.ts"
+  ],
+  "invariant": "Every dangling tool_use gets a tool_result, or the provider rejects the next request and /resume replays the wound forever.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "07a6ca3aedda6222",
+    "fileHashes": {
+      "engine/core/src/state/transcript.ts": "07a6ca3aedda6222"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

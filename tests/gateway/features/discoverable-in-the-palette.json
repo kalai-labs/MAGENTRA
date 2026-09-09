@@ -1,0 +1,25 @@
+{
+  "id": "discoverable-in-the-palette",
+  "name": "Discoverable in the palette",
+  "area": "engine",
+  "section": "Addons",
+  "prose": "`session_started` carries the roster, and each addon rides in the command registry as `/<name>`.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/engine.ts",
+    "engine/core/src/agent/addons.ts"
+  ],
+  "invariant": "session_started carries the addon roster and each addon rides the command registry as /<name>.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "434c54a8eff7f52b",
+    "fileHashes": {
+      "engine/core/src/runtime/engine.ts": "114232a5bf174d79",
+      "engine/core/src/agent/addons.ts": "ff424ed1464098d4"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

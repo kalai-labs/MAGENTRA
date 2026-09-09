@@ -1,0 +1,23 @@
+{
+  "id": "version-plan",
+  "name": "The next version is derived, not chosen",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "A reviewer sees the resulting version on the PR summary before the merge.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "tools/version/lib/plan.mjs"
+  ],
+  "invariant": "makePlan returns the next version from a commit range using the largest bump level present.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "76f3815912cc03db",
+    "fileHashes": {
+      "tools/version/lib/plan.mjs": "76f3815912cc03db"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

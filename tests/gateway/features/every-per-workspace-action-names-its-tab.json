@@ -1,0 +1,25 @@
+{
+  "id": "every-per-workspace-action-names-its-tab",
+  "name": "Every per-workspace action names its tab",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "connect, vision, and the attach picker all act on the tab they were opened from, never on \"whatever is focused\". With several workspaces tiled, acting on the focused one silently changed the wrong workspace's connection.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/renderer/modules/tabs.js",
+    "app/renderer/modules/workbench.js"
+  ],
+  "invariant": "Connect, vision and the attach picker act on the tab they were opened from, never on whatever is focused.",
+  "deferred": true,
+  "tests": [],
+  "freshness": {
+    "hash": "da428ccdbb52484b",
+    "fileHashes": {
+      "app/renderer/modules/tabs.js": "3bf864044a6d557f",
+      "app/renderer/modules/workbench.js": "3807dcc0769945d4"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

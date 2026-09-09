@@ -1,0 +1,23 @@
+{
+  "id": "system-prompt-assembly",
+  "name": "System prompt assembly",
+  "area": "engine",
+  "section": "Agent",
+  "prose": "env, addons, standards sections compose in the right order.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/agent/prompts.ts"
+  ],
+  "invariant": "buildSystemPrompt composes the nine SECTION_* exports; every behaviour section has exactly one definition.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "c9b93e743f4cabbf",
+    "fileHashes": {
+      "engine/core/src/agent/prompts.ts": "c9b93e743f4cabbf"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

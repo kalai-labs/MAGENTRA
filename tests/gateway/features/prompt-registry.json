@@ -1,0 +1,23 @@
+{
+  "id": "prompt-registry",
+  "name": "Every prompt is registered and overridable",
+  "area": "protocol",
+  "section": "Protocol & host",
+  "prose": "definePrompt registers every prompt the engine sends, in seven groups. Overrides land as plain .txt files the engine re-reads, so a change applies on the next turn with no restart. orphanedPromptFiles reports overrides whose prompt no longer exists.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/prompts.ts"
+  ],
+  "invariant": "All 43 registered prompts appear in the catalog, an override file is re-read live, and emptying a prompt cancels its inference round rather than sending a blank message.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "cd3be27b66ec95fc",
+    "fileHashes": {
+      "engine/protocol/src/prompts.ts": "cd3be27b66ec95fc"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

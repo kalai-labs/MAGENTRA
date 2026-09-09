@@ -1,0 +1,23 @@
+{
+  "id": "layered-settings",
+  "name": "Layered settings",
+  "area": "engine",
+  "section": "Config",
+  "prose": "project overrides global overrides defaults; each key reports where it came from.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/config/settings.ts"
+  ],
+  "invariant": "Project settings merge OVER global, and the effective value reports its source.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "d3f06cfa52514272",
+    "fileHashes": {
+      "engine/core/src/config/settings.ts": "d3f06cfa52514272"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

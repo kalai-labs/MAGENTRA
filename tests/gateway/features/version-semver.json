@@ -1,0 +1,23 @@
+{
+  "id": "version-semver",
+  "name": "Semver parse, format, bump, compare",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "The version tool has no runtime dependencies, so it runs straight after a clone with no build — a broken build must never stop a release.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "tools/version/lib/version.mjs"
+  ],
+  "invariant": "parse and format round-trip every supported form, bump applies the right level, and compare orders correctly including legacy builds.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "2768f226763100b0",
+    "fileHashes": {
+      "tools/version/lib/version.mjs": "2768f226763100b0"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

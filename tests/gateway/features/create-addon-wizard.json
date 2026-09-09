@@ -1,0 +1,26 @@
+{
+  "id": "create-addon-wizard",
+  "name": "Create-addon wizard",
+  "area": "engine",
+  "section": "Addons",
+  "prose": "describe → `generate_addon` → validated `addon_draft` → edit → `install_addon` writes the file and the live session can invoke it immediately. The UI round-trip needs a test; the authoring call itself needs a real model.",
+  "kinds": [
+    "llm",
+    "ui"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/engine.ts",
+    "engine/core/src/config/frontmatter.ts"
+  ],
+  "invariant": "generate_addon produces a parser-validated draft, and install_addon writes the file and reloads the roster so the live session can invoke it.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "72a83686c2d044a9",
+    "fileHashes": {
+      "engine/core/src/runtime/engine.ts": "114232a5bf174d79",
+      "engine/core/src/config/frontmatter.ts": "65783ed844cc82c7"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

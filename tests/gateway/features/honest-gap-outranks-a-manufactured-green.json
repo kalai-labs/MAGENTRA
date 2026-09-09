@@ -1,0 +1,23 @@
+{
+  "id": "honest-gap-outranks-a-manufactured-green",
+  "name": "Honest gap outranks a manufactured green",
+  "area": "engine",
+  "section": "Finishing rungs — what stands between \"stopped talking\" and \"delivered\"",
+  "prose": "every finishing text names \"I could not run this here, and here is what stays unverified\" as a COMPLETE answer, and points at confirming the contract (signature, docstring, return type) where the behaviour is unreachable. Load-bearing, not politeness: a rung that demanded a passing check would make standing the dependency in the cheapest way to satisfy it, manufacturing the exact failure the floor exists to catch.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/finishing.ts"
+  ],
+  "invariant": "Naming what could not be run and what stays unverified is a FULLY correct ending — the rung must never manufacture a green.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "81dd55bfbeb78d6c",
+    "fileHashes": {
+      "engine/core/src/runtime/finishing.ts": "81dd55bfbeb78d6c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

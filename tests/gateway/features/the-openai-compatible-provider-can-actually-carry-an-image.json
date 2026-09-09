@@ -1,0 +1,23 @@
+{
+  "id": "the-openai-compatible-provider-can-actually-carry-an-image",
+  "name": "The OpenAI-compatible provider can actually carry an image",
+  "area": "providers",
+  "section": "Desktop app",
+  "prose": "it flattened every image to `[image omitted]`, so a workspace with `vision` on and an OpenAI-compatible endpoint sent the model nothing and got confident commentary on a picture it never received. A user-role image now serializes to the multimodal `content` array (`image_url` with a data URL); the plain string form is still used whenever a message has no image, so servers that never learned the array form are unaffected.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/providers/src/openai-compat.ts"
+  ],
+  "invariant": "A user-role image serializes to the multimodal content array; the plain string form is still used when a message has no image.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "e95e6026ce0bd921",
+    "fileHashes": {
+      "engine/providers/src/openai-compat.ts": "e95e6026ce0bd921"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

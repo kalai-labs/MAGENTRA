@@ -1,0 +1,24 @@
+{
+  "id": "reuse-check",
+  "name": "Reuse check",
+  "area": "engine",
+  "section": "Knowledge",
+  "prose": "a new file whose symbols resemble existing code (with no related search/read this session) gets a reminder listing the closest matches — firm wording for near-duplicates — alongside the allowed Write; it never refuses.",
+  "kinds": [
+    "fs",
+    "llm"
+  ],
+  "entryFiles": [
+    "engine/core/src/knowledge/reuseGate.ts"
+  ],
+  "invariant": "The reuse check evaluates a search log and reminds rather than refusing.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "33b901cd339d374b",
+    "fileHashes": {
+      "engine/core/src/knowledge/reuseGate.ts": "33b901cd339d374b"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

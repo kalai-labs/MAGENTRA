@@ -1,0 +1,23 @@
+{
+  "id": "hooks",
+  "name": "Hooks",
+  "area": "engine",
+  "section": "Agent",
+  "prose": "`SessionStart` / `PreToolUse` / `PostToolUse` / `Stop` fire, and a blocking hook actually blocks.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/core/src/agent/hooks.ts"
+  ],
+  "invariant": "Configured hooks run at their event and their outcome reaches the turn.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "75577a14d6f6c37c",
+    "fileHashes": {
+      "engine/core/src/agent/hooks.ts": "75577a14d6f6c37c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

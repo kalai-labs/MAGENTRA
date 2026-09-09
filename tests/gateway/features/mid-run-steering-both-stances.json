@@ -1,0 +1,25 @@
+{
+  "id": "mid-run-steering-both-stances",
+  "name": "Mid-run steering (both stances)",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "typing while a turn runs sends `steer_message`: the text joins the running turn at its next message boundary, re-arms self-verify, refunds pivots; when the turn already ended, it becomes a normal user turn. Slash/bang commands still queue for turn end.",
+  "kinds": [
+    "llm"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts",
+    "engine/core/src/runtime/engine.ts"
+  ],
+  "invariant": "steer_message joins a running turn at its next message boundary, re-arms self-verify and refunds pivots; when idle it becomes a normal user turn.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "bf81fb70715f1351",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f",
+      "engine/core/src/runtime/engine.ts": "114232a5bf174d79"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}
