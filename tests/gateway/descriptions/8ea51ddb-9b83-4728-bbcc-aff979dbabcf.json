@@ -1,0 +1,10 @@
+{
+  "id": "8ea51ddb-9b83-4728-bbcc-aff979dbabcf",
+  "featureIds": [
+    "version-semver"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:24.404Z",
+  "updatedAt": "2026-09-09T18:43:09.544Z",
+  "body": "WHAT\nversion.mjs is the pure semver core of the version tool. parse reads 'MAJOR.MINOR.PATCH' (and the retired four-part 'MAJOR.MINOR.PATCH.BUILD', dropping BUILD), format writes it back, bump raises one level and zeroes the smaller ones, compare orders two versions, legacyBuild reads the dropped fourth part, and largestLevel picks the biggest of a list of levels.\n\nWHY\nThe desktop updater compares versions with semver and nothing else, and old four-part tags remain in the repo forever; getting any of these wrong would misorder releases or misread history. Being dependency-free means a broken build can never block a release.\n\nWHERE\ntools/version/lib/version.mjs — LEVELS, PATTERN, parse(text), format(version), legacyBuild(text), bump(version, level), compare(a, b), largestLevel(levels).\n\nTEST CHECKLIST\n1. format(parse('0.1.0')) === '0.1.0', format(parse(' 12.34.56 ')) === '12.34.56', and parse('0.13.0.7') returns {major:0, minor:13, patch:0} while legacyBuild('0.13.0.7') === 7 and legacyBuild('0.13.0') === 0.\n2. parse throws an Error whose message contains 'Invalid version' for '1.2', 'v1.2.3', '1.2.3-beta', '1.2.3.4.5' and ''.\n3. bump({1,2,3},'major') is {2,0,0}, 'minor' is {1,3,0}, 'patch' is {1,2,4}, the input object is not mutated, and an unknown level throws.\n4. compare orders 1.10.0 after 1.9.9, 2.0.0 after 1.99.99, returns 0 for equal versions and returns a negative number for compare(parse('0.13.0.1'), parse('0.13.1')) — legacy builds compare by their three semver parts only.\n5. largestLevel(['patch','minor','patch']) === 'minor', largestLevel(['patch','major']) === 'major', largestLevel([]) === null, and an unknown level string throws."
+}

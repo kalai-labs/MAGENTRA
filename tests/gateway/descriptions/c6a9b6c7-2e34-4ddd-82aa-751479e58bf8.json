@@ -1,0 +1,10 @@
+{
+  "id": "c6a9b6c7-2e34-4ddd-82aa-751479e58bf8",
+  "featureIds": [
+    "mirror-reasoning-efforts"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:17.706Z",
+  "updatedAt": "2026-09-09T18:43:13.863Z",
+  "body": "WHAT\n`REASONING_EFFORTS` is the ordered list of thinking-depth levels a connection can choose: off, minimal, low, medium, high, xhigh, max. The protocol package (the shared TypeScript types the engine and host use) defines it; the app repeats it because it cannot import the engine.\n\nWHY\nThe order carries meaning — clamping picks the nearest level — so a reordered copy clamps to the wrong one, and a missing level would be refused by the app while the engine accepts it.\n\nWHERE\nengine/protocol/src/types.ts — `export const REASONING_EFFORTS` and `type ReasoningEffort`; app/main/config.js — `const REASONING_EFFORTS` (exported). Consumer of the order: engine/providers/src/effort.ts `WIRE_EFFORTS`, `toWireEffort()`, `EffortClamp`.\n\nTEST CHECKLIST\n1. Deep-equal the two arrays: same length 7, same strings, same order.\n2. Assert the first entry is 'off' and the last is 'max' on both sides.\n3. Assert WIRE_EFFORTS in effort.ts maps 1:1 onto REASONING_EFFORTS by index with only 'off'→'none' differing (toWireEffort(REASONING_EFFORTS[i]) === WIRE_EFFORTS[i]).\n4. Assert no duplicates in either list (new Set(list).size === 7)."
+}

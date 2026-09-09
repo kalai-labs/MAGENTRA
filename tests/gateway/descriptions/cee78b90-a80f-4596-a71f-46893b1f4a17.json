@@ -1,0 +1,10 @@
+{
+  "id": "cee78b90-a80f-4596-a71f-46893b1f4a17",
+  "featureIds": [
+    "tool-taskcreate"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:22.927Z",
+  "updatedAt": "2026-09-09T18:43:15.047Z",
+  "body": "WHAT\nTaskCreate adds a task (subject, description, optional activeForm and metadata) to the session's task list. The task starts as pending with empty blocks/blockedBy arrays and a numeric string id, and the store persists the list to .magentra/tasks/<sessionId>.json and emits task_list_updated so the UI can show it.\n\nWHY\nWithout it multi-step work is invisible to the user and the agent has no list to track what is done and what is blocked.\n\nWHERE\nengine/tools/src/tasks.ts — taskCreateTool (createSchema, parallelSafe, execute() -> ctx.session.tasks.create()). engine/core/src/state/taskStore.ts — TaskStore.create() (id from nextId, status 'pending', blocks/blockedBy []), persist() (writeFileAtomic + task_list_updated event).\n\nTEST CHECKLIST\n1. With a TaskStore in a temp stateDir, execute TaskCreate { subject:'A', description:'d' }; assert content 'Task #1 created: A', tasks.list()[0] has status 'pending', blocks [] and blockedBy [].\n2. Create two tasks then TaskUpdate task 2 with addBlockedBy ['1']; assert task 2.blockedBy is ['1'] and task 1.blocks is ['2'] (edges kept on both sides).\n3. After a create, assert a task_list_updated event was emitted and the JSON file under <stateDir>/tasks/ contains the task.\n4. Create with activeForm and metadata; assert both are stored on the task and absent when not given.\n5. Construct a second TaskStore over the same stateDir/sessionId; assert the created task and nextId survive (a new task gets id '2', not '1')."
+}

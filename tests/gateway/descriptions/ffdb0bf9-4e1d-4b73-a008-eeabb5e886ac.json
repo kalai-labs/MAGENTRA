@@ -1,0 +1,10 @@
+{
+  "id": "ffdb0bf9-4e1d-4b73-a008-eeabb5e886ac",
+  "featureIds": [
+    "cheap-until-used"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:14.521Z",
+  "updatedAt": "2026-09-09T18:43:18.339Z",
+  "body": "WHAT\nThe standing system prompt lists installed addons as `- name: description` lines only. The full instructions (the body) of an addon are never part of the system prompt; they enter the conversation only when the Addon tool or the `/<name>` command is invoked.\n\nWHY\nEvery request re-sends the system prompt, so an addon body riding in it would be paid on every turn of every session whether or not the addon is used.\n\nWHERE\nengine/core/src/agent/prompts.ts — ADDONS_BLOCK prompt, addonsBlock(addons) (renders only a.name and a.description), buildSystemPrompt() (pushes the block when non-empty). engine/core/src/agent/addons.ts — Addon.body is the on-invoke payload consumed by engine/tools/src/addon.ts and Engine.handleAddonCommand(). Wired in engine/core/src/runtime/session.ts — Session.buildSystemPrompt() passes addons.\n\nTEST CHECKLIST\n1. addonsBlock([]) returns undefined so buildSystemPrompt() with no addons contains no \"Available addons\" header.\n2. buildSystemPrompt({ addons: [{name:'x', description:'d'}] }) contains the line `- x: d`.\n3. Given a loaded Addon whose body contains a unique sentinel string, the system prompt captured by FakeProvider.requests[0].system contains the addon name and description but not the sentinel.\n4. After the model calls the Addon tool for that addon (scripted FakeProvider tool call), the tool result contains the sentinel while the next request's system prompt still does not.\n5. Session.buildSystemPrompt() with opts.addons undefined equals the prompt with addons: [] (the block is simply absent)."
+}

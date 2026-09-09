@@ -1,0 +1,10 @@
+{
+  "id": "334fc3ff-8fa6-4029-bb06-4437cf17e3d8",
+  "featureIds": [
+    "tool-askuserquestion"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:21.728Z",
+  "updatedAt": "2026-09-09T18:43:01.241Z",
+  "body": "WHAT\nAskUserQuestion sends one to five multiple-choice questions to the frontend and waits until the user answers. Each question has 2-4 options; the frontend adds an 'Other' free-text choice itself, so the tool schema forbids adding one. Answers come back keyed by position ('q:0', 'q:1'), with the question text as a fallback key.\n\nWHY\nWithout it the agent cannot hand a decision to the user, and without positional keys two questions with the same text would overwrite each other's answers.\n\nWHERE\nengine/tools/src/askUserQuestion.ts — askUserQuestionTool (permissionClass 'interact'), questionSchema (options .min(2).max(4), header .max(12)), inputSchema (questions .min(1).max(5)), execute() reads answers[`q:${idx}`] ?? answers[q.question]. The blocking hop is ctx.session.askUser -> opts.askUser in engine/core/src/runtime/session.ts.\n\nTEST CHECKLIST\n1. inputSchema.safeParse with 6 questions fails; with 0 questions fails; with a question having 1 option or 5 options fails; with 2 valid questions succeeds and multiSelect defaults to false.\n2. Provide a session whose askUser resolves { 'q:0': ['A'], 'q:1': ['B','C'] } for two questions with identical text; assert the content lists the first question with '-> A' and the second with '-> B, C' (positional keys win, no collision).\n3. Provide askUser resolving only { '<question text>': ['X'] } (older frontend shape); assert the content shows '-> X'.\n4. Provide askUser resolving {} ; assert each question line ends with '-> (no answer)'.\n5. Make askUser return a promise that resolves after a delay; assert execute() does not resolve before it does (the call blocks until answered)."
+}

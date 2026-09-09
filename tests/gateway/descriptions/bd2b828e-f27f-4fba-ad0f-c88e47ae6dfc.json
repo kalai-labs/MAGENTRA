@@ -1,0 +1,10 @@
+{
+  "id": "bd2b828e-f27f-4fba-ad0f-c88e47ae6dfc",
+  "featureIds": [
+    "retraction"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:19.726Z",
+  "updatedAt": "2026-09-09T18:43:12.758Z",
+  "body": "WHAT\nThe updater resolves the newest release through GitHub's /releases/latest, which skips drafts and prereleases. Marking a bad release as prerelease (`gh release edit <tag> --prerelease`) removes it from that answer, so every client is offered the previous good release again without deleting anything. The release workflow creates releases as drafts and only undrafts after all platform artifacts are uploaded.\n\nWHY\nDeleting a release would strand clients mid-download; publishing before binaries exist would break the check for every user at once.\n\nWHERE\napp/main/updates.js — LATEST_URL = `${RELEASES_URL}/latest`, latestTag() reading body.tag_name, checkNow() comparing via compareVersions(latest, state.current) and setting 'available' or 'uptodate'. .github/workflows/release.yml — 'Draft the GitHub release' step (gh release create … --draft), 'binaries' matrix uploading with gh release upload --clobber, 'publish' job (gh release edit \"$TAG\" --draft=false) gated on needs: [release, binaries], and the comment documenting retraction via --prerelease.\n\nTEST CHECKLIST\n1. With fetch of /releases/latest stubbed to return tag_name 'v0.17.3' while state.current is '0.17.4' (the retracted one), checkNow() sets status 'uptodate' — the client is not offered a downgrade and no error is shown.\n2. With the stub returning 'v0.17.5' and current '0.17.4', status becomes 'available' with version '0.17.5'.\n3. compareVersions('0.13.0.1', '0.13.0') is positive and compareVersions('v1.2.0', '1.2.0') is 0, so legacy four-part tags order correctly.\n4. release.yml creates the release with --draft and the publish job runs only if the binaries job succeeded (needs includes 'binaries'), so a failed packaging leg leaves the previous release as /latest.\n5. release.yml contains no step that deletes a release, and its retraction comment names `gh release edit <tag> --prerelease`."
+}

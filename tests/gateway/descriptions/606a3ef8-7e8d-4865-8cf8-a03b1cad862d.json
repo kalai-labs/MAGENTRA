@@ -1,0 +1,10 @@
+{
+  "id": "606a3ef8-7e8d-4865-8cf8-a03b1cad862d",
+  "featureIds": [
+    "pre-turn-snapshot"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:18.807Z",
+  "updatedAt": "2026-09-09T18:43:04.954Z",
+  "body": "WHAT\nWhile OVERDRIVE is on, before each root (non-child) turn starts, the session runs `git stash create` in the workspace and keeps the returned commit ref. The ref is reported as `overdriveSnapshot` on that turn's `turn_finished` event so the user can recover tracked files an autonomous turn deleted or rewrote. Nothing is reported when the tree was clean (empty output), when the workspace is not a git repo, or when git fails.\n\nWHY\nOVERDRIVE runs deletions without asking; without a parked snapshot a wrong autonomous deletion of tracked, uncommitted work would be unrecoverable.\n\nWHERE\nengine/core/src/runtime/session.ts — Session.snapshotForOverdrive() (existsSync(.git) check, execFile('git', ['stash','create','overdrive pre-turn snapshot']), overdriveSnapshotRef), the call in Session.runTurn() guarded by `this.overdrive && !this.opts.child`, and the turn_finished emit spreading `overdriveSnapshot` only when overdrive is on and the ref is defined.\n\nTEST CHECKLIST\n1. In a git repo with a modified tracked file and setOverdrive(true), running a FakeProvider turn emits turn_finished with overdriveSnapshot matching /^[0-9a-f]{40}$/ and `git cat-file -t <ref>` reports 'commit'.\n2. Same repo with a clean tree: turn_finished has no overdriveSnapshot key.\n3. A cwd without a .git directory never runs git and turn_finished has no overdriveSnapshot key.\n4. With OVERDRIVE off and a dirty tree, no snapshot is taken and turn_finished has no overdriveSnapshot.\n5. A child session (opts.child true) does not snapshot even in OVERDRIVE; and a failing git binary does not prevent the turn from running (the turn still emits turn_finished)."
+}

@@ -1,0 +1,10 @@
+{
+  "id": "4b023f29-92b5-4f06-b46d-de11d20823fb",
+  "featureIds": [
+    "standards-md"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:20.950Z",
+  "updatedAt": "2026-09-09T18:43:02.805Z",
+  "body": "WHAT\nIf the workspace has a `STANDARDS.md` at its root (or `.magentra/STANDARDS.md` as a fallback), its contents are added to the system prompt under a header saying they are binding rules that win over default code-style guidance. The file is read again on every system-prompt build, so edits apply on the next request without a restart. Content larger than 16 KB is cut at the last line boundary and a truncation notice is appended.\n\nWHY\nProject rules must reach the model every turn and follow live edits; an unbounded file would silently eat the context window.\n\nWHERE\nengine/core/src/knowledge/standards.ts — STANDARDS_FILENAMES, MAX_STANDARDS_BYTES = 16384, TRUNCATION_NOTICE, loadStandards(cwd). Consumed by engine/core/src/runtime/session.ts — Session.buildSystemPrompt() (`const standards = loadStandards(this.cwd)` on each build; STANDARDS_SECTION_HEADER prompt id system.standards-header; Session.section()) and the wrap-up nudge `mentionStandards`.\n\nTEST CHECKLIST\n1. With a STANDARDS.md containing 'RULE-XYZ', the FakeProvider request's system prompt contains '# Coding standards (user-provided — binding)' followed by 'RULE-XYZ'.\n2. With no STANDARDS.md (and no .magentra/STANDARDS.md), loadStandards returns undefined and the system prompt has no standards header.\n3. Editing STANDARDS.md between two turns (no /clear) changes the second request's system prompt to the new content.\n4. A 20 KB STANDARDS.md yields text whose UTF-8 byte length is at most 16384 plus the notice, ends with '[standards truncated at 16KB — condense the file]', and cuts at a newline boundary.\n5. A whitespace-only root STANDARDS.md is skipped and the .magentra/STANDARDS.md fallback is used when present."
+}

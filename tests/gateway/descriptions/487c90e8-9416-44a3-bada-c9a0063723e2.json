@@ -1,0 +1,10 @@
+{
+  "id": "487c90e8-9416-44a3-bada-c9a0063723e2",
+  "featureIds": [
+    "discovery"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:15.855Z",
+  "updatedAt": "2026-09-09T18:43:02.553Z",
+  "body": "WHAT\nThe addon loader scans a `.magentra/addons/` directory and accepts two layouts: a flat `<name>.md` file, and a `<name>/` folder holding an `ADDON.md`. A folder without `ADDON.md` is ignored entirely. The name comes from the frontmatter `name:` key, else the file stem or folder name.\n\nWHY\nGuessing at a folder without ADDON.md could load a README or a notes file as an addon; supporting only one layout would prevent addons from bundling scripts and notes.\n\nWHERE\nengine/core/src/agent/addons.ts — listAddonFiles(dir) (Candidate with optional `dir` and `fallbackName`), ADDON_ENTRY = \"ADDON.md\", ADDONS_DIR = \"addons\", readAddon(), loadAddons(cwd). Frontmatter via engine/core/src/config/frontmatter.ts — parseFrontmatter().\n\nTEST CHECKLIST\n1. With .magentra/addons/flat.md (frontmatter name omitted), loadAddons(cwd) returns an addon named 'flat' with path ending in flat.md and resources [].\n2. With .magentra/addons/dir/ADDON.md, loadAddons returns an addon named 'dir' whose path ends in dir/ADDON.md.\n3. With .magentra/addons/empty-dir/ containing only README.md and no ADDON.md, no addon named 'empty-dir' (or 'README') is returned.\n4. A non-.md file such as notes.txt at the top level of addons/ is not loaded; a .MD (uppercase) file is.\n5. A flat file whose body is empty after the frontmatter, or one that cannot be read, is skipped and loadAddons still returns the other addons without throwing."
+}

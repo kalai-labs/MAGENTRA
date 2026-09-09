@@ -1,0 +1,10 @@
+{
+  "id": "86a2dbb9-7672-41ef-9380-4a112e516e1a",
+  "featureIds": [
+    "the-openai-compatible-provider-can-actually-carry-an-image"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:21.488Z",
+  "updatedAt": "2026-09-09T18:43:08.122Z",
+  "body": "WHAT\nWhen a user-role message contains an image block, the OpenAI-compatible provider serializes it as the multimodal `content` array: a text part plus one `image_url` part per image with a `data:<mediaType>;base64,<data>` URL, in the same user message as its text. A message with no image is still sent as a plain string `content`.\n\nWHY\nEvery image used to be flattened to '[image omitted]', so a vision-enabled workspace sent nothing and got confident commentary on an unseen picture; servers that never learned the array form must keep receiving strings.\n\nWHERE\nengine/providers/src/openai-compat.ts — toWireMessages(system, messages): the `images.length > 0` branch building { role: \"user\", content: [{ type: \"text\" }, { type: \"image_url\", image_url: { url: `data:${b.mediaType};base64,${b.data}` } }] }, the `else if (text)` string branch; type WireContentPart; flattenToolResult() (tool-role results still flatten images to '[image omitted]' — tool results are described upstream by Session.describeToolImages).\n\nTEST CHECKLIST\n1. toWireMessages('', [{ role: 'user', content: [{ type: 'text', text: 'hi' }, { type: 'image', mediaType: 'image/png', data: 'AAAA' }] }]) yields one user message whose content is an array [{ type: 'text', text: 'hi' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }].\n2. A user message with only text yields content as the plain string 'hi', not an array.\n3. An image-only user message (no text) yields a content array with just the image_url part and no empty text part.\n4. Two images in one message produce two image_url parts in order, in the same user message (not two messages).\n5. A tool_result whose content has an image part is flattened to text containing '[image omitted]' by flattenToolResult (documenting that the tool path relies on Session.describeToolImages upstream)."
+}

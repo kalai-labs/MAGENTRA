@@ -1,0 +1,10 @@
+{
+  "id": "5db87931-b04c-4bea-aff1-306586fa33fa",
+  "featureIds": [
+    "connection-absent-means-cleared"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:14.936Z",
+  "updatedAt": "2026-09-09T18:43:04.572Z",
+  "body": "WHAT\nA connection is the full description of which model endpoint to talk to (provider, URL, key, model). It may carry an optional `vision` block naming a second model that describes images. The rule is: when the frontend sends a connection without a `vision` block, the engine removes any previously saved vision model instead of keeping the old one, exactly as it already does for `baseUrl`.\n\nWHY\nWithout it, a workspace keeps describing images through an endpoint the user just removed, and the `vision` toggle can stay on with nothing behind it.\n\nWHERE\nengine/protocol/src/types.ts — `interface ConnectionSpec` (field `vision?: VisionConnectionSpec`, doc comment 'ABSENT MEANS CLEARED'), `interface VisionConnectionSpec`; the rule is enforced in engine/core/src/runtime/engine.ts inside the `set_connection` handler (around line 1188: `settings.visionConnection = {...}` in the present branch, `delete settings.visionConnection; settings.vision = false;` in the absent branch).\n\nTEST CHECKLIST\n1. Send set_connection with a vision block {enabled:true, model:'llava', ...}, then send set_connection for the same endpoint with no vision field; assert settings.visionConnection is undefined and settings.vision is false afterwards.\n2. Send set_connection with vision present and enabled:true; assert settings.visionConnection.model equals the trimmed model and settings.vision is true.\n3. Send set_connection with a vision block whose model is an empty string (' '); assert it is treated as absent: visionConnection deleted and vision false.\n4. Send set_connection with vision present but enabled:false; assert visionConnection is stored while settings.vision is false.\n5. Mirror of the baseUrl rule: send set_connection with a baseUrl, then one without; assert the saved baseUrl is cleared the same way the vision block is."
+}

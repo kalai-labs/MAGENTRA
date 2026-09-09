@@ -1,0 +1,10 @@
+{
+  "id": "5b99f264-45f7-4584-be8d-50dc9f737afe",
+  "featureIds": [
+    "mirror-default-base-url"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:17.460Z",
+  "updatedAt": "2026-09-09T18:43:04.446Z",
+  "body": "WHAT\nA mirrored constant is a value copied by hand into two code bases that cannot import each other: the engine (TypeScript, shipped as a bundled child process) and the Electron app (plain JS). The default base URL is the OpenAI-compatible endpoint used when a workspace configures none; it is written once in the engine and once in the app and must be the same string.\n\nWHY\nA drift sends a fresh workspace to a different endpoint depending on which half filled the blank.\n\nWHERE\nengine/core/src/config/settings.ts — `export const DEFAULT_OPENAI_BASE_URL`; app/main/config.js — `const DEFAULT_BASE_URL` (exported in `module.exports`). Consumers: engine/core/src/config/providerFactory.ts `endpointSpecFromSettings()` / `createProviderForEndpoint()`, engine/host/src/bootstrap.ts `bootstrapEngine()`.\n\nTEST CHECKLIST\n1. Import DEFAULT_OPENAI_BASE_URL from the engine settings module and DEFAULT_BASE_URL from app/main/config.js (with electron stubbed) and assert strict string equality.\n2. Assert both values are absolute https URLs with no trailing slash, so neither side would normalize differently.\n3. endpointSpecFromSettings({provider:'openai-compatible'}, 'k') returns baseUrl equal to the app's DEFAULT_BASE_URL when settings.baseUrl is undefined.\n4. Regression guard: a test-time text scan of app/main/config.js and settings.ts finds exactly one literal each for the default URL, so a second copy cannot appear unnoticed."
+}

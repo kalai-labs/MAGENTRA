@@ -1,0 +1,10 @@
+{
+  "id": "8f80338f-bb4b-4091-afc1-d5f792eef153",
+  "featureIds": [
+    "stall-detector"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:20.882Z",
+  "updatedAt": "2026-09-09T18:43:09.677Z",
+  "body": "WHAT\nAfter each tool round the engine fingerprints the round (tool names + arguments + results, ignoring per-call random ids). When three consecutive rounds have the same fingerprint the turn is stalled: the first two stalls inject a reminder forcing a different strategy, the third injects a reminder telling the model to stop and ask the user one concrete question via AskUserQuestion (or report the blocker if it is a subagent). Mid-run steering resets the pivot count.\n\nWHY\nInteractive turns have no iteration cap, so a model repeating a failing action would burn tokens forever; the detector is the brake and it never surrenders silently.\n\nWHERE\nengine/core/src/runtime/session.ts — Session.runTurn() stall block (`const sig = JSON.stringify([toolCalls.map(c => c.name + c.json), results.map(r => [r.isError, r.content])])`, identicalRounds, lastRoundSig, pivotCount, `if (identicalRounds >= 2)`), constants STALL_PIVOT_TEXT and STALL_ASK_TEXT, drainSteering() resetting pivotCount/identicalRounds.\n\nTEST CHECKLIST\n1. With a FakeProvider that returns the identical Bash call (same JSON) six times against a tool whose result is constant, the third round's tool-result message contains STALL_PIVOT_TEXT and a command_output 'stall detected — forcing strategy pivot 1/2' is emitted; the sixth round produces pivot 2/2.\n2. After two pivots, three more identical rounds produce the STALL_ASK_TEXT reminder ('Ask the user ONE concrete question with AskUserQuestion') and the command_output 'still stalled after pivots — asking the user'.\n3. Two identical rounds followed by a different one never trigger a pivot (identicalRounds resets to 0 on any change in calls or results).\n4. Rounds with the same tool call but different results (e.g. a counter in the output) are not treated as identical and no pivot fires.\n5. The fingerprint ignores toolUseId: two rounds whose only difference is the provider-assigned call id are counted as identical."
+}

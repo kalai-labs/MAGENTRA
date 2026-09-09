@@ -1,0 +1,10 @@
+{
+  "id": "8a4d1747-859e-46c1-8098-a50cf5003c84",
+  "featureIds": [
+    "tool-write"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:23.520Z",
+  "updatedAt": "2026-09-09T18:43:08.756Z",
+  "body": "WHAT\nWrite creates a file or fully replaces one. If the file already exists it must have been Read this session and must not have changed on disk since (FileState mtime/size check); otherwise the call fails. Parent directories are created automatically. On success it records the new state, emits a file_edited event with a unified diff, and for an overwrite adds a note suggesting Edit for incremental changes.\n\nWHY\nWithout the freshness check a Write could silently destroy edits the model never saw; without directory creation new files in new folders would fail.\n\nWHERE\nengine/tools/src/write.ts — writeTool (permissionClass 'mutate', isFileEdit:true), execute(): isAbsolute check, existsSync -> ctx.session.fileState.checkFresh(path), mkdirSync(dirname, { recursive:true }), writeFileSync, fileState.recordRead(), emit file_edited with unifiedDiff() (engine/tools/src/util/diff.ts). Freshness in engine/core/src/runtime/fileState.ts — FileState.checkFresh().\n\nTEST CHECKLIST\n1. In a temp dir, Write to <tmp>/a/b/c.txt where a/ does not exist; assert the file exists with the content, content says 'File written', and a file_edited event with a diff was emitted.\n2. Write an existing file that was never recordRead; assert isError:true with 'has not been read in this session' and the file content is unchanged.\n3. recordRead an existing file, modify it on disk (append bytes), then Write; assert isError with 'modified on disk since it was last read' and the disk content is the externally modified one.\n4. recordRead an existing file and Write new content; assert success, the content note contains 'existing file replaced entirely', the diff shows removed and added lines, and a second Write immediately after also succeeds.\n5. Write with a relative file_path returns isError 'must be absolute'; writing a brand-new file does not require a prior Read."
+}

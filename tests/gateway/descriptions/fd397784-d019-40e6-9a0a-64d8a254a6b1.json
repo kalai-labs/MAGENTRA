@@ -1,0 +1,10 @@
+{
+  "id": "fd397784-d019-40e6-9a0a-64d8a254a6b1",
+  "featureIds": [
+    "honest-gap-outranks-a-manufactured-green"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:16.473Z",
+  "updatedAt": "2026-09-09T18:43:17.967Z",
+  "body": "WHAT\nEvery finishing-rung text (the runtime-evidence reminder, its stand-in clause and the self-verify closing when code changed) states that saying 'I could not run this here, and here is what stays unverified' is a complete and correct ending. Where the behaviour cannot be executed, the text points the model at confirming the contract instead (print the signature, docstring, return type). None of the texts demands a passing check.\n\nWHY\nA rung that required green would push the model to mock the dependency it cannot run and watch the mock pass — creating exactly the false success the rung exists to catch.\n\nWHERE\nengine/core/src/runtime/finishing.ts — RUNTIME_EVIDENCE prompt (closing two paragraphs: 'STOP HERE AND SAY SO', 'confirm its CONTRACT'), DOUBLE_CLAUSE, SELF_VERIFY_CLOSING_CODE ('or you told the user plainly which parts you could not run'), runtimeEvidenceText(), selfVerifyText().\n\nTEST CHECKLIST\n1. runtimeEvidenceText(['a.py'], false) contains 'STOP HERE AND SAY SO', 'what stays unverified', 'complete and correct answer' and 'Nothing here asks you to end with a passing check'.\n2. runtimeEvidenceText output contains the contract-confirmation paragraph ('confirm its CONTRACT', 'signature or docstring').\n3. selfVerifyText(['a.py']) contains 'you told the user plainly which parts you could not run and what stays unverified' and 'Either of those is done'.\n4. Neither runtimeEvidenceText nor selfVerifyText output contains phrases that demand success such as 'must pass' or 'until the tests pass'.\n5. In a FakeProvider session where the evidence rung fires and the model replies with text stating it could not run the change, the turn ends with stopReason end_turn and no second evidence reminder is pushed (the rung reminds once and never blocks)."
+}

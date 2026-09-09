@@ -1,0 +1,10 @@
+{
+  "id": "210bcc51-cc55-4721-9b13-8d76457cb316",
+  "featureIds": [
+    "on-invoke-load"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:18.252Z",
+  "updatedAt": "2026-09-09T18:42:59.670Z",
+  "body": "WHAT\nThe `Addon` tool is how the model loads an addon by name. It returns the invocation header plus the addon body, replacing every `$ARGUMENTS` with the given args, or appending an `ARGUMENTS: …` line when the body has no placeholder and args were given; a directory addon's bundled files are listed as paths. For a name not in the roster it returns an error that lists the real installed names.\n\nWHY\nOnly names and descriptions are in the system prompt, so this is the single moment the body is paid for; listing the real roster on a miss lets the model recover instead of inventing names.\n\nWHERE\nengine/tools/src/addon.ts — addonTool.execute() (lookup in ctx.session.addons, `$ARGUMENTS` replaceAll, argsLine, resourceLines, isError branch 'Unknown addon … Available addons: …'). engine/core/src/agent/addons.ts — addonInvocationHeader(), ADDON_INVOKE_HEADER, Addon interface.\n\nTEST CHECKLIST\n1. execute({addon:'foo', args:'X'}) for a body 'Do $ARGUMENTS then $ARGUMENTS' returns content containing 'Do X then X' and no literal '$ARGUMENTS'.\n2. execute({addon:'foo', args:'X'}) for a body without a placeholder returns content ending the body with '\\nARGUMENTS: X'; with args omitted no ARGUMENTS line is present.\n3. execute({addon:'missing'}) with roster [foo, bar] returns isError:true and content 'Unknown addon \"missing\". Available addons: foo, bar.'; with an empty roster the list reads '(none installed)'.\n4. The returned content starts with '<system-reminder>' containing 'The \"foo\" addon was invoked' followed by '<command-name>/foo</command-name>'.\n5. For an addon with resources ['x/notes.md'], the content contains a system-reminder listing '- x/notes.md'; for resources [] no 'Files bundled' block appears."
+}

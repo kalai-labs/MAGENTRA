@@ -1,0 +1,10 @@
+{
+  "id": "cdf4c7d9-cfd5-47cf-93ce-427f13841948",
+  "featureIds": [
+    "name-invocation"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:17.977Z",
+  "updatedAt": "2026-09-09T18:43:14.922Z",
+  "body": "WHAT\nTyping `/<addon-name> [args]` in the composer runs a turn whose first user message is the addon invocation header plus the addon body (with `$ARGUMENTS` substituted, or an `ARGUMENTS:` line appended). The slash dispatcher only treats a name as an addon when an installed addon owns it; otherwise it prints `Unknown command: /<name>. Try /help.`\n\nWHY\nIt gives users the same on-demand procedure the model can reach through the Addon tool, and keeps typos from silently running something or being swallowed.\n\nWHERE\nengine/core/src/runtime/engine.ts — Engine.handleSlash() default branch, Engine.handleAddonCommand(name, args) (returns false when no addon owns the name; otherwise emits command_output '🧩 <name> loaded…' and startExclusive → session.runTurn(addonInvocationHeader(name) + body)). Header from engine/core/src/agent/addons.ts — addonInvocationHeader().\n\nTEST CHECKLIST\n1. slash_command {command:'/foo', args:'do x'} with addon foo whose body contains '$ARGUMENTS' starts a turn where the FakeProvider's first request user message contains '<command-name>/foo</command-name>' and the body with 'do x' substituted.\n2. For an addon body without '$ARGUMENTS', args 'do x' produce a trailing line 'ARGUMENTS: do x'; empty args append nothing.\n3. slash_command '/nope' with no such addon emits command_output 'Unknown command: /nope. Try /help.' and the FakeProvider receives no request.\n4. The command is matched case-insensitively ('/FOO' resolves the addon named 'foo').\n5. While a turn is already running, `/foo` is refused with the busy notice from startExclusive and no second turn starts."
+}

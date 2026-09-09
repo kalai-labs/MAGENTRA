@@ -1,0 +1,10 @@
+{
+  "id": "0dee3301-5f51-45c4-942d-70158fe6bfee",
+  "featureIds": [
+    "prompt-contract"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:18.999Z",
+  "updatedAt": "2026-09-09T18:42:58.403Z",
+  "body": "WHAT\nWhile OVERDRIVE is on, the system prompt carries an extra section titled `# OVERDRIVE — fully-autonomous mode` that tells the model the user is not watching, that nothing asks (deletions, .magentra and .env edits, writes outside the workspace all run), and that only a user-written deny rule can stop a call. The section is added when OVERDRIVE is switched on and removed when it is switched off, so it is present exactly while ON.\n\nWHY\nThe permission engine stops asking in OVERDRIVE; if the prompt still told the model to expect confirmations it would pause to ask questions nobody will answer, or act carelessly without knowing no net exists.\n\nWHERE\nengine/core/src/agent/prompts.ts — SECTION_HARNESS (the standing line 'if an OVERDRIVE section appears, not even on those'), buildSystemPrompt() `extraSections`. The section itself: engine/core/src/runtime/session.ts — OVERDRIVE_PROMPT_SECTION (id system.overdrive), Session.setOverdrive() → setPromptSection('overdrive', …), Session.buildSystemPrompt() spreading dynamicSections.\n\nTEST CHECKLIST\n1. With OVERDRIVE off, the FakeProvider request's system prompt does not contain '# OVERDRIVE — fully-autonomous mode' but does contain the SECTION_HARNESS sentence about 'if an OVERDRIVE section appears'.\n2. After setOverdrive(true), the next request's system prompt contains '# OVERDRIVE — fully-autonomous mode' and 'NOTHING asks' exactly once.\n3. After setOverdrive(false) again, the following request's system prompt no longer contains the OVERDRIVE section.\n4. setOverdrive(true) emits overdrive_changed {enabled:true} and calling it twice with the same value emits nothing the second time.\n5. buildSystemPrompt({env, extraSections:['X']}) places 'X' after the environment block, matching where the OVERDRIVE section lands."
+}

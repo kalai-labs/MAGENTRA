@@ -1,0 +1,10 @@
+{
+  "id": "79e5f579-b5ac-428d-9948-360e1d5e6156",
+  "featureIds": [
+    "the-magentron-built-in"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:21.423Z",
+  "updatedAt": "2026-09-09T18:43:07.102Z",
+  "body": "WHAT\n`magentron` is an addon compiled into the engine as a string constant, so it is present in every install no matter how the app is packaged (no directory on disk is needed). Its description says what it is for (map before you write, reuse, delete superseded code) and states plainly that it COSTS EXTRA TOKENS because it front-loads a reconnaissance pass.\n\nWHY\nA file-based default could be lost by packaging or a missing state directory; and a user choosing an addon needs to know its token cost before invoking it.\n\nWHERE\nengine/core/src/agent/builtinAddons.ts — MAGENTRON constant (frontmatter name/description + body), BUILTIN_ADDONS export. Loaded as the first tier by engine/core/src/agent/addons.ts — loadAddons() (source 'builtin', resources [], no path).\n\nTEST CHECKLIST\n1. BUILTIN_ADDONS contains exactly one entry named 'magentron' and parseFrontmatter(entry.text).map.name === 'magentron'.\n2. loadAddons(cwd) in an empty temp cwd with an empty HOME returns an addon named 'magentron' with source 'builtin', resources [] and path undefined.\n3. That addon's description contains the substring 'COSTS EXTRA TOKENS'.\n4. Its body is non-empty and contains the three phase headings ('Phase 1', 'Phase 2', 'Phase 3').\n5. A workspace .magentra/addons/magentron.md overrides it (source becomes 'workspace') and removing that file restores the built-in on the next loadAddons."
+}

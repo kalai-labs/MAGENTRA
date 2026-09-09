@@ -1,0 +1,10 @@
+{
+  "id": "bb708cb9-3fb9-47d4-92e9-5210ae5b73e5",
+  "featureIds": [
+    "addons-listing"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:13.804Z",
+  "updatedAt": "2026-09-09T18:43:12.615Z",
+  "body": "WHAT\nAn addon is a Markdown procedure the agent can load on demand. Typing `/addons` prints every installed addon as a `/<name>` line with its description, then a second line naming the file it was loaded from (workspace-relative path, or the word `built-in`) and, when it is a directory addon, how many sibling files it bundles.\n\nWHY\nWithout the file path a user who wants to edit or remove an addon has to guess which tier (built-in, home, workspace) it came from; without the bundle count they cannot tell a flat addon from one that ships scripts and notes.\n\nWHERE\nengine/core/src/runtime/engine.ts — Engine.handleSlash() case \"addons\" calls Engine.renderAddons(); the origin line uses relative(cwd, addon.path) or \"built-in\" and addon.resources.length; Engine.extensionLines() appends the installed count. Data comes from engine/core/src/agent/addons.ts — Addon.path / Addon.resources filled by loadAddons().\n\nTEST CHECKLIST\n1. With no addons loaded, `/addons` emits one command_output whose text starts with \"No addons installed\" and names .magentra/addons/ and ADDON.md.\n2. With a workspace flat addon at .magentra/addons/foo.md, the output contains a line `/foo` followed by its description and a next line containing `(.magentra/addons/foo.md)` with no bundled-files suffix.\n3. With a directory addon bar/ADDON.md plus two sibling files, the origin line reads `(.magentra/addons/bar/ADDON.md, 2 bundled file(s))`.\n4. The built-in magentron addon is listed with origin `(built-in)` and never shows a bundled count.\n5. The final line reports `Addons installed: N` where N equals the number of loaded addons."
+}

@@ -1,0 +1,10 @@
+{
+  "id": "4edb51ee-8390-4feb-8cbd-0974b73af873",
+  "featureIds": [
+    "tool-tasklist"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:23.055Z",
+  "updatedAt": "2026-09-09T18:43:03.180Z",
+  "body": "WHAT\nTaskList prints every task on one line: '#id [status] (owner: x) subject (blocked by: ids)'. For pending tasks the status tag is computed: 'pending READY' when every task in blockedBy is completed, otherwise 'pending BLOCKED by #ids' naming only the blockers that are still open.\n\nWHY\nWithout the computed tag the agent would pick tasks in creation order and start work whose prerequisites are unfinished.\n\nWHERE\nengine/tools/src/tasks.ts — taskListTool (empty listSchema, permissionClass 'read'), execute(): byId map, openBlockers = blockedBy.filter(status !== 'completed'), READY/BLOCKED formatting. Data from engine/core/src/state/taskStore.ts — TaskStore.list().\n\nTEST CHECKLIST\n1. Empty store: TaskList content is 'The task list is empty.'.\n2. Create 1, 2, 3 with 3 blockedBy [1, 2]; assert the line for #3 contains 'pending BLOCKED by #1, #2' and #1 and #2 show 'pending READY'.\n3. Mark task 1 completed; assert #3 now shows 'BLOCKED by #2' only; mark 2 completed; assert #3 shows 'pending READY' even though it was created after them.\n4. Create task 2 that blocks task 1 (addBlocks ['1'] on 2); assert #1 (created first) is BLOCKED by #2 — declaration order does not decide readiness.\n5. Set owner 'bob' on a task; assert its line contains '(owner: bob)' and the trailing '(blocked by: ...)' list mirrors blockedBy ids."
+}

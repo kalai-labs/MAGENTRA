@@ -5,10 +5,12 @@
  * `tools/prompt-lab/server.mjs` so `tools/` has one local-server pattern rather
  * than two (decisions/0002).
  *
- * SCOPE. This is SPEC §11 steps 1, 3, 4 and 5. Routes belonging to steps 7–9
- * exist and answer 501 naming the step that will implement them, rather than
- * 404 — a route that silently does not exist is indistinguishable from one that
- * is broken. Nothing here touches git, and no route mutates on GET.
+ * SCOPE. This is SPEC §11 steps 1, 3, 4, 5, 7 and 9. The record-editing route
+ * answers 501 naming the reason, rather than 404 — a route that silently does
+ * not exist is indistinguishable from one that is broken. There is no run route
+ * and no brief route: running tests and handing work to an agent happen outside
+ * the gateway (decisions/0006). Nothing here touches git, and no route mutates
+ * on GET.
  */
 
 import { readFile } from "node:fs/promises";
@@ -18,7 +20,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { applyProfileToWorkspace, disconnectWorkspace, UnknownProfileError } from "./connection.js";
-import { buildBrief, renderBrief } from "./brief.js";
 import { clearDependencyCache, resolveDependencies } from "./deps.js";
 import { evaluateGate, type GateState } from "./gate.js";
 import { checkFeature, reRecord } from "./freshness.js";
@@ -27,7 +28,7 @@ import {
   featuresDir,
   loadDescriptions,
   loadFeatures,
-  markDescriptionDone,
+  setDescriptionStatus,
   repoRoot,
   writeDescription,
   writeFeature,
@@ -206,7 +207,7 @@ export function createGateway(options: GatewayOptions = {}): Gateway {
       return void json(res, 200, stateOf(root, features, gate()));
     }
 
-    const featureMatch = /^\/api\/features\/([^/]+)(\/brief|\/reconcile)?$/.exec(path);
+    const featureMatch = /^\/api\/features\/([^/]+)(\/reconcile)?$/.exec(path);
     if (featureMatch) {
       const id = decodeURIComponent(featureMatch[1] ?? "");
       const suffix = featureMatch[2];
@@ -223,16 +224,6 @@ export function createGateway(options: GatewayOptions = {}): Gateway {
           descriptions: loadDescriptions(root).filter((d) => d.featureIds.includes(id)),
           dependencies: await resolveDependencies(root, feature, features),
         });
-      }
-
-      if (suffix === "/brief" && method === "GET") {
-        const brief = await buildBrief(root, feature, features, loadDescriptions(root));
-        // ?format=md for the payload an agent is handed verbatim.
-        if (url.searchParams.get("format") === "md") {
-          res.writeHead(200, { "content-type": "text/markdown; charset=utf-8", "cache-control": "no-store" });
-          return void res.end(renderBrief(brief));
-        }
-        return void json(res, 200, { ...brief, markdown: renderBrief(brief) });
       }
 
       // §4.1 — re-record freshness. Approval-gated: the write happens only on
@@ -295,23 +286,6 @@ export function createGateway(options: GatewayOptions = {}): Gateway {
       return void json(res, 200, { connection, gate: g });
     }
 
-    // ---- run (the hard block) -------------------------------------------
-    if (path === "/api/run") {
-      if (method !== "POST") return void json(res, 405, { error: "POST only" });
-      const g = gate();
-      if (g.blocked) {
-        // §4.3 — BLOCKED is not a pass. It names what could not be verified,
-        // and no flag, header or body field gets past this.
-        return void json(res, 409, {
-          outcome: "BLOCKED",
-          blockedReasons: g.blockedReasons,
-          couldNotVerify: features.length,
-          stale: g.freshness.stale,
-        });
-      }
-      return void json(res, 501, { error: "the runner is SPEC §11 step 8 (runner.ts) — not implemented" });
-    }
-
     // ---- not this scope --------------------------------------------------
     if (path === "/api/features" && method === "POST") {
       return void json(res, 501, { error: "creating and editing records is not in SPEC §11 steps 1–5; the UI is read-only" });
@@ -347,7 +321,7 @@ export function createGateway(options: GatewayOptions = {}): Gateway {
       }
     }
 
-    const descMatch = /^\/api\/descriptions\/([^/]+)(\/done|\/reopen)?$/.exec(path);
+    const descMatch = /^\/api\/descriptions\/([^/]+)(\/ready|\/draft)?$/.exec(path);
     if (descMatch) {
       const id = decodeURIComponent(descMatch[1] ?? "");
       const suffix = descMatch[2];
@@ -363,7 +337,7 @@ export function createGateway(options: GatewayOptions = {}): Gateway {
         }
         // The user-only transition. Nothing that runs on its own reaches this,
         // and there is no route that sets `status` while saving a body.
-        const saved = markDescriptionDone(id, suffix === "/reopen" ? "pending" : "done", root);
+        const saved = setDescriptionStatus(id, suffix === "/draft" ? "draft" : "ready", root);
         broadcast({ type: "descriptions" });
         return void json(res, 200, { description: saved });
       } catch (err) {

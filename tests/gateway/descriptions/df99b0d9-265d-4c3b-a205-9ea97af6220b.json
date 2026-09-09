@@ -1,0 +1,10 @@
+{
+  "id": "df99b0d9-265d-4c3b-a205-9ea97af6220b",
+  "featureIds": [
+    "engine-host"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:16.028Z",
+  "updatedAt": "2026-09-09T18:43:15.932Z",
+  "body": "WHAT\nThe host is the small headless process the desktop app spawns to run the engine. It reads newline-delimited JSON (NDJSON) request frames from stdin, writes event frames to stdout one per line, and nothing else crosses the process boundary. When stdin closes or SIGTERM arrives it interrupts any running turn, stops background jobs, drains buffered events and exits with code 0. Fatal boot errors are written synchronously as an `error` frame before exiting.\n\nWHY\nWithout a clean stdio contract the app could not talk to the engine, an in-flight turn would keep burning tokens after the window closed, and a boot failure would only reach stderr where the app cannot show it.\n\nWHERE\nengine/host/src/main.ts — `main()`, `parseArgs()` (`--cwd`, `--serve`, unknown flag fails), `fail()` (uses `writeFrameSync`); engine/host/src/serve.ts — `runServe()` (event pump over `engine.events`, `shutdown()` calling `engine.stopBackgroundJobs()`, `engine.send({type:'interrupt'})`, `engine.idle()`, `engine.events.close()`), `isRequestLike()`; engine/host/src/stdout.ts — `writeFrame()`, `writeFrameSync()`; engine/protocol/src/ndjson.ts — `decodeFrames()`, `encodeFrame()`.\n\nTEST CHECKLIST\n1. Spawn the built host with --cwd on a workspace configured for a fake/local endpoint; every stdout line parses as JSON with a string `type`, and the first frame is `session_started`.\n2. Write a `{\"type\":\"list_sessions\"}\\n` line to stdin and assert a `session_list` frame appears on stdout.\n3. Write a non-request line such as `{\"foo\":1}\\n`; stdout carries an `error` frame with message 'invalid request frame' and fatal:false, and the process stays alive.\n4. Close stdin; the process exits with code 0 and no further stdout output follows the last drained event.\n5. Run with an unknown flag (`--bogus`) or with no API key on a hosted endpoint; the first stdout line is `{type:'error', fatal:true, ...}` and the exit code is 1."
+}

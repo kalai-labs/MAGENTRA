@@ -1,0 +1,10 @@
+{
+  "id": "ff8a1c02-66e9-4935-910d-9dda8009e8d9",
+  "featureIds": [
+    "single-consumer-events"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:20.684Z",
+  "updatedAt": "2026-09-09T18:43:18.216Z",
+  "body": "WHAT\n`Engine.events` is an `AsyncQueue`: a push/pull queue that hands each pushed event to whichever `for await` loop asked first. It is meant to have exactly one reader for the life of the engine. If two loops read it, each event goes to only one of them, so the other silently misses events. This is why the desktop app runs one engine process per workspace instead of sharing one.\n\nWHY\nA second consumer (or a reconnect that leaves the old loop alive) would steal events, producing a frontend that misses turns with no error anywhere.\n\nWHERE\nengine/core/src/util/asyncQueue.ts — `class AsyncQueue<T>` (`push()`, `close()`, `[Symbol.asyncIterator]()` with the shared `waiters` array); engine/core/src/runtime/engine.ts — `readonly events = new AsyncQueue<CoreEvent>()` with its SINGLE-CONSUMER doc comment, `emit()` (`this.events.push(event)`); the only consumer in production is engine/host/src/serve.ts `runServe()` pump loop.\n\nTEST CHECKLIST\n1. Push items 1,2,3 into an AsyncQueue with no waiter, then iterate once; the iterator yields 1,2,3 in order (FIFO buffering).\n2. Start two concurrent iterators on one queue, push 4 items; assert the union of what they received is all 4 items and neither received all of them (documents the steal, proving the single-consumer contract).\n3. Call close() while a reader is awaiting; the reader's next() resolves with done:true, and a push() after close() is dropped (a fresh iterator gets done:true immediately).\n4. Engine-level with a FakeProvider: one for-await consumer over engine.events receives session_started, turn_started and turn_finished for a turn in order with none missing.\n5. AsyncQueue does not buffer `undefined`: pushing undefined-like values is out of contract, so a CoreEvent is always an object (guards the `item !== undefined` check in next())."
+}

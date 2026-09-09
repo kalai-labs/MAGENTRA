@@ -1,0 +1,10 @@
+{
+  "id": "8c28a4ac-d451-4d79-8017-3e95f48be846",
+  "featureIds": [
+    "context-accounting"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:15.135Z",
+  "updatedAt": "2026-09-09T18:43:09.010Z",
+  "body": "WHAT\n`contextTokens` is the size of the model's input window right now: the input, cache-write and cache-read tokens of the most recent conversational request, added together. It is a snapshot, not a running total, and generated output tokens are not part of it. Only the root session updates it; a subagent's requests never overwrite it.\n\nWHY\nSumming usage over rounds or adding output tokens produces a 'context' number with no relation to how full the window is, which breaks compaction timing and misleads the meter; a subagent's tiny prompt would make the root window look almost empty.\n\nWHERE\nengine/protocol/src/tokens.ts — inputTokensOf(usage) (= inputTokens + cacheWriteTokens + cacheReadTokens). engine/core/src/runtime/sessionStats.ts — SessionStats.contextTokens, SessionStats.observeContext(usage) (adopts inputTokensOf, ignores a zero measurement), SessionStats.recordResponse(model, usage, apiMs, conversational). engine/core/src/runtime/session.ts — Session.streamAssistantTurn() calls stats.observeContext only when !this.opts.child (message_start) and recordResponse(…, !this.opts.child); Session.runInference/runSummarizer pass conversational=false.\n\nTEST CHECKLIST\n1. inputTokensOf({inputTokens:100, cacheWriteTokens:20, cacheReadTokens:300, outputTokens:999}) returns 420 — output is excluded.\n2. After recordResponse('m', usage1) then recordResponse('m', usage2), stats.contextTokens equals inputTokensOf(usage2), not the sum of the two.\n3. observeContext with an all-zero usage leaves the previous contextTokens value in place (zero means 'not measured').\n4. recordResponse(model, usage, ms, false) (an auxiliary prompt) updates byModel but does not change contextTokens.\n5. In a Session tree driven by a FakeProvider, a subagent's response with inputTokens 50 does not change the root session's stats.contextTokens, which stays at the root's last measured value."
+}

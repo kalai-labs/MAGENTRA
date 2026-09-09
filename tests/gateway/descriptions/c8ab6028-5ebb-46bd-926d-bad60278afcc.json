@@ -1,0 +1,10 @@
+{
+  "id": "c8ab6028-5ebb-46bd-926d-bad60278afcc",
+  "featureIds": [
+    "cron-expiry"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:15.408Z",
+  "updatedAt": "2026-09-09T18:43:14.122Z",
+  "body": "WHAT\nA recurring session-only job stops firing 7 days after it was created. The scheduler removes it on its first firing at or after that point, with no need for the user to delete it. Durable jobs (explicitly saved) never expire. The CronCreate tool tells the user about the 7-day rule when a recurring job is made.\n\nWHY\nAn unattended recurring job is a slow leak that would fire forever; the expiry bounds it.\n\nWHERE\nengine/core/src/scheduling/cron.ts — `const SEVEN_DAYS_MS`, `CronScheduler.tick()` (branch `if (!job.durable && now.getTime() >= job.createdAt + SEVEN_DAYS_MS) this.jobs.delete(job.id)`). The user-facing note is in engine/tools/src/cron.ts `cronCreateTool` (`const expiry = input.recurring ? ' Recurring jobs auto-expire 7 days after creation.' : ''`).\n\nTEST CHECKLIST\n1. With an injectable clock (`now`) and jitter:false, create a recurring '* * * * *' job at T0, advance to T0 + 7 days + 1 minute while idle, call tick(); assert enqueue was called once and list() no longer contains the job.\n2. Same job, tick at T0 + 6 days 23 hours while idle; assert enqueue fired and the job is still in list().\n3. A durable recurring job ticked at T0 + 8 days fires and remains in list() (durable jobs never expire).\n4. A non-recurring (one-shot) cron job is removed after its single fire regardless of age, so expiry never applies to it twice.\n5. cronCreateTool.execute with recurring:true returns content containing 'auto-expire 7 days'; with recurring:false the sentence is absent."
+}

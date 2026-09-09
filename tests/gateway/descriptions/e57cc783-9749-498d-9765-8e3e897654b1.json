@@ -1,0 +1,10 @@
+{
+  "id": "e57cc783-9749-498d-9765-8e3e897654b1",
+  "featureIds": [
+    "tool-registry-contract"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:22.793Z",
+  "updatedAt": "2026-09-09T18:43:16.309Z",
+  "body": "WHAT\ncreateDefaultRegistry() builds the tool set the agent sees: exactly 27 built-in tools (Read, Write, Edit, Glob, Grep, Bash, TaskCreate, TaskUpdate, TaskList, TaskGet, AskUserQuestion, Agent, TaskStop, TaskOutput, WebFetch, WebSearch, Monitor, EnterWorktree, ExitWorktree, PushNotification, CronCreate, CronDelete, CronList, ScheduleWakeup, Addon, Workflow, GraphQuery). Each must have a name, a description, a real zod inputSchema, a permissionClass from read|mutate|execute|network|interact and an execute function. Registering the same name twice throws.\n\nWHY\nWithout a complete contract a tool could be advertised to the model but crash or be unpermissioned when called; without running the read-only ones, 'registered' could be mistaken for 'working'.\n\nWHERE\nengine/tools/src/index.ts — createDefaultRegistry() and the 27-entry list. engine/core/src/agent/tool.ts — ToolDefinition interface, PermissionClass type, class ToolRegistry (register() throws 'duplicate tool', get(), list(), enabled(), subset()), registerToolPrompt(), isToolDisabled().\n\nTEST CHECKLIST\n1. createDefaultRegistry().list() has length 27 and the set of names equals the expected 27 names exactly.\n2. For every tool: typeof name === 'string' and non-empty, description non-empty, inputSchema has a safeParse function (zod), permissionClass is one of the five classes, typeof execute === 'function'.\n3. For each tool with descriptionVars, every {{slot}} in the description has a matching key in descriptionVars (no unfilled slot reaches the model).\n4. Calling registry.register(readTool) a second time throws an error containing 'duplicate tool'; subset(['Read','Nope']) returns a registry with only Read.\n5. Against a temp workspace with one file, actually execute the read-only tools Read, Glob, Grep, TaskList, CronList and GraphQuery with a fake SessionServices and assert each resolves with a string content and no thrown exception."
+}

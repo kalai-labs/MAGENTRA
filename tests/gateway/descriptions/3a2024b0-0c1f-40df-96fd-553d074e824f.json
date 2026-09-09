@@ -1,0 +1,10 @@
+{
+  "id": "3a2024b0-0c1f-40df-96fd-553d074e824f",
+  "featureIds": [
+    "precedence"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:18.870Z",
+  "updatedAt": "2026-09-09T18:43:01.500Z",
+  "body": "WHAT\nAddons are loaded in three tiers in this order: built-ins compiled into the app, then `~/.magentra/addons/`, then `<workspace>/.magentra/addons/`. Addons are keyed by name, so a later tier's addon with the same name replaces the earlier one; the result is sorted by name.\n\nWHY\nA project must be able to customize or override a shipped procedure by name without changing the app, and a user's home addons must apply to every workspace.\n\nWHERE\nengine/core/src/agent/addons.ts — loadAddons(cwd) (Map byName; BUILTIN_ADDONS first, then `tiers` [{global: join(homedir(), '.magentra', ADDONS_DIR)}, {workspace: join(cwd, '.magentra', ADDONS_DIR)}]; byName.set replaces). engine/core/src/agent/builtinAddons.ts — BUILTIN_ADDONS array.\n\nTEST CHECKLIST\n1. With a workspace file .magentra/addons/magentron.md whose body is 'custom', loadAddons(cwd) returns exactly one addon named 'magentron' with body 'custom', source 'workspace' and a defined path.\n2. With ~/.magentra/addons/foo.md (HOME/USERPROFILE pointed at a temp dir) and no workspace foo, the loaded foo has source 'global'.\n3. With foo in both home and workspace, the returned foo has source 'workspace' and the workspace body.\n4. Two different files whose frontmatter `name:` is the same value collapse to one addon (the later tier wins), so the count equals the number of distinct names.\n5. The returned list is sorted by name (localeCompare) regardless of the order files were read."
+}

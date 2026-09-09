@@ -1,0 +1,10 @@
+{
+  "id": "b3834a72-ed2e-4b4f-a5c2-42ba76d7a16d",
+  "featureIds": [
+    "no-node-modules-at-runtime"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:18.110Z",
+  "updatedAt": "2026-09-09T18:43:12.139Z",
+  "body": "WHAT\nThe packaging step bundles the engine host (engine/host/dist/main.js) and all its dependencies into one minified CommonJS file, build-resources/engine/engine.cjs, with esbuild. The packaged app spawns it with Electron's own Node (ELECTRON_RUN_AS_NODE=1). No node_modules directory is shipped.\n\nWHY\nShipping node_modules makes the package huge and fragile; a single file has nothing to resolve at runtime.\n\nWHERE\napp/scripts/bundle-engine.js — ENTRY, OUT_FILE (engine.cjs), the esbuild.build({ bundle: true, platform: \"node\", format: \"cjs\", minify: true, alias: { \"@vscode/ripgrep\": RIPGREP_SHIM } }) call, plus DOC_EXTRACT_OUT (doc-extract.mjs) and TUI_OUT (tui.mjs); the 'Engine not built' guard. app/package.json — build.files lists only package.json and build-resources/app; extraResources copies engine.cjs, doc-extract.mjs, tui.mjs and rg. app/main.js — engineEntryPoint() uses process.resourcesPath/engine/engine.cjs with ELECTRON_RUN_AS_NODE when app.isPackaged.\n\nTEST CHECKLIST\n1. After bundle-engine.js runs, build-resources/engine/engine.cjs exists, is a single file, and contains no `require(\"@magentra/` or `require(\"zod\")`-style unresolved bare specifiers except Node built-ins.\n2. Running `node build-resources/engine/engine.cjs --help` (or --serve with a bad cwd) from a directory with no node_modules starts without 'Cannot find module'.\n3. bundle-engine.js exits nonzero with 'Engine not built' when engine/host/dist/main.js is missing.\n4. package.json build.files does not include node_modules and extraResources filter is exactly engine.cjs, doc-extract.mjs, tui.mjs and rg/rg.exe.\n5. In a packaged run engineEntryPoint() returns command process.execPath, args [<resources>/engine/engine.cjs], env { ELECTRON_RUN_AS_NODE: '1' }."
+}

@@ -1,0 +1,10 @@
+{
+  "id": "b1e48bed-1a8f-4381-b2c1-b79f8b15fac5",
+  "featureIds": [
+    "slash-command-input-guard"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:20.750Z",
+  "updatedAt": "2026-09-09T18:43:11.735Z",
+  "body": "WHAT\nThe `slash_command` request frame must carry a string `command` and, optionally, a single string `args`. The engine checks these types before dispatching. A malformed frame (for example `args` sent as an array) produces one readable non-fatal `error` event that names the received types and says to join arguments into one space-separated string, instead of a raw `TypeError` from inside a handler.\n\nWHY\nA buggy frontend sending CLI-style array args used to surface as 'args?.trim is not a function' deep in whichever handler ran first, which tells the user nothing about the fix.\n\nWHERE\nengine/core/src/runtime/engine.ts — Engine.handleRequest() case \"slash_command\" (the typeof checks and the error emit) before Engine.handleSlash(command, args).\n\nTEST CHECKLIST\n1. Sending {type:'slash_command', command:'/help', args:['a','b']} emits {type:'error', fatal:false} whose message contains 'requires a string command' and 'args: array', and no command_output follows.\n2. Sending {type:'slash_command', command: 42} emits the same shaped error with 'command: number' and does not throw or crash the engine loop.\n3. Sending {type:'slash_command', command:'/help'} with args undefined dispatches normally and emits the help command_output.\n4. Sending {type:'slash_command', command:'/settings', args:'model x'} dispatches to handleSettings with the string intact.\n5. After a malformed frame is rejected, the engine still processes the next well-formed frame (the guard is per-frame, not a fatal state)."
+}

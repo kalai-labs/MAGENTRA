@@ -17,16 +17,13 @@
   </div>
   <span class="count" id="count">loading…</span>
   <span class="spacer"></span>
-  <span id="run-why"></span>
-  <!--
-    Disabled in the markup, and only ever enabled by the gate state arriving
-    over SSE. You cannot reach a green result by not looking at the red one.
-  -->
-  <button id="run" disabled>RUN</button>
 </header>
 
 <main>
   <nav>
+    <!-- The tracking view: ready / draft / missing, each a click away. -->
+    <h2>TEST DESCRIPTIONS</h2>
+    <div id="descs"></div>
     <h2>AREAS</h2>
     <div id="areas"></div>
     <h2>FILTERS</h2>

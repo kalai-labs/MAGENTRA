@@ -1,0 +1,10 @@
+{
+  "id": "b1ceb1e8-01db-4ced-962e-ab4f79c429a4",
+  "featureIds": [
+    "tool-croncreate"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:22.001Z",
+  "updatedAt": "2026-09-09T18:43:11.602Z",
+  "body": "WHAT\nCronCreate registers a job with the session's CronScheduler: a 5-field cron expression, a prompt to inject as a user message, whether it repeats (default yes) and whether it is saved to disk (default no). Jobs fire only when the minute matches and the REPL is idle. The result reports the id, the mode and the next fire time; a bad expression returns 'Invalid cron expression'.\n\nWHY\nWithout it the agent has no way to set up reminders or recurring checks, and without validation a typo'd expression would be stored and silently never fire.\n\nWHERE\nengine/tools/src/cron.ts — cronCreateTool (createSchema with recurring default true, durable default false; execute() calls cron.create() inside try/catch and maps the throw to isError). Real logic in engine/core/src/scheduling/cron.ts — CronScheduler.create() (parseCron() throws on invalid, genId(), nextCronMatch(), persist() when durable), parseCron()/parseField(), tick() (isIdle gate).\n\nTEST CHECKLIST\n1. With a CronScheduler built with an injectable now() and a temp stateDir, execute CronCreate { cron: '*/5 * * * *', prompt: 'check' }; assert the content contains 'Scheduled job', 'recurring', a 'Next fire:' ISO timestamp, and cron.list() has one entry with cron '*/5 * * * *', recurring true, durable false.\n2. Execute with { recurring: false, durable: true }; assert the content says 'one-shot, durable', list() shows durable true, and the persisted file under stateDir now contains the job.\n3. Execute with cron 'not a cron' and with '60 * * * *' (minute out of range); assert isError:true and content starts with 'Invalid cron expression:' and list() stays empty.\n4. Execute against a session with cron undefined; assert isError:true and the NO_CRON message.\n5. Set now() to a matching minute with isIdle returning false, call tick(); assert enqueue was not called; set isIdle true and tick(); assert enqueue was called once with the prompt."
+}

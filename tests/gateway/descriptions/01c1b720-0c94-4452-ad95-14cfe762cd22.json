@@ -1,0 +1,10 @@
+{
+  "id": "01c1b720-0c94-4452-ad95-14cfe762cd22",
+  "featureIds": [
+    "file-freshness"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:16.273Z",
+  "updatedAt": "2026-09-09T18:42:57.396Z",
+  "body": "WHAT\nThe engine remembers the size and modification time of every file the model has Read this session. Edit, and Write on an existing file, first check that record: if the file was never read, or its size or mtime on disk changed since the read, the tool returns an error telling the model to Read it again instead of writing.\n\nWHY\nWithout it the model overwrites changes made by the user or another process since it last looked, silently destroying work.\n\nWHERE\nengine/core/src/runtime/fileState.ts — class FileState (recordRead(), wasRead(), checkFresh()). Callers: engine/tools/src/edit.ts (ctx.session.fileState.checkFresh before editing, recordRead after), engine/tools/src/write.ts (checkFresh only when the file already exists, recordRead after), engine/tools/src/read.ts (recordRead after a successful read). Session exposes it as Session.fileState and services.fileState.\n\nTEST CHECKLIST\n1. checkFresh(path) on a path never passed to recordRead returns a string containing 'has not been read in this session'.\n2. After recordRead(path), checkFresh(path) returns undefined; after appending a byte to the file (size changes) checkFresh returns a string containing 'modified on disk since it was last read'.\n3. After recordRead(path), changing only the mtime (utimes) with the same size also makes checkFresh return the 'modified on disk' message.\n4. After recordRead(path) and then deleting the file, checkFresh(path) returns undefined (Write may recreate it).\n5. Through the tools: Edit on a file that was not Read returns isError:true with the not-read message and leaves the file unchanged; Write on a non-existent path succeeds without any prior Read."
+}

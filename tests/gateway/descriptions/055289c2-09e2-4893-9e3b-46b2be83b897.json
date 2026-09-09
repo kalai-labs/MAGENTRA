@@ -1,0 +1,10 @@
+{
+  "id": "055289c2-09e2-4893-9e3b-46b2be83b897",
+  "featureIds": [
+    "mirror-theme-names"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:17.770Z",
+  "updatedAt": "2026-09-09T18:42:57.649Z",
+  "body": "WHAT\nThe app has three UI themes (light, workbench, matrix). The renderer (the browser window code) owns the choice, but the main process needs the same list one launch early to paint the window background before the renderer runs. The list is therefore written in both places and must have the same names in the same order, with the first entry being the default.\n\nWHY\nAn index-based mismatch applies the wrong theme, or main paints a dark frame ahead of a light UI.\n\nWHERE\napp/main/config.js — `const THEMES`, `const DEFAULT_THEME = THEMES[0]`, used by `readConfig()`; app/renderer/modules/state.js — `const THEMES` (line ~99), `DEFAULT_UI_SETTINGS.theme`, `THEME_TITLEBAR`, and the sanitizer around line 158 that resets an unknown theme.\n\nTEST CHECKLIST\n1. Load both files (stub `electron` and any DOM globals) and deep-equal main THEMES with renderer THEMES.\n2. Assert main DEFAULT_THEME equals renderer DEFAULT_UI_SETTINGS.theme.\n3. Assert every renderer THEMES entry has a key in THEME_TITLEBAR, so no theme lacks its titlebar colours.\n4. readConfig() with a config.json theme not in THEMES returns DEFAULT_THEME, and the renderer sanitizer resets the same invalid value to its default."
+}

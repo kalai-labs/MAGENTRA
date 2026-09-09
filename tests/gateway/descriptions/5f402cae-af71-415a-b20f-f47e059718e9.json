@@ -1,0 +1,10 @@
+{
+  "id": "5f402cae-af71-415a-b20f-f47e059718e9",
+  "featureIds": [
+    "mirror-vision-key-env"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:17.913Z",
+  "updatedAt": "2026-09-09T18:43:04.829Z",
+  "body": "WHAT\nThe vision model's API key is stored in a workspace `.env` under one environment variable name. The app writes it; the engine reads it. Both sides hard-code the name `MAGENTRA_VISION_API_KEY`, separate from the main connection's key variable.\n\nWHY\nA mismatch means the app writes a key the engine never reads, so image description fails with an auth error while the key sits unused in .env.\n\nWHERE\nengine/core/src/config/settings.ts — `export const VISION_API_KEY_ENV`, consumed by `resolveVisionApiKey()`; app/main/config.js — `const VISION_API_KEY_ENV` (exported).\n\nTEST CHECKLIST\n1. Import both constants and assert strict equality ('MAGENTRA_VISION_API_KEY').\n2. Assert the vision variable differs from DEFAULT_API_KEY_ENV / MAGENTRA_API_KEY on both sides, so one name never serves two keys.\n3. Set process.env[VISION_API_KEY_ENV]='vk' and call resolveVisionApiKey({visionConnection:{apiKey:'stored'}}); the result is 'vk' (env wins), and with the variable unset it is 'stored'.\n4. With the variable set to whitespace and no stored key, resolveVisionApiKey returns undefined (blank is not a key)."
+}

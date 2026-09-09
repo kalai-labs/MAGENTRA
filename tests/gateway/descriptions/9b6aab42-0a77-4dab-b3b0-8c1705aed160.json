@@ -1,0 +1,10 @@
+{
+  "id": "9b6aab42-0a77-4dab-b3b0-8c1705aed160",
+  "featureIds": [
+    "bundled-files"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:14.384Z",
+  "updatedAt": "2026-09-09T18:43:10.177Z",
+  "body": "WHAT\nA directory addon (`.magentra/addons/<name>/ADDON.md`) may ship sibling files such as reference notes and scripts. The loader records these siblings as workspace-relative paths in `Addon.resources`; the Addon tool then lists those paths under the body so the model can Read or run only the ones it needs. File contents are never copied into the addon text.\n\nWHY\nInlining every sibling would make one invocation cost the tokens of the whole directory, and would make scripts unrunnable text instead of files to execute.\n\nWHERE\nengine/core/src/agent/addons.ts — listResources(dir, cwd) (walks one level of subfolders, skips ADDON.md, caps at MAX_RESOURCES = 24, stores relative(cwd, full)), readAddon() sets resources only when candidate.dir is set, Addon.resources field. Rendered by engine/tools/src/addon.ts — addonTool.execute() `resourceLines` system-reminder block.\n\nTEST CHECKLIST\n1. loadAddons(cwd) for a directory addon with notes/a.md and scripts/run.sh returns resources equal to the two workspace-relative paths and does not include ADDON.md itself.\n2. The Addon tool result for that addon contains each resource path as a `- <path>` line inside a system-reminder and does NOT contain the text of notes/a.md.\n3. A flat addon <name>.md and the built-in magentron both load with resources equal to [].\n4. A directory addon with more than 24 sibling files yields exactly 24 resources (MAX_RESOURCES cap).\n5. Files nested two levels deep (dir/sub/deeper/file) are not listed; one level (dir/sub/file) is."
+}

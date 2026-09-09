@@ -82,27 +82,6 @@ h1 {
 
 .count { font-size: 11px; color: var(--muted); }
 
-/* RUN is DISABLED, not merely warned (§9). */
-#run {
-  font: inherit;
-  padding: 6px 22px;
-  letter-spacing: 0.12em;
-  color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  cursor: pointer;
-}
-
-#run:disabled {
-  cursor: not-allowed;
-  color: #565c66;
-  border-color: #222630;
-  background: #10131a;
-}
-
-#run-why { font-size: 11px; color: var(--bad); }
-
 /* ---- three columns --------------------------------------------------- */
 
 /*
@@ -212,6 +191,13 @@ select {
 .tag.partial { color: var(--warn); border-color: var(--warn); }
 .tag.covered, .tag.fresh { color: var(--good); border-color: var(--good); background: var(--good-dim); }
 .tag.deferred { color: var(--accent); border-color: #2c3a55; }
+/* description state: ready is green, draft is the accent, missing is the same red as untested. */
+.tag.ready { color: var(--good); border-color: var(--good); background: var(--good-dim); }
+.tag.draft { color: #cddcff; border-color: var(--accent); background: #1a2440; }
+.tag.nodesc { color: var(--bad); border-color: var(--bad); background: var(--bad-dim); }
+.row.ready .n { color: var(--good); }
+.row.draft .n { color: var(--accent); }
+.row.nodesc .n { color: var(--bad); }
 
 /* ---- detail ---------------------------------------------------------- */
 
@@ -411,14 +397,64 @@ kbd {
   background: var(--panel);
 }
 
-.desc.done { border-left-color: var(--good); opacity: 0.72; }
+.desc.draft { border-left-color: var(--accent); }
+.desc.ready { border-left-color: var(--good); opacity: 0.8; }
+.desc.editing { border-left-color: var(--warn); }
 .desc-meta { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--muted); letter-spacing: 0.06em; }
 .desc-meta .spacer { flex: 1; }
+.desc-status { font-weight: 700; letter-spacing: 0.12em; }
+.desc-status.draft { color: #cddcff; }
+.desc-status.ready { color: var(--good); }
 .desc-body { white-space: pre-wrap; margin-top: 5px; color: #c8cedb; }
+.desc > .hint { margin-top: 8px; }
+
+/* the section the detail opens on */
+#detail section.sec-desc > h2 { color: #cddcff; border-bottom-color: var(--accent); }
+#detail section.sec-ready > h2 { color: var(--good); border-bottom-color: var(--good); }
+
+/* ready, folded */
+details.desc > summary { cursor: pointer; list-style: none; }
+details.desc > summary::-webkit-details-marker { display: none; }
+details.desc > summary .desc-meta::before { content: "▸"; color: var(--muted); margin-right: 2px; }
+details.desc[open] > summary .desc-meta::before { content: "▾"; }
+
+/* structured body: label column, text column */
+.d-body { margin-top: 8px; font-size: 13px; }
+.d-sec {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 4px 14px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.d-sec:first-child { border-top: 0; padding-top: 2px; }
+.d-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-top: 4px;
+}
+.d-text { color: #d8dce3; line-height: 1.65; min-width: 0; overflow-wrap: anywhere; }
+.d-text p { margin: 0 0 6px; }
+.d-text p:last-child { margin-bottom: 0; }
+.d-text ol { margin: 0; padding-left: 22px; }
+.d-text li { margin: 0 0 7px; padding-left: 2px; }
+.d-text li::marker { color: var(--accent); font-weight: 600; }
+.d-text code {
+  font: inherit;
+  font-size: 12px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: #e6e9ef;
+}
+.d-text code.path { color: #8fb3ff; border-color: #2c3a55; }
 
 textarea {
   width: 100%;
-  min-height: 130px;
+  min-height: 260px;
   font: inherit;
   resize: vertical;
   padding: 8px;
@@ -454,6 +490,7 @@ button.act:disabled { opacity: 0.45; cursor: not-allowed; }
 
 @media (max-width: 1240px) {
   main { grid-template-columns: 170px minmax(0, 1fr) 300px; }
+  .d-sec { grid-template-columns: 1fr; gap: 2px; }
   body.detail-open #list { display: none; }
   body:not(.detail-open) #detail { display: none; }
   body.detail-open #back { display: block; }

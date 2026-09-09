@@ -1,0 +1,10 @@
+{
+  "id": "3aa4e68b-08bc-4c66-bd1b-ee16251c5d82",
+  "featureIds": [
+    "wire-round-trip"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:24.667Z",
+  "updatedAt": "2026-09-09T18:43:01.626Z",
+  "body": "WHAT\nThe protocol package defines the two message families that cross the process boundary: `CoreEvent` (engine to frontend) and `FrontendRequest` (frontend to engine). `encodeFrame` turns a frame into one JSON line and `decodeFrames` turns lines back into objects, so any frame written on one side is read back identical on the other. A bad line becomes an error frame instead of an exception.\n\nWHY\nIf a frame did not survive encoding, the app and engine would silently disagree about what was said, and a malformed line would tear down the session.\n\nWHERE\nengine/protocol/src/ndjson.ts — `encodeFrame()`, `decodeFrames()`, `parseLine()`; engine/protocol/src/types.ts — `type CoreEvent`, `type FrontendRequest`, `type Frame`, `PROTOCOL_VERSION`, supporting types `Usage`, `SessionSummary`, `RestoredMessage`, `ConnectionSpec`, `ImageAttachment`, `TaskItem`.\n\nTEST CHECKLIST\n1. For a representative sample of every CoreEvent variant (session_started with commands/rateCard, turn_finished with usage, session_restored with toolCalls, permission_request, error, ...) decodeFrames(encodeFrame(ev)) yields a deep-equal object.\n2. For every FrontendRequest variant (user_message with images, permission_response, set_connection with a nested vision block, question_response, install_addon, ...) the round trip is deep-equal.\n3. Frames containing newlines, unicode (emoji, Turkish characters) and backslashes inside strings encode to exactly one line and decode back unchanged.\n4. Concatenating the encoded output of N frames and decoding yields N frames in the same order.\n5. Inserting a garbage line between two valid encoded frames yields [frame1, {type:'error', fatal:false,...}, frame2] with both good frames intact."
+}

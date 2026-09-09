@@ -1,0 +1,10 @@
+{
+  "id": "26d12f12-623a-41dc-a22d-b2ecb7eed3d4",
+  "featureIds": [
+    "tool-glob"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:22.401Z",
+  "updatedAt": "2026-09-09T18:43:00.347Z",
+  "body": "WHAT\nGlob lists files whose path matches a pattern like 'src/**/*.ts', using fast-glob. It never reads file contents. node_modules and .git are always skipped, and MAGENTRA's own .magentra state directory is skipped too unless the pattern or the search path names it as a path segment. Results are sorted newest-modified first, capped at 1000 with a truncation note; no match is a normal 'No files match' result.\n\nWHY\nWithout the .magentra exclusion, a dot:true search would dump session transcripts and worktree checkouts into the context; without the cap, a broad pattern could blow the context.\n\nWHERE\nengine/tools/src/glob.ts — globTool (permissionClass 'read', searchTerms), STATE_DIR_SEGMENT regex, targetsStateDir(), execute(): fg(pattern, { cwd, absolute, onlyFiles, dot, ignore: ['**/node_modules/**','**/.git/**', conditional '**/.magentra/**'] }), statSync mtime sort descending, slice(0, 1000) with '[truncated — N more matches' suffix.\n\nTEST CHECKLIST\n1. In a temp dir with a.txt, .magentra/s.json, node_modules/n.txt, .git/g.txt, docs/magentra-notes.md and .magentra-backup/b.txt, run Glob { pattern: '**/*', dot: true }; assert a.txt, docs/magentra-notes.md and .magentra-backup/b.txt are listed and .magentra/s.json, node_modules/n.txt, .git/g.txt are not.\n2. Run Glob { pattern: '.magentra/**/*.json' } and separately Glob { pattern: '**/*', path: '<tmp>/.magentra', dot: true }; assert .magentra/s.json is listed in both (naming the segment opts in).\n3. Create three files with distinct mtimes (touch with utimes); assert the output order is newest first.\n4. Run a pattern that matches nothing; assert content 'No files match the pattern.' and isError undefined.\n5. Create 1005 files; assert exactly 1000 paths are returned followed by a line containing 'truncated — 5 more matches'."
+}

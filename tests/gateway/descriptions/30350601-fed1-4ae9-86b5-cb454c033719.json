@@ -1,0 +1,10 @@
+{
+  "id": "30350601-fed1-4ae9-86b5-cb454c033719",
+  "featureIds": [
+    "subagent-types"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:21.215Z",
+  "updatedAt": "2026-09-09T18:43:00.974Z",
+  "body": "WHAT\nSubagent types (general-purpose, explore, plan) are declared in one registry, each with a tool allow-list (or '*' for all tools except Agent) and a role text prepended to the child's system prompt. Role and picker blurb are registered prompts, so they can be edited or disabled. The Agent tool builds its type list at render time from the types whose blurb is not disabled, so emptying a blurb removes that type from what the model can pick.\n\nWHY\nA frozen list would advertise a type with no description, or keep offering a type the operator switched off.\n\nWHERE\nengine/core/src/agent/agents.ts — AGENT_TYPES, AgentTypeDef, READONLY_TOOLS, SUBAGENT_RESULT_ID, the registration loop turning def.role/def.description into prompt ids, agentRoleText(), agentDescriptionText(), resolveAgentType(), agentToolNames(). engine/tools/src/agent.ts — offeredAgentTypes() (filters by !isPromptDisabled(t.description)), agentTypeList(), agentTool.descriptionVars getter `agentTypes`.\n\nTEST CHECKLIST\n1. agentToolNames(AGENT_TYPES['general-purpose'], ['Read','Agent','Bash']) returns ['Read','Bash']; agentToolNames(AGENT_TYPES.explore, all) returns exactly READONLY_TOOLS regardless of `all`.\n2. resolveAgentType('plan') returns the plan definition and resolveAgentType('nope') returns undefined; agentRoleText(def) returns the registered role text for each of the three types.\n3. Rendering agentTool's description (descriptionVars.agentTypes) lists '- general-purpose:', '- explore:' and '- plan:' with their blurbs.\n4. After disabling the prompt 'subagent.description.explore' in the registry (empty text), re-reading descriptionVars.agentTypes omits the explore line without re-importing the module, and re-enabling it brings the line back (the list is read live).\n5. A disabled blurb never leaves a dangling '- explore:' line with empty text in the rendered description."
+}

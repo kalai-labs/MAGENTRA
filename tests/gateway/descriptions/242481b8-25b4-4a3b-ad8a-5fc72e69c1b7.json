@@ -1,0 +1,10 @@
+{
+  "id": "242481b8-25b4-4a3b-ad8a-5fc72e69c1b7",
+  "featureIds": [
+    "mirror-token-algebra"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:17.838Z",
+  "updatedAt": "2026-09-09T18:43:00.207Z",
+  "body": "WHAT\nThe token algebra is the small set of functions that estimate tokens from characters (`estimateTokens`, using 3.5 characters per token) and round token counts for display (`formatTokens`: '9.9k', '10k', '1.5M'). It lives in the protocol package and is repeated in the renderer, which cannot import it.\n\nWHY\nA drift makes the on-screen meter disagree with the session report about the same session.\n\nWHERE\nengine/protocol/src/tokens.ts — `CHARS_PER_TOKEN`, `estimateTokens()`, `formatTokens()` (also `emptyUsage`, `addUsage`, `inputTokensOf`, `contextPercentOf`, `freeContextOf`); app/renderer/modules/tokens.js — `CHARS_PER_TOKEN`, `estimateTokens()`, `formatTokens()` (classic script loaded first in index.html).\n\nTEST CHECKLIST\n1. For inputs 0, 1, 3, 4, 7, 3500, 'hello world', '' both estimateTokens return the same value (e.g. 4 chars → 2, 7 chars → 2, 3500 chars → 1000).\n2. For 0, 999, 1000, 1049, 9949, 9950, 10000, 999499, 999500, 1500000 both formatTokens return identical strings ('999', '1.0k', '9.9k', '10k', '999k', '1.0M', '1.5M').\n3. Negative and NaN-ish inputs: formatTokens(-5) is '0' in both, and the renderer's `n || 0` guard matches the protocol for undefined only where the protocol accepts a number (document the difference if any).\n4. Both CHARS_PER_TOKEN constants equal 3.5.\n5. Monotonic band boundary: 9949 → '9.9k' and 9950 → '10k' on both sides, never '10.0k'."
+}

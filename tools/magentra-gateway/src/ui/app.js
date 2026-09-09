@@ -6,6 +6,14 @@
  * start (reconcile a record, apply a connection profile) are the two the spec
  * marks approval-gated, and each is one deliberate click that sends the
  * action header the server requires.
+ *
+ * The feature detail opens on the TEST DESCRIPTION, because that is what the
+ * user came to read or write; the record's prose, invariant, files and
+ * dependencies follow as reference. A description is a `draft` while it is
+ * being written and `ready` once the user has approved it as the specification
+ * a coding agent implements — ready says nothing about a test existing. Ready
+ * descriptions are set apart at the bottom, mirroring where they sit on disk
+ * (tests/gateway/descriptions/ready/).
  */
 
 "use strict";
@@ -15,7 +23,9 @@ const $ = (id) => document.getElementById(id);
 const state = {
   features: [],
   gate: null,
-  filters: { area: "", kind: "", status: "", fresh: "" },
+  /** featureId → "draft" | "ready" | "none" — derived from /api/state's descriptions. */
+  descOf: new Map(),
+  filters: { area: "", kind: "", status: "", fresh: "", desc: "" },
   selected: null,
 };
 
@@ -55,6 +65,23 @@ function applyGate() {
   for (const f of state.features) f.fresh = !stale.has(f.id);
 }
 
+/**
+ * One word per feature about its descriptions. `draft` wins over `ready`: a
+ * feature with a ready description and a new draft is still being written.
+ */
+function applyDescriptions(descriptions) {
+  state.descOf = new Map();
+  for (const d of descriptions) {
+    for (const id of d.featureIds) {
+      const cur = state.descOf.get(id);
+      if (d.status === "draft" || cur === undefined) state.descOf.set(id, d.status);
+    }
+  }
+  for (const f of state.features) f.desc = state.descOf.get(f.id) || "none";
+}
+
+const DESC_LABEL = { draft: "draft", ready: "ready", none: "no description" };
+
 /* ---- header --------------------------------------------------------- */
 
 function renderHeader() {
@@ -65,16 +92,10 @@ function renderHeader() {
   $("lamp-fresh").classList.toggle("on", fresh);
   $("lamp-conn").classList.toggle("on", connected);
 
-  const deferred = state.features.filter((f) => f.deferred).length;
-  const untested = state.features.filter((f) => f.status === "untested" && !f.deferred).length;
+  const n = (pred) => state.features.filter(pred).length;
   $("count").textContent =
-    `${state.features.length} features · ${untested} untested · ${deferred} deferred`;
-
-  // Disabled, not warned. Bound to the gate's own single verdict so the button
-  // and the lamps can never disagree.
-  const run = $("run");
-  run.disabled = !gate || !gate.runAllowed;
-  $("run-why").textContent = run.disabled ? "RUN blocked by the gate" : "";
+    `${state.features.length} features · ${n((f) => f.status === "untested" && !f.deferred)} untested · ${n((f) => f.deferred)} deferred` +
+    `   |   descriptions: ${n((f) => f.desc === "ready")} ready · ${n((f) => f.desc === "draft")} draft · ${n((f) => f.desc === "none")} missing`;
 }
 
 /* ---- left column ---------------------------------------------------- */
@@ -98,6 +119,33 @@ function renderAreas() {
   }
 }
 
+/**
+ * Ready / draft / missing, as clickable rows with counts. This is the tracking
+ * view: one glance says how much of the inventory has an approved description
+ * an agent may implement, and one click lists exactly those features.
+ */
+function renderDescNav() {
+  const host = $("descs");
+  host.textContent = "";
+  const count = (k) => state.features.filter((f) => f.desc === k).length;
+  const rows = [
+    ["", "all", state.features.length, ""],
+    ["draft", DESC_LABEL.draft, count("draft"), "draft"],
+    ["ready", DESC_LABEL.ready, count("ready"), "ready"],
+    ["none", DESC_LABEL.none, count("none"), "nodesc"],
+  ];
+  for (const [value, label, n, cls] of rows) {
+    const row = el("div", `row ${cls}${state.filters.desc === value ? " sel" : ""}`);
+    row.append(el("span", null, label), el("span", "n", String(n)));
+    row.onclick = () => {
+      state.filters.desc = value;
+      renderDescNav();
+      renderList();
+    };
+    host.append(row);
+  }
+}
+
 function fillSelect(select, values) {
   for (const v of values) select.append(new Option(v, v));
 }
@@ -105,14 +153,20 @@ function fillSelect(select, values) {
 /* ---- middle column -------------------------------------------------- */
 
 function visible() {
-  const { area, kind, status, fresh } = state.filters;
+  const { area, kind, status, fresh, desc } = state.filters;
   return state.features.filter(
     (f) =>
       (!area || f.area === area) &&
       (!kind || f.kinds.includes(kind)) &&
       (!status || f.status === status) &&
-      (!fresh || (fresh === "stale" ? !f.fresh : f.fresh)),
+      (!fresh || (fresh === "stale" ? !f.fresh : f.fresh)) &&
+      (!desc || f.desc === desc),
   );
+}
+
+function descTag(f) {
+  const cls = f.desc === "none" ? "nodesc" : f.desc;
+  return tag(DESC_LABEL[f.desc], cls);
 }
 
 function renderList() {
@@ -130,6 +184,7 @@ function renderList() {
     card.append(line);
 
     const tags = el("div", "tags");
+    tags.append(descTag(f));
     for (const k of f.kinds) tags.append(tag(k));
     tags.append(tag(f.status, f.status));
     tags.append(f.fresh ? tag("fresh", "fresh") : tag("STALE", "stale"));
@@ -185,7 +240,7 @@ function renderPlaceholder() {
   const host = $("detail");
   host.textContent = "";
   const box = el("div", "placeholder");
-  box.append(el("div", null, "Pick a feature to see what it is, what it touches, and what you have asked for."));
+  box.append(el("div", null, "Pick a feature to read what must be tested, what it is, and what it touches."));
   const keys = el("div", "hint");
   keys.append(document.createTextNode("navigate with "));
   keys.append(el("kbd", null, "↑"), document.createTextNode(" "), el("kbd", null, "↓"));
@@ -200,11 +255,16 @@ function renderDetail(payload) {
   const host = $("detail");
   host.textContent = "";
 
+  const all = descriptions || [];
+  const drafts = all.filter((d) => d.status === "draft");
+  const ready = all.filter((d) => d.status === "ready");
+
   // Sticky, so scrolling through dependencies never loses which feature this is.
   const head = el("div", null);
   head.id = "detail-head";
   head.append(el("h3", null, feature.name), el("div", "id", `${feature.id} · ${feature.area} · ${feature.section}`));
   const tags = el("div", "tags");
+  tags.append(descTag(feature));
   for (const k of feature.kinds) tags.append(tag(k));
   tags.append(tag(feature.status, feature.status));
   tags.append(freshness.fresh ? tag("fresh", "fresh") : tag("STALE", "stale"));
@@ -212,8 +272,15 @@ function renderDetail(payload) {
   head.append(tags);
   host.append(head);
 
-  host.append(section("PROSE (verbatim from FEATURES.md)", el("div", "prose", feature.prose)));
+  // First, because it is what the user came for.
+  host.append(section(
+    drafts.length ? `TEST DESCRIPTION — ${drafts.length} draft` : ready.length ? "TEST DESCRIPTION — no open draft" : "TEST DESCRIPTION — none yet",
+    renderDescriptions(feature, drafts),
+    "sec-desc",
+  ));
+
   host.append(section("INVARIANT", el("div", "invariant", feature.invariant)));
+  host.append(section("PROSE (verbatim from FEATURES.md)", el("div", "prose", feature.prose)));
 
   const files = el("ul", "files");
   for (const f of feature.entryFiles) {
@@ -225,14 +292,11 @@ function renderDetail(payload) {
 
   host.append(section("DEPENDENCIES", renderDeps(dependencies)));
   host.append(section(`TESTS — ${feature.tests.length}`, renderTests(feature)));
-  host.append(section("WHAT TO TEST — your description", renderDescriptions(feature, descriptions)));
 
-  const brief = el("div");
-  const openBrief = el("button", "act", "open the agent brief (Markdown)");
-  openBrief.onclick = () => window.open(`/api/features/${encodeURIComponent(feature.id)}/brief?format=md`, "_blank");
-  brief.append(openBrief);
-  brief.append(el("div", "hint", `Or on the command line: npm run gateway -- brief ${feature.id}`));
-  host.append(section("HAND THIS TO AN AGENT", brief));
+  // Last, and apart: ready is approved and waiting for an agent. It lives in
+  // descriptions/ready/ on disk and here it is folded shut, so the working
+  // view stays about what is still being written.
+  if (ready.length) host.append(section(`READY FOR AN AGENT — ${ready.length}`, renderReady(feature, ready), "sec-ready"));
 }
 
 function renderDeps(deps) {
@@ -311,67 +375,172 @@ function renderTests(feature) {
   return box;
 }
 
+/* ---- description body ------------------------------------------------ */
+
 /**
- * The description surface — SPEC §2.2. Write what must be tested, save it, and
- * it travels to an agent inside the brief.
- *
- * `done` is a separate button from `save`, deliberately: saving an edit can
- * never be the thing that closes a directive, and nothing here closes one on
- * its own.
+ * A body is free text, but the seeded ones follow a shape — an ALL-CAPS header
+ * line (WHAT / WHY / WHERE / TEST CHECKLIST) followed by its lines — and that
+ * shape is rendered as labelled rows, numbered lines as a list, backticked
+ * spans and file paths as code. Anything else is shown as it was typed.
  */
-function renderDescriptions(feature, descriptions) {
+const HEADER = /^[A-Z][A-Z ]{2,}$/;
+const PATH = /(?:^|[\s(—,;:])((?:[\w.-]+\/)+[\w.-]+\.[a-z]{1,5})/g;
+
+function inline(text, into) {
+  // backticks first, then bare paths inside the plain runs.
+  const parts = text.split(/(`[^`]+`)/);
+  for (const part of parts) {
+    if (!part) continue;
+    if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
+      into.append(el("code", null, part.slice(1, -1)));
+      continue;
+    }
+    let last = 0;
+    for (const m of part.matchAll(PATH)) {
+      const start = m.index + m[0].length - m[1].length;
+      if (start > last) into.append(document.createTextNode(part.slice(last, start)));
+      into.append(el("code", "path", m[1]));
+      last = start + m[1].length;
+    }
+    if (last < part.length) into.append(document.createTextNode(part.slice(last)));
+  }
+}
+
+function renderDescBody(body) {
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  const firstText = lines.find((l) => l.trim() !== "");
+  if (firstText === undefined || !HEADER.test(firstText.trim())) {
+    return el("div", "desc-body", body);
+  }
+
+  const sections = [];
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (HEADER.test(line.trim())) sections.push({ label: line.trim(), lines: [] });
+    else if (sections.length) sections[sections.length - 1].lines.push(line);
+  }
+
+  const box = el("div", "d-body");
+  for (const s of sections) {
+    const row = el("div", "d-sec");
+    row.append(el("div", "d-label", s.label.toLowerCase()));
+    const text = el("div", "d-text");
+    let list = null;
+    for (const line of s.lines) {
+      const t = line.trim();
+      if (!t) continue;
+      const m = /^(\d+)[.)]\s+(.*)$/.exec(t);
+      if (m) {
+        if (!list) { list = el("ol"); text.append(list); }
+        const li = el("li");
+        inline(m[2], li);
+        list.append(li);
+      } else {
+        list = null;
+        const p = el("p");
+        inline(t, p);
+        text.append(p);
+      }
+    }
+    row.append(text);
+    box.append(row);
+  }
+  return box;
+}
+
+/* ---- descriptions --------------------------------------------------- */
+
+function descMeta(d) {
+  const meta = el("div", "desc-meta");
+  meta.append(el("span", `desc-status ${d.status}`, d.status === "draft" ? "DRAFT" : "READY"));
+  if (d.featureIds.length > 1) meta.append(el("span", null, `${d.featureIds.length} features`));
+  meta.append(el("span", "spacer", ""), el("span", null, `updated ${d.updatedAt.slice(0, 16).replace("T", " ")}`));
+  return meta;
+}
+
+function descActions(feature, d, card) {
+  const bar = el("div", "editor-bar");
+  const edit = el("button", "act", "edit");
+  edit.onclick = () => openEditor(feature, d, card);
+  const toggle = el("button", "act", d.status === "draft" ? "mark ready" : "back to draft");
+  toggle.onclick = async () => {
+    if (d.status === "draft" && !confirm("Mark this description ready?\n\nReady means: you have read it and this is the test procedure a coding agent should implement, as written. It does not mean a test exists.\n\nThe file moves to tests/gateway/descriptions/ready/.")) return;
+    toggle.disabled = true;
+    const { ok, data } = await post(`/api/descriptions/${encodeURIComponent(d.id)}/${d.status === "draft" ? "ready" : "draft"}`);
+    if (!ok) alert(data.error || "could not update");
+    await refresh();
+  };
+  const del = el("button", "act danger", "delete");
+  del.onclick = async () => {
+    if (!confirm("Delete this description?")) return;
+    const res = await fetch(`/api/descriptions/${encodeURIComponent(d.id)}`, {
+      method: "DELETE", headers: { "x-magentra-gateway-action": "1" },
+    });
+    if (!res.ok) alert("could not delete");
+    await refresh();
+  };
+  bar.append(edit, toggle, el("span", "spacer", ""), del);
+  return bar;
+}
+
+/**
+ * The description surface — SPEC §2.2. Write what must be tested and save it.
+ * The record lands in tests/gateway/descriptions/, which is where a coding
+ * agent reads it when the user asks for the test to be written (decisions/0006).
+ *
+ * `mark ready` is a separate button from `save`, deliberately: saving an edit
+ * can never be the thing that approves a directive, and nothing here approves
+ * one on its own.
+ */
+function renderDescriptions(feature, drafts) {
   const box = el("div");
-  const mine = descriptions || [];
 
-  for (const d of mine) {
-    const card = el("div", `desc ${d.status}`);
-    const meta = el("div", "desc-meta");
-    meta.append(el("span", null, d.status.toUpperCase()));
-    if (d.featureIds.length > 1) meta.append(el("span", null, `${d.featureIds.length} features`));
-    meta.append(el("span", "spacer", ""), el("span", null, `updated ${d.updatedAt.slice(0, 16).replace("T", " ")}`));
-    card.append(meta);
-    card.append(el("div", "desc-body", d.body));
-
-    const bar = el("div", "editor-bar");
-    const edit = el("button", "act", "edit");
-    edit.onclick = () => openEditor(feature, d, card);
-    const toggle = el("button", "act", d.status === "pending" ? "mark done" : "reopen");
-    toggle.onclick = async () => {
-      if (d.status === "pending" && !confirm("Mark this description done?\n\nOnly do this after verifying the test exists AND asserts the invariant. The gateway will never do it for you.")) return;
-      toggle.disabled = true;
-      const { ok, data } = await post(`/api/descriptions/${encodeURIComponent(d.id)}/${d.status === "pending" ? "done" : "reopen"}`);
-      if (!ok) alert(data.error || "could not update");
-      await select(feature.id);
-    };
-    const del = el("button", "act danger", "delete");
-    del.onclick = async () => {
-      if (!confirm("Delete this description?")) return;
-      const res = await fetch(`/api/descriptions/${encodeURIComponent(d.id)}`, {
-        method: "DELETE", headers: { "x-magentra-gateway-action": "1" },
-      });
-      if (!res.ok) alert("could not delete");
-      await select(feature.id);
-    };
-    bar.append(edit, toggle, el("span", "spacer", ""), del);
-    card.append(bar);
+  for (const d of drafts) {
+    const card = el("div", "desc draft");
+    card.append(descMeta(d));
+    card.append(renderDescBody(d.body));
+    card.append(el("div", "hint",
+      "A draft. Edit the checklist into the test procedure you want, then mark it ready — that is what the coding agent implements."));
+    card.append(descActions(feature, d, card));
     box.append(card);
   }
 
-  const add = el("button", "act primary", mine.length ? "add another description" : "write what must be tested");
+  const add = el("button", "act primary", drafts.length ? "add another description" : "write what must be tested");
   add.onclick = () => openEditor(feature, null, add);
   box.append(add);
-  if (!mine.length) {
+  if (!drafts.length) {
     box.append(el("div", "hint",
-      "Free text: how the tests shall be written, what to watch for, what a previous attempt got wrong. It is delivered to an agent alongside the dependencies above."));
+      "Free text: how the tests shall be written, what to watch for, what a previous attempt got wrong. A coding agent reads it from tests/gateway/descriptions/ when asked to write the test."));
+  }
+  return box;
+}
+
+/** Ready descriptions, folded shut. "back to draft" returns one to the working view. */
+function renderReady(feature, ready) {
+  const box = el("div");
+  for (const d of ready) {
+    const fold = el("details", "desc ready");
+    const sum = el("summary");
+    sum.append(descMeta(d));
+    fold.append(sum);
+    const card = el("div");
+    card.append(renderDescBody(d.body));
+    card.append(descActions(feature, d, fold));
+    fold.append(card);
+    box.append(fold);
   }
   return box;
 }
 
 function openEditor(feature, existing, replaces) {
-  const wrap = el("div", "desc");
+  const wrap = el("div", "desc editing");
   const area = el("textarea");
   area.value = existing ? existing.body : "";
-  area.placeholder = `What must be tested about "${feature.name}"?\n\nThe invariant to prove is already recorded. Use this for how: the cases that matter, the setup that is awkward, the failure a previous attempt missed.`;
+  area.placeholder =
+    `What must be tested about "${feature.name}"?\n\n` +
+    `Any text works. An ALL-CAPS line starts a labelled block, and numbered lines become a list, for example:\n\n` +
+    `WHAT\n…\n\nWHERE\nengine/core/src/… — functionName()\n\nTEST CHECKLIST\n1. …\n2. …`;
+  area.rows = Math.min(40, Math.max(14, area.value.split("\n").length + 2));
   wrap.append(area);
 
   const bar = el("div", "editor-bar");
@@ -388,11 +557,11 @@ function openEditor(feature, existing, replaces) {
       body,
     });
     if (!ok) { save.disabled = false; status.textContent = data.error || "could not save"; return; }
-    await select(feature.id);
+    await refresh();
   };
   const cancel = el("button", "act", "cancel");
   cancel.onclick = () => select(feature.id);
-  bar.append(save, cancel, status);
+  bar.append(save, cancel, status, el("span", "spacer", ""), el("span", "hint", "Ctrl+Enter saves · Esc cancels"));
   wrap.append(bar);
 
   replaces.replaceWith(wrap);
@@ -405,8 +574,8 @@ function openEditor(feature, existing, replaces) {
   };
 }
 
-function section(title, body) {
-  const s = el("section");
+function section(title, body, className) {
+  const s = el("section", className);
   s.append(el("h2", null, title), body);
   return s;
 }
@@ -422,11 +591,11 @@ function renderGate() {
   if (gate.blocked) {
     const banner = el("div", "blocked-banner");
     banner.append(el("b", null, "BLOCKED"));
-    banner.append(el("div", null, `nothing may run — ${state.features.length} features could not be verified`));
+    banner.append(el("div", null, `${state.features.length} features cannot be trusted until this is resolved`));
     for (const reason of gate.blockedReasons) banner.append(el("div", "note", `· ${reason}`));
     host.append(banner);
   } else {
-    const ok = el("div", "note", "both stages pass — a result from a run here may be believed.");
+    const ok = el("div", "note", "both stages pass — every record matches its code, and this folder is connected.");
     host.append(ok);
   }
 
@@ -545,12 +714,14 @@ async function refresh() {
   state.features = data.features;
   state.gate = data.gate;
   applyGate();
+  applyDescriptions(data.descriptions || []);
   if ($("f-kind").options.length === 1) {
     fillSelect($("f-kind"), data.vocabulary.kinds);
     fillSelect($("f-status"), data.vocabulary.statuses);
   }
   renderHeader();
   renderAreas();
+  renderDescNav();
   renderList();
   renderGate();
   if (state.selected) select(state.selected);
@@ -573,19 +744,14 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "Escape") deselect();
 });
 
-$("run").onclick = async () => {
-  const { status, data } = await post("/api/run");
-  if (status === 409) alert(`BLOCKED — nothing ran.\n\n${data.blockedReasons.join("\n")}`);
-  else alert(data.error || JSON.stringify(data));
-};
-
 // Gate state and file-watch invalidation arrive here, so a file edited in the
-// editor turns the freshness lamp red without a reload.
+// editor turns the freshness lamp red without a reload. A description change
+// re-reads state, because the done / to test counts in the nav come from it.
 const events = new EventSource("/api/events");
 events.onmessage = (e) => {
   const msg = JSON.parse(e.data);
-  if (msg.type === "descriptions" && state.selected) {
-    select(state.selected);
+  if (msg.type === "descriptions") {
+    refresh();
     return;
   }
   if (msg.type === "gate") {

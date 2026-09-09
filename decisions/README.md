@@ -22,6 +22,7 @@ change its meaning: it is superseded by a later record that names it.
 | [0003](0003-storage-is-committed-json-per-feature.md) | Where records live, and why not SQLite |
 | [0004](0004-tests-inherit-on-kind.md) | The test class hierarchy and `tests/` layout |
 | [0005](0005-the-two-stage-gate.md) | Freshness and connection gating, and hard-block semantics |
+| [0006](0006-the-gateway-does-not-run-or-brief.md) | No run button and no agent brief; the implementing agent runs the tests |
 | [SPEC.md](SPEC.md) | The implementation specification |
 | [INVENTORY.md](INVENTORY.md) | Verified feature count, and the three gaps `FEATURES.md` has |
 | [inventory-notes/](inventory-notes/) | Per-area reading notes the inventory was built from |
@@ -31,9 +32,10 @@ change its meaning: it is superseded by a later record that names it.
 Design settled 2026-09-09 over four grilling rounds. **`SPEC.md` §11 steps 1–5,
 7 and 9 are implemented** — the inventory loads and validates, the two-stage
 gate is live and hard-blocking, dependencies resolve, descriptions are writable,
-and `npm run gateway` serves the lot. What remains is step 6 (the test class
-hierarchy, and with it `whyItExists`) and step 8 (the runner), so `RUN` reaches
-a `501` rather than a result.
+and `npm run gateway` serves the lot. Step 8 (the runner) was withdrawn the same
+day by [0006](0006-the-gateway-does-not-run-or-brief.md), along with the agent
+brief: the coding agent that implements a description runs its tests. What
+remains is step 6 (the test class hierarchy, and with it `whyItExists`).
 
 `SPEC.md` is the contract an implementer works from; if the implementation and
 the spec disagree, that is a bug in one of them, not a matter of taste.

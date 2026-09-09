@@ -145,11 +145,16 @@ export const DescriptionRecordSchema = z.strictObject({
   featureIds: z.array(z.string().regex(FEATURE_ID)).min(1),
   body: z.string(),
   /**
-   * Moves to `done` only by explicit user action, after verification. The
-   * gateway may suggest it and must never apply it — auto-closing on file
-   * existence is how a scaffold test silently satisfies a real directive.
+   * `draft`: being written — an AI suggestion, or the user's own text not yet
+   * approved. `ready`: the user has approved it as the specification a coding
+   * agent implements. It says nothing about whether a test exists yet; that is
+   * the feature's derived `status`, not the description's.
+   *
+   * Moves to `ready` only by explicit user action. The gateway must never apply
+   * it — a suggestion handed to an agent as if approved is exactly the
+   * unreviewed directive this field exists to keep out.
    */
-  status: z.enum(["pending", "done"]),
+  status: z.enum(["draft", "ready"]),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
 });

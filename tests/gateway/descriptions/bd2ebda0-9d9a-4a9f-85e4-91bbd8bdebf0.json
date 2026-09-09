@@ -1,0 +1,10 @@
+{
+  "id": "bd2ebda0-9d9a-4a9f-85e4-91bbd8bdebf0",
+  "featureIds": [
+    "workflow-budget-and-caps"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:24.733Z",
+  "updatedAt": "2026-09-09T18:43:12.894Z",
+  "body": "WHAT\nA workflow is a small JavaScript script written by the model that calls `agent()` to spawn subagents. The runner enforces three ceilings itself: at most 4 subagents run at the same time, at most 100 `agent()` calls per run, and no new agent is spawned once the turn's output-token budget (`settings.maxTokensPerTurn` minus tokens spent so far) reaches zero. Exceeding a cap makes `agent()` throw.\n\nWHY\nA workflow can spawn dozens of agents, so the ceilings must be enforced in the runner rather than trusted to the script.\n\nWHERE\nengine/core/src/scheduling/workflow.ts — `const MAX_AGENT_CALLS = 100`, `const CONCURRENCY = 4`, `WorkflowRunner.run()` (the `acquire`/`release` semaphore, `guardedSpawn()`, the `agent` hook's cap checks, the `budget` object with `remaining()` built from `session.settings.maxTokensPerTurn` and `session.usedOutputTokens()`). Invoked from engine/tools/src/workflow.ts.\n\nTEST CHECKLIST\n1. With a fake SessionServices whose spawnAgent resolves after a delay and counts in-flight calls, a script doing parallel() over 10 agent() thunks never has more than 4 spawnAgent calls in flight at once.\n2. A script that loops agent() 101 times: the 101st call throws with a message containing '100 agent-call cap' and meta.agentCalls is 100.\n3. With maxTokensPerTurn 1000 and usedOutputTokens() returning start+1000 after the first spawn, the second agent() call throws 'workflow token budget exhausted' and spawnAgent was called exactly once.\n4. budget.remaining() passed to the script equals max(0, total - spent) and is readable inside the script as `budget.total`, `budget.spent()`, `budget.remaining()`.\n5. An aborted signal makes agent() throw 'workflow aborted' before any spawn; the run result is {ok:false, error, meta}."
+}

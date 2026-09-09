@@ -1,0 +1,10 @@
+{
+  "id": "531e5b9c-3470-4f6f-bc1c-31cfd86e794c",
+  "featureIds": [
+    "endpoint-discovery"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:15.930Z",
+  "updatedAt": "2026-09-09T18:43:03.808Z",
+  "body": "WHAT\nTEST tries the base URL exactly as typed, then (for `localhost`) the same URL with 127.0.0.1, then the stripped origin under each known OpenAI-compatible path: /v1, /v1/openai, /inference/v1, /openai/v1, /api/v1 — for any host. The first URL whose /models answers 200 (or whose chat route exists) is returned as `baseUrl`, and the wizard writes it back into the field so it is what gets saved.\n\nWHY\nUsers paste the host from a provider's homepage or the URL their curl posts to; each provider hangs its API somewhere different, and the failure looked exactly like a bad key.\n\nWHERE\napp/main/connection.js — API_PATH_SUFFIXES, SUFFIXES_LONGEST_FIRST, stripApiSuffix(baseUrl), candidateBaseUrls(baseUrl), testEndpoint() loop returning { ok: true, baseUrl: candidate, models, contextLimit? }. app/main/config.js — normalizeBaseUrl() strips a pasted /chat/completions or /models first. app/renderer/modules/setup.js — TEST handler writes result.baseUrl into wizBaseUrlEl when it differs.\n\nTEST CHECKLIST\n1. candidateBaseUrls(\"http://localhost:1234\") returns, in order, the URL as given, http://127.0.0.1:1234, then http://localhost:1234/v1, /v1/openai, /inference/v1, /openai/v1, /api/v1 with no duplicates and no trailing slashes.\n2. candidateBaseUrls(\"https://api.example.com/v1/openai\") strips the longest matching suffix first so candidates are built from https://api.example.com, never https://api.example.com/v1/openai/v1.\n3. With a fake fetch that only answers 200 at https://host/openai/v1/models, testEndpoint on https://host returns ok:true and baseUrl \"https://host/openai/v1\" — the working candidate, not the typed one.\n4. The as-given URL is fetched first; when it answers 200 no further candidate is requested (exactly one /models call).\n5. A candidate whose fetch throws is skipped and the walk continues; if all throw, the last describeFetchError text is returned as error."
+}

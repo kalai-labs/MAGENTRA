@@ -1,0 +1,10 @@
+{
+  "id": "f3f9ecf2-6d55-4a79-b03e-d24de3902d99",
+  "featureIds": [
+    "tool-taskstop"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:23.192Z",
+  "updatedAt": "2026-09-09T18:43:17.595Z",
+  "body": "WHAT\nTaskStop asks the BackgroundManager to stop a background task by id. If the task was running it is stopped and the tool says 'Stopped task <id>.'. If the id exists but is already finished it reports the status; if the id is unknown it says so. Both non-running cases are returned as tool errors with plain text, not thrown.\n\nWHY\nWithout it a runaway background command or monitor could not be cancelled, and a thrown exception on an already-finished id would make the agent retry needlessly.\n\nWHERE\nengine/tools/src/taskControl.ts — taskStopTool (stopSchema, permissionClass 'execute'), execute(): ctx.session.background.stop(id) then background.get(id) for the message. engine/core/src/scheduling/background.ts — BackgroundManager.stop() (returns false unless status is 'running').\n\nTEST CHECKLIST\n1. Launch a fake running job; TaskStop returns content 'Stopped task <id>.', the handle's stop() ran and background.get(id).status is 'stopped'.\n2. Finish a job via onExit(0) then TaskStop it; assert isError:true and content 'Task <id> was not running (status: completed).' and no exception.\n3. TaskStop 'monitor_zzz' (unknown) resolves with isError:true and 'No background task with id monitor_zzz.'.\n4. TaskStop the same id twice; the second call reports 'status: stopped' rather than stopping again (stop() ran exactly once).\n5. Start a real Bash background 'sleep 20' and TaskStop it; assert the process is no longer alive."
+}

@@ -50,6 +50,21 @@ export function descriptionsDir(root = repoRoot()): string {
   return join(root, "tests", "gateway", "descriptions");
 }
 
+/**
+ * Ready descriptions live one folder down, so `ls tests/gateway/descriptions`
+ * is what is still being written and `ls tests/gateway/descriptions/ready` is
+ * what a coding agent may implement — the tree answers "what is ready" without
+ * a tool.
+ */
+export function readyDescriptionsDir(root = repoRoot()): string {
+  return join(descriptionsDir(root), "ready");
+}
+
+/** Where a description belongs on disk. Follows `status`, nothing else. */
+function descriptionFile(root: string, rec: Pick<DescriptionRecord, "id" | "status">): string {
+  return join(rec.status === "ready" ? readyDescriptionsDir(root) : descriptionsDir(root), `${rec.id}.json`);
+}
+
 export interface RecordProblem {
   /** Repo-relative path, so the message names the file to open. */
   readonly file: string;
@@ -141,30 +156,48 @@ export function loadFeatures(
 }
 
 /**
- * All description records. An absent directory is legitimately empty — no
- * description has been written yet — and is not a malformed record.
+ * All description records, from both folders. An absent directory is
+ * legitimately empty — no description has been written yet — and is not a
+ * malformed record.
+ *
+ * The folder a file sits in must agree with its `status`: `ready/` holds ready
+ * records and nothing else. A file whose field and folder disagree is a
+ * malformed record, not a guess — the tree is one of the two places the user
+ * reads "ready" from, and the two may never say different things.
  *
  * @throws RegistryError naming every file that failed.
  */
 export function loadDescriptions(root = repoRoot()): DescriptionRecord[] {
-  const dir = descriptionsDir(root);
-  if (!existsSync(dir)) return [];
+  const folders: { dir: string; rel: string; status: DescriptionStatus }[] = [
+    { dir: descriptionsDir(root), rel: "tests/gateway/descriptions", status: "draft" },
+    { dir: readyDescriptionsDir(root), rel: "tests/gateway/descriptions/ready", status: "ready" },
+  ];
 
   const problems: RecordProblem[] = [];
   const out: DescriptionRecord[] = [];
-  for (const entry of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
-    const relFile = `tests/gateway/descriptions/${entry}`;
-    const parsed = parseOne(DescriptionRecordSchema, relFile, readFileSync(join(dir, entry), "utf8"));
-    if (!parsed.ok) {
-      problems.push({ file: relFile, detail: parsed.detail });
-      continue;
+  for (const { dir, rel, status } of folders) {
+    if (!existsSync(dir)) continue;
+    for (const entry of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
+      const relFile = `${rel}/${entry}`;
+      const parsed = parseOne(DescriptionRecordSchema, relFile, readFileSync(join(dir, entry), "utf8"));
+      if (!parsed.ok) {
+        problems.push({ file: relFile, detail: parsed.detail });
+        continue;
+      }
+      const stem = entry.slice(0, -".json".length);
+      if (stem !== parsed.value.id) {
+        problems.push({ file: relFile, detail: `id "${parsed.value.id}" does not match the file name "${stem}"` });
+        continue;
+      }
+      if (parsed.value.status !== status) {
+        problems.push({
+          file: relFile,
+          detail: `status is "${parsed.value.status}" but the file sits in ${rel}/ — the folder is the status you read in the tree; move the file or fix the field`,
+        });
+        continue;
+      }
+      out.push(parsed.value);
     }
-    const stem = entry.slice(0, -".json".length);
-    if (stem !== parsed.value.id) {
-      problems.push({ file: relFile, detail: `id "${parsed.value.id}" does not match the file name "${stem}"` });
-      continue;
-    }
-    out.push(parsed.value);
   }
   if (problems.length > 0) throw new RegistryError("description", problems);
   return out;
@@ -250,13 +283,13 @@ export class UnknownFeatureError extends Error {}
 /**
  * Create or update a description — SPEC §2.2, §11 step 9.
  *
- * `status` is NOT settable here. A new description is always `pending`, and an
- * update preserves whatever it already had. The only path to `done` is
- * {@link markDescriptionDone}, which exists as its own function precisely so
- * that "save my edits" can never be the thing that closes a directive.
+ * `status` is NOT settable here. A new description is always `draft`, and an
+ * update preserves whatever it already had. The only path to `ready` is
+ * {@link setDescriptionStatus}, which exists as its own function precisely so
+ * that "save my edits" can never be the thing that approves a directive.
  *
  * Every `featureId` must resolve. A description pointing at a feature that does
- * not exist is a brief nobody will ever be handed, and silently keeping it is
+ * not exist is a directive nobody will ever act on, and silently keeping it is
  * how the old FEATURES.md grew 28 boxes with nothing behind them.
  */
 export function writeDescription(input: DescriptionInput, root = repoRoot()): DescriptionRecord {
@@ -281,7 +314,7 @@ export function writeDescription(input: DescriptionInput, root = repoRoot()): De
     id: existing?.id ?? randomUUID(),
     featureIds: [...input.featureIds],
     body: input.body,
-    status: existing?.status ?? "pending",
+    status: existing?.status ?? "draft",
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -292,28 +325,33 @@ export function writeDescription(input: DescriptionInput, root = repoRoot()): De
       { file: `tests/gateway/descriptions/${record.id}.json`, detail: z.prettifyError(checked.error) },
     ]);
   }
-  writeFileAtomic(join(descriptionsDir(root), `${record.id}.json`), serializeDescription(checked.data));
+  writeFileAtomic(descriptionFile(root, checked.data), serializeDescription(checked.data));
   return checked.data;
 }
 
 /**
- * The user-only transition — SPEC §2.2.
+ * The user-only transition — SPEC §2.2. `draft` → `ready` is the approval; the
+ * reverse pulls a description back for more work.
  *
- * The gateway may SUGGEST that a description is done and must never apply it:
- * auto-closing on file existence is how a scaffold test silently satisfies a
- * real directive. So this is reachable from exactly one route, which is
- * approval-gated, and from nothing that runs on its own.
+ * The gateway may SUGGEST that a description is ready and must never apply it:
+ * an AI-written draft handed to an agent as if approved is the unreviewed
+ * directive this status exists to keep out. So this is reachable from exactly
+ * one route, which is approval-gated, and from nothing that runs on its own.
  */
-export function markDescriptionDone(id: string, status: DescriptionStatus, root = repoRoot()): DescriptionRecord {
+export function setDescriptionStatus(id: string, status: DescriptionStatus, root = repoRoot()): DescriptionRecord {
   const existing = loadDescriptions(root).find((d) => d.id === id);
   if (existing === undefined) throw new UnknownDescriptionError(`no description with id "${id}"`);
   const record: DescriptionRecord = { ...existing, status, updatedAt: new Date().toISOString() };
-  writeFileAtomic(join(descriptionsDir(root), `${record.id}.json`), serializeDescription(record));
+  // The move: write in the folder the new status names, then remove the old
+  // copy. Write first, so a crash between the two leaves a duplicate the loader
+  // reports, never a description that vanished.
+  writeFileAtomic(descriptionFile(root, record), serializeDescription(record));
+  if (existing.status !== status) rmSync(descriptionFile(root, existing), { force: true });
   return record;
 }
 
 export function deleteDescription(id: string, root = repoRoot()): void {
   const existing = loadDescriptions(root).find((d) => d.id === id);
   if (existing === undefined) throw new UnknownDescriptionError(`no description with id "${id}"`);
-  rmSync(join(descriptionsDir(root), `${id}.json`), { force: true });
+  rmSync(descriptionFile(root, existing), { force: true });
 }

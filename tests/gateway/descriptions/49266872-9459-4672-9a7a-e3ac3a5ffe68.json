@@ -1,0 +1,10 @@
+{
+  "id": "49266872-9459-4672-9a7a-e3ac3a5ffe68",
+  "featureIds": [
+    "promptlab-self-write"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:19.399Z",
+  "updatedAt": "2026-09-09T18:43:02.680Z",
+  "body": "WHAT\nPrompt Lab watches the override directory with fs.watch and tells connected browsers when a .txt file changes. When the server itself writes or deletes an override (PUT/DELETE /api/prompt/<id>) it records the id with a timestamp first, and the watcher ignores change events for that id for 1.5 seconds, so the browser that made the edit does not get told to reload it.\n\nWHY\nWithout the guard every save would echo back as a 'changed' event, the page would reload the text it just sent, and the lab would loop on every save.\n\nWHERE\ntools/prompt-lab/server.mjs — selfWrites Map, SELF_WRITE_GRACE_MS (1500), markSelfWrite(id), isSelfWrite(id), startWatching() callback (skips broadcast when isSelfWrite), broadcast(); markSelfWrite is called in the PUT and DELETE '/api/prompt/' handlers before writePromptOverride / clearPromptOverride.\n\nTEST CHECKLIST\n1. After markSelfWrite('a.b'), isSelfWrite('a.b') is true immediately and false once more than 1500 ms have passed (use a fake Date.now), and the expired entry is removed from selfWrites.\n2. isSelfWrite('never.marked') is false, so an override file changed by an external process still produces a broadcast {type:'changed', id} to /api/events clients.\n3. Start the server with --dir <tempdir>, connect an SSE client, then PUT /api/prompt/<id>; within 2 seconds no 'changed' event for that id arrives, whereas writing a different <id2>.txt externally in the same window does arrive.\n4. DELETE /api/prompt/<id> also marks the id before clearing, so the resulting rename/delete watch event is suppressed too.\n5. POST /api/import and /api/reset-all do not use markSelfWrite but broadcast a single {type:'reset-all'} instead; assert the client receives exactly that and the lab does not enter a repeated changed/reload cycle."
+}

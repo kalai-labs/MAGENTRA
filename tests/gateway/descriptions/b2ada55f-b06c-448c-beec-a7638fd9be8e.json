@@ -1,0 +1,10 @@
+{
+  "id": "b2ada55f-b06c-448c-beec-a7638fd9be8e",
+  "featureIds": [
+    "ndjson-resilience"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:18.046Z",
+  "updatedAt": "2026-09-09T18:43:12.013Z",
+  "body": "WHAT\nNDJSON is 'one JSON object per line'. The decoder splits an incoming byte stream into lines and parses each. A line that is not valid JSON becomes an `{type:'error', fatal:false}` frame instead of throwing, blank lines are skipped, a trailing `\\r` (CRLF) is removed, and a final line with no newline is still parsed when the stream ends.\n\nWHY\nOne bad frame from either side must not take the whole session down with it.\n\nWHERE\nengine/protocol/src/ndjson.ts — `decodeFrames()` (async generator; CRLF strip via `.replace(/\\r$/, '')`, trailing-buffer flush after the loop), `parseLine()` (catch → error frame), `encodeFrame()`.\n\nTEST CHECKLIST\n1. Feed chunks ['{\"type\":\"a\"}\\nnot json\\n{\"type\":\"b\"}\\n']; decodeFrames yields three frames: {type:'a'}, an object with type 'error', fatal false and message starting 'unparseable frame:', then {type:'b'}.\n2. Feed '{\"type\":\"a\"}\\r\\n' and assert the yielded frame equals {type:'a'} with no stray carriage return anywhere.\n3. Feed a stream whose last chunk is '{\"type\":\"tail\"}' with no newline; after the stream ends the generator yields {type:'tail'}.\n4. Feed one frame split across chunk boundaries ('{\"ty', 'pe\":\"x\"}\\n') and assert exactly one frame {type:'x'} is yielded.\n5. Feed '\\n\\n \\n' and assert nothing is yielded (blank lines skipped, no error frames); the unparseable-frame message is truncated to at most 200 characters of the bad line."
+}

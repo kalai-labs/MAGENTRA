@@ -1,0 +1,10 @@
+{
+  "id": "7ae18c58-8271-4b94-9ff8-8c3c01442fe9",
+  "featureIds": [
+    "slash-registry-single-source"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:20.818Z",
+  "updatedAt": "2026-09-09T18:43:07.371Z",
+  "body": "WHAT\nSlash commands (`/help`, `/clear`, `/compact`, ...) are listed once in `SLASH_COMMANDS` in the engine. `/help` renders its text from this list, and the same list plus every installed addon as `/<name>` is sent to the frontend in `session_started.commands` and again in `addons_updated.commands` after an addon install. The frontend's command palette only shows what it received.\n\nWHY\nA frontend that derives slash commands itself drifts from what the engine will actually dispatch, and an addon installed mid-session would be invocable but invisible in the palette.\n\nWHERE\nengine/core/src/runtime/engine.ts — `const SLASH_COMMANDS`, `renderHelp()`, `announceSession()` (builds `commands`), `addonCommands()`, `emitAddonsUpdated()`, `handleSlash()` (the dispatch switch); engine/protocol/src/types.ts — `interface SlashCommandInfo` (`cmd`, `args`, `desc`, `addon?`), `CoreEvent` variants `session_started` (field `commands`) and `addons_updated` (field `commands?`).\n\nTEST CHECKLIST\n1. Every `cmd` in session_started.commands that is not an addon has a matching `case` in handleSlash: send each as slash_command and assert no 'Unknown command' output is produced.\n2. The /help output (command_output after slash_command 'help') contains every cmd and desc string from session_started.commands with addon !== true, and nothing else in the built-in section.\n3. With an addon named 'review' installed, session_started.commands contains {cmd:'/review', addon:true} and slash_command 'review' is dispatched (no 'Unknown command').\n4. Send install_addon with a valid addon file; the resulting addons_updated event carries a `commands` array containing the new '/<name>' entry, and it equals the list a following /clear's session_started would send.\n5. Every built-in registry entry has non-empty `cmd` starting with '/' and `desc`, and the list has no duplicate cmd values."
+}

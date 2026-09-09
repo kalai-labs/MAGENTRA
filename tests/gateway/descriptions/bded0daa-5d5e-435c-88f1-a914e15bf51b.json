@@ -1,0 +1,10 @@
+{
+  "id": "bded0daa-5d5e-435c-88f1-a914e15bf51b",
+  "featureIds": [
+    "tool-grep"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:22.532Z",
+  "updatedAt": "2026-09-09T18:43:13.066Z",
+  "body": "WHAT\nGrep runs the bundled ripgrep binary (@vscode/ripgrep) over the workspace. It supports three output modes (files_with_matches, content, count), -i, -n, -A/-B/-C context, glob and type filters, multiline, and head_limit (default 250 lines). It respects .gitignore. ripgrep exit code 1 means no matches and is returned as 'No matches found.', not an error; a result larger than the 20MB buffer is returned truncated with a note instead of failing.\n\nWHY\nWithout correct exit-code mapping every empty search would look like a failure to the agent; without the buffer handling a broad search would throw away all matches.\n\nWHERE\nengine/tools/src/grep.ts — grepTool (permissionClass 'read', searchTerms), execute(): argument building per output_mode, execFile(rgPath, args, { maxBuffer: 20MB, signal }), the ERR_CHILD_PROCESS_STDIO_MAXBUFFER branch, code 0 with head_limit truncation suffix, code 1 -> 'No matches found.', other codes -> 'ripgrep error:' with isError.\n\nTEST CHECKLIST\n1. In a temp dir with a.txt 'hello' and b.txt 'world', run Grep { pattern:'zzz' }; assert content 'No matches found.' and isError undefined (exit code 1 path).\n2. Run Grep { pattern:'hello', output_mode:'content' }; assert the content contains 'a.txt' and '1:hello' (line numbers on by default) and not 'b.txt'; with output_mode 'count' assert 'a.txt:1'.\n3. Run Grep { pattern:'[' } (invalid regex); assert isError:true and content starts with 'ripgrep error:'.\n4. Create a file with 1000 matching lines and run with head_limit 10 in content mode; assert 10 result lines plus a '[truncated — ... more lines' suffix.\n5. Simulate the maxBuffer path by generating a file with more than 20MB of matching lines (or by monkeypatching execFile to call back with err.code 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' and partial stdout); assert the result is not an error and ends with 'output exceeded the 20MB buffer'."
+}

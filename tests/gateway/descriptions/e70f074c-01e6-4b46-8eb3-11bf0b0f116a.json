@@ -1,0 +1,10 @@
+{
+  "id": "e70f074c-01e6-4b46-8eb3-11bf0b0f116a",
+  "featureIds": [
+    "tool-taskget"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:22.990Z",
+  "updatedAt": "2026-09-09T18:43:16.840Z",
+  "body": "WHAT\nTaskGet returns one task as pretty-printed JSON: id, subject, description, status, owner, activeForm, metadata, and both dependency lists (blocks and blockedBy). The id may be given as '3', '#3', 'task-3' or even the task's subject; an unknown reference returns an error that lists the current tasks.\n\nWHY\nWithout it the agent cannot check that a task is unblocked before starting it, and a strict id parser would fail on the '#3' form models routinely echo.\n\nWHERE\nengine/tools/src/tasks.ts — taskGetTool (getSchema { taskId }, execute() -> resolveTaskId() then ctx.session.tasks.get(), JSON.stringify(task, null, 2)), resolveTaskId() (exported), taskNotFound(). engine/core/src/state/taskStore.ts — TaskStore.get().\n\nTEST CHECKLIST\n1. Create tasks 1 and 2 with 2 blockedBy 1; TaskGet '2' returns JSON whose parsed object has description, blocks [] and blockedBy ['1'].\n2. TaskGet '#1', 'task-1' and 'Task 1' all return task 1; TaskGet with the exact subject text also returns it.\n3. TaskGet '99' returns isError:true and content listing '#1 [pending] ...' for current tasks; on an empty store the message says the task list is empty.\n4. Two tasks with subjects 'Fix login' and 'Fix logout'; TaskGet 'Fix' returns the not-found error (ambiguous substring), TaskGet 'login' returns the first.\n5. After TaskUpdate sets owner 'me' and status 'in_progress', TaskGet reflects both fields."
+}

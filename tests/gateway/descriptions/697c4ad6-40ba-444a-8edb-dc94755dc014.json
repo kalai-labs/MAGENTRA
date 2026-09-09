@@ -1,0 +1,10 @@
+{
+  "id": "697c4ad6-40ba-444a-8edb-dc94755dc014",
+  "featureIds": [
+    "layered-settings"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:16.874Z",
+  "updatedAt": "2026-09-09T18:43:05.634Z",
+  "body": "WHAT\nSettings are read from three layers: schema defaults, the global file `~/.magentra/settings.json`, then the project file `<cwd>/.magentra/settings.json`; each later layer deep-merges over the earlier one and selected env vars override everything. `/settings` prints each leaf key with its effective value and the layer it came from (default, global, project or env).\n\nWHY\nWithout layering a per-project model or endpoint would have to be re-typed globally; without source attribution a user cannot see why a value differs from what they set.\n\nWHERE\nengine/core/src/config/settings.ts — loadSettings(cwd) (global then project via deepMerge, then applyEnvOverrides), globalSettingsPath(), projectSettingsPath(), deepMerge(), ENV_OVERRIDES, describeSettings(cwd) (source attribution via flattenLeaves), SettingSourceKind. Rendered by engine/core/src/runtime/engine.ts — Engine.renderSettings().\n\nTEST CHECKLIST\n1. With global {model:'g'} and project {model:'p'}, loadSettings(cwd).settings.model === 'p' and describeSettings(cwd) reports key 'model' with source 'project'.\n2. With only global {search:{provider:'brave'}} and project {search:{enabled:false}}, the effective search is {enabled:false, provider:'brave'} (nested deep merge), with search.enabled sourced 'project' and search.provider sourced 'global'.\n3. A key set in neither file (e.g. compactionThreshold) is reported with source 'default' and the schema default value.\n4. With process.env.MAGENTRA_MODEL='e' and model set in both files, the effective model is 'e' and its source is 'env'; a blank env var ('') does not override.\n5. An unknown key in a file produces a warning entry, not a throw, and invalid JSON in one layer yields a warning while the other layer still loads."
+}

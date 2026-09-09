@@ -1,0 +1,10 @@
+{
+  "id": "7747c0a9-d022-406b-9300-f970d60c6d3d",
+  "featureIds": [
+    "streaming-markdown"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:21.079Z",
+  "updatedAt": "2026-09-09T18:43:06.656Z",
+  "body": "WHAT\nAs assistant text streams in, the renderer commits every complete Markdown block — text up to the last blank line whose preceding fences (``` / ~~~) and `$$` delimiters are balanced — as rendered Markdown, and keeps the unfinished tail as plain text. A half-streamed code fence, table or display formula therefore stays plain until its closing delimiter arrives. On finish the whole message is re-rendered once.\n\nWHY\nRendering everything at the end left long answers as raw source for the whole turn, and rendering partial constructs made them flicker between parses.\n\nWHERE\napp/renderer/modules/stream.js — markdownCommitPoint(raw), commitStreamedMarkdown(el) (uses el._raw, el._committedLen, .md-done and .md-live children), finalizeAssistantEl(). app/renderer/modules/markdown.js — renderMarkdown(md) (fence branch consumes to closing fence, display math branch, tableStartsAt()/makeTable(), paragraph splitting), renderInline().\n\nTEST CHECKLIST\n1. markdownCommitPoint('para one\\n\\n```js\\nlet x\\n\\nmore') returns 'para one\\n' — the cut inside the open fence is rejected and the earlier blank line is used.\n2. markdownCommitPoint('$$\\na+b\\n\\n') returns '' (unbalanced $$), while markdownCommitPoint('$$a$$\\n\\ntail') returns '$$a$$\\n'.\n3. After deltas '# Title\\n\\n' then 'streaming words', .md-done contains an <h1> and .md-live textContent is 'streaming words'; committing again with no new blank line does not re-parse the committed prefix (el._committedLen unchanged).\n4. A table header and delimiter row without a trailing blank line stay in .md-live as plain text; once '\\n\\n' follows, .md-done gains a <table class=\"md-table\">.\n5. finalizeAssistantEl replaces .msg-body with a single full renderMarkdown(raw) result, so a block split awkwardly across commits is rendered whole and no .caret remains."
+}

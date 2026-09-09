@@ -1,0 +1,10 @@
+{
+  "id": "1489a04c-cd53-48c1-b9fc-a2c1f7fa3fa7",
+  "featureIds": [
+    "usage-normalization"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:23.978Z",
+  "updatedAt": "2026-09-09T18:42:59.036Z",
+  "body": "WHAT\n`Usage` is the protocol's record of billed tokens for one model response, split into four classes that never overlap: fresh input, output, cache-read and cache-write. OpenAI-compatible servers report `prompt_tokens` as the whole prompt and `cached_tokens` as a part of it, so the adapter subtracts cached from prompt to get the fresh input count and reports cached tokens as cacheRead.\n\nWHY\nGetting this wrong double-counts cached tokens, inflates the context reading and misprices the session, because each class bills at its own rate.\n\nWHERE\nengine/protocol/src/types.ts — `interface Usage` (doc comment defines the disjoint contract); engine/providers/src/openai-compat.ts — the stream chunk handler inside `OpenAICompatProvider` (around lines 317–334: `promptTokens - cachedTokens`, `cacheReadTokens: cachedTokens`, `cacheWriteTokens: 0`) and the trailing-buffer flush that keeps the final usage chunk (around line 415); helpers engine/protocol/src/tokens.ts `emptyUsage()`, `addUsage()`, `inputTokensOf()`.\n\nTEST CHECKLIST\n1. Feed the adapter a final SSE chunk with usage {prompt_tokens:1000, completion_tokens:50, prompt_tokens_details:{cached_tokens:800}}; the message_end usage is {inputTokens:200, outputTokens:50, cacheReadTokens:800, cacheWriteTokens:0}.\n2. With no prompt_tokens_details the usage is {inputTokens:prompt_tokens, cacheReadTokens:0}; with cached_tokens greater than prompt_tokens inputTokens clamps to 0 rather than going negative.\n3. inputTokensOf(usage) equals the server's prompt_tokens for the normalized record (200 + 800 + 0 = 1000), proving the classes are additive.\n4. A stream whose usage chunk arrives without a trailing newline still yields that usage on message_end (not emptyUsage()).\n5. addUsage(emptyUsage(), u) equals u field by field and never mixes classes."
+}

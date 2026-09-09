@@ -1,0 +1,10 @@
+{
+  "id": "ac9ecdae-822c-4f05-8796-50c6f5e7d002",
+  "featureIds": [
+    "tool-schedulewakeup"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:22.860Z",
+  "updatedAt": "2026-09-09T18:43:11.226Z",
+  "body": "WHAT\nScheduleWakeup asks the CronScheduler for a single delayed prompt injection. The delay is rounded and clamped to between 60 and 3600 seconds. The wakeup fires once, only when the REPL is idle, and is then removed from the job list.\n\nWHY\nWithout it the agent cannot revisit something a few minutes later without holding the turn, and without the clamp it could schedule a wakeup every second or a day away.\n\nWHERE\nengine/tools/src/cron.ts — scheduleWakeupTool (wakeupSchema delaySeconds/reason/prompt, execute() calls cron.scheduleWakeup()). engine/core/src/scheduling/cron.ts — CronScheduler.scheduleWakeup() (WAKEUP_MIN_S 60, WAKEUP_MAX_S 3600, Math.min/Math.max clamp, source 'wakeup', fireAt), tick() (isIdle gate; deletes the job after firing because fireAt is set).\n\nTEST CHECKLIST\n1. With a CronScheduler using an injectable now(), execute ScheduleWakeup { delaySeconds: 5, reason, prompt }; assert list()[0].fireAt equals now + 60s; with delaySeconds 99999 assert fireAt equals now + 3600s; with 300 assert now + 300s.\n2. Advance now() past fireAt with isIdle true and call tick(); assert enqueue was called once with the prompt and source 'wakeup', and list() is empty afterwards.\n3. Call tick() again after firing; assert enqueue was not called a second time (fires exactly once).\n4. Advance past fireAt with isIdle false and tick(); assert enqueue not called and the job still exists; then set idle true and tick(); assert it fires.\n5. Assert the tool result content contains 'Scheduled wakeup', the id and the fireAt ISO string, and that a session without cron returns the NO_CRON error."
+}

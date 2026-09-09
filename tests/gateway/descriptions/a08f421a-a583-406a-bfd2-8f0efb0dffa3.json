@@ -1,0 +1,10 @@
+{
+  "id": "a08f421a-a583-406a-bfd2-8f0efb0dffa3",
+  "featureIds": [
+    "discoverable-in-the-palette"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:15.791Z",
+  "updatedAt": "2026-09-09T18:43:10.726Z",
+  "body": "WHAT\nWhen a session starts (boot, /clear, /resume) the `session_started` event carries the addon roster (name, description, builtin flag) and a `commands` list where every addon appears as `/<name>` with args `[args]` and its description, next to the built-in slash commands. The frontend's slash palette is built from this list, so addons show up without extra wiring.\n\nWHY\nThe palette is never derived by the frontend; if the engine did not send addons in the registry, a user could not discover or tab-complete them.\n\nWHERE\nengine/core/src/runtime/engine.ts — Engine.announceSession() (`commands: [...SLASH_COMMANDS…, ...this.addonCommands()]`, `addons: this.addonSummaries()`), Engine.addonCommands(), Engine.addonSummaries(), Engine.emitAddonsUpdated() (same list after install). Roster source: engine/core/src/agent/addons.ts — loadAddons(), Addon.source used for the builtin flag.\n\nTEST CHECKLIST\n1. Booting an Engine with addons [{name:'foo', description:'D', source:'workspace'…}] emits session_started whose addons array contains {name:'foo', description:'D', builtin:false}.\n2. The same session_started commands array contains an entry with cmd '/foo', args '[args]', desc 'D', and still contains every built-in such as '/help' and '/addons'.\n3. The built-in magentron appears in session_started.addons with builtin:true.\n4. After `/clear` the new session_started carries the same roster and `/foo` command again.\n5. With no addons, session_started.addons is [] and commands equals exactly the built-in SLASH_COMMANDS list."
+}

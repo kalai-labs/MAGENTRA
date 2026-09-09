@@ -1,0 +1,10 @@
+{
+  "id": "17f35953-697c-42f7-a6c0-cb3e1b99188a",
+  "featureIds": [
+    "approval-note"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:14.045Z",
+  "updatedAt": "2026-09-09T18:42:59.285Z",
+  "body": "WHAT\nWhen a tool call asks for permission, the user can type a short note along with any answer. If the user denies, the note becomes part of the refusal message the model reads. If the user approves, the note is delivered to the model as a system reminder attached to that round's tool results.\n\nWHY\nWithout it, an approving user who wants to steer the call (\"yes, but use the staging DB\") has no channel; the note would be silently dropped and the model would never see it.\n\nWHERE\nengine/core/src/runtime/permissions.ts — PermissionOutcome.note and PermissionOutcome.message; PermissionEngine.check() copies res.message into `note` on every allow branch (protected-path, deletion-guard, ask) and into `message` on every deny branch. engine/core/src/runtime/session.ts — Session.executeToolCalls() turns outcome.note into this.remind(\"The user approved this <tool> call but attached a note …\"), which Session.withReminders() appends to the tool-result user message.\n\nTEST CHECKLIST\n1. With a requestApproval stub returning {decision:'allow', message:'use the staging DB'}, PermissionEngine.check() on an asking (out-of-workspace edit or deletion) call resolves {allowed:true, source:'user', note:'use the staging DB'}.\n2. In a Session driven by a FakeProvider whose first turn issues a Bash `rm -rf tmp/x` call and whose second turn ends, approving with a note makes the next user message sent to the provider contain a <system-reminder> block with the exact note text.\n3. With {decision:'deny', message:'wrong folder'}, the outcome is allowed:false and its message contains 'wrong folder' and the phrase telling the model not to retry the same call.\n4. An approval whose message is empty or whitespace-only produces no reminder: the next user message has no 'attached a note' text.\n5. A protected-path approval with a note also returns note in the outcome (the note is honoured on every allow branch, not only the plain 'ask' branch)."
+}
