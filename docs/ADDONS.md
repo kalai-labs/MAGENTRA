@@ -175,7 +175,9 @@ picked up on the next session start (or `/clear`).
 | Frontmatter parsing | `engine/core/src/config/frontmatter.ts` |
 | The view and wizard UI | `app/renderer/modules/addons.js` |
 
-Invariants are asserted by `.claude/skills/bigboycoding/addon-check.mjs`
-(`npm run build && node .claude/skills/bigboycoding/addon-check.mjs`) — discovery,
-both layouts, precedence, that no addon body ever leaks into the standing system
-prompt, and the on-invoke load.
+The invariants that need asserting — discovery, both layouts, precedence, that no
+addon body ever leaks into the standing system prompt, and the on-invoke load —
+were covered by `.claude/skills/bigboycoding/addon-check.mjs` until the 2026-09-09
+test reset deleted it. **Nothing asserts them today.** The leak invariant is the
+load-bearing one: it can only be proved by passing full addons, bodies included,
+through `buildSystemPrompt` — checking summaries proves nothing.

@@ -8,15 +8,16 @@ description: Read before you write. Use when changing, refactoring, renaming, de
 Think in whole-system terms before touching a line. This repo has a trap:
 
 ```
-engine/   71 .ts files   — typechecked by `npm run build` (tsc -b)
-tui/      15 .ts/.tsx    — typechecked by `npm run build` (tsc -b)
-app/      43 .js/.html   — typechecked by NOTHING
+engine/   75 .ts files   — typechecked by `npm run build` (tsc -b)
+tui/      24 .ts/.tsx    — typechecked by `npm run build` (tsc -b)
+app/      34 .js/.html   — typechecked by NOTHING
 ```
 
-`tsc -b` covers `engine/*` and `tui/*`, and **neither has a unit test suite**. All of `app/` — the Electron main process,
-the preload bridge, and every renderer module — is plain JavaScript outside the
-compiler. And `engine/*` has **no unit test suite at all**; tsc is its only
-automated gate.
+`tsc -b` covers `engine/*` and `tui/*`. All of `app/` — the Electron main
+process, the preload bridge, and every renderer module — is plain JavaScript
+outside the compiler. And as of the 2026-09-09 test reset, **no part of this
+repo has a test suite**: `tsc -b` is the only automated gate that exists
+anywhere in it.
 
 So the two halves are joined by bare string literals over NDJSON frames. Rename
 one and **everything still compiles, every test still passes, and the app breaks
@@ -64,14 +65,13 @@ frame string into *emitted* vs *handled*, and flags the `app/` side:
 
 ```
 $ node .claude/skills/bigboycoding/blast-radius.mjs --frame agent_spawned
-emitted / declared (3)
+emitted / declared (2)
   engine/core/src/runtime/session.ts:806  type: "agent_spawned" as const,
   engine/protocol/src/types.ts:158        type: "agent_spawned";
-  app/tests/ui.e2e.js:363                 await emit({ type: "agent_spawned", ...
 matched / handled (1)
 ! app/renderer/modules/landing.js:1016    case "agent_spawned":
 
-2 of these live in app/ — untyped. Rename this string and the build still passes.
+1 of these lives in app/ — untyped. Rename this string and the build still passes.
 ```
 
 Two files, connected by nothing but the characters `agent_spawned`.
@@ -91,86 +91,63 @@ Two files, connected by nothing but the characters `agent_spawned`.
 5. Only now write. State what you expect to break and what you expect to hold.
 6. Verify with the gates below and report the actual output.
 
-## Verification gates (all four exist and were run)
+## Verification gates — there is exactly ONE left
 
 ```bash
-npm run build                        # tsc -b, engine/* only. ~fast. exit 0 = clean
-npm run test:ui                      # app/tests/run-ui-tests.js
-npm run test:main --workspace app    # changes / window / connection / reasoning
-npm run test:version                 # tools/version
+npm run build                        # tsc -b, engine/* + tui/* only. exit 0 = clean
 ```
 
-`npm run build` passing means **nothing** about `app/`. If your change touched a
-frame type, a field name on a frame, or anything in `engine/protocol/`, the
-build is not evidence — you must exercise the UI path.
+That is the whole list. On **2026-09-09 the test suite was reset to zero**:
+`app/tests/` (the Electron UI suite and every main-process suite),
+`tools/version/test/`, and all seven `*-check.mjs` invariant checks in this
+directory were deleted deliberately, to be rebuilt from scratch. `npm run
+test:ui`, `test:main` and `test:version` no longer exist as scripts, and the CI
+steps that ran them are commented out with `TODO(tests)` markers.
 
-Two traps in the gates themselves:
+**This makes the skill's rule more important, not less.** `npm run build`
+passing means **nothing** about `app/` — 34 untyped `.js`/`.html` files — and
+nothing about any invariant tsc cannot see. Until the new suite lands, the
+`blast-radius.mjs` reading step below is not a preliminary to verification; it
+*is* the verification. Read the fan-in files by hand and say what you checked.
 
-- **`app/tests/changes.test.js` fails on a Windows checkout** — a CRLF/LF
-  assertion (`'const theme = 'old';\r\n'` vs `\n`), unrelated to any change you
-  make. Both `test:main` and root `test:ui` chain with `&&`, so this one failure
-  silently prevents the other four suites from running. Run them directly:
-  `node app/tests/run-ui-tests.js` (25 Electron scenarios), plus
-  `node app/tests/{window,connection}.test.js` and `reasoning.test.mjs`.
-- **Always confirm a red test is yours**: `git stash push -- engine/`, re-run,
-  `git stash pop`. This repo has pre-existing failures.
-
-`engine/*` has no unit test suite, so behavior changes there need a purpose-built
-check against the built output. See `permission-check.mjs` in this directory for
-the pattern — it imports from `engine/core/dist/` and asserts the permission
-invariants directly:
+Also still available, and now doing more work than before:
 
 ```bash
-npm run build && node .claude/skills/bigboycoding/permission-check.mjs
+npm run smoke --workspace app        # boots the real app; nonzero if the renderer crashes
+node .claude/skills/bigboycoding/blast-radius.mjs <file>
 ```
 
-`glob-state-dir-check.mjs` covers the other invariant with a purpose-built check
-— that `Glob` keeps `.magentra/` out of results unless the pattern or `path`
-names it:
+`smoke` catches a window that will not come up. It catches nothing below that.
 
-```bash
-npm run build && node .claude/skills/bigboycoding/glob-state-dir-check.mjs
-```
+### What the deleted checks covered — the spec for the rebuild
 
-`tools-check.mjs` covers the tool registry: every registered tool has a name, a
-description, a real zod schema, a valid permission class and an `execute`, and
-the read-only ones (Read, Glob, Grep, TaskList, GraphQuery) are actually RUN
-against a temp workspace — so "registered" is never mistaken for "working". It
-deliberately skips mutate/execute/network tools so it stays safe to run anytime:
+These are gone, but each one names a real invariant that nothing guards today.
+The pattern is worth repeating exactly: import from `engine/*/dist/`, assert the
+invariant directly, and confirm the key assertion FAILS when the invariant is
+deliberately broken.
 
-```bash
-npm run build && node .claude/skills/bigboycoding/tools-check.mjs
-```
+| Deleted check | The invariant it held |
+|---|---|
+| `permission-check.mjs` (23) | Permission-class decisions per tool. |
+| `tools-check.mjs` (61 / 27 tools) | Every registered tool has a name, description, real zod schema, valid permission class and `execute` — and the read-only ones (Read, Glob, Grep, TaskList, GraphQuery) are actually RUN against a temp workspace, so "registered" is never mistaken for "working". |
+| `addon-check.mjs` (19–28) | Both addon layouts, workspace-over-builtin precedence, `$ARGUMENTS`, the frontmatter parser's real contract, and the load-bearing one: **no addon body ever reaches the standing system prompt** — verified by passing full addons, bodies included, through `buildSystemPrompt`, because handing it summaries proves nothing. Also failed if either call site re-inlined the user-above-addon clause. |
+| `glob-state-dir-check.mjs` | `Glob` keeps `.magentra/` out of results unless the pattern or `path` names it. |
+| `tui-layout-check.mjs` (61) | The TUI layout core wraps and right-aligns in display CELLS (Ink lays `<Static>` out as an absolutely positioned content-sized box where `flexGrow` never reaches the right edge); folder trust is global, inherited, and matched on path SEGMENTS so `/home/me/work` never trusts `/home/me/workspace`; and the no-reflow guarantee — the live streaming line and the committed line laid out by the same function at the same width. |
+| `reasoning-effort-check.mjs` (16) | The context-ceiling probes and effort clamping, over a stub server. |
+| `compaction-check.mjs` | The compaction summarizer's sizing against the context window. |
 
-`addon-check.mjs` guards the addon mechanism — both layouts, workspace-over-
-builtin precedence, `$ARGUMENTS`, the frontmatter parser's real contract, and the
-load-bearing one: **no addon body ever reaches the standing system prompt**
-(verified by passing full addons, bodies included, through `buildSystemPrompt` —
-handing it summaries proves nothing):
+One more invariant was never covered at all: `connection-check.mjs` is cited by
+`app/main/config.js`, `engine/core/src/config/providerFactory.ts` and ADR 0007,
+but **no such file has ever existed in this repo's history**. The `isLocalBaseUrl`
+mirror between app and engine is a pair of literals tsc cannot compare, and the
+one test that did compare them (`app/tests/connection.test.js`) is also gone.
+`FEATURES.md` is the full backlog; every box in it is empty by design.
 
-```bash
-npm run build && node .claude/skills/bigboycoding/addon-check.mjs
-```
+Trap that survives the reset:
 
-`tui-layout-check.mjs` covers the terminal frontend, whose two invariants tsc
-cannot see: the layout core (`tui/src/markdown.ts` does its own wrapping and
-right-alignment in display CELLS, because Ink lays `<Static>` out as an
-absolutely positioned content-sized box where `flexGrow` never reaches the
-right edge), and folder trust (global, inherited by subfolders, matched on path
-SEGMENTS so `/home/me/work` never trusts `/home/me/workspace`). It also pins
-the no-reflow guarantee: the live streaming line and the committed line must be
-laid out by the same function at the same width:
-
-```bash
-npm run build && node .claude/skills/bigboycoding/tui-layout-check.mjs
-```
-
-All five were verified passing (`permission-check` 23, `addon-check` 19,
-`tools-check` 61 across 27 tools, `tui-layout-check` 61 on 2026-08-09), each
-with its key assertion confirmed to FAIL when the invariant is deliberately
-broken. Write a new
-`*-check.mjs` here on the same pattern when you change an engine invariant that
-nothing else guards.
+- **Always confirm a red result is yours**: `git stash push -- engine/`, re-run,
+  `git stash pop`. This repo has pre-existing breakage, and the BIG-PICTURE
+  freshness `check` in particular reports staleness from other people's work.
 
 ## The system map
 

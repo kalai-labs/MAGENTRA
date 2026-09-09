@@ -47,8 +47,10 @@ there permanently, so it does not sit in a `catch` block.
 - The asset name cannot be built from `process.arch`. electron-builder renames
   `${arch}` per target, so one x64 build is `x86_64` in an AppImage, `amd64` in a
   deb and `x64` in a tarball. Deriving it the obvious way produced a 404 for two
-  of the three formats. `tests/updates.test.js` pins the names a real
-  `dist:linux` writes, because nothing else would catch the drift.
+  of the three formats. `app/tests/updates.test.js` pinned the names a real
+  `dist:linux` writes, because nothing else would catch the drift — it was
+  deleted in the 2026-09-09 test reset, so that drift is currently uncaught and
+  this is one of the first pins the new suite owes.
 - Some platforms have no artifact at all: only an arm64 dmg and an x64 Linux
   build are published. There the click opens the release page. A confidently
   wrong file name would be worse than an honest list.

@@ -13,9 +13,6 @@ import { EffortClamp, looksLikeUnknownField, mentionsReasoningEffort, type WireE
 import { OllamaProvider } from "./ollama.js";
 import { ThinkTagSplitter } from "./think.js";
 
-// Still exported from here: app/tests/reasoning.test.mjs imports it by this path.
-export { ThinkTagSplitter };
-
 export interface OpenAICompatOptions {
   /** Bearer token. Empty string for keyless local servers (e.g. Ollama). */
   apiKey: string;

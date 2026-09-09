@@ -190,7 +190,9 @@ stay unchanged. Two rules make it correct:
    once from the newly-focused `TabState`.
 
 Because this is all-or-nothing for the multi-Tab case (two live Tabs require per-Tab state to
-exist), Step 2 lands as one coherent, `test:ui`-verified change; it is built additively
+exist), Step 2 lands as one coherent change, verified by whatever the rebuilt `ui` suite
+provides (the `test:ui` suite this once named was deleted in the 2026-09-09 test
+reset); it is built additively
 (bundle + tab bar wired with a single Tab first, identical to today) and only then does
 "open workspace" mint a *new* Tab instead of reusing the active one.
 

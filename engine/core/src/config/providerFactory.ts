@@ -36,8 +36,10 @@ export interface EndpointSpec {
  *
  * MIRRORED in app/main/config.js (same name, same rules). The app cannot import
  * from the engine — the engine ships as a bundled child process — so the two
- * copies are kept in step deliberately, and app/tests/connection.test.js plus
- * .claude/skills/bigboycoding/connection-check.mjs assert the parity.
+ * copies are kept in step deliberately.
+ * NOTHING ASSERTS THE PARITY RIGHT NOW — the test that did was deleted in the
+ * test rewrite. TODO(tests): re-pin this; the failure it caught is described
+ * two paragraphs up and is invisible to tsc.
  */
 export function isLocalBaseUrl(url: string): boolean {
   let host: string;

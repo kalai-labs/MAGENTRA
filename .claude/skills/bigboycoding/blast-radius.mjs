@@ -295,11 +295,12 @@ function reportEntrypoints() {
   console.log(`\n  engine/  ${eng} .ts files   — checked by \`npm run build\` (tsc -b)`);
   console.log(`  app/     ${app} .js/.html files — NOT typechecked by anything`);
   console.log(`\n  regression gates that actually exist:`);
-  console.log(`    npm run build                 typecheck engine/* only`);
-  console.log(`    npm run test:ui               app/tests/run-ui-tests.js`);
-  console.log(`    npm run test:main --workspace app   changes/window/connection/reasoning`);
-  console.log(`    npm run test:version          tools/version`);
-  console.log(`\n  engine/* has NO unit test suite. tsc is its only automated gate.`);
+  console.log(`    npm run build                 typecheck engine/* + tui/* only`);
+  console.log(`    npm run smoke --workspace app boots the app; fails on a renderer crash`);
+  console.log(`\n  That is the whole list. The test suite was reset to zero on 2026-09-09`);
+  console.log(`  (app/tests/, tools/version/test/, every *-check.mjs) and is being rebuilt.`);
+  console.log(`  NOTHING in this repo has a test suite. Reading the fan-in below IS the`);
+  console.log(`  verification, not a preliminary to it.`);
 }
 
 // ── main ───────────────────────────────────────────────────────────────────

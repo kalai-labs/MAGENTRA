@@ -10,7 +10,7 @@ cannot drift apart.
 **Read this to find where something already lives before writing a second one.**
 Narrative and rationale are in `BIG-PICTURE.pdf`; this is the index.
 
-- files scanned **504** — engine 75, app 44, other 385
+- files scanned **155** — engine 75, app 35, other 45
 - `app/` is typechecked by **nothing**; `tsc -b` covers `engine/*` only.
 
 ---
@@ -80,10 +80,10 @@ Changing one of these reaches the whole system. `↓N` = transitive importers.
 **imported by** `engine/host/src/bootstrap.ts` `engine/host/src/serve.ts` `engine/tools/src/addon.ts` `engine/tools/src/agent.ts` `engine/tools/src/askUserQuestion.ts` `engine/tools/src/bash.ts` `engine/tools/src/cron.ts` `engine/tools/src/edit.ts` …+15
 
 ### `engine/providers/src/openai-compat.ts`
-*579L · ↓38 transitive · ←1 direct*
+*576L · ↓38 transitive · ←1 direct*
 
-**exports** `OpenAICompatOptions` `ThinkTagSplitter` `OpenAICompatProvider`
-**members** `rejectedField:93 buildBody:132 ollamaNative:164 listModels:260 mapFinish:478 toWireTool:501 toWireMessages:512 joinText:566 flattenToolResult:573`
+**exports** `OpenAICompatOptions` `OpenAICompatProvider`
+**members** `rejectedField:90 buildBody:129 ollamaNative:161 listModels:257 mapFinish:475 toWireTool:498 toWireMessages:509 joinText:563 flattenToolResult:570`
 **imported by** `engine/providers/src/index.ts`
 
 ### `engine/core/src/config/settings.ts`
@@ -135,27 +135,26 @@ Changing one of these reaches the whole system. `↓N` = transitive importers.
 
 **members** `createTabState:90 captureInto:97 applyFrom:102 chromeIsFocused:117 runInTab:129 routeEngineEvent:160 unmountFocusedStream:176 tabStreamPanes:192 autoGrowInput:196 buildPaneComposer:204 openPaneOverflowMenu:386 wirePaneScrollPill:397 syncPaneActivity:412 liveTabId:435 tabIsBusy:439 paneNowState:445 renderPaneNowLine:453 paneNowTick:491 ensurePaneNowTicker:505 enqueuePaneCommand:513 renderPaneQueue:523 flushTabCommandQueue:536 paneFor:548 paneJobsContainer:637 setTabTaskBubbles:652 paintTabBubbles:660 resolvePanePermission:692 buildPaneApproval:708 showPaneApproval:742 hidePaneApproval:769 syncChromeSafetyFromFocusedTab:788 syncTabOverdrive:797 setTabOverdrive:816 toggleTabOverdrive:829 openPaneCtxMenu:843 applyLayout:879 repaintChromeFromFocusedTab:959 onTabOpenedFromMain:990 focusPaneInput:1010 onTabFocusedFromMain:1023` …+1
 
-### `app/main/connection.js`
-*639L · ↓2 transitive · ←2 direct*
-
-**members** `validateCredentialPayload:46 stripApiSuffix:164 candidateBaseUrls:181 describeFetchError:210 fetchWithTimeout:235 testEndpoint:259 probeChatRoute:372 modelIds:392 modelCatalog:397 discoverContextLimit:428 readWorkspaceEnvKeys:484 writeWorkspaceEnvKeys:523 resolveVisionSelection:571 currentVisionConnection:608`
-**imported by** `app/main.js` `app/tests/connection.test.js`
-
 ### `app/renderer/modules/composer.js`
 *865L · ↓0 transitive · ←0 direct*
 
 **members** `autoGrow:35 makeSlashPalette:48 resetLocalViewForClear:189 sendSlashCommand:213 sendBangCommand:250 runTabCommand:262 messageOverCap:291 renderAttachChips:304 clearAttachments:334 composeWithAttachments:344 imageFrameParts:370 attachmentSummary:379 openAttachPicker:389 renderQueueRows:441 renderQueueChip:465 dispatch:478 flushMessageQueue:519 clearMessageQueue:528 sendMessage:533 hardStop:618 requestClear:696 toggleShortcutSheet:742 dismissSetupWizard:835`
 
-### `app/main/config.js`
-*314L · ↓5 transitive · ←5 direct*
+### `app/main/connection.js`
+*639L · ↓1 transitive · ←1 direct*
 
-**members** `configPath:49 apiKeyEnvVarFor:58 writeJsonAtomic:72 workspaceSettingsPath:97 globalSettingsPath:103 readWorkspaceSettings:113 readGlobalSettings:118 readEffectiveWorkspaceSettings:128 readSettingsFile:132 updateWorkspaceSettings:154 shouldStartFullScreen:171 readConfig:175 rememberWorkspace:227 isLocalBaseUrl:243 normalizeBaseUrl:263 writeConfig:270`
-**imported by** `app/main/connection.js` `app/main/profiles.js` `app/main.js` `app/tests/connection.test.js` `app/tests/window.test.js`
+**members** `validateCredentialPayload:46 stripApiSuffix:164 candidateBaseUrls:181 describeFetchError:210 fetchWithTimeout:235 testEndpoint:259 probeChatRoute:372 modelIds:392 modelCatalog:397 discoverContextLimit:428 readWorkspaceEnvKeys:484 writeWorkspaceEnvKeys:523 resolveVisionSelection:571 currentVisionConnection:608`
+**imported by** `app/main.js`
 
 ### `app/renderer/modules/setup.js`
 *665L · ↓0 transitive · ←0 direct*
 
 **members** `applyWizPreset:44 applyContextLimit:125 selectWizPreset:150 resetWizForm:156 renderVisionOptions:182 loadProfileIntoForm:201 renderWizProfiles:230 refreshWizProfiles:281 applyLocalDetection:301 refreshLocalDetection:313 applyWizModeUi:325 openConnectionsWizard:343 openSetupWizard:361 markConnectionApplied:376 useProfile:389 saveWizProfile:414 deleteProfileRow:454 wizPayload:491 describeTestFailure:511 wizPayloadKey:525 wizConnectionChanged:529`
+
+### `app/renderer/modules/stream.js`
+*615L · ↓0 transitive · ←0 direct*
+
+**members** `markdownCommitPoint:25 commitStreamedMarkdown:44 finalizeAssistantEl:65 finalizeThinkingEl:88 appendSysNote:94 showCompactingCard:110 removeCompactingCard:131 appendSysError:137 appendSysNotice:154 clearTransientNotices:172 messageClock:180 createMessageEl:186 appendUserMessage:207 workStream:230 closeWorkGroup:259 appendPhaseBanner:268 trimStream:280 appendTurnSeparator:314 cinematicHint:335 createToolRow:345 ensureToolTicker:403 makeRowExpandable:421 findToolRow:450 onToolOutputDelta:461 finishToolRow:478 ensureAgentsRow:513 updateAgentMeter:523 getOrCreateAgentCard:535 finalizeCard:599 finalizeAllAgentCards:609`
 
 ---
 
@@ -171,15 +170,15 @@ before adding one.
 
 **app/main/changes.js/**
 
-- `` · 103L · ↓2
+- `` · 103L · ↓1
 
 **app/main/config.js/**
 
-- `` ⬢ · 314L · ↓5
+- `` · 318L · ↓3
 
 **app/main/connection.js/**
 
-- `` ⬢ · 639L · ↓2
+- `` ⬢ · 639L · ↓1
 
 **app/main/logging.js/**
 
@@ -187,11 +186,11 @@ before adding one.
 
 **app/main/profiles.js/**
 
-- `` · 128L · ↓3
+- `` · 128L · ↓2
 
 **app/main/updates.js/**
 
-- `` · 349L · ↓2
+- `` · 349L · ↓1
 
 **app/preload.js/**
 
@@ -211,7 +210,7 @@ before adding one.
 - `session.js` · 339L · ↓0
 - `setup.js` ⬢ · 665L · ↓0
 - `state.js` · 456L · ↓0
-- `stream.js` · 615L · ↓0
+- `stream.js` ⬢ · 615L · ↓0
 - `tabs.js` ⬢ · 1067L · ↓0
 - `tasks.js` · 148L · ↓0
 - `tokens.js` · 49L · ↓0
@@ -245,401 +244,9 @@ before adding one.
 
 - `` · 29L · ↓0
 
-**app/tests/changes.test.js/**
-
-- `` · 61L · ↓0
-
-**app/tests/connection.test.js/**
-
-- `` · 526L · ↓0
-
-**app/tests/reasoning.test.mjs/**
-
-- `` · 116L · ↓0
-
-**app/tests/run-ui-tests.js/**
-
-- `` · 26L · ↓0
-
-**app/tests/test-preload.js/**
-
-- `` · 88L · ↓0
-
-**app/tests/ui.e2e.js/**
-
-- `` · 2057L · ↓0
-
-**app/tests/updates.test.js/**
-
-- `` · 315L · ↓0
-
-**app/tests/vision.test.mjs/**
-
-- `` · 157L · ↓0
-
-**app/tests/window.test.js/**
-
-- `` · 12L · ↓0
-
-**benchmarks/slop-code-bench-integration/agent/**
-
-- `__init__.py` · 7L · ↓0
-- `agent.py` · 459L · ↓0 — MagentraAgentConfig, MagentraAgent
-
-**benchmarks/slop-code-bench-integration/install.sh/**
-
-- `` · 120L · ↓0
-
-**benchmarks/slop-code-bench/examples/**
-
-- `calculator/calculator/tests/conftest.py` · 56L · ↓0 — pytest_addoption, entrypoint_argv, checkpoint_name, static_assets, test_data_dir
-- `calculator/calculator/tests/test_checkpoint_1.py` · 108L · ↓0 — load_input_result, load_error_case, parse_calculator_output, test_add_operations, test_invalid_equation, test_zero_division
-- `calculator/calculator/tests/test_checkpoint_2.py` · 177L · ↓0 — load_input_result, load_error_case, parse_calculator_output, test_complex_math, test_variable_assignment, test_variable_reassignment, test_multiple_variables, test_invalid_var_name, test_undefined_var
-- `calculator/calculator/tests/test_checkpoint_3.py` · 200L · ↓0 — load_input_result, load_error_case, parse_calculator_output, test_advanced_math, test_simple_function, test_multiple_params_function, test_history_basic, test_history_clear, test_invalid_function, test_function_call_error
-- `calculator/submissions/calculator.py` · 219L · ↓0 — is_valid_var_name, is_valid_func_name, handle_assignment, handle_function_definition, handle_function_call, evaluate_expression, handle_history, handle_clear, main
-- `yaml_joiner/problem/tests/conftest.py` · 56L · ↓0 — pytest_addoption, entrypoint_argv, checkpoint_name, static_assets, test_data_dir
-- `yaml_joiner/problem/tests/test_checkpoint_1.py` · 98L · ↓0 — load_test_case, test_single_file_join, test_multiple_files_join
-- `yaml_joiner/problem/tests/test_checkpoint_2.py` · 109L · ↓0 — load_test_case, substitute_static_assets, test_local_directory_recursion, test_static_assets_directory
-- `yaml_joiner/submission/correct/solution.py` · 53L · ↓0 — nested_set
-- `yaml_joiner/submission/incorrect/solution.py` · 53L · ↓0 — nested_set
-
-**benchmarks/slop-code-bench/scripts/**
-
-- `analyze_trajectory.py` · 1712L · ↓0 — get_encoder, count_tokens, AgentType, ActivityType, ThinkingMetrics, ToolMetrics, ActivityMetrics, TokenUsageMetrics, SequenceMetrics, BugFixMetrics, …
-- `mass_delta_analysis.py` · 681L · ↓0 — get_run_name, symbol_key, calc_mass, load_symbols, discover_checkpoints, match_symbols, compute_distribution, compute_high_complexity, analyze_transition, analyze_problem, …
-- `migrate_specs_solutions.py` · 145L · ↓0 — find_checkpoints, migrate_problem, main
-
-**benchmarks/slop-code-bench/src/**
-
-- `slop_code/__init__.py` · 0L · ↓0
-- `slop_code/agent_runner/__init__.py` · 45L · ↓0
-- `slop_code/agent_runner/agent.py` · 477L · ↓0 — AgentConfigBase, CheckpointInferenceResult, Agent, StreamParser
-- `slop_code/agent_runner/agents/__init__.py` · 60L · ↓0
-- `slop_code/agent_runner/agents/claude_code/__init__.py` · 15L · ↓0
-- `slop_code/agent_runner/agents/claude_code/agent.py` · 979L · ↓1 — serialize_tool_list, ClaudeCodeConfig, ClaudeCodeAgent
-- `slop_code/agent_runner/agents/claude_code/parser.py` · 152L · ↓1 — ClaudeCodeParser
-- `slop_code/agent_runner/agents/cli_utils.py` · 115L · ↓0 — AgentCommandResult, stream_cli_command
-- `slop_code/agent_runner/agents/codex/__init__.py` · 8L · ↓0
-- `slop_code/agent_runner/agents/codex/agent.py` · 684L · ↓1 — CodexConfig, CodexAgent
-- `slop_code/agent_runner/agents/codex/parser.py` · 143L · ↓1 — CodexParser
-- `slop_code/agent_runner/agents/cursor_cli/__init__.py` · 8L · ↓0
-- `slop_code/agent_runner/agents/cursor_cli/agent.py` · 463L · ↓1 — CursorCliConfig, CursorCliAgent
-- `slop_code/agent_runner/agents/cursor_cli/parser.py` · 155L · ↓1 — CursorCliParser
-- `slop_code/agent_runner/agents/gemini/__init__.py` · 10L · ↓0
-- `slop_code/agent_runner/agents/gemini/agent.py` · 733L · ↓0 — GeminiConfig, GeminiAgent
-- `slop_code/agent_runner/agents/gemini/parser.py` · 177L · ↓0 — GeminiParser
-- `slop_code/agent_runner/agents/kimi_cli/__init__.py` · 8L · ↓0
-- `slop_code/agent_runner/agents/kimi_cli/agent.py` · 886L · ↓1 — KimiCliConfig, KimiCliAgent
-- `slop_code/agent_runner/agents/kimi_cli/parser.py` · 272L · ↓1 — parse_wire_events, has_final_result, group_events_into_steps, KimiCliParser
-- `slop_code/agent_runner/agents/magentra/__init__.py` · 7L · ↓0
-- `slop_code/agent_runner/agents/magentra/agent.py` · 459L · ↓0 — MagentraAgentConfig, MagentraAgent
-- `slop_code/agent_runner/agents/miniswe.py` · 814L · ↓0 — MiniSWEAgentConfig, MiniSWEAgent
-- `slop_code/agent_runner/agents/miniswe/__init__.py` · 6L · ↓0
-- `slop_code/agent_runner/agents/miniswe/parser.py` · 172L · ↓0 — MinisweParser
-- `slop_code/agent_runner/agents/opencode/__init__.py` · 6L · ↓0
-- `slop_code/agent_runner/agents/opencode/agent.py` · 574L · ↓0 — OpenCodeAgentConfig, OpenCodeAgent
-- `slop_code/agent_runner/agents/opencode/parser.py` · 120L · ↓0 — OpenCodeParser
-- `slop_code/agent_runner/agents/openhands/__init__.py` · 10L · ↓0
-- `slop_code/agent_runner/agents/openhands/agent.py` · 680L · ↓0 — OpenHandsConfig, OpenHandsAgent
-- `slop_code/agent_runner/agents/openhands/parser.py` · 285L · ↓0 — OpenHandsParser
-- `slop_code/agent_runner/agents/pi/__init__.py` · 8L · ↓0
-- `slop_code/agent_runner/agents/pi/agent.py` · 836L · ↓1 — PiConfig, PiAgent
-- `slop_code/agent_runner/agents/pi/parser.py` · 278L · ↓1 — PiParser
-- `slop_code/agent_runner/agents/utils.py` · 76L · ↓0 — resolve_env_vars, find_jsonl_files, copy_jsonl_files
-- `slop_code/agent_runner/credentials.py` · 575L · ↓0 — EndpointDefinition, CredentialType, ProviderCredential, CredentialNotFoundError, ProviderDefinition, ProviderCatalog, CredentialSpec, APIKeyStore
-- `slop_code/agent_runner/models.py` · 210L · ↓0 — AgentError, UnsupportedEnvironmentError, AgentSetupError, AgentStepError, UsageTracker, AgentCostLimits, AgentRunSpec
-- `slop_code/agent_runner/registry.py` · 104L · ↓0 — register_agent_config, get_agent_config_cls, available_agent_types, iter_agent_config_types, build_agent_config, register_agent, get_agent_cls
-- `slop_code/agent_runner/reporting.py` · 512L · ↓0 — AgentCheckpointSummary, CheckpointState, RunSummary, CheckpointEvalResult, MetricsTracker, setup_run_output_directory, setup_checkpoint_output_directory, save_results, save_agent_artifacts, save_agent_checkpoint_info
-- `slop_code/agent_runner/resume.py` · 662L · ↓0 — InvalidationReason, CheckpointStatus, ResumeInfo, detect_resume_point, format_resume_summary
-- `slop_code/agent_runner/runner.py` · 1233L · ↓0 — AgentRunnerError, get_artifacts_path, create_agent_session, get_checkpoints, get_task_for_checkpoint, evaluate_agent_snapshot, run_checkpoint, AgentRunner, agent_progress_watcher, run_agent
-- `slop_code/agent_runner/state.py` · 232L · ↓0 — AgentStateEnum, AgentStats, AgentState, AgentProgress
-- `slop_code/agent_runner/trajectory_parsing.py` · 124L · ↓0 — ParseError, TrajectoryParser, parse_trajectory
-- `slop_code/agent_runner/trajectory.py` · 87L · ↓0 — UserStep, AgentStep, ThinkingStep, ToolUseStep, Trajectory
-- `slop_code/common/__init__.py` · 98L · ↓0
-- `slop_code/common/common.py` · 57L · ↓0 — mask_sensitive_values, deep_merge
-- `slop_code/common/constants.py` · 59L · ↓0 — get_save_spec_dump
-- `slop_code/common/llms.py` · 416L · ↓0 — TokenUsage, APIPricingTier, APIPricing, ModelDefinition, ModelCatalog
-- `slop_code/common/paths.py` · 77L · ↓0 — to_relative_path, serialize_path_dict
-- `slop_code/common/render.py` · 199L · ↓0 — strip_canary_string, get_file_params, render_criteria_text, render_multi_file_prefix, replace_spec_placeholders, render_prompt
-- `slop_code/dashboard/__init__.py` · 0L · ↓0
-- `slop_code/dashboard/app.py` · 273L · ↓0 — get_thinking_display_str, toggle_settings_modal
-- `slop_code/dashboard/assets/clientside.js` · 11L · ↓0
-- `slop_code/dashboard/components.py` · 358L · ↓0 — loading_graph, build_run_selector_children, sidebar
-- `slop_code/dashboard/data.py` · 985L · ↓0 — ChartContext, ModelVariationInfo, get_readable_model, get_display_annotation, get_short_annotation, get_variant_annotation, analyze_model_variations, get_dynamic_variant_annotation, process_checkpoint_row, flatten_summary, …
-- `slop_code/dashboard/graphs/__init__.py` · 2L · ↓0
-- `slop_code/dashboard/graphs/bar.py` · 474L · ↓0 — build_bar_comparison, build_efficiency_bars, build_quality_bars, build_graph_metrics_bars
-- `slop_code/dashboard/graphs/boxplot.py` · 120L · ↓0 — build_checkpoint_delta_boxplot
-- `slop_code/dashboard/graphs/common.py` · 128L · ↓0 — get_base_layout, LegendGroupInfo, LegendGroupTracker
-- `slop_code/dashboard/graphs/comparison.py` · 241L · ↓0 — build_problem_comparison_chart
-- `slop_code/dashboard/graphs/heatmap.py` · 160L · ↓0 — build_pass_rate_heatmap, build_single_run_heatmap
-- `slop_code/dashboard/graphs/quality_deltas.py` · 131L · ↓0 — build_delta_distribution, build_delta_improvement_heatmap
-- `slop_code/dashboard/graphs/scatter.py` · 540L · ↓0 — ScatterMetrics, AxisConfig, add_smart_annotations, aggregate_high_complexity_vs_solve, aggregate_cost_vs_solve, aggregate_time_vs_solve, aggregate_cost_per_problem, aggregate_lint_vs_solve, aggregate_rubric_vs_solve, ScatterChartRenderer, …
-- `slop_code/dashboard/graphs/test_pass.py` · 164L · ↓0 — build_test_pass_rate_bars
-- `slop_code/dashboard/page_context.py` · 45L · ↓0 — empty_figure, build_context
-- `slop_code/dashboard/pages/__init__.py` · 0L · ↓0
-- `slop_code/dashboard/pages/checkpoints.py` · 62L · ↓0 — update_graph
-- `slop_code/dashboard/pages/code_quality.py` · 114L · ↓0 — update_quality_graph, update_graph_metrics_graph
-- `slop_code/dashboard/pages/efficiency.py` · 70L · ↓0 — update_graph
-- `slop_code/dashboard/pages/head_to_head_checkpoints.py` · 230L · ↓0 — make_pass_rate_scatter_checkpoint_level, update_checkpoints
-- `slop_code/dashboard/pages/head_to_head_efficiency.py` · 344L · ↓0 — normalize_and_bin, update_efficiency
-- `slop_code/dashboard/pages/head_to_head_evolution.py` · 267L · ↓0 — update_evolution
-- `slop_code/dashboard/pages/head_to_head_quality.py` · 205L · ↓0 — make_quality_scatter_checkpoint_level, update_quality
-- `slop_code/dashboard/pages/head_to_head.py` · 452L · ↓0 — make_scatter_checkpoint_level, build_summary_card, update_overview
-- `slop_code/dashboard/pages/overview.py` · 83L · ↓0 — update_view
-- `slop_code/dashboard/pages/problem_comparison.py` · 103L · ↓0 — update_problem_options, update_graph
-- `slop_code/dashboard/pages/quality_deltas.py` · 94L · ↓0 — update_graph
-- `slop_code/dashboard/pages/run_analysis_overview.py` · 125L · ↓0 — build_scorecard, update_overview
-- `slop_code/dashboard/pages/run_analysis_problems.py` · 176L · ↓0 — build_problem_scatter, build_problem_table, update_problems
-- `slop_code/dashboard/pages/run_analysis_quality.py` · 149L · ↓0 — build_histogram, update_quality
-- `slop_code/dashboard/pages/run_analysis_tests.py` · 172L · ↓0 — normalize_and_bin, update_tests
-- `slop_code/dashboard/pages/scatter.py` · 110L · ↓0 — update_graph
-- `slop_code/dashboard/pages/tables.py` · 119L · ↓0 — update_table
-- `slop_code/dashboard/pages/tests.py` · 62L · ↓0 — update_graph
-- `slop_code/dashboard/settings_callbacks.py` · 376L · ↓0 — register_settings_callbacks
-- `slop_code/dashboard/settings_content.py` · 583L · ↓0 — group_runs, build_run_checklist, build_hierarchical_run_selector, build_single_run_radio, build_hierarchical_run_selector_single, build_configuration_modal_content, build_h2h_modal_content, build_run_analysis_modal_content
-- `slop_code/entrypoints/__init__.py` · 0L · ↓0
-- `slop_code/entrypoints/cli.py` · 130L · ↓0 — main
-- `slop_code/entrypoints/commands/__init__.py` · 24L · ↓0
-- `slop_code/entrypoints/commands/backfill_categories.py` · 249L · ↓0 — register, backfill_categories
-- `slop_code/entrypoints/commands/backfill_reports.py` · 649L · ↓0 — register, backfill_reports
-- `slop_code/entrypoints/commands/carry_forward.py` · 115L · ↓0 — register, carry_forward_grades
-- `slop_code/entrypoints/commands/combine_results.py` · 234L · ↓0 — register, combine_results
-- `slop_code/entrypoints/commands/common.py` · 185L · ↓0 — PathType, build_agent_docker, validate_rubric_options, resolve_problem_catalog_root, load_problem_config, load_problem_config_or_exit, ensure_docker_ready, setup_command_logging
-- `slop_code/entrypoints/commands/compress_artifacts.py` · 284L · ↓0 — register, compress_artifacts
-- `slop_code/entrypoints/commands/consolidate_runs.py` · 791L · ↓0 — register, consolidate_runs, discover_runs, validate_config, build_keys, extract_timestamp, check_mass_columns, flatten_result, load_checkpoint_results, load_jsonl, …
-- `slop_code/entrypoints/commands/docker.py` · 135L · ↓1 — make_dockerfile, build_base_image, build_submission_image, build_agent_image
-- `slop_code/entrypoints/commands/eval_checkpoint.py` · 335L · ↓0 — parse_test_id, render_pytest_results, register, evaluate_snapshot
-- `slop_code/entrypoints/commands/eval_problem_dir.py` · 161L · ↓0 — register, evaluate_problem_dir
-- `slop_code/entrypoints/commands/eval_run_dir.py` · 376L · ↓0 — register, evaluate_agent_run
-- `slop_code/entrypoints/commands/infer_problem.py` · 262L · ↓0 — register, infer_problem
-- `slop_code/entrypoints/commands/judge.py` · 527L · ↓0 — register, judge_evaluate
-- `slop_code/entrypoints/commands/make_registry.py` · 127L · ↓0 — register, make_registry
-- `slop_code/entrypoints/commands/migrate_evaluation_format.py` · 302L · ↓0 — register, migrate_evaluation_format
-- `slop_code/entrypoints/commands/problems.py` · 221L · ↓0 — list_problems, problem_status
-- `slop_code/entrypoints/commands/render_prompts.py` · 266L · ↓0 — register, render_prompts
-- `slop_code/entrypoints/commands/repopulate_diffs.py` · 168L · ↓0 — register, repopulate_diffs
-- `slop_code/entrypoints/commands/run_agent.py` · 1450L · ↓0 — register, run_agent
-- `slop_code/entrypoints/commands/static.py` · 589L · ↓0 — RunProcessingResult, register, static_metrics
-- `slop_code/entrypoints/commands/sync.py` · 41L · ↓0 — register, sync_catalog
-- `slop_code/entrypoints/commands/tools.py` · 149L · ↓0 — run_case
-- `slop_code/entrypoints/commands/variance.py` · 1030L · ↓0 — VariancePreset, RunGroupKey, RunData, RunGroup, MetricSpec, ConfidenceIntervalEntry, register, variance_report
-- `slop_code/entrypoints/commands/viz.py` · 69L · ↓0 — register, diff
-- `slop_code/entrypoints/config/__init__.py` · 30L · ↓0
-- `slop_code/entrypoints/config/loader.py` · 745L · ↓0 — get_package_config_dir, resolve_config_path, parse_override, load_run_config, load_agent_config, load_environment_config, resolve_environment, load_config_from_run_dir
-- `slop_code/entrypoints/config/resolvers.py` · 50L · ↓0 — register_resolvers, reset_resolvers
-- `slop_code/entrypoints/config/run_config.py` · 177L · ↓0 — OneShotConfig, ModelConfig, ThinkingConfig, RunConfig, ResolvedRunConfig
-- `slop_code/entrypoints/evaluation/__init__.py` · 8L · ↓0
-- `slop_code/entrypoints/evaluation/driver.py` · 468L · ↓0 — CheckpointEvaluationResult, EvaluationResult, BatchEvaluationSummary, evaluate_checkpoint, maybe_progress_bar, evaluate
-- `slop_code/entrypoints/evaluation/metrics.py` · 232L · ↓0 — get_run_summary, create_checkpoint_report, create_problem_reports, update_results_jsonl
-- `slop_code/entrypoints/evaluation/utils.py` · 243L · ↓0 — EvaluationError, resolve_problem, maybe_update_problem_report, gather_checkpoint_directories
-- `slop_code/entrypoints/live_progress.py` · 95L · ↓0 — LiveProgressDisplay, maybe_live_progress
-- `slop_code/entrypoints/problem_runner/__init__.py` · 16L · ↓0
-- `slop_code/entrypoints/problem_runner/driver.py` · 333L · ↓0 — run_problems
-- `slop_code/entrypoints/problem_runner/models.py` · 295L · ↓0 — TaskResult, RunTaskConfig, ProblemState
-- `slop_code/entrypoints/problem_runner/one_shot.py` · 47L · ↓0 — apply_one_shot_mode
-- `slop_code/entrypoints/problem_runner/renderer.py` · 273L · ↓0 — ProblemProgressRenderer
-- `slop_code/entrypoints/problem_runner/state.py` · 95L · ↓0 — ProblemStateTracker
-- `slop_code/entrypoints/problem_runner/worker.py` · 202L · ↓0 — run_agent_on_problem
-- `slop_code/entrypoints/utils.py` · 448L · ↓0 — CLIContext, CLIError, ModelOverride, ensure_dir_exists, ensure_file_exists, ensure_at_least_one_file_exists, parse_model_override, load_problem_from_snapshot_dir, discover_problems, discover_run_directories, …
-- `slop_code/evaluation/__init__.py` · 38L · ↓0
-- `slop_code/evaluation/collection.py` · 500L · ↓0 — CollectedTestCase, CheckpointTestCollection, compute_tc_hash, collect_checkpoint_tc, apply_collection_inventory, run_checkpoint_with_collection
-- `slop_code/evaluation/config.py` · 877L · ↓0 — ConfigError, MarkerConfig, BaseConfig, GroupConfig, RegressionSpec, CheckpointConfig, ProblemConfig, get_available_problems
-- `slop_code/evaluation/pytest_runner.py` · 983L · ↓0 — PytestRunner, run_checkpoint_pytest
-- `slop_code/evaluation/report.py` · 468L · ↓0 — GroupType, TestResult, PassPolicy, GroupReport, CorrectnessResults
-- `slop_code/evaluation/utils.py` · 189L · ↓0 — CheckpointValidationError, set_object_attr, get_object_attr, get_nested_attr, set_nested_value, maybe_set_nested, nested_priority_merge, serialize_value, ensure_json_string
-- `slop_code/execution/__init__.py` · 94L · ↓0
-- `slop_code/execution/assets.py` · 203L · ↓0 — StaticAssetConfig, ResolvedStaticAsset, resolve_static_assets
-- `slop_code/execution/docker_runtime/__init__.py` · 24L · ↓0
-- `slop_code/execution/docker_runtime/exec.py` · 444L · ↓0 — DockerExecRuntime
-- `slop_code/execution/docker_runtime/images.py` · 289L · ↓0 — get_submission_image_name, make_base_image, make_submission_docker_file, build_base_image, build_submission_image, build_image_from_str
-- `slop_code/execution/docker_runtime/models.py` · 117L · ↓0 — DockerConfig, DockerEnvironmentSpec
-- `slop_code/execution/docker_runtime/streaming.py` · 554L · ↓0 — DockerStreamingRuntime
-- `slop_code/execution/docker_runtime/utils.py` · 18L · ↓0 — network_mode_for_address
-- `slop_code/execution/file_ops/__init__.py` · 20L · ↓0
-- `slop_code/execution/file_ops/entrypoint.py` · 356L · ↓0 — detect_file_signature, read_file_content, InputFile, FileHandlerRegistry, materialize_input_files
-- `slop_code/execution/file_ops/models.py` · 100L · ↓0 — InputFileReadError, InputFileWriteError, Compression, FileType, FileHandler, FileSignature, open_stream
-- `slop_code/execution/file_ops/raw_files.py` · 182L · ↓0 — YAMLHandler, ParquetHandler, TextHandler, BinaryHandler
-- `slop_code/execution/file_ops/structured_files.py` · 391L · ↓0 — StructuredFileHandler, JSONHandler, JSONLinesHandler, DelimitedHandlerBase, TSVHandler, SQLiteHandler
-- `slop_code/execution/local_exec.py` · 273L · ↓0 — LocalExecRuntime
-- `slop_code/execution/local_streaming.py` · 322L · ↓0 — LocalEnvironmentSpec, LocalStreamingRuntime
-- `slop_code/execution/models.py` · 337L · ↓0 — EnvironmentConfig, SetupConfig, CommandConfig, SnapshotConfig, LocalConfig, ExecutionError, InputFileReadError, InputFileWriteError, EnvironmentSpec
-- `slop_code/execution/placeholders.py` · 133L · ↓0 — resolve_static_path, resolve_static_placeholders
-- `slop_code/execution/protocols.py` · 187L · ↓0 — StreamingRuntime, ExecRuntime
-- `slop_code/execution/runtime.py` · 207L · ↓0 — SolutionRuntimeError, LaunchSpec, RuntimeResult, RuntimeEvent, register_streaming_runtime, register_exec_runtime, spawn_streaming_runtime, spawn_exec_runtime
-- `slop_code/execution/session.py` · 393L · ↓0 — SessionError, Session
-- `slop_code/execution/shared.py` · 127L · ↓0 — split_setup_output, format_setup_commands, write_entry_script
-- `slop_code/execution/snapshot.py` · 1010L · ↓0 — Snapshot, FileChangeType, FileDiff, SnapshotDiff, create_diff_from_directories
-- `slop_code/execution/stream_processor.py` · 206L · ↓0 — ensure_string, start_stream_pump, make_timeout_fn, process_stream
-- `slop_code/execution/workspace.py` · 343L · ↓0 — WorkspaceError, Workspace
-- `slop_code/logging.py` · 821L · ↓0 — LoggingConfig, is_structlog_configured, StdlibLoggerAdapter, get_logger, filter_verbose_msg, VerboseFilter, make_file_logger, add_logger_name, add_process_thread_info, reset_logging, …
-- `slop_code/metrics/__init__.py` · 117L · ↓0
-- `slop_code/metrics/checkpoint/__init__.py` · 22L · ↓0
-- `slop_code/metrics/checkpoint/delta.py` · 93L · ↓0 — safe_ratio, safe_delta_pct, compute_checkpoint_delta
-- `slop_code/metrics/checkpoint/driver.py` · 163L · ↓0 — get_checkpoint_metrics
-- `slop_code/metrics/checkpoint/extractors.py` · 395L · ↓0 — get_evaluation_metrics, get_inference_metrics, get_quality_metrics, get_rubric_metrics
-- `slop_code/metrics/checkpoint/loaders.py` · 95L · ↓0 — load_snapshot_metrics, load_file_metrics, load_symbol_metrics, load_diff_metrics
-- `slop_code/metrics/checkpoint/mass.py` · 64L · ↓0 — compute_top20_share, compute_mass_metrics
-- `slop_code/metrics/driver.py` · 788L · ↓0 — measure_files, compute_aggregates, measure_snapshot_quality, load_rubric, save_rubric_results, build_category_map, build_type_map, annotate_grades_with_category, count_file_lines, batch_files_by_size, …
-- `slop_code/metrics/grade.py` · 807L · ↓0 — llm_judge_snapshot, llm_judge_snapshot_batch
-- `slop_code/metrics/languages/__init__.py` · 31L · ↓0
-- `slop_code/metrics/languages/python/__init__.py` · 60L · ↓0
-- `slop_code/metrics/languages/python/constants.py` · 177L · ↓0
-- `slop_code/metrics/languages/python/graph.py` · 855L · ↓0 — build_dependency_graph, compute_graph_metrics
-- `slop_code/metrics/languages/python/imports.py` · 389L · ↓0 — extract_imports, trace_source_files
-- `slop_code/metrics/languages/python/line_metrics.py` · 33L · ↓0 — calculate_mi, calculate_line_metrics
-- `slop_code/metrics/languages/python/lint_metrics.py` · 82L · ↓0 — calculate_lint_metrics
-- `slop_code/metrics/languages/python/parser.py` · 16L · ↓0 — get_python_parser
-- `slop_code/metrics/languages/python/symbols.py` · 902L · ↓0 — get_symbols
-- `slop_code/metrics/languages/python/type_check.py` · 76L · ↓0 — calculate_type_check_metrics
-- `slop_code/metrics/languages/python/utils.py` · 13L · ↓0 — read_python_code
-- `slop_code/metrics/languages/python/waste.py` · 498L · ↓0 — detect_waste, calculate_waste_metrics
-- `slop_code/metrics/languages/registry.py` · 72L · ↓0 — register_language, get_language, get_language_by_extension, get_language_for_extension
-- `slop_code/metrics/models.py` · 705L · ↓0 — MetricsThresholds, LineCountMetrics, LintMetrics, SymbolMetrics, ImportInfo, FileMetrics, SingleUseFunction, TrivialWrapper, SingleUseVariable, UnusedVariable, …
-- `slop_code/metrics/quality_io.py` · 107L · ↓0 — save_quality_metrics
-- `slop_code/metrics/rubric/__init__.py` · 37L · ↓0 — RubricProvider
-- `slop_code/metrics/rubric/bedrock_grade.py` · 337L · ↓0 — grade_file_async
-- `slop_code/metrics/rubric/carry_forward.py` · 539L · ↓0 — load_diff_text, DiffHunk, parse_diff_hunks, compute_line_offset, is_span_unchanged, carry_forward_grades, carry_forward_all_files, process_problem_carry_forward
-- `slop_code/metrics/rubric/llm_grade.py` · 458L · ↓0 — grade_file, grade_file_async
-- `slop_code/metrics/rubric/router.py` · 84L · ↓0 — grade_file_async
-- `slop_code/metrics/summary/__init__.py` · 12L · ↓0
-- `slop_code/metrics/summary/aggregators.py` · 324L · ↓0 — safe_mean, aggregate_per_problem, compute_costs_stats, compute_time_stats, compute_tokens_stats, compute_steps_stats, compute_solve_rates, compute_pass_rates_stats, compute_cc_stats, compute_ratios_stats, …
-- `slop_code/metrics/summary/compute.py` · 59L · ↓0 — compute_run_summary
-- `slop_code/metrics/summary/io.py` · 75L · ↓0 — load_checkpoint_data, save_summary_json
-- `slop_code/metrics/summary/stats.py` · 92L · ↓0 — compute_metric_stats, extract_metric_values, compute_ratio_values, compute_pass_rate, group_by_problem
-- `slop_code/metrics/utils.py` · 25L · ↓0 — MetricsError
-- `slop_code/problem_catalog.py` · 540L · ↓0 — CatalogError, CatalogManifest, ReleaseInfo, get_scbench_home, get_override_problem_root, get_catalog_root, get_manifest_path, get_run_catalog_path, load_manifest, save_manifest, …
-- `slop_code/protocol_loader.py` · 221L · ↓0 — ProtocolLoadError, load_protocol_entrypoint, get_source_files
-- `slop_code/utils.py` · 227L · ↓0 — human_readable_bytes, get_total_size, check_unstaged_files, get_next_experiment_dir, get_current_repo_hash, log_command_args, coerce
-- `slop_code/visualization/__init__.py` · 76L · ↓0
-- `slop_code/visualization/chart_builders.py` · 612L · ↓0 — apply_graph_style, MetricConfig, SubplotBarChartConfig, SubplotBarChartBuilder, ProgressLineChartConfig, ProgressLineChartBuilder, ViolinDistributionConfig, ViolinDistributionBuilder, RadarChartConfig, RadarChartBuilder
-- `slop_code/visualization/constants.py` · 63L · ↓0
-- `slop_code/visualization/data_transforms.py` · 237L · ↓0 — get_provider, filter_version_data, filter_high_thinking_checkpoints, get_version_colors, normalize_per_1k_loc, compute_progress_bins, compute_progress_metric, format_model_display_name, select_best_version_per_model
-- `slop_code/visualization/diff_viewer.py` · 495L · ↓0 — load_json, get_subdirs, get_checkpoints, get_snapshot_files, get_highlighted_line, generate_modern_diff
-- `slop_code/visualization/graph_utils.py` · 139L · ↓0 — get_theme, get_theme_layout
-
-**benchmarks/slop-code-bench/tests/**
-
-- `agent_runner/agents/claude_code_agent_test.py` · 1626L · ↓0 — mock_cost_limits, mock_pricing, mock_credential, openrouter_credential, FakeRuntime, FakeLogger, FakeSession, TestClaudeCodeConfig, TestClaudeCodeAgent, TestParseLineErrorHandling, …
-- `agent_runner/agents/claude_code_stream_parser_test.py` · 269L · ↓0 — test_parse_line_result_with_cache_tokens, test_parse_line_result_without_cache_tokens, test_parse_line_message_with_cache_tokens, test_parse_line_message_without_cache_tokens, test_parse_line_message_non_assistant_role, test_parse_line_message_without_usage, test_parse_line_invalid_json, test_parse_line_non_result_non_message_type, test_parse_line_ensures_no_double_counting, test_parse_line_real_world_example
-- `agent_runner/agents/codex_agent_test.py` · 858L · ↓0 — FakeRuntime, FakeLogger, FakeDockerSpec, FakeSession, mock_pricing, mock_cost_limits, mock_model_def, mock_credential, TestCodexConfig, TestCodexAgent
-- `agent_runner/agents/conftest.py` · 41L · ↓0 — mock_catalog_miniswe
-- `agent_runner/agents/cursor_cli_agent_test.py` · 440L · ↓0 — FakeRuntime, FakeSession, mock_pricing, mock_cost_limits, mock_model_def, mock_credential, TestCursorCliConfig, TestCursorCliAgent, TestCursorCliAgentParseLine, TestCursorCliAgentRegistration
-- `agent_runner/agents/gemini_agent_test.py` · 992L · ↓0 — FakeRuntime, FakeDockerSpec, FakeSession, mock_pricing, mock_cost_limits, mock_model_def, mock_credential, TestGeminiConfig, TestGeminiAgent, TestGeminiAgentParseLine, …
-- `agent_runner/agents/kimi_cli_agent_test.py` · 807L · ↓0 — FakeRuntime, FakeSession, mock_pricing, mock_cost_limits, mock_model_def, moonshot_credential, TestKimiCliConfig, TestKimiCliWireHelpers, TestKimiCliAgent
-- `agent_runner/agents/opencode_test.py` · 830L · ↓0 — FakeRuntime, FakeSession, make_agent, TestOpenCodeConfigGeneration, test_from_config_with_opencode_auth_file_mounts_auth_without_base_url, test_run_collects_messages_and_updates_usage, test_run_falls_back_to_pricing_when_reported_cost_is_zero, test_build_command_matches_harbor_shape, test_build_command_for_retry_continues_last_session, test_build_command_includes_variant_for_thinking_level, …
-- `agent_runner/agents/openhands_agent_test.py` · 242L · ↓0 — FakeRuntime, FakeSession, test_from_config_uses_provider_slug_and_openrouter_base_url, test_prepare_runtime_execution_uses_local_runtime_contract, test_reset_clears_output_dir_between_checkpoints, test_save_artifacts_copies_output_tree_and_trajectory_alias, test_setup_passes_home_override_and_mounts
-- `agent_runner/agents/pi_agent_test.py` · 919L · ↓0 — FakeRuntime, FakeSession, mock_pricing, mock_cost_limits, mock_model_def, TestPiConfig, TestPiAgent, TestPiAgentRegistration
-- `agent_runner/conftest.py` · 144L · ↓0 — ToyProblem, toy_problem, debug_problem_path
-- `agent_runner/credentials_test.py` · 299L · ↓0 — TestAPIKeyStore, TestCredentialSpec, TestProviderCredential, TestAPIKeyStoreConstant, TestAPIKeyStoreFrozen
-- `agent_runner/debug_resume.py` · 2L · ↓0
-- `agent_runner/llms_test.py` · 798L · ↓0 — TestAPIPricing, TestModelDefinition, TestModelDefinitionProviderSlugs, TestModelDefinitionThinking, TestModelCatalog, TestModelCatalogYAMLLoading, TestYAMLLoadedModels
-- `agent_runner/parsers/__init__.py` · 4L · ↓0
-- `agent_runner/parsers/test_fixtures.py` · 220L · ↓0 — get_claude_init, get_claude_thinking, get_claude_tool_use, get_claude_tool_result, get_codex_thread_started, get_codex_turn_started, get_codex_reasoning, get_codex_command, get_codex_turn_complete, get_opencode_step_start, …
-- `agent_runner/parsers/test_new_parsers.py` · 786L · ↓0 — TestClaudeCodeParser, TestCursorCliParser, TestCodexParser, TestOpenCodeParser, TestParseTrajectory, TestGeminiParser, TestKimiCliParser, TestMinisweParser, TestOpenHandsParser, TestAutoDetectNewParsers, …
-- `agent_runner/reporting_test.py` · 285L · ↓0 — TestRunSummary, TestCheckpointInferenceResultPaths, TestSaveAgentCheckpointInfo, TestSaveResults
-- `agent_runner/resources/inventory_api_debug_problem/loader.py` · 105L · ↓0 — load_checkpoint
-- `agent_runner/resources/inventory_api_debug_problem/verifier.py` · 40L · ↓0 — Verifier
-- `agent_runner/resources/inventory_cli_debug_problem/tests/conftest.py` · 41L · ↓0 — pytest_addoption, entrypoint_argv, checkpoint_name
-- `agent_runner/resources/inventory_cli_debug_problem/tests/test_checkpoint_1.py` · 80L · ↓0 — run_cli, test_spec_case
-- `agent_runner/resources/inventory_cli_debug_problem/tests/test_checkpoint_2.py` · 123L · ↓0 — run_cli, test_spec_case
-- `agent_runner/resources/solutions/inventory_cli_debug_problem/checkpoint_1.py` · 174L · ↓0 — load_state, save_state, JsonArgParser, next_id, cmd_create, cmd_get, cmd_list, build_parser, main
-- `agent_runner/resources/solutions/inventory_cli_debug_problem/checkpoint_2.py` · 271L · ↓0 — load_state, save_state, JsonArgParser, next_id, validate_quantity, as_item_output, cmd_create, cmd_get, cmd_list, cmd_update, …
-- `agent_runner/resources/tiny_settings_cli_debug_problem/loader.py` · 100L · ↓0 — load_checkpoint
-- `agent_runner/resources/tiny_settings_cli_debug_problem/verifier.py` · 53L · ↓0 — Verifier
-- `agent_runner/resume_integration_test.py` · 185L · ↓0 — run_docker_command, docker_python_env, cleanup_as_root, workspace_dir, TestResumeCommandsIntegration
-- `agent_runner/resume_test.py` · 661L · ↓0 — TestSetupConfigResumeCommands, TestResumeInfo, TestDetectResumePoint, TestDetectResumeFromArtifacts, TestAggregatePriorUsage, TestMetricsTrackerOnResume
-- `agent_runner/runner_e2e_test.py` · 268L · ↓0 — DummyAgent, build_dummy_agent, resources_path, solutions_path, problem_info, local_environment, session, output_dir, run_spec, test_agent_run_problem, …
-- `agent_runner/test_registry.py` · 75L · ↓0 — isolated_registry, test_build_agent_config_uses_registry, test_duplicate_agent_type_registration_errors, test_agent_type_validator_requires_match
-- `agent_runner/test_runner_integration.py` · 491L · ↓0 — FakeDiff, FakeSession, StubCheckpoint, StubEnvironment, FailingAgent, ExplodingCheckpointAgent, InterruptingAgent, fake_quality_metrics, FakeReport, StubProblem, …
-- `agent_runner/test_runner_unit.py` · 845L · ↓0 — StubCheckpoint, ReplayCase, RetryProbeAgent, CapturingLogger, test_run_checkpoint_retries_agent_errors_with_continue_prompt, test_run_checkpoint_stops_after_retry_budget, test_run_checkpoint_does_not_retry_non_agent_errors, test_run_checkpoint_logs_exact_agent_error_message, test_agent_cost_limits_default_to_two_retries, test_should_run_replay, …
-- `common/__init__.py` · 2L · ↓0
-- `common/paths_test.py` · 137L · ↓0 — TestToRelativePath, TestSerializePathDict
-- `common/render_test.py` · 205L · ↓0 — test_render_prompt_applies_placeholders_and_context, TestRenderMultiFilePrefix, TestStripCanaryString, test_render_prompt_strips_canary_automatically
-- `conftest.py` · 35L · ↓0 — is_docker_available, docker_available, skip_if_no_docker
-- `dashboard/data_test.py` · 50L · ↓0 — test_process_checkpoint_row_uses_new_pass_rate_names, test_problem_deltas_need_no_scb_metrics
-- `dashboard/graphs/heatmap_test.py` · 23L · ↓0 — test_build_single_run_heatmap_uses_isolated_pass_rate
-- `dashboard/graphs/quality_test.py` · 76L · ↓0 — test_quality_charts_need_no_scb_metrics
-- `dashboard/graphs/scatter_test.py` · 47L · ↓0 — test_aggregate_time_vs_solve_skips_missing_time, test_scatter_catalog_needs_no_scb_metrics
-- `entrypoints/commands/test_backfill_reports.py` · 124L · ↓0 — test_recategorize_evaluation_tests_dict_format_excludes_skipped_from_counts, test_backfill_reports_preserves_costs_for_all_agents
-- `entrypoints/commands/test_cmd_common.py` · 271L · ↓0 — test_validate_rubric_options_success, test_validate_rubric_options_failure, test_load_problem_config_or_exit_success, test_load_problem_config_or_exit_file_not_found, test_load_problem_config_or_exit_yaml_error, test_load_problem_config_or_exit_validation_error, test_ensure_docker_ready_docker_env, test_ensure_docker_ready_non_docker_env, test_setup_command_logging, test_resolve_problem_catalog_root_bootstraps, …
-- `entrypoints/commands/test_consolidate_runs.py` · 91L · ↓0 — test_check_mass_columns_passes_when_all_expected_present, test_check_mass_columns_fails_when_complexity_concentration_missing, test_check_mass_columns_only_requires_cc_mass, test_test_cols_use_new_pass_rate_names_and_drop_elapsed, test_normalize_solve_rates_uses_max_num_checkpoints_as_denominator, test_normalize_solve_rates_is_noop_without_num_checkpoints
-- `entrypoints/commands/test_eval_checkpoint_cli.py` · 136L · ↓0 — test_eval_snapshot_renders_pytest_results
-- `entrypoints/commands/test_eval_run_dir_writes_config.py` · 53L · ↓0 — test_write_problem_and_checkpoint_configs_overwrites
-- `entrypoints/commands/test_eval_run_dir.py` · 522L · ↓0 — TestEvaluationSchemaHelpers, TestEvaluateSelectionBehavior
-- `entrypoints/commands/test_migrate_evaluation_format.py` · 236L · ↓0 — TestConvertTestsToGroupedFormat, TestMigrateSingleFile
-- `entrypoints/commands/test_resume_validation.py` · 395L · ↓0 — TestGetNested, TestValidateResumeConfig
-- `entrypoints/commands/test_run_agent.py` · 724L · ↓0 — TestGetNested, TestBuildCliFlags, TestLoadAndValidateRunConfig, TestResolveProblemNames, TestResolveOutputDirectory, TestValidateResumeConfig, TestHandleResumeValidation, TestHandleEarlyCompletion, TestCreateTaskConfig, TestPrepareRunArtifacts, …
-- `entrypoints/commands/test_sync.py` · 100L · ↓0 — test_sync_installs_latest_when_no_version, test_sync_installs_explicit_version, test_sync_reports_noop_when_requested_version_already_current
-- `entrypoints/commands/test_variance.py` · 289L · ↓0 — test_discovers_runs_nested_under_model_dirs, test_metric_value_reads_strict_and_isolated_pass_rates, test_render_problem_cv_summary_splits_tables, test_collect_ci_entries_filters_by_width, test_collect_ci_entries_filters_to_allowed_delta_metrics, test_collect_ci_entries_canonicalizes_metric_names, test_collect_ci_entries_allows_checkpoint_deltas, test_render_confidence_interval_table_outputs_ci_block, test_render_confidence_interval_table_aggregates_multiple_problems, test_render_confidence_interval_table_no_threshold_filtering
-- `entrypoints/config/test_loader.py` · 442L · ↓0 — TestParseOverride, TestResolveConfigPath, TestLoadRunConfig
-- `entrypoints/config/test_resolvers.py` · 104L · ↓0 — TestNowResolver, TestInterpolationContext
-- `entrypoints/config/test_run_config.py` · 125L · ↓0 — TestModelConfig, TestThinkingConfig, TestRunConfig
-- `entrypoints/problem_runner/test_driver.py` · 242L · ↓0 — test_prepopulate_loads_cost_and_passed_counts, test_prepopulate_marks_partial_core_pass, test_prepopulate_handles_missing_evaluation, test_prepopulate_empty_completed_list_is_noop, test_run_problems_recycles_workers_between_problems
-- `entrypoints/problem_runner/test_one_shot.py` · 83L · ↓0 — test_apply_one_shot_mode_combines_specs, test_apply_one_shot_prefix_template_renders_idx, test_apply_one_shot_prefix_on_first_checkpoint
-- `entrypoints/test_discovery.py` · 119L · ↓0 — TestDiscoverProblems, TestDiscoverCheckpoints
-- `entrypoints/test_evaluation_driver.py` · 46L · ↓0 — test_maybe_progress_bar_initializes_core_percent_field, test_maybe_progress_bar_updates_core_percent_field, test_disabled_progress_bar_accepts_core_percent_update
-- `entrypoints/test_model_override.py` · 55L · ↓0 — TestParseModelOverride, test_parse_model_override_raises_on_empty_provider, test_parse_model_override_raises_on_empty_model, test_parse_model_override_raises_on_unknown_model
-- `entrypoints/test_utils_summary.py` · 62L · ↓0 — test_display_and_save_summary_uses_new_composite_formulas
-- `evaluation/collection_test.py` · 48L · ↓0 — test_public_collection_functions_exported, test_collect_cmd_excludes_agent_conftest, test_compute_tc_hash_stable_for_reordered_input
-- `evaluation/config_test.py` · 233L · ↓0 — test_group_config_isolated_field_default, test_group_config_isolated_field_set_true, test_group_config_isolated_field_set_false, test_group_config_all_fields, test_group_config_regression_with_isolated, test_group_config_case_defaults_with_reset, TestCheckpointConfig, TestProblemConfigTestDependencies
-- `evaluation/conftest.py` · 27L · ↓0 — local_environment_spec, docker_environment_spec
-- `evaluation/e2e_pytest_runner_test.py` · 256L · ↓0 — docker_available, problem_config, submission_path, TestPytestRunnerE2ECheckpoint1, TestPytestRunnerE2ECheckpoint2, TestPytestRunnerE2EStaticAssets, TestPytestRunnerE2EMarkers
-- `evaluation/fixtures/word_stats/problem/tests/conftest.py` · 56L · ↓0 — pytest_addoption, entrypoint, checkpoint, static_assets
-- `evaluation/fixtures/word_stats/problem/tests/test_checkpoint_1.py` · 57L · ↓0 — run_main, TestBasicWordCount
-- `evaluation/fixtures/word_stats/problem/tests/test_checkpoint_2.py` · 113L · ↓0 — run_main, TestLineCount, TestStopwordFiltering, TestCombined
-- `evaluation/fixtures/word_stats/submission/main.py` · 65L · ↓0 — load_stopwords, count_words, count_lines, main
-- `evaluation/pytest_runner_test.py` · 2507L · ↓0 — mock_problem_config, mock_checkpoint_config, mock_environment, pytest_runner, TestConstants, TestPytestRunner, TestParametrizedFailureLookup, TestParametrizedAugmentation, TestPytestJsonReportConversion, TestRunCheckpointPytest, …
-- `evaluation/report_test.py` · 834L · ↓0 — TestGroupType, TestTestResult, TestCorrectnessResults
-- `evaluation/utils_test.py` · 19L · ↓0 — test_deep_merge_dicts_basic
-- `execution/conftest.py` · 178L · ↓0 — local_environment_spec, temp_snapshot_dir, snapshot_fn, source_dir, initial_snapshot, static_assets_dir, resolved_static_assets, resolved_directory_asset, workspace, modified_workspace, …
-- `execution/docker_runtime/__init__.py` · 2L · ↓0
-- `execution/docker_runtime/conftest.py` · 156L · ↓2 — docker_spec, docker_spec_with_setup, docker_spec_with_mounts, docker_spec_host_network, mock_docker_client, mock_container, mock_docker_client_with_container
-- `execution/docker_runtime/exec_test.py` · 670L · ↓0 — TestDockerExecRuntimeInit, TestDockerExecRuntimeSpawn, TestDockerExecRuntimeBuildVolumes, TestDockerExecRuntimeBuildDockerRunCommand, TestDockerExecRuntimeUser, TestDockerExecRuntimeResolvePorts, TestDockerExecRuntimePoll, TestDockerExecRuntimeKill, TestDockerExecRuntimeCleanup, TestDockerExecRuntimeIntegration
-- `execution/docker_runtime/images_test.py` · 131L · ↓0 — test_build_base_image_reuses_current_image, test_build_base_image_rebuilds_stale_image, test_build_submission_image_rebuilds_stale_base_image, test_build_image_falls_back_to_tag_lookup_after_sdk_image_not_found
-- `execution/docker_runtime/streaming_test.py` · 615L · ↓0 — TestDockerStreamingRuntimeInit, TestDockerStreamingRuntimeSpawn, TestDockerStreamingRuntimeBuildVolumes, TestDockerStreamingRuntimeUser, TestDockerStreamingRuntimeContainer, TestDockerStreamingRuntimeEnsureContainerRunning, TestDockerStreamingRuntimePrepareCommand, TestDockerStreamingRuntimePoll, TestDockerStreamingRuntimeKill, TestDockerStreamingRuntimeCleanup, …
-- `execution/file_ops_test.py` · 511L · ↓0 — sample_json_data, sample_jsonl_data, sample_csv_data, sample_text_data, sample_sqlite_data, TestFileSignature, TestDetectFileSignature, TestFileHandlerRoundTrips, TestInputFile, TestErrorHandling
-- `execution/local_exec_test.py` · 546L · ↓0 — local_spec, local_spec_with_setup, TestLocalExecRuntimeInit, TestLocalExecRuntimeSpawn, TestLocalExecRuntimeExecute, TestLocalExecRuntimePoll, TestLocalExecRuntimeKill, TestLocalExecRuntimeCleanup, TestLocalExecRuntimeIntegration, TestLocalExecRuntimePrepareStdin
-- `execution/local_streaming_test.py` · 588L · ↓0 — local_spec, local_spec_with_setup, TestLocalEnvironmentSpec, TestLocalStreamingRuntimeInit, TestLocalStreamingRuntimeSpawn, TestLocalStreamingRuntimeStream, TestLocalStreamingRuntimePoll, TestLocalStreamingRuntimeKill, TestLocalStreamingRuntimeCleanup, TestLocalStreamingRuntimeProcess, …
-- `execution/placeholders_test.py` · 193L · ↓0 — TestResolveStaticPath, TestResolveStaticPlaceholders
-- `execution/session_test.py` · 559L · ↓0 — TestSessionInitialization, TestRestoreFromSnapshotDir
-- `execution/shared_test.py` · 257L · ↓0 — TestSplitString, TestFormatSetupCommands, TestWriteEntryScript, TestSplitSetupOutput, TestHandleEntryTemplate
-- `execution/snapshot_diff_test.py` · 412L · ↓0 — TestIsBinary, TestDecodeText, TestCreateTextFileDiff, TestSnapshot, TestFileDiffRepr, TestSnapshotDiffRepr
-- `execution/stream_processor_test.py` · 13L · ↓0 — test_ensure_string_preserves_text_around_invalid_utf8_bytes
-- `execution/workspace_test.py` · 511L · ↓0 — TestWorkspace
-- `helpers.py` · 38L · ↓0 — docker_tests_available
-- `logging_test.py` · 443L · ↓0 — reset_logging_state, TestStdlibLoggerAdapter, TestGetLogger, TestRealWorldUsage, TestBackwardCompatibility
-- `metrics/__init__.py` · 2L · ↓0
-- `metrics/checkpoint_results_test.py` · 950L · ↓0 — TestGetEvaluationMetrics, TestGetQualityMetrics, TestGetRubricMetrics, TestGetCheckpointMetrics, TestComputeCheckpointDelta
-- `metrics/driver_test.py` · 502L · ↓0 — TestCalculateFileMetrics, TestMeasureFiles, TestMeasureSnapshotQuality
-- `metrics/language/__init__.py` · 2L · ↓1
-- `metrics/language/conftest.py` · 57L · ↓0 — parser, parse_code, get_function_node, get_class_node, write_file
-- `metrics/language/py_graph_test.py` · 814L · ↓0 — write_file, TestBuildDependencyGraph, TestComputeGraphMetrics, TestCyclicDependencyMass, TestPropagationCost, TestDependencyEntropy, TestCallResolution, TestAdvancedResolution, TestGraphIntegration
-- `metrics/language/py_imports_test.py` · 495L · ↓0 — TestExtractImports, TestTraceSourceFiles, TestImportEdgeCases
-- `metrics/language/py_line_metrics_test.py` · 305L · ↓0 — TestCalculateMI, TestCalculateLineMetrics, TestLineMetricsEdgeCases
-- `metrics/language/py_lint_metrics_test.py` · 436L · ↓0 — TestCalculateLintMetrics, TestErrorCodes, TestLintMetricsEdgeCases, TestLintMetricsModel
-- `metrics/language/py_symbols_test.py` · 2136L · ↓0 — parse_code, get_function_node, get_class_node, get_radon_complexity, TestCountComplexityAndBranches, TestCountStatements, TestCountExpressions, TestCountControlBlocks, TestCalculateMaxDepth, TestCountControlFlowAndComparisons, …
-- `metrics/language/py_type_check_test.py` · 87L · ↓0 — TestCalculateTypeCheckMetrics
-- `metrics/language/py_waste_test.py` · 813L · ↓0 — TestCalculateWasteMetrics, TestTrivialWrappers, TestSingleMethodClasses, TestCallSiteDetection, TestWasteEdgeCases, TestIntegration, TestSingleUseVariables, TestUnusedVariables
-- `metrics/models_test.py` · 571L · ↓0 — TestSnapshotQualityReport, TestLanguageRegistry
-- `metrics/rubric/__init__.py` · 2L · ↓0
-- `metrics/rubric/bedrock_grade_test.py` · 81L · ↓0 — test_build_messages_adds_cache_control, test_normalize_bedrock_response_adds_cost, test_grade_file_includes_temperature
-- `metrics/rubric/carry_forward_test.py` · 536L · ↓0 — TestParseDiffHunks, TestComputeLineOffset, TestIsSpanUnchanged, TestCarryForwardGrades, TestCarryForwardAllFiles
-- `metrics/rubric/driver_test.py` · 136L · ↓0 — TestCountFileLines, TestBatchFilesBySize
-- `metrics/rubric/grade_test.py` · 327L · ↓0 — mock_api_key, mock_openrouter_response, test_grade_file_grades_single_file, test_grade_file_respects_temperature, test_grade_file_with_thinking, test_grade_file_no_thinking_when_none, test_parse_json_text_parses_fenced_json, test_parse_json_text_parses_raw_json, test_parse_json_text_parses_list, test_parse_json_text_returns_none_on_invalid, …
-- `metrics/rubric/llm_grade_test.py` · 155L · ↓0 — TestParseMultiFileResponse
-- `metrics/summary_test.py` · 581L · ↓0 — mock_config, TestRunSummaryDeltaRemoval, TestRunSummaryCounts, TestRunSummaryCosts, TestRunSummarySolveRates, TestRunSummaryPassRates, TestRunSummaryCcMetrics, TestRunSummaryCompositeScores
-- `metrics/test_mass_delta.py` · 106L · ↓0 — TestComputeGiniCoefficient, TestComputeTop20Share, TestComputeMassMetrics
-- `problem_catalog_test.py` · 490L · ↓0 — test_get_scbench_home_prefers_env, test_get_override_problem_root_prefers_env, test_get_override_problem_root_returns_none_when_unset, test_get_scbench_home_defaults_to_cache, test_manifest_round_trip, test_get_problem_root_uses_env_override_without_bootstrap, test_get_problem_root_env_override_requires_flat_problem_dirs, test_ensure_catalog_installed_uses_env_override_without_sync, test_resolve_latest_release_fetches_release_and_commit, test_resolve_release_fetches_tag_and_commit, …
-- `protocol_loader_test.py` · 336L · ↓0 — TestProtocol, HelperTestClass, HelperTestFunction, helper_test_function, TestLoadProtocolEntrypoint, TestClass, WrongClass, test_function, TestGetSourceFiles, helper_function
-- `visualization/annotations_test.py` · 59L · ↓0 — test_add_smart_annotations_varies_positions_for_clustered_points, test_add_smart_annotations_uses_arrow_when_no_good_near_spot
-
 **benchmarks/terminal-bench/build-bundle.mjs/**
 
 - `` · 93L · ↓0
-
-**benchmarks/terminal-bench/bundle/**
-
-- `driver.mjs` · 264L · ↓0
 
 **benchmarks/terminal-bench/driver.mjs/**
 
@@ -687,7 +294,7 @@ before adding one.
 - `agent/tool.ts` · 280L · ↓34 — PermissionClass, ToolResult, SpawnAgentOptions, SessionServices, ToolContext, ToolDescriptionVars, ToolDefinition, AnyToolDefinition, registerToolPrompt, toolDescriptionText, …
 - `config/frontmatter.ts` · 66L · ↓29 — FrontmatterEntry, Frontmatter, parseFrontmatter
 - `config/pricing.ts` · 84L · ↓29 — ModelPricing, MODEL_PRICING, pricingFor, contextWindowFor, formatDuration
-- `config/providerFactory.ts` · 105L · ↓28 — ProviderKind, EndpointSpec, isLocalBaseUrl, ConnectionSettings, endpointSpecFromSettings, createProviderForEndpoint
+- `config/providerFactory.ts` · 107L · ↓28 — ProviderKind, EndpointSpec, isLocalBaseUrl, ConnectionSettings, endpointSpecFromSettings, createProviderForEndpoint
 - `config/settings.ts` ⬢ · 665L · ↓40 — DEFAULT_OPENAI_BASE_URL, DEFAULT_API_KEY_ENV, settingsSchema, Settings, Hooks, HookEvent, HookMatcherEntry, SettingsWarning, globalSettingsPath, projectSettingsPath, …
 - `index.ts` ⬢ · 30L · ↓25 — writeFileAtomic, AsyncQueue, zodToJsonSchema
 - `integrations/mcp.ts` · 323L · ↓26 — McpServerConfig, mcpServerConfigSchema, McpToolInfo, McpToolError, McpClient, createMcpTools
@@ -720,7 +327,7 @@ before adding one.
 - `index.ts` · 5L · ↓0 — bootstrapEngine, MissingApiKeyError, BootstrapOptions, BootstrapResult, loadDotEnv, runServe
 - `main.ts` · 78L · ↓0
 - `serve.ts` · 61L · ↓2 — runServe
-- `stdout.ts` · 51L · ↓3 — writeFrame, writeFrameSync
+- `stdout.ts` · 23L · ↓3 — writeFrame, writeFrameSync
 
 **engine/protocol/src/**
 
@@ -738,7 +345,7 @@ before adding one.
 - `fake.ts` · 85L · ↓38 — FakeToolCall, FakeTurn, FakeProvider
 - `index.ts` ⬢ · 9L · ↓37 — FakeProvider, FakeToolCall, FakeTurn, OpenAICompatOptions, OpenAICompatProvider, OllamaOptions, OllamaProvider, ThinkTagSplitter, EffortClamp, toWireEffort, …
 - `ollama.ts` ⬢ · 293L · ↓39 — OllamaOptions, OllamaProvider
-- `openai-compat.ts` ⬢ · 579L · ↓38 — OpenAICompatOptions, ThinkTagSplitter, OpenAICompatProvider
+- `openai-compat.ts` ⬢ · 576L · ↓38 — OpenAICompatOptions, OpenAICompatProvider
 - `retry.ts` · 231L · ↓41 — RetryOptions, RetryInfo, ProviderHttpError, looksLikeContextOverflow, isContextOverflowError, isRetryable, retryReason, friendlyProviderError, withRetry, parseRetryAfter
 - `think.ts` · 93L · ↓40 — ThinkTagSplitter
 - `types.ts` · 108L · ↓42 — ContentBlock, ToolResultPart, Msg, ToolSchema, StopReason, ProviderEvent, StreamRequest, Provider
@@ -767,10 +374,6 @@ before adding one.
 - `worktree.ts` · 238L · ↓5 — enterWorktreeTool, exitWorktreeTool
 - `write.ts` · 51L · ↓5 — writeTool
 
-**magentra.py/**
-
-- `` · 2129L · ↓0 — MagentraError, EngineNotFound, StartupError, TaskFailed, ProfileError, NoProfilesError, ProfileNotFound, ProfileRequired, Runtime, locate_engine, …
-
 **tools/prompt-lab/server.mjs/**
 
 - `` · 724L · ↓0
@@ -778,24 +381,17 @@ before adding one.
 **tools/version/bin/**
 
 - `magentra-version.mjs` · 512L · ↓0
-- `run-tests.mjs` · 44L · ↓0
 
 **tools/version/lib/**
 
 - `changelog.mjs` · 166L · ↓1 — renderRelease, prependRelease
-- `commits.mjs` · 189L · ↓5 — isGitGenerated, parseCommit, checkMessage
-- `config.mjs` · 135L · ↓7 — loadConfig, readVersion, writeVersion
-- `git.mjs` · 175L · ↓4 — git, repositoryRoot, versionTags, commitsSince, originUrl, githubHttpsUrl, hasUncommittedChanges
-- `plan.mjs` · 104L · ↓3 — makePlan
-- `sync.mjs` · 136L · ↓2 — syncTargets
+- `commits.mjs` · 189L · ↓3 — isGitGenerated, parseCommit, checkMessage
+- `config.mjs` · 135L · ↓5 — loadConfig, readVersion, writeVersion
+- `git.mjs` · 175L · ↓3 — git, repositoryRoot, versionTags, commitsSince, originUrl, githubHttpsUrl, hasUncommittedChanges
+- `plan.mjs` · 104L · ↓2 — makePlan
+- `sync.mjs` · 136L · ↓1 — syncTargets
 - `ui.mjs` · 39L · ↓1 — bold, dim, red, green, yellow, cyan, info, success, warn, error, …
-- `version.mjs` · 150L · ↓10 — LEVELS, parse, format, legacyBuild, bump, compare, largestLevel
-
-**tools/version/test/**
-
-- `commits.test.mjs` · 161L · ↓0
-- `plan.test.mjs` · 226L · ↓0
-- `version.test.mjs` · 159L · ↓0
+- `version.mjs` · 150L · ↓7 — LEVELS, parse, format, legacyBuild, bump, compare, largestLevel
 
 **tui/src/app.tsx/**
 

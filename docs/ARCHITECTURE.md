@@ -234,9 +234,13 @@ JSONL store) is hand-rolled: small, boring, dependency-free.
 ## Testing strategy
 
 Loop logic is designed to run against `FakeProvider` (scripted turns, no network) + a
-temp-dir workspace. No engine test framework is wired up yet; the only automated tests
-in the tree today cover the version tool (`npm run test:version`). Per-feature test
-status is tracked honestly in `FEATURES.md`.
+temp-dir workspace. **As of 2026-09-09 there are no automated tests in the tree at
+all**: the suite was deliberately reset to zero — `app/tests/`, `tools/version/test/`
+and the `.claude/skills/bigboycoding/*-check.mjs` invariant checks were deleted
+together — and is being rebuilt from scratch. `tsc -b` (`npm run build`) is the only
+automated gate that remains, and it sees `engine/*` and `tui/*` but never `app/`.
+Per-feature test status is tracked honestly in `FEATURES.md`, where every box is
+currently empty by design.
 
 Development happens on Windows but Linux/macOS are the support targets; Windows-specific
 gaps are documented, not engineered around.

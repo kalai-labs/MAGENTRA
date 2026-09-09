@@ -148,11 +148,13 @@ You do not need to do anything.
 The tool is in `tools/version/`. It has no runtime dependencies.
 
 ```bash
-npm run test:version       # Run the tests of the tool
 npm run typecheck:version  # Check the types of the tool
 ```
 
-If you change the tool, add a test.
+The tool's tests were deleted in the 2026-09-09 test reset and are being rebuilt,
+so there is no `npm run test:version` right now. If you change the tool, add a
+test — the tool decides every version and writes every changelog, so it is one of
+the first things the new suite needs to cover.
 
 ## Licence
 

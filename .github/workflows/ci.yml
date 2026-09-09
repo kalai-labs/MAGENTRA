@@ -13,24 +13,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  version-tool:
-    name: Version tool (Node ${{ matrix.node }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node: [20, 22, 24]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-
-      # The version tool has no runtime dependencies. Therefore `npm ci` is not
-      # necessary here, and the job starts immediately.
-      - name: Test the version tool
-        run: npm run test:version
+  # TODO(tests): restore when the new suite lands. The whole job existed to run
+  # tools/version/test/, which was deleted in the test rewrite — every step is
+  # kept verbatim so re-enabling it is uncommenting, not rewriting. The matrix
+  # (Node 20/22/24) is the part worth keeping: the tool must run on all three.
+  #
+  # version-tool:
+  #   name: Version tool (Node ${{ matrix.node }})
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       node: [20, 22, 24]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: ${{ matrix.node }}
+  #
+  #     # The version tool has no runtime dependencies. Therefore `npm ci` is not
+  #     # necessary here, and the job starts immediately.
+  #     - name: Test the version tool
+  #       run: npm run test:version
 
   # The product itself: compile the engine, then boot the Electron app and
   # fail if the window does not come up clean (--smoke exits nonzero when the
@@ -54,8 +59,13 @@ jobs:
       - name: Boot the app (smoke)
         run: xvfb-run --auto-servernum npm run smoke --workspace app
 
-      - name: Exercise desktop UI interactions
-        run: xvfb-run --auto-servernum npm run test:ui
+      # TODO(tests): restore when the new suite lands. This ran the deleted
+      # app/tests/ Electron suite via the root `test:ui` script. The smoke step
+      # above still boots the real app and fails on a renderer crash, so a
+      # broken window is caught; nothing below that level is.
+      #
+      # - name: Exercise desktop UI interactions
+      #   run: xvfb-run --auto-servernum npm run test:ui
 
   types:
     name: Types

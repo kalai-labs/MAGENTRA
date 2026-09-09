@@ -67,3 +67,9 @@ engine running.
 resolution, endpoint construction, the live swap (including that the session id
 and messages survive, that nothing is persisted, and that a keyless swap clears
 the key), and the provider's field negotiation.
+
+> **Correction, 2026-09-09.** That file is not in the tree and, per the git
+> history, never was — this paragraph described a check that was planned rather
+> than written, so this decision has in fact never had the proof claimed here.
+> `app/tests/connection.test.js` did cover part of it, and was deleted in the
+> test reset. The invariants above are the specification for the replacement.

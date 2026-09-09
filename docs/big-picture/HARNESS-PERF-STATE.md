@@ -133,10 +133,12 @@ Recorded so nobody has to rediscover them, and so the writeup stays honest.
 
 ## 6. Constraints that must hold while implementing
 
-- `engine/*` has **no unit test suite**; `tsc -b` is its only automated gate, and
-  it does not see `app/` at all. Read `.claude/skills/bigboycoding` before
-  editing, run `blast-radius.mjs` on every target, and write a purpose-built
-  `*-check.mjs` for any engine invariant you change.
+- `engine/*` has **no unit test suite**, and since the 2026-09-09 test reset
+  neither does anything else — `app/tests/`, `tools/version/test/` and every
+  `*-check.mjs` were deleted together. `tsc -b` is now the *only* automated gate
+  in the repo, and it does not see `app/` at all. Read
+  `.claude/skills/bigboycoding` before editing and run `blast-radius.mjs` on
+  every target; there is no suite left to catch what it warns you about.
 - Run `bigpicture.mjs impact <file>` before, `check` after; §14/§15 are already
   stale from unrelated uncommitted TUI/app work — don't clear someone else's
   staleness with a blanket `sync`.
