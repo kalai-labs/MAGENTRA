@@ -16,6 +16,7 @@
  *   node .claude/skills/bigboycoding/blast-radius.mjs --symbol <Name>
  *   node .claude/skills/bigboycoding/blast-radius.mjs --frame <frame-type>
  *   node .claude/skills/bigboycoding/blast-radius.mjs --entrypoints
+  node .claude/skills/bigboycoding/blast-radius.mjs --json <file...>
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -283,6 +284,80 @@ function reportFrame(type) {
     console.log(`\n${appSide.length} of these live in app/ — untyped. Rename this string and the build still passes.`);
 }
 
+/**
+ * The same facts reportFile prints, as JSON — so a tool can consume them
+ * instead of parsing prose. Added 2026-09-09 for tools/magentra-gateway, whose
+ * SPEC §6 says to call this script rather than grow a second graph reader; a
+ * second reader is exactly what parsing the human output would have become the
+ * first time a label changed.
+ *
+ * Prints ONE object for the whole invocation, keyed by the paths asked for.
+ */
+function reportJson(targets) {
+  const out = { root: rel(ROOT) || ".", indexed: allFiles.length, files: {}, unknown: [] };
+  for (const target of targets) {
+    const abs = resolve(ROOT, target);
+    if (!source.has(abs)) {
+      out.unknown.push(target);
+      continue;
+    }
+    const direct = [...(importers.get(abs) ?? [])].map(rel).sort();
+    const trans = transitiveImporters(abs);
+    const exps = exportsOf(abs);
+
+    const seam = [];
+    for (const name of exps) {
+      const { untyped } = textReach(name, true);
+      if (untyped.length) seam.push({ name, files: untyped.map((u) => rel(u.file)) });
+    }
+
+    // Frame strings this file names, and where the OTHER side of each lives.
+    // This is the seam tsc cannot see at all: rename one and everything still
+    // compiles. Candidates come from `type: "..."` and `case "..."` only, so a
+    // random string constant is not mistaken for a wire frame.
+    const frames = [];
+    const text = source.get(abs) ?? "";
+    const candidates = new Set(
+      [...text.matchAll(/(?:type\s*:\s*|case\s+)["'`]([a-z][a-z0-9_]{2,40})["'`]/g)].map((m) => m[1]),
+    );
+    for (const type of candidates) {
+      const re = new RegExp(`["'\`]${type}["'\`]`);
+      const emitted = [];
+      const handled = [];
+      for (const [file, body] of source) {
+        if (!re.test(body)) continue;
+        body.split("\n").forEach((l, i) => {
+          if (!re.test(l)) return;
+          const entry = { file: rel(file), line: i + 1, untyped: isApp(file) };
+          if (/case\s|===|==|\.type\s*[=!]==?|switch/.test(l)) handled.push(entry);
+          else emitted.push(entry);
+        });
+      }
+      // A string only this file mentions is not a seam — it crosses nothing.
+      const others = [...emitted, ...handled].filter((e) => e.file !== rel(abs));
+      if (others.length === 0) continue;
+      frames.push({
+        type,
+        emitted,
+        handled,
+        crossesIntoApp: [...emitted, ...handled].some((e) => e.untyped),
+      });
+    }
+
+    out.files[rel(abs)] = {
+      risk: riskVerdict(direct.length, trans.size, rel(abs)),
+      exports: exps,
+      fanOut: [...(imports.get(abs) ?? [])].map(rel).sort(),
+      directImporters: direct,
+      transitiveImporters: [...trans].map(rel).sort(),
+      untypedAppReach: [...trans].filter(isApp).map(rel).sort(),
+      untypedSeam: seam,
+      frames,
+    };
+  }
+  process.stdout.write(JSON.stringify(out));
+}
+
 function reportEntrypoints() {
   console.log(bar("ENTRYPOINTS & COVERAGE"));
   for (const e of ENTRYPOINTS) {
@@ -312,14 +387,19 @@ if (!argv.length) {
   node .claude/skills/bigboycoding/blast-radius.mjs --symbol <Name>
   node .claude/skills/bigboycoding/blast-radius.mjs --frame <frame-type>
   node .claude/skills/bigboycoding/blast-radius.mjs --entrypoints
+  node .claude/skills/bigboycoding/blast-radius.mjs --json <file...>
 
 Indexed ${allFiles.length} files (${engineFiles.length} engine .ts, ${appFiles.length} app, ${toolFiles.length} tools, ${tuiFiles.length} tui).`);
   process.exit(0);
 }
 
 const mode = argv[0];
-if (mode === "--entrypoints") reportEntrypoints();
-else if (mode === "--symbol") argv.slice(1).forEach(reportSymbol);
-else if (mode === "--frame") argv.slice(1).forEach(reportFrame);
-else argv.forEach(reportFile);
-console.log("");
+if (mode === "--json") {
+  reportJson(argv.slice(1)); // machine-readable: no trailing newline, no banner
+} else {
+  if (mode === "--entrypoints") reportEntrypoints();
+  else if (mode === "--symbol") argv.slice(1).forEach(reportSymbol);
+  else if (mode === "--frame") argv.slice(1).forEach(reportFrame);
+  else argv.forEach(reportFile);
+  console.log("");
+}

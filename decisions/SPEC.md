@@ -1,6 +1,6 @@
 # magentra-gateway — implementation specification
 
-Status: **design settled 2026-09-09, not implemented.**
+Status: **§11 steps 1–5, 7 and 9 implemented 2026-09-09. Steps 6 (test hierarchy) and 8 (runner) outstanding.**
 Decisions: [0001](0001-the-gateway-is-the-inventory.md) ·
 [0002](0002-the-gateway-is-typescript-in-process.md) ·
 [0003](0003-storage-is-committed-json-per-feature.md) ·
@@ -26,9 +26,10 @@ tools/magentra-gateway/
 │   ├── schema.ts           zod schemas; the only definition of record shape
 │   ├── freshness.ts        stage 1 (§4.1)
 │   ├── connection.ts       stage 2 (§4.2) — wraps tui/src/profiles.ts
-│   ├── deps.ts             dependency resolution (§6)
+│   ├── gate.ts             §4.3 — composes the two stages; owns the hard block
+│   ├── deps.ts             dependency resolution (§6) — calls blast-radius --json
 │   ├── runner.ts           node:test programmatic run() (§7)
-│   ├── brief.ts            agent briefing assembly (§8)
+│   ├── brief.ts            agent briefing assembly (§8) — JSON and Markdown
 │   └── ui/
 │       ├── index.html      single page, no framework, no CDN
 │       ├── app.js          vanilla; SSE consumer
@@ -63,7 +64,7 @@ malformed record fails loudly and names the file. Never default-and-continue.
 {
   id: string,              // kebab-case, stable,never reused. e.g. "turn-loop"
   name: string,            // short title
-  area: "engine" | "app" | "tui" | "protocol" | "tooling",
+  area: "engine" | "app" | "tui" | "protocol" | "providers" | "tooling",
   section: string,         // FEATURES.md grouping, e.g. "Runtime — the turn loop"
   prose: string,           // the description, verbatim from FEATURES.md
   kinds: ("pure"|"fs"|"proc"|"net"|"llm"|"ui")[],   // >= 1
@@ -164,7 +165,9 @@ reimplement; it is already the second copy of this logic and this is the third
 (see the promotion debt in [0005](0005-the-two-stage-gate.md)).
 
 ```
-if workspaceConnected(repoRoot):        proceed
+if workspaceConnected(repoRoot):        proceed — AND keep offering the profiles,
+                                        marking which one this folder matches,
+                                        plus a way to clear the connection
 else if readProfiles().length > 0:      offer the picker; applying writes
                                         <ws>/.env + <ws>/.magentra/settings.json
 else:                                   refuse, with the TUI's message:
@@ -174,6 +177,25 @@ else:                                   refuse, with the TUI's message:
 
 Presence, not reachability. No network probe: the suite still runs offline, and
 a dead endpoint is a test failure, not a gate failure.
+
+**Connected is not a terminal state** (added 2026-09-09). An earlier reading of
+this section offered the picker only while disconnected, which made applying a
+profile a one-way door: the picker vanished and the only route back was deleting
+two files by hand. Switching endpoints is the ordinary case — a local server for
+`proc` tests, a hosted API for `llm` ones — so the connected state carries the
+profile list, what the folder currently names, and `POST /api/connection/clear`.
+
+Clearing is **surgical, never `rm`**: it removes the key line from `<ws>/.env`
+and the connection keys from `<ws>/.magentra/settings.json`, leaving both files
+and every unrelated key in them intact. Neither file is the connection's private
+property. A key held in the ENVIRONMENT cannot be cleared by any write to the
+folder, so the state names the variable instead of reporting a success the user
+cannot see.
+
+The inverse write lives in `tui/src/profiles.ts` beside `applyProfile`, not in
+the gateway — this is the promotion debt [0005](0005-the-two-stage-gate.md)
+recorded, coming due. Nothing in this repo cleared a connection before, so there
+was no fourth copy to avoid, only a first one to put in the right place.
 
 ### 4.3 Outcomes
 
@@ -192,11 +214,16 @@ Serves `127.0.0.1` only. Default port `4320` (prompt-lab holds 4319).
 | GET | `/` | the UI |
 | GET | `/api/state` | everything: features (with derived status), descriptions, gate state |
 | GET | `/api/features/:id` | one feature, with resolved dependencies (§6) |
-| GET | `/api/features/:id/brief` | the agent briefing (§8) |
+| GET | `/api/features/:id/brief` | the agent briefing (§8); `?format=md` for the Markdown an agent is handed |
 | POST | `/api/features` | create/update a record — **approval-gated** |
 | POST | `/api/features/:id/reconcile` | re-record freshness — **approval-gated** |
+| GET | `/api/descriptions` | every description |
 | POST | `/api/descriptions` | create/update a description — **approval-gated** |
 | POST | `/api/descriptions/:id/done` | user-only transition to `done` |
+| POST | `/api/descriptions/:id/reopen` | user-only transition back to `pending` |
+| DELETE | `/api/descriptions/:id` | remove a description — **approval-gated** |
+| POST | `/api/connection/apply` | commit a chosen profile to the workspace (§4.2) — **approval-gated** |
+| POST | `/api/connection/clear` | clear this folder's connection so another can be chosen (§4.2) — **approval-gated** |
 | POST | `/api/run` | run tests — **approval-gated**, refuses if gate red |
 | GET | `/api/events` | SSE: gate state, run progress, file-watch invalidation |
 
@@ -222,6 +249,24 @@ Call the existing `.claude/skills/bigboycoding/blast-radius.mjs` for 2–4 rathe
 than growing a second graph reader. If `engine/core/dist/` is absent, degrade to
 a "needs `npm run build`" notice — never a silent empty dependency set, which
 would tell an agent a feature depends on nothing.
+
+**As built (2026-09-09).** All four come from `blast-radius.mjs`, through a
+`--json` mode added to it, because parsing its human output would have BECOME
+the second reader the first time a label moved. Two consequences worth recording:
+
+- **The `dist` caveat does not arise.** blast-radius reads source off disk and
+  needs no compiled index, so dependencies resolve with a broken build — the
+  same property [0002](0002-the-gateway-is-typescript-in-process.md) wanted for
+  the gateway itself. The unavailable path is kept for the script going missing,
+  and still never returns an empty set as an answer.
+- **Item 4 is answered from the inventory, not from a copy of BIG-PICTURE §16.**
+  Seven records carry section `Mirrored constants`; a feature whose entry files
+  overlap one of them sits on a pair `tsc` cannot compare, and that record
+  already states what must agree. A second list would have been a second thing
+  to keep in step.
+
+Resolution is lazy and cached per feature **and per freshness hash**, so the
+cache invalidates on exactly the event that could make an answer wrong.
 
 ---
 
@@ -255,20 +300,21 @@ Single page, vanilla JS, no framework and no CDN. The design is organised around
 the gate, because the gate is what makes a result trustworthy.
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│ MAGENTRA GATEWAY    ◉ FRESHNESS  ◉ CONNECTION   [ RUN ]    │  ← header
-├──────────┬─────────────────────────────────┬───────────────┤
-│ AREAS    │  feature list / feature detail  │ GATE          │
-│ engine 62│  ─────────────────────────────  │ ─────────     │
-│ app    26│  name · kinds · status · fresh  │ 3 stale:      │
-│ tui     6│  prose                          │  turn-loop    │
-│ protocol│  entry files                     │   ↳ session.ts│
-│ tooling │  dependencies (§6)               │ blocked: all  │
-│          │  tests + whyItExists            │               │
-│ filters: │  descriptions                   │ [reconcile]   │
-│ kind ▾   │                                 │               │
-│ status ▾ │                                 │               │
-└──────────┴─────────────────────────────────┴───────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│ MAGENTRA GATEWAY   ◉ FRESHNESS ◉ CONNECTION   164 · 155 untested  [ RUN ]  │
+├──────────┬──────────────────┬──────────────────────────┬───────────────────┤
+│ AREAS    │ FEATURES         │ THE ONE YOU CLICKED      │ GATE              │
+│ engine 94│ ───────────────  │ ──────────────────────   │ ───────────       │
+│ app    33│ name             │ prose · invariant        │ 3 stale:          │
+│ protocol │  kinds · status  │ entry files              │  turn-loop        │
+│ tooling  │  fresh/STALE     │ dependencies (§6)        │   ↳ session.ts    │
+│ tui      │                  │ tests + whyItExists      │ blocked: all      │
+│ providers│  ← 164 of these, │ WHAT TO TEST  [editable] │ [reconcile]       │
+│          │    scrolls on    │ [ hand to an agent ]     │ ─────────         │
+│ filters: │    its own       │                          │ pointed at: …     │
+│ kind ▾   │                  │  ← scrolls on its own,   │ SWITCH TO / [x]   │
+│ status ▾ │                  │    title stays put       │                   │
+└──────────┴──────────────────┴──────────────────────────┴───────────────────┘
 ```
 
 Rules the layout must enforce:
@@ -277,9 +323,23 @@ Rules the layout must enforce:
   reach a green result by not looking at the red one.
 - The gate panel names the **specific drifted file** per stale feature, not just
   the feature.
-- `untested` is visually equal to `failing`, never neutral. 112 untested
-  features is the current truth and the UI must not make it comfortable.
+- `untested` is visually equal to `failing`, never neutral. 155 untested
+  testable features is the current truth and the UI must not make it comfortable.
 - Every test row shows its `whyItExists`. If it cannot, that is a finding.
+- The connection panel shows what the folder is **pointed at** before offering
+  to change it, and every state it can reach has a way out. A gate you can enter
+  and not leave gets worked around outside the tool.
+- **The feature you clicked is BESIDE the list, never below it** (fixed
+  2026-09-09). Stacked, clicking row 140 of 164 rendered the detail off-screen
+  and you had to scroll back up to read what you had just selected — which made
+  the list the thing you used and the detail the thing you skipped. Four columns,
+  each scrolling independently, the detail title sticky, `↑`/`↓` to walk the
+  filtered list and `Esc` to close. Under 1240px the list and the detail share
+  one column with a way back, rather than compressing to unreadable.
+- **A description is written where the feature is read.** Free text, saved to
+  `tests/gateway/descriptions/`, delivered to an agent inside the brief. `save`
+  and `mark done` are separate buttons, and saving an edit can never change
+  `status` — §2.2's rule made structural rather than remembered.
 
 ---
 
@@ -299,15 +359,22 @@ Not in v1. Recorded so they are not mistaken for oversights.
 
 ## 11. Implementation order
 
-1. `schema.ts` + `registry.ts` — records load and validate.
+1. ~~`schema.ts` + `registry.ts` — records load and validate~~ — **DONE 2026-09-09**: all 164 load; a malformed record names its file and stops the load.
 2. ~~Seed inventory in `tests/gateway/features/`~~ — **DONE 2026-09-09**: 164 records written, entry files validated, freshness hashes computed. See `INVENTORY.md`.
-3. `freshness.ts` + the gate; assert it hard-blocks.
-4. `connection.ts` over `tui/src/profiles.ts`; all four branches of §4.2.
-5. `server.ts` + UI read-only. Gate visible, RUN disabled.
+3. ~~`freshness.ts` + the gate; assert it hard-blocks~~ — **DONE 2026-09-09**: `hashFiles()` verified digest-identical to `bigpicture.mjs` over all 96 entry files; a one-character edit blocks all 164, a `touch` does not.
+4. ~~`connection.ts` over `tui/src/profiles.ts`; all four branches of §4.2~~ — **DONE 2026-09-09**: all four branches exercised; the module imports nothing but that file.
+5. ~~`server.ts` + UI read-only. Gate visible, RUN disabled~~ — **DONE 2026-09-09**: `RUN` carries the `disabled` attribute and is bound to `gate.runAllowed`.
 6. `tests/lib/` hierarchy; then the first real test end to end.
-7. `deps.ts` + `brief.ts`.
+7. ~~`deps.ts` + `brief.ts`~~ — **DONE 2026-09-09**: `blast-radius.mjs --json` for §6 items 1–3, the inventory for item 4; the brief renders as JSON and as Markdown from one assembly, over HTTP and from `npm run gateway -- brief <id>`.
 8. `runner.ts`; RUN enabled.
-9. Descriptions: write, edit, user-only `done`.
+9. ~~Descriptions: write, edit, user-only `done`~~ — **DONE 2026-09-09**: saving an edit provably cannot change `status`; a `done` description drops out of the brief.
 
 Steps 1–5 are useful before a single test exists — which is the point: the
 gateway makes the absence of tests visible and specific.
+
+Steps 7 and 9 were pulled forward out of order on 2026-09-09, on the grounds
+that a description with no dependencies attached is the wish §Ability 4 exists
+to replace: you can write "test the profile store" in either order, but it is
+only worth handing to an agent once the brief carries the store's importers, its
+untyped `app/` reach and the frame strings it crosses. What remains is step 6
+(the class hierarchy, and with it `whyItExists`) and step 8 (the runner).

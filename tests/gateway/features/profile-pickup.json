@@ -14,9 +14,9 @@
   "deferred": false,
   "tests": [],
   "freshness": {
-    "hash": "01e93e8aacb39a26",
+    "hash": "f58764adffb01ee0",
     "fileHashes": {
-      "tui/src/profiles.ts": "01e93e8aacb39a26"
+      "tui/src/profiles.ts": "f58764adffb01ee0"
     },
     "recordedAt": "2026-09-09"
   }

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MAGENTRA Gateway</title>
+<!-- No framework, no CDN (SPEC §9). One stylesheet and one script, both local. -->
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<header>
+  <h1>MAGENTRA GATEWAY</h1>
+  <div class="lamps">
+    <span class="lamp" id="lamp-fresh">FRESHNESS</span>
+    <span class="lamp" id="lamp-conn">CONNECTION</span>
+  </div>
+  <span class="count" id="count">loading…</span>
+  <span class="spacer"></span>
+  <span id="run-why"></span>
+  <!--
+    Disabled in the markup, and only ever enabled by the gate state arriving
+    over SSE. You cannot reach a green result by not looking at the red one.
+  -->
+  <button id="run" disabled>RUN</button>
+</header>
+
+<main>
+  <nav>
+    <h2>AREAS</h2>
+    <div id="areas"></div>
+    <h2>FILTERS</h2>
+    <select id="f-kind"><option value="">all kinds</option></select>
+    <select id="f-status"><option value="">all statuses</option></select>
+    <select id="f-fresh">
+      <option value="">fresh and stale</option>
+      <option value="stale">stale only</option>
+      <option value="fresh">fresh only</option>
+    </select>
+  </nav>
+
+  <!--
+    List and detail are SIBLING columns, not stacked. Stacked, clicking a row
+    near the bottom of 164 put the detail below the fold and you had to scroll
+    up to read what you just clicked.
+  -->
+  <div id="list"></div>
+  <div id="detail"></div>
+
+  <aside>
+    <h2>GATE</h2>
+    <div id="gate"></div>
+  </aside>
+
+  <!-- Narrow windows: one column at a time, with a way back. -->
+  <button id="back" hidden>← all features</button>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

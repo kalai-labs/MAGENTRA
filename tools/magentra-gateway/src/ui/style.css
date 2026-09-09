@@ -1,0 +1,461 @@
+/*
+ * SPEC §9. The design is organised around the gate, because the gate is what
+ * makes a result trustworthy.
+ *
+ * The one colour rule that is not decoration: `untested` and `stale` are drawn
+ * in the SAME red as a failure, never in a neutral grey. 155 untested features
+ * is the current truth, and a UI that makes that comfortable is a UI that helps
+ * you not fix it.
+ */
+
+:root {
+  --bg: #0c0e12;
+  --panel: #13161c;
+  --panel-2: #191d25;
+  --line: #262b34;
+  --text: #d8dce3;
+  --muted: #79808c;
+  --bad: #e5484d;
+  --bad-dim: #3a1417;
+  --good: #30a46c;
+  --good-dim: #10291d;
+  --warn: #f0b429;
+  --accent: #6e9eff;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 var(--mono);
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+}
+
+/* ---- header ---------------------------------------------------------- */
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+h1 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.lamps { display: flex; gap: 18px; }
+
+.lamp {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+}
+
+.lamp::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--bad);
+  box-shadow: 0 0 7px var(--bad);
+}
+
+.lamp.on::before { background: var(--good); box-shadow: 0 0 7px var(--good); }
+.lamp.on { color: var(--text); }
+
+.spacer { flex: 1; }
+
+.count { font-size: 11px; color: var(--muted); }
+
+/* RUN is DISABLED, not merely warned (§9). */
+#run {
+  font: inherit;
+  padding: 6px 22px;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+#run:disabled {
+  cursor: not-allowed;
+  color: #565c66;
+  border-color: #222630;
+  background: #10131a;
+}
+
+#run-why { font-size: 11px; color: var(--bad); }
+
+/* ---- three columns --------------------------------------------------- */
+
+/*
+ * Four independent columns: filters, the list, the feature, the gate. The
+ * detail is BESIDE the list rather than below it — the first version stacked
+ * them, so clicking row 140 of 164 rendered the detail off-screen and you had
+ * to scroll to see what you had selected. Each column scrolls on its own, so
+ * reading a feature never moves the list or the gate.
+ */
+main {
+  display: grid;
+  grid-template-columns: 190px minmax(240px, 340px) minmax(0, 1fr) 330px;
+  min-height: 0;
+}
+
+main > * {
+  overflow-y: auto;
+  padding: 12px 14px;
+  min-height: 0;
+}
+
+nav { border-right: 1px solid var(--line); }
+#list { border-right: 1px solid var(--line); }
+#detail { background: #0f1216; }
+aside { border-left: 1px solid var(--line); background: var(--panel); }
+
+#back {
+  display: none;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 5px 12px;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+nav h2:not(:first-child) { margin-top: 20px; }
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.row:hover { background: var(--panel-2); }
+.row.sel { background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
+.row .n { color: var(--muted); }
+
+select {
+  width: 100%;
+  font: inherit;
+  margin-bottom: 6px;
+  padding: 3px 4px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+/* ---- feature list ---------------------------------------------------- */
+
+.feat {
+  padding: 7px 9px;
+  margin-bottom: 4px;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 3px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.feat:hover { background: var(--panel-2); }
+.feat.sel { border-color: var(--accent); }
+.feat.untested { border-left-color: var(--bad); }
+.feat.partial { border-left-color: var(--warn); }
+.feat.covered { border-left-color: var(--good); }
+
+.feat-head { display: flex; align-items: baseline; gap: 8px; }
+.feat-head b { font-weight: 600; }
+.feat-head .sect { color: var(--muted); font-size: 11px; margin-left: auto; }
+
+.tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
+
+.tag {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+/* untested is visually EQUAL to failing — same red, never neutral. */
+.tag.untested, .tag.stale { color: var(--bad); border-color: var(--bad); background: var(--bad-dim); }
+.tag.partial { color: var(--warn); border-color: var(--warn); }
+.tag.covered, .tag.fresh { color: var(--good); border-color: var(--good); background: var(--good-dim); }
+.tag.deferred { color: var(--accent); border-color: #2c3a55; }
+
+/* ---- detail ---------------------------------------------------------- */
+
+#detail h3 { margin: 0 0 2px; font-size: 15px; }
+#detail .id { color: var(--muted); font-size: 11px; }
+
+#detail section { margin-top: 16px; }
+
+#detail section > h2 { border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+
+.prose { color: #b9bfc9; white-space: pre-wrap; }
+.invariant { border-left: 2px solid var(--accent); padding-left: 9px; color: #c8cedb; }
+
+ul.files { list-style: none; margin: 0; padding: 0; }
+ul.files li { padding: 2px 0; color: #b9bfc9; }
+ul.files li.drift { color: var(--bad); }
+
+.empty {
+  padding: 8px 10px;
+  border: 1px dashed var(--bad);
+  border-radius: 3px;
+  color: var(--bad);
+  background: var(--bad-dim);
+}
+
+.note { color: var(--muted); font-size: 11px; }
+
+/* ---- gate panel ------------------------------------------------------ */
+
+.stale-item {
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  border: 1px solid var(--bad);
+  border-radius: 3px;
+  background: var(--bad-dim);
+}
+
+.stale-item b { font-weight: 600; }
+.stale-item .file { color: #f0a0a3; display: block; padding-left: 12px; font-size: 11px; }
+.stale-item .file::before { content: "↳ "; }
+
+.blocked-banner {
+  padding: 7px 9px;
+  margin-bottom: 12px;
+  border: 1px solid var(--bad);
+  border-radius: 3px;
+  background: var(--bad-dim);
+  color: #ffb3b6;
+}
+
+.blocked-banner b { color: var(--bad); letter-spacing: 0.1em; }
+
+button.recon {
+  font: inherit;
+  width: 100%;
+  margin-top: 4px;
+  padding: 5px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+button.recon:hover { border-color: var(--warn); }
+
+.recon-warning { color: var(--warn); font-size: 11px; margin-top: 8px; }
+
+.profile {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  margin-bottom: 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+.profile .sum { color: var(--muted); font-size: 11px; }
+.profile button { font: inherit; padding: 2px 9px; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; cursor: pointer; }
+
+/* ---- the current connection ------------------------------------------ */
+
+.current {
+  padding: 7px 9px;
+  margin-bottom: 8px;
+  border: 1px solid var(--good);
+  border-radius: 3px;
+  background: var(--good-dim);
+}
+
+.cur-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.cur-model { color: var(--text); font-weight: 600; }
+
+.profile.active { border-color: var(--good); background: var(--good-dim); }
+.profile > div > div:first-child { display: flex; align-items: center; gap: 6px; }
+
+/* ---- the feature list, in a narrow column ---------------------------- */
+
+.feat-head { flex-wrap: wrap; }
+.feat-head .sect {
+  margin-left: 0;
+  flex-basis: 100%;
+  order: 3;
+}
+
+/* ---- detail: sticky title, so scrolling never loses which feature ---- */
+
+#detail-head {
+  position: sticky;
+  top: -12px;
+  margin: -12px -14px 0;
+  padding: 12px 14px 8px;
+  background: #0f1216;
+  border-bottom: 1px solid var(--line);
+  z-index: 2;
+}
+
+#detail .placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+  height: 70%;
+  color: var(--muted);
+  text-align: center;
+}
+
+kbd {
+  font: inherit;
+  font-size: 11px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+/* ---- dependencies --------------------------------------------------- */
+
+.dep-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.dep-stat {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--panel);
+}
+
+.dep-stat b { display: block; font-size: 17px; font-weight: 600; }
+.dep-stat span { font-size: 10px; letter-spacing: 0.06em; color: var(--muted); }
+.dep-stat.warn { border-color: var(--warn); }
+.dep-stat.warn b { color: var(--warn); }
+
+.dep-file {
+  margin-bottom: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--panel);
+}
+
+.dep-file > b { font-weight: 600; }
+.dep-file ul { list-style: none; margin: 4px 0 0; padding: 0 0 0 12px; }
+.dep-file li { color: #b9bfc9; font-size: 12px; }
+.dep-file li.untyped { color: var(--warn); }
+.seam-warning {
+  padding: 6px 9px;
+  margin-bottom: 8px;
+  border: 1px solid var(--warn);
+  border-radius: 3px;
+  background: #2a2008;
+  color: #f5cf72;
+}
+
+/* ---- descriptions --------------------------------------------------- */
+
+.desc {
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 3px;
+  background: var(--panel);
+}
+
+.desc.done { border-left-color: var(--good); opacity: 0.72; }
+.desc-meta { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--muted); letter-spacing: 0.06em; }
+.desc-meta .spacer { flex: 1; }
+.desc-body { white-space: pre-wrap; margin-top: 5px; color: #c8cedb; }
+
+textarea {
+  width: 100%;
+  min-height: 130px;
+  font: inherit;
+  resize: vertical;
+  padding: 8px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+textarea:focus { outline: none; border-color: var(--accent); }
+
+.editor-bar { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.editor-bar .spacer { flex: 1; }
+
+button.act {
+  font: inherit;
+  padding: 4px 12px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+button.act:hover { border-color: var(--accent); }
+button.act.primary { border-color: var(--accent); color: #cddcff; }
+button.act.danger:hover { border-color: var(--bad); color: var(--bad); }
+button.act:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.hint { font-size: 11px; color: var(--muted); }
+
+/* ---- narrow windows: one column at a time --------------------------- */
+
+@media (max-width: 1240px) {
+  main { grid-template-columns: 170px minmax(0, 1fr) 300px; }
+  body.detail-open #list { display: none; }
+  body:not(.detail-open) #detail { display: none; }
+  body.detail-open #back { display: block; }
+  header { flex-wrap: wrap; row-gap: 6px; }
+}

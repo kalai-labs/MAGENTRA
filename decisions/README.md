@@ -28,7 +28,13 @@ change its meaning: it is superseded by a later record that names it.
 
 ## Status
 
-Design settled 2026-09-09 over four grilling rounds. Not yet implemented.
+Design settled 2026-09-09 over four grilling rounds. **`SPEC.md` §11 steps 1–5,
+7 and 9 are implemented** — the inventory loads and validates, the two-stage
+gate is live and hard-blocking, dependencies resolve, descriptions are writable,
+and `npm run gateway` serves the lot. What remains is step 6 (the test class
+hierarchy, and with it `whyItExists`) and step 8 (the runner), so `RUN` reaches
+a `501` rather than a result.
+
 `SPEC.md` is the contract an implementer works from; if the implementation and
 the spec disagree, that is a bug in one of them, not a matter of taste.
 

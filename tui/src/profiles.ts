@@ -55,15 +55,27 @@ export function readProfiles(): Profile[] {
 }
 
 /**
+ * The name of the API-key variable already set in the environment, if any.
+ *
+ * Exported because presence from the environment is the one form of presence no
+ * write to this folder can clear: a caller offering to disconnect a workspace
+ * has to be able to say so instead of appearing to fail.
+ */
+export function environmentKeyVar(): string | undefined {
+  for (const name of ['MAGENTRA_API_KEY', 'ANTHROPIC_API_KEY', ...LEGACY_API_KEY_ENV_VARS]) {
+    if ((process.env[name] ?? '').trim() !== '') return name;
+  }
+  return undefined;
+}
+
+/**
  * Can the engine boot in this workspace as it stands? Mirrors the boot inputs:
  * a key in the environment, a key line in `<ws>/.env` (the host loads it), or
  * a `.magentra/settings.json` that names a connection (keyless local servers
  * have no key line at all — their config lives entirely in settings).
  */
 export function workspaceConnected(ws: string): boolean {
-  for (const name of ['MAGENTRA_API_KEY', 'ANTHROPIC_API_KEY', ...LEGACY_API_KEY_ENV_VARS]) {
-    if ((process.env[name] ?? '').trim() !== '') return true;
-  }
+  if (environmentKeyVar() !== undefined) return true;
 
   try {
     const env = readFileSync(join(ws, '.env'), 'utf8');
@@ -152,6 +164,101 @@ export function applyProfile(ws: string, profile: Profile): void {
   // key this write just saved — the IDE deletes it here, so we do too.
   delete settings.apiKeyEnv;
 
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+}
+
+/** The connection-bearing part of `<ws>/.magentra/settings.json`, as applyProfile leaves it. */
+export interface WorkspaceConnection {
+  provider?: string;
+  baseUrl?: string;
+  model?: string;
+  contextWindow?: number;
+  reasoningEffort?: string;
+  allowInsecureTls?: boolean;
+  /** Whether `<ws>/.env` carries an API-key line. Never the key itself. */
+  hasKeyLine: boolean;
+}
+
+/**
+ * What this workspace is currently pointed at, or undefined if it names no
+ * connection. The counterpart to `workspaceConnected`, which answers only
+ * yes/no: a caller offering to CHANGE a connection has to be able to show what
+ * it is changing from.
+ *
+ * Never returns the key — only whether a key line exists.
+ */
+export function readWorkspaceConnection(ws: string): WorkspaceConnection | undefined {
+  let settings: Record<string, unknown> = {};
+  try {
+    settings = JSON.parse(readFileSync(join(ws, '.magentra', 'settings.json'), 'utf8')) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+  if (!settings.baseUrl && !settings.model && !settings.provider && !settings.apiKey) return undefined;
+
+  let hasKeyLine = false;
+  try {
+    hasKeyLine = /^[A-Z0-9_]*API_KEY\s*=\s*\S/m.test(readFileSync(join(ws, '.env'), 'utf8'));
+  } catch {
+    /* no .env */
+  }
+
+  const ctx = Number(settings.contextWindow);
+  return {
+    ...(typeof settings.provider === 'string' ? { provider: settings.provider } : {}),
+    ...(typeof settings.baseUrl === 'string' ? { baseUrl: settings.baseUrl } : {}),
+    ...(typeof settings.model === 'string' ? { model: settings.model } : {}),
+    ...(Number.isFinite(ctx) && ctx > 0 ? { contextWindow: ctx } : {}),
+    ...(typeof settings.reasoningEffort === 'string' ? { reasoningEffort: settings.reasoningEffort } : {}),
+    ...(settings.allowInsecureTls === true ? { allowInsecureTls: true } : {}),
+    hasKeyLine,
+  };
+}
+
+/** Every settings key applyProfile writes, so clearing is its exact inverse. */
+const CONNECTION_SETTINGS_KEYS = [
+  'provider',
+  'baseUrl',
+  'model',
+  'contextWindow',
+  'reasoningEffort',
+  'allowInsecureTls',
+  'apiKeyEnv',
+  'apiKey',
+] as const;
+
+/**
+ * Undo `applyProfile`: drop the key line from `<ws>/.env` and the connection
+ * keys from `<ws>/.magentra/settings.json`, leaving both files and everything
+ * else in them intact.
+ *
+ * Surgical rather than `rm`, because these two files are not the connection's
+ * private property — `.env` carries whatever else the workspace needs, and
+ * settings.json carries the other 20-odd keys of the settings schema. Deleting
+ * either to clear an endpoint would take unrelated configuration with it.
+ *
+ * Cannot clear a key held in the ENVIRONMENT — see `environmentKeyVar`.
+ */
+export function clearWorkspaceConnection(ws: string): void {
+  try {
+    const body = readFileSync(join(ws, '.env'), 'utf8');
+    writeFileSync(
+      join(ws, '.env'),
+      upsertEnvLine(body, DEFAULT_API_KEY_ENV, '', ['ANTHROPIC_API_KEY', ...LEGACY_API_KEY_ENV_VARS]),
+      'utf8',
+    );
+  } catch {
+    /* no .env to clear */
+  }
+
+  const settingsPath = join(ws, '.magentra', 'settings.json');
+  let settings: Record<string, unknown>;
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>;
+  } catch {
+    return; // nothing committed here
+  }
+  for (const key of CONNECTION_SETTINGS_KEYS) delete settings[key];
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
 }
 

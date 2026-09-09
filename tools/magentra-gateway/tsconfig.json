@@ -1,0 +1,22 @@
+{
+  "$comment": "Own project, deliberately NOT referenced by the root tsconfig.json — `tsc -b` must never need to succeed for the gateway to start (decisions/0002). Run it with `npm run typecheck:gateway`. The flags mirror tsconfig.base.json minus emit, so the two source files this project reuses by import (tui/src/profiles.ts, engine/core/src/util/fsAtomic.ts) are checked under the same rules as in their own projects.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "types": ["node"],
+
+    "noEmit": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts"]
+}

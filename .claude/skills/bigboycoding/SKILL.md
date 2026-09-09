@@ -43,6 +43,7 @@ node .claude/skills/bigboycoding/blast-radius.mjs --entrypoints
 node .claude/skills/bigboycoding/blast-radius.mjs <file> [file...]
 node .claude/skills/bigboycoding/blast-radius.mjs --symbol <Name>
 node .claude/skills/bigboycoding/blast-radius.mjs --frame <frame-type>
+node .claude/skills/bigboycoding/blast-radius.mjs --json <file> [file...]
 ```
 
 No build, no deps, no args needed to start — it reads source off disk and
@@ -75,6 +76,15 @@ matched / handled (1)
 ```
 
 Two files, connected by nothing but the characters `agent_spawned`.
+
+**`--json <file...>`** — the same facts as `<file>`, as one JSON object keyed by
+path, for a tool rather than a human: `risk`, `exports`, `fanOut`,
+`directImporters`, `transitiveImporters`, `untypedAppReach`, `untypedSeam`, and
+`frames` (each frame string the file names, with where the other side of it
+lives and whether that side is in `app/`). Added 2026-09-09 for
+`tools/magentra-gateway`, whose SPEC §6 says to call this script rather than
+grow a second graph reader — parsing the human output above would have become
+exactly that the first time a label moved. No banner, no trailing newline.
 
 **`--symbol <Name>`** — definition site plus every reference, split into
 "tsc will catch a break" and "tsc will NOT catch a break."
