@@ -20,10 +20,11 @@
  * actually running.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { applyProfile, logLines, openWorkspace, saveProfile, waitForLog } from "../lib/appDriver.ts";
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
 import { repoRoot } from "../lib/inventory.ts";
 import { ProcTest, type ProcHandle } from "../lib/procTest.ts";
@@ -380,16 +381,6 @@ class SettingsTakesTheSameDoor extends EngineFrameTest {
 /** A keyless local endpoint: enough for the app to consider a workspace configured. */
 const LOCAL_ENDPOINT = "http://127.0.0.1:11434/v1";
 
-interface LogLine {
-  readonly ch?: string;
-  readonly data?: Record<string, unknown>;
-}
-
-interface ApplyResult {
-  readonly ok?: boolean;
-  readonly live?: boolean;
-}
-
 abstract class AppConnectionTest extends UiTest {
   readonly featureId = FEATURE;
   readonly invariant = INVARIANT;
@@ -403,66 +394,28 @@ abstract class AppConnectionTest extends UiTest {
    * throwaway profiles into the developer's real ones.
    */
   protected async startApp(): Promise<AppHandle> {
-    const home = this.removeAfterApp(mkdtempSync(join(tmpdir(), "magentra-home-")));
+    const home = this.makeTempDir("magentra-home-");
     return this.launchApp({ HOME: home, USERPROFILE: home });
   }
 
   /** A workspace. `configured` decides whether the app will start an engine for it. */
   protected makeWorkspace(configured: boolean): string {
-    const workspace = this.removeAfterApp(mkdtempSync(join(tmpdir(), "magentra-ws-")));
+    const workspace = this.makeTempDir("magentra-ws-");
     if (configured) {
-      mkdirSync(join(workspace, ".magentra"), { recursive: true });
       // A LOCAL endpoint needs no key, so this is a complete connection —
       // which is what workspaceConfigured() asks before spawning an engine.
-      writeFileSync(
-        join(workspace, ".magentra", "settings.json"),
-        `${JSON.stringify({ provider: "openai-compatible", baseUrl: LOCAL_ENDPOINT, model: "model-one" }, null, 2)}\n`,
-      );
+      this.writeJsonFile(join(workspace, ".magentra", "settings.json"), {
+        provider: "openai-compatible",
+        baseUrl: LOCAL_ENDPOINT,
+        model: "model-one",
+      });
     }
     return workspace;
   }
 
-  /** The app's black-box log for this workspace, as it stands. Buffered and flushed every 500ms. */
-  protected logLines(workspace: string): LogLine[] {
-    const dir = join(workspace, ".magentra", "logs");
-    if (!existsSync(dir)) return [];
-    const out: LogLine[] = [];
-    for (const name of readdirSync(dir)) {
-      for (const line of readFileSync(join(dir, name), "utf8").split("\n")) {
-        if (line.trim() === "") continue;
-        try {
-          out.push(JSON.parse(line) as LogLine);
-        } catch {
-          /* a truncated tail line */
-        }
-      }
-    }
-    return out;
-  }
-
-  /** Wait for the log to show something. The log is the app's own record of what it did. */
-  protected async waitForLog(workspace: string, predicate: (line: LogLine) => boolean, what: string, timeoutMs = 30_000): Promise<LogLine> {
-    const deadline = Date.now() + timeoutMs;
-    for (;;) {
-      const found = this.logLines(workspace).find(predicate);
-      if (found !== undefined) return found;
-      if (Date.now() > deadline) throw new Error(`waited ${timeoutMs}ms for ${what} in ${workspace}/.magentra/logs`);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
-  }
-
-  protected async openWorkspace(app: AppHandle, workspace: string): Promise<void> {
-    await app.evaluate(`window.magentra.openWorkspace(${JSON.stringify(workspace)}).then(() => true)`);
-  }
-
-  /** Save a profile through the real IPC and return its id. */
-  protected async saveProfile(app: AppHandle, name: string, model: string): Promise<string> {
-    const saved = await app.evaluate<{ ok?: boolean; profiles?: { id: string; name: string }[] }>(
-      `window.magentra.saveProfile({ name: ${JSON.stringify(name)}, provider: "openai-compat", baseUrl: ${JSON.stringify(SECOND_ENDPOINT)}, model: ${JSON.stringify(model)}, apiKey: "sk-from-the-ui" })`,
-    );
-    const profile = (saved.profiles ?? []).find((p) => p.name === name);
-    if (profile === undefined) throw new Error(`the app did not save a profile named ${name}`);
-    return profile.id;
+  /** A saved profile pointing at the second endpoint, by name. */
+  protected async saveSecondEndpoint(app: AppHandle, name: string, model: string): Promise<string> {
+    return saveProfile(app, { name, provider: "openai-compat", baseUrl: SECOND_ENDPOINT, model, apiKey: "sk-from-the-ui" });
   }
 }
 
@@ -474,20 +427,20 @@ class LiveEngineIsRePointed extends AppConnectionTest {
   override async run(t: TestRun): Promise<void> {
     const app = await this.startApp();
     const workspace = this.makeWorkspace(true);
-    await this.openWorkspace(app, workspace);
+    await openWorkspace(app, workspace);
     // The app starts an engine for a configured workspace; everything below is
     // about what happens while that engine is alive.
-    const spawned = await this.waitForLog(workspace, (l) => l.ch === "sys" && l.data?.["ev"] === "spawn", "the engine to spawn");
+    const spawned = await waitForLog(workspace, (l) => l.ch === "sys" && l.data?.["ev"] === "spawn", "the engine to spawn");
     t.assert.equal(typeof spawned.data?.["pid"], "number");
 
-    const id = await this.saveProfile(app, "second", "model-two");
-    const result = await app.evaluate<ApplyResult>(`window.magentra.applyProfile(${JSON.stringify(id)})`);
+    const id = await this.saveSecondEndpoint(app, "second", "model-two");
+    const result = await applyProfile(app, id);
 
     t.assert.equal(result.ok, true);
     t.assert.equal(result.live, true, "a workspace with a live engine must be re-pointed, not respawned");
 
     // The frame really went down the engine's stdin — writeToEngine logs what it wrote.
-    const frame = await this.waitForLog(
+    const frame = await waitForLog(
       workspace,
       (l) => l.ch === "ui" && l.data?.["type"] === "set_connection",
       "the set_connection frame to be written to the engine",
@@ -496,11 +449,11 @@ class LiveEngineIsRePointed extends AppConnectionTest {
     t.assert.equal(typeof connection, "object");
     t.assert.equal((connection as Record<string, unknown>)["model"], "model-two");
 
-    const swapped = await this.waitForLog(workspace, (l) => l.data?.["ev"] === "connection-swapped", "the swap to be recorded");
+    const swapped = await waitForLog(workspace, (l) => l.data?.["ev"] === "connection-swapped", "the swap to be recorded");
     t.assert.equal(swapped.data?.["live"], true);
 
     // And nothing respawned: one spawn for the life of this workspace.
-    const spawns = this.logLines(workspace).filter((l) => l.data?.["ev"] === "spawn" || l.data?.["ev"] === "restart");
+    const spawns = logLines(workspace).filter((l) => l.data?.["ev"] === "spawn" || l.data?.["ev"] === "restart");
     t.assert.equal(spawns.length, 1, "the engine was respawned, which is the whole thing this feature removed");
   }
 }
@@ -515,18 +468,18 @@ class NoEngineMeansSpawn extends AppConnectionTest {
     // NOT configured: the app opens it and shows the setup wizard instead of
     // starting an engine, which is the state this test needs.
     const workspace = this.makeWorkspace(false);
-    await this.openWorkspace(app, workspace);
+    await openWorkspace(app, workspace);
 
-    const id = await this.saveProfile(app, "first", "model-one");
-    const result = await app.evaluate<ApplyResult>(`window.magentra.applyProfile(${JSON.stringify(id)})`);
+    const id = await this.saveSecondEndpoint(app, "first", "model-one");
+    const result = await applyProfile(app, id);
 
     t.assert.equal(result.ok, true);
     t.assert.equal(result.live, false, "with no engine running the app must spawn one and say so");
 
     // `live: false` is a claim that it spawned. Check that it did.
-    const spawned = await this.waitForLog(workspace, (l) => l.data?.["ev"] === "spawn", "the engine to be spawned by applying the profile");
+    const spawned = await waitForLog(workspace, (l) => l.data?.["ev"] === "spawn", "the engine to be spawned by applying the profile");
     t.assert.equal(typeof spawned.data?.["pid"], "number");
-    const wrote = this.logLines(workspace).filter((l) => l.ch === "ui" && l.data?.["type"] === "set_connection");
+    const wrote = logLines(workspace).filter((l) => l.ch === "ui" && l.data?.["type"] === "set_connection");
     t.assert.deepEqual(wrote, [], "nothing should have been written to an engine that was not running");
   }
 }
@@ -539,8 +492,8 @@ class DroppedFrameIsReported extends AppConnectionTest {
   override async run(t: TestRun): Promise<void> {
     const app = await this.startApp();
     const workspace = this.makeWorkspace(true);
-    await this.openWorkspace(app, workspace);
-    const spawned = await this.waitForLog(workspace, (l) => l.data?.["ev"] === "spawn", "the engine to spawn");
+    await openWorkspace(app, workspace);
+    const spawned = await waitForLog(workspace, (l) => l.data?.["ev"] === "spawn", "the engine to spawn");
     const pid = spawned.data?.["pid"];
     t.assert.equal(typeof pid, "number");
 
@@ -552,7 +505,7 @@ class DroppedFrameIsReported extends AppConnectionTest {
     await new Promise((resolve) => setTimeout(resolve, 1_000));
 
     await app.evaluate(`window.magentra.send({ type: "set_connection", connection: { provider: "openai-compatible", apiKey: "", model: "model-two" } }); true`);
-    await this.waitForLog(workspace, (l) => l.data?.["ev"] === "engine-write-dropped", "the dropped frame to be recorded");
+    await waitForLog(workspace, (l) => l.data?.["ev"] === "engine-write-dropped", "the dropped frame to be recorded");
 
     const seen = await app.evaluate<{ type?: string; message?: string }[]>(
       `new Promise((r) => setTimeout(() => r(window.__dropped.filter((e) => e && e.type === "error")), 500))`,

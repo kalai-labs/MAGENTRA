@@ -5,6 +5,7 @@
   "section": "Desktop app",
   "prose": "`$…$`/`\\(…\\)` inline and `$$…$$`/`\\[…\\]` display LaTeX render as native **MathML**: no library, no CDN, no extra web font, and nothing the strict CSP has to be relaxed for. Symbols, sub/superscripts, fractions, roots, big operators with limits, delimiters, text runs and matrix/cases environments; anything unparsed falls back to its own source. Prices (`$5, not $7`) and backticked `` `$x$` `` stay text.",
   "kinds": [
+    "pure",
     "ui"
   ],
   "entryFiles": [
@@ -12,7 +13,12 @@
   ],
   "invariant": "Inline and display LaTeX render as native MathML with no library, no CDN and nothing the strict CSP must relax; anything unparsed falls back to its source.",
   "deferred": true,
-  "tests": [],
+  "tests": [
+    "latex-becomes-real-mathml-nodes",
+    "input-the-parser-cannot-read-is-shown-as-its-own-source",
+    "prices-and-code-spans-are-not-mistaken-for-mathematics",
+    "no-node-is-ever-built-from-a-string"
+  ],
   "freshness": {
     "hash": "9e89f19290a77ded",
     "fileHashes": {

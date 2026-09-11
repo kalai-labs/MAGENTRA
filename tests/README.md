@@ -7,11 +7,19 @@ tests.
 tests/
 ├── lib/                          the test class hierarchy
 │   ├── featureTest.ts            the abstract base every test extends
+│   ├── pureTest.ts               kind: touches nothing, and proves it
+│   ├── fsTest.ts                 kind: a temp workspace, a redirectable HOME
 │   ├── procTest.ts               kind: spawns a real process, owns its life
+│   ├── netTest.ts                kind: a real server on 127.0.0.1, closed after
 │   ├── uiTest.ts                 kind: runs the real desktop app under Electron
-│   ├── childProcesses.ts         the kill-the-tree guarantee both kinds hold
+│   ├── childProcesses.ts         the kill-the-tree guarantee the kinds share
+│   ├── localServer.ts            the far end of a socket, for net and ui alike
+│   ├── exclusive.ts              a lock for what the whole suite shares
 │   ├── engineHarness.ts          a real engine + a fake provider, for proc tests
 │   ├── appHarness.cjs            hosts app/main.js unchanged, for ui tests
+│   ├── appDriver.ts              driving that app: workspaces, profiles, its log
+│   ├── appConnection.ts          app/main/connection.js, loaded as main loads it
+│   ├── scriptedFetch.ts          a network that answers from a script
 │   └── inventory.ts              reads a feature record; imports no gateway code
 ├── features/<feature-id>.test.ts one file per feature
 ├── tsconfig.json                 typecheck only; not in the root `tsc -b` chain
@@ -66,19 +74,91 @@ its ticked boxes had no assertion behind them. The inventory in
 `gateway/features/` is the backlog, and it is verified against the source rather
 than against `FEATURES.md`.
 
-`lib/` is SPEC §11 step 6: the base plus the `proc` kind (2026-09-10) and the
-`ui` kind (2026-09-11). `pure`, `fs`, `net` and `llm` are not written — each is
-a small subclass, and each is best written against the first real test that
-needs it rather than guessed at in advance.
+`lib/` is SPEC §11 step 6: the base plus the `pure`, `fs`, `proc`, `net` and
+`ui` kinds. `llm` is not written — no feature has yet needed a real model to
+prove, and several that declared one did not (see *kinds are a claim* below).
 
-One feature is proven: `a-connection-change-re-points-the-live-session`, seven
-tests over both its halves. Each was checked by breaking the feature on purpose
-and confirming the right test failed.
+**Every approved description is implemented: 28 features, 101 tests** — 45
+`ui`, 30 `pure`, 17 `proc`, 8 `fs`, 1 `net`.
+
+Every one of them was checked by breaking the feature on purpose and confirming
+that the right test, and only it, failed. That found eleven tests that passed
+without proving anything, each fixed and re-checked:
+
+| What the mutation revealed | The fix |
+| --- | --- |
+| a leftover `.tmp` is the only case the trailing `chmod` exists for | write into one, then assert the mode |
+| `/v1/openai` does not discriminate suffix order; `/openai/v1` does | assert the suffixes that end in `/v1` |
+| a bundle left in the repo resolves the repo's own `node_modules` | copy it out of the tree first |
+| a 404 body with no tag agrees with both readings | give the refused answer a valid-looking tag |
+| exit 1 also comes from the smoke timer | require the crash to end the run at once |
+| an instance turned away by the lock also exits 0 | require the second instance to outlive the lock check |
+| `$5, not $7` is refused before the prose test is reached | add `$a, b$`, a code span, and `$x^2 $` |
+| the body swap already removes the caret | finalize a message with no text, where it cannot |
+| two queued requests make `shift` and `pop` identical | queue three |
+| hiding the card does not prove the queue was cleared | deliver a fresh request and check which one shows |
+| the log cannot say which tab's engine got a frame | kill the asking engine and require the drop |
+
+**Kinds are a claim about what proving a feature requires, and fifteen records
+were wrong.** `a-404-on-models-is-disambiguated-not-assumed` and
+`endpoint-discovery` were `proc` but take their `fetch` as a parameter (`pure`).
+`linux-artifact` was `ui` and involves no window (`pure` + `proc`).
+`permission-prompt` was `llm` and is about a queue (`ui`).
+`images-go-to-a-second-model-never-to-the-coding-one` was `llm` and is about
+routing, which a stub at the second endpoint proves (`proc`). Each was
+re-declared where the test sits, and the test file says why.
+
+**A deferred feature may be proven.** Nine records are `deferred` by rule — all
+their entry files sit under `app/renderer/` — and this base used to refuse any
+test written for one. SPEC §2.1 says only that such a feature "carries no test
+expectation" and "never counts against coverage"; it does not forbid a test. All
+nine are now proven, through the real page in a real app. See
+[`../decisions/0008`](../decisions/0008-a-deferred-feature-may-still-be-proven.md).
 
 **A `ui` test needs a display.** macOS and Windows have one; Linux and CI need
 `xvfb-run`, exactly as the app's own smoke job already does. A `proc` or `ui`
 test that drives the engine also needs `npm run build` first — it runs the built
 engine, which is what the app spawns, and `dist/` is gitignored.
+
+## Every test runs on Windows, macOS and Linux
+
+Not "is expected to": each platform-specific fact is asserted as what THAT
+platform can express, never skipped where it cannot.
+
+- **File modes** are asserted on POSIX; on Windows, which has none, the same
+  tests assert that the write landed.
+- **The Linux launcher wrapper** is executed under `/bin/sh`, and under a
+  pseudo-terminal via `script(1)`, on macOS and Linux. Windows has neither and
+  ships no wrapper — so there the test asserts that packaging produces none,
+  which is the Windows truth rather than a skipped Linux one.
+- **Process trees** are killed by process group on POSIX and `taskkill /T` on
+  Windows (`childProcesses.ts`).
+- **Paths and homes**: nothing hard-codes a POSIX path; `HOME` and `USERPROFILE`
+  are both redirected, because `os.homedir()` reads one on each.
+- **Per-OS packages**: the ripgrep test finds which platform's binary is absent
+  rather than assuming, since only the running platform's is installed.
+- **The electron-builder stand-in** is a `.cmd` under cmd.exe and a shell script
+  elsewhere, because `dist.js` spawns it through the platform's own shell.
+
+`full-screen-can-always-be-left` asserts the ASK, not the grant, and that is a
+deliberate line: macOS serialises full-screen transitions across applications
+and the suite runs its files in parallel, so a window's actual posture depends
+on a desktop that is free to refuse — `app/main.js` already treats it that way
+and falls back to maximizing. Every route the feature promises (F11, the VIEW
+item, the top-strip buttons) is asserted as reaching the window with the right
+request, exactly once. Asserting on the grant instead made that file fail
+roughly one full run in four, always for a reason that had nothing to do with
+the app. The renderer's half — the strip appearing while full screen — is driven
+by delivering `window:fullscreen` on the same channel `app/main.js` pushes it.
+
+Flakiness is treated as a defect in the test, not something to re-run past. Six
+were found here and each was fixed at the level the product actually owns, with
+every fix re-checked by mutation to confirm it still catches a real break. Two
+were not timing at all but SHARED STATE between files: `node --test` runs files
+in parallel processes, and three features run the packager, which removes and
+rewrites one fixed output directory. `lib/exclusive.ts` is the lock that makes
+that a critical section; a fixed pause that was long enough alone and not under
+a full run is polled for instead.
 
 What the base enforces, by mechanism rather than by reminder:
 
@@ -88,6 +168,7 @@ What the base enforces, by mechanism rather than by reminder:
 | no skip, no soft assert, no expected-failure | `run()` is handed a narrowed `TestRun`, which has no `skip`, `todo` or `plan` |
 | **a test asserts something** | `run()` uses the counted `t.assert` it is given; a run that asserts nothing fails, naming the 28 boxes |
 | a test agrees with its record | its kind must be one the record declares, its `invariant` must match verbatim, and its id must be listed in the record's `tests` |
+| a `pure` test really is pure | the environment and working directory are snapshotted and compared; a test that leaks either fails, because the next test in the process inherits it and fails somewhere else |
 | a spawning test leaves no orphan | children are spawned into their own process group and killed SIGTERM→SIGKILL on teardown, in an outer `finally`; a survivor fails the test. `proc` and `ui` share one copy of this (`childProcesses.ts`) |
 | a test file is findable | the gateway parses `features/` and derives each record's status from it — see *What the gateway reads out of a test file* below |
 

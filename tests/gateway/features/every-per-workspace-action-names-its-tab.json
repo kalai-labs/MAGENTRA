@@ -13,7 +13,11 @@
   ],
   "invariant": "Connect, vision and the attach picker act on the tab they were opened from, never on whatever is focused.",
   "deferred": true,
-  "tests": [],
+  "tests": [
+    "connecting-from-a-background-row-changes-that-workspace",
+    "the-vision-toggle-flips-the-named-workspace-only",
+    "an-action-with-no-tab-named-falls-back-to-the-focused-one"
+  ],
   "freshness": {
     "hash": "da428ccdbb52484b",
     "fileHashes": {

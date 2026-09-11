@@ -5,14 +5,19 @@
   "section": "Desktop app",
   "prose": "a workspace switched between an OpenAI-compatible endpoint and Anthropic keeps both key lines in its `.env`. Reveal, \"keep the saved key\", TEST and the setup check took the first `*_API_KEY` line, which could be the other provider's — sent to this provider's URL and reported as a bad key. `hasCredentials` now asks the question the engine asks, in the engine's order, and across both settings layers.",
   "kinds": [
-    "fs"
+    "fs",
+    "ui"
   ],
   "entryFiles": [
     "app/main/config.js"
   ],
   "invariant": "hasCredentials resolves the saved key by PROVIDER in the engine's own order, across both settings layers, never by first matching line in .env.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "only-api-key-lines-are-read-and-blank-ones-do-not-count",
+    "the-provider-decides-which-saved-key-is-sent",
+    "the-other-providers-key-does-not-count-as-configured"
+  ],
   "freshness": {
     "hash": "b023d6d155878fb9",
     "fileHashes": {

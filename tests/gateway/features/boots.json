@@ -5,6 +5,7 @@
   "section": "Desktop app",
   "prose": "window opens, renderer loads, no crash. (`npm run smoke` already does this — grow it.)",
   "kinds": [
+    "proc",
     "ui"
   ],
   "entryFiles": [
@@ -13,7 +14,11 @@
   ],
   "invariant": "The app boots and the window comes up clean; --smoke exits nonzero when the renderer crashes.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-clean-boot-paints-the-landing-page-and-exits-zero",
+    "a-renderer-that-dies-fails-the-boot",
+    "without-smoke-the-app-keeps-running"
+  ],
   "freshness": {
     "hash": "ab7382c5e03e14f0",
     "fileHashes": {

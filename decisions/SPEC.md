@@ -1,16 +1,18 @@
 # magentra-gateway — implementation specification
 
-Status: **§11 steps 1–5, 7 and 9 implemented 2026-09-09. Step 6 part-built
-2026-09-10/11 — `tests/lib` carries the base, the `proc` kind and the `ui` kind;
-the gateway discovers what `tests/features/` holds; one feature is proven end to
-end over both its halves. The `pure`, `fs`, `net` and `llm` kinds are
-outstanding. Step 8 (runner) withdrawn.**
+Status: **§11 steps 1–5, 7 and 9 implemented 2026-09-09. Step 6 built
+2026-09-10/11 — `tests/lib` carries the base and the `pure`, `fs`, `proc`, `net`
+and `ui` kinds; the gateway discovers what `tests/features/` holds; EVERY
+approved description is implemented — 28 features, 101 tests, each verified by
+mutation. `llm` is unwritten: no feature has needed a real model to prove. Step
+8 (runner) withdrawn.**
 Decisions: [0001](0001-the-gateway-is-the-inventory.md) ·
 [0002](0002-the-gateway-is-typescript-in-process.md) ·
 [0003](0003-storage-is-committed-json-per-feature.md) ·
 [0004](0004-tests-inherit-on-kind.md) ·
 [0005](0005-the-two-stage-gate.md) ·
-[0007](0007-tests-are-discovered-not-declared.md)
+[0007](0007-tests-are-discovered-not-declared.md) ·
+[0008](0008-a-deferred-feature-may-still-be-proven.md)
 
 If this document and the implementation disagree, one of them is a bug. Read the
 decision records first; they carry the *why*, and this document deliberately
@@ -101,6 +103,11 @@ scope at this stage (2026-09-09 decision). A deferred feature still appears in
 the inventory, still resolves dependencies, and never counts against coverage —
 and it must never be silently promoted: removing the flag is a decision.
 
+A deferred feature MAY still be proven — "no test expectation" is not "no test
+allowed" ([0008](0008-a-deferred-feature-may-still-be-proven.md)). All nine
+renderer-only records are proven through the real page in a real app; the flag
+stays, set by rule, and they still never count against coverage.
+
 `status` is **derived, never authored**: `untested` = no tests; `partial` = tests
 exist but not for every declared kind; `covered` = one per kind. It is computed
 on load and never written to disk.
@@ -169,7 +176,9 @@ Subclass responsibilities:
 
 | Class | Owns |
 | --- | --- |
-| `PureTest` | nothing; no I/O permitted |
+| `PureTest` | no I/O permitted — and it proves it, by comparing the environment and cwd across the test rather than trusting the rule |
+| `FsTest` | a temp directory per test, a redirectable `HOME`/`USERPROFILE`, and scoped environment changes — all restored before the next test in the file |
+| `NetTest` | a real server on a port the OS picks, closed on teardown with its keep-alive sockets destroyed first |
 | `FsTest` | a temp workspace per test, removed on teardown even on throw |
 | `ProcTest` | child process lifecycle; kill on teardown; no orphans |
 | `NetTest` | network, no model |
@@ -430,11 +439,19 @@ Not in v1. Recorded so they are not mistaken for oversights.
    app/main.js:48 cannot make a test depend on whether the developer has the app
    open). `src/tests.ts` parses `tests/features/` so a test is discoverable at
    all, and `status` derives from it
-   ([0007](0007-tests-are-discovered-not-declared.md)). The first real test is
-   done: `a-connection-change-re-points-the-live-session`, seven tests across
-   `proc` and `ui`, each verified by breaking the feature and confirming the
-   right one failed. Outstanding: the `pure` / `fs` / `net` / `llm` kinds, each
-   best written against the first test that needs it.
+   ([0007](0007-tests-are-discovered-not-declared.md)). Both approved
+   descriptions are implemented: `a-connection-change-re-points-the-live-session`
+   (7 tests, `proc` + `ui`) and `a-404-on-models-is-disambiguated-not-assumed`
+   (5 tests, `pure`), each verified by breaking the feature and confirming the
+   right test failed. Outstanding: the `fs` / `net` / `llm` kinds, each best
+   written against the first test that needs it.
+
+   **A record's `kinds` is a claim about what proving the feature requires, and
+   one was wrong.** `a-404-on-models-is-disambiguated-not-assumed` was seeded
+   `proc`; `testEndpoint` takes `opts.fetchImpl` for tests and touches no file
+   and no process, so the honest kind is `pure`. Re-declared 2026-09-11. Kind
+   decides the base class (decisions/0004), so a `proc` label there would have
+   meant spawning something to reach a function that was already reachable.
 7. ~~`deps.ts` + `brief.ts`~~ — **DONE 2026-09-09**: `blast-radius.mjs --json` for §6 items 1–3, the inventory for item 4. `brief.ts` removed the same day ([0006](0006-the-gateway-does-not-run-or-brief.md)); `deps.ts` stays, read in the UI.
 8. ~~`runner.ts`; RUN enabled~~ — **WITHDRAWN 2026-09-09** ([0006](0006-the-gateway-does-not-run-or-brief.md)): the implementing agent runs the tests, outside the gateway.
 9. ~~Descriptions: write, edit, user-only `done`~~ — **DONE 2026-09-09**: saving an edit provably cannot change `status`. Later the same day the states were renamed `draft` / `ready` (§2.2): "done" had read as "the test was done", which a description can never know.

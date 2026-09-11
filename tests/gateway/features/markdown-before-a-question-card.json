@@ -13,7 +13,11 @@
   ],
   "invariant": "A question_request closes the streaming message first, so text above an approval card is rendered while the user decides.",
   "deferred": true,
-  "tests": [],
+  "tests": [
+    "the-message-above-the-card-is-rendered-markdown",
+    "text-arriving-after-the-card-starts-a-new-message",
+    "a-message-never-vanishes-because-its-markdown-failed"
+  ],
   "freshness": {
     "hash": "fdafeaedd5cada9c",
     "fileHashes": {

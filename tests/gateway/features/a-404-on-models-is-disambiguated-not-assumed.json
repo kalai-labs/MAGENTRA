@@ -5,14 +5,20 @@
   "section": "Desktop app",
   "prose": "a catalog-less server and a wrong base URL both answer 404 there, and assuming the benign reading meant TEST reported success on a URL that could never work, sending the user to check an API key that was fine. The chat route is probed directly: 400/422/200 proves it exists, 401/403 proves it exists and refused the key, 404/405 means this is not the API.",
   "kinds": [
-    "proc"
+    "pure"
   ],
   "entryFiles": [
     "app/main/connection.js"
   ],
   "invariant": "A 404 on /models is disambiguated by probing the chat route: 400/422/200 proves it exists, 401/403 proves it refused the key, 404/405 means this is not the API.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-catalog-less-server-passes-with-a-note",
+    "any-non-404-chat-answer-counts-as-the-route-existing",
+    "a-refused-key-is-named-as-the-key-not-the-url",
+    "no-chat-route-anywhere-blames-the-address-not-the-key",
+    "the-probe-is-an-invalid-post-and-a-throw-means-missing"
+  ],
   "freshness": {
     "hash": "d4a9fb670267f05c",
     "fileHashes": {

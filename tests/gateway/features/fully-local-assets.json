@@ -5,6 +5,8 @@
   "section": "Desktop app",
   "prose": "`default-src 'none'` with `style-src`/`script-src`/`font-src` all `'self'`: nothing is fetched from the web at runtime, so the app works offline and in an air-gapped environment. Both bundled fonts are SIL OFL 1.1 with the licence text and copyright notices shipped alongside them (`app/renderer/fonts/`).",
   "kinds": [
+    "pure",
+    "proc",
     "ui"
   ],
   "entryFiles": [
@@ -12,7 +14,11 @@
   ],
   "invariant": "default-src 'none' with style/script/font all 'self': nothing is fetched from the web at runtime, so the app works air-gapped.",
   "deferred": true,
-  "tests": [],
+  "tests": [
+    "the-policy-forbids-the-web-and-nothing-asks-for-it",
+    "the-packaged-renderer-ships-the-same-fonts-and-licence",
+    "the-running-page-reports-no-blocked-or-failed-resource"
+  ],
   "freshness": {
     "hash": "a84edad7b4d5fba1",
     "fileHashes": {

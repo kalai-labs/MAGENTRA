@@ -5,8 +5,7 @@
   "section": "Desktop app",
   "prose": "the main model is treated as unable to see a picture whatever it claims to support. A connection **profile** names another profile as its **vision model**, so connecting a workspace brings the describer with it — nothing to enter, test or save per workspace. Each image goes to that endpoint and its written DESCRIPTION enters the conversation. So the account the agent reasons from sits in the transcript where it can be checked, the coding endpoint never has to accept image parts, and the vision call is banked in the session's token ledger like any other. Without a vision model the toggle cannot be switched on, the picker refuses images and `Read` on a `.png` explains itself instead of returning content nothing can read. The rule holds for tools the engine does not own too: an image in any tool result (an MCP server's screenshot) is described or replaced with a note at the one point a result becomes a message, so \"the coding model never sees a picture\" has no exceptions to remember.",
   "kinds": [
-    "fs",
-    "llm"
+    "proc"
   ],
   "entryFiles": [
     "engine/core/src/runtime/session.ts",
@@ -15,7 +14,10 @@
   ],
   "invariant": "The coding model is never sent a picture: a vision profile describes it and the description enters the conversation, with no exceptions for tool results.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-image-is-sent-to-the-vision-endpoint",
+    "the-coding-model-receives-the-description-and-never-the-image"
+  ],
   "freshness": {
     "hash": "96b07558f46f36ee",
     "fileHashes": {

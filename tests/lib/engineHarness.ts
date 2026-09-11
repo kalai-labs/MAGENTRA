@@ -98,6 +98,17 @@ function textOf(message: Msg): string {
 }
 
 /**
+ * How many image blocks a message carries.
+ *
+ * Reported because one feature's whole claim is that the coding model never
+ * receives one — and "never" is only checkable if what it DID receive is
+ * counted, not assumed.
+ */
+function imagesIn(message: Msg): number {
+  return message.content.filter((block) => block.type === "image").length;
+}
+
+/**
  * A scripted provider that announces every call. Each generation answers with
  * its own number, so which provider the LIVE session is talking to is visible
  * in the assistant's text rather than inferred from a spy.
@@ -108,7 +119,7 @@ function makeProvider(generation: number): Provider {
     stream(req: StreamRequest): AsyncIterable<ProviderEvent> {
       report("stream", {
         generation,
-        messages: req.messages.map((m) => ({ role: m.role, text: textOf(m) })),
+        messages: req.messages.map((m) => ({ role: m.role, text: textOf(m), images: imagesIn(m) })),
       });
       return fake.stream(req);
     },

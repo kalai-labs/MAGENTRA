@@ -13,7 +13,12 @@
   ],
   "invariant": "The engine child is spawned, restarted and reaped per tab, and a dying child exits before a replacement spawns.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-engine-stops-on-sigterm-well-inside-the-kill-budget",
+    "opening-a-workspace-spawns-exactly-one-engine-for-it",
+    "a-replacement-waits-for-the-previous-child-to-exit",
+    "quitting-leaves-no-engine-behind"
+  ],
   "freshness": {
     "hash": "7e664025a5da3100",
     "fileHashes": {

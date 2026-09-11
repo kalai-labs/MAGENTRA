@@ -5,7 +5,8 @@
   "section": "Desktop app",
   "prose": "project settings merge over global, so a leftover `apiKeyEnv` in `~/.magentra/settings.json` wins straight back. The wizard now clears it wherever it lives, via one helper rather than a copy of the `contextWindow` clear.",
   "kinds": [
-    "fs"
+    "fs",
+    "ui"
   ],
   "entryFiles": [
     "app/main.js",
@@ -13,7 +14,10 @@
   ],
   "invariant": "Saving a connection clears a stale apiKeyEnv pin in BOTH the project and global layers, through one helper.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-merged-view-is-what-a-stale-global-pin-survives-in",
+    "saving-a-connection-leaves-no-pin-in-either-layer"
+  ],
   "freshness": {
     "hash": "c5e1d57e4bc44f6d",
     "fileHashes": {

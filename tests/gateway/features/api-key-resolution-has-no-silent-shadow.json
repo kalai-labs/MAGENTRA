@@ -13,7 +13,13 @@
   ],
   "invariant": "Key order is pinned apiKeyEnv, then standard env names, then the stored key; a pin never shadows the key just written, and blank env vars do not count as set.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-stale-pin-does-not-shadow-the-key-just-written",
+    "a-pin-that-names-a-set-variable-wins",
+    "a-blank-env-var-does-not-count-as-set",
+    "the-stored-key-is-last-and-nothing-is-a-real-answer",
+    "anthropic-consults-only-its-own-variable"
+  ],
   "freshness": {
     "hash": "01ea71c8a6a6a8f0",
     "fileHashes": {

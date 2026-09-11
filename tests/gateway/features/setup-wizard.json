@@ -5,6 +5,7 @@
   "section": "Desktop app",
   "prose": "first-run credential entry writes `.env` and tests the connection.",
   "kinds": [
+    "pure",
     "net",
     "ui"
   ],
@@ -14,7 +15,13 @@
   ],
   "invariant": "The setup wizard tests, saves and applies a connection, and refuses to save an invalid one.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "an-invalid-connection-is-refused-before-anything-is-written",
+    "test-reaches-a-real-endpoint-with-the-real-fetch",
+    "saving-and-applying-writes-the-key-and-the-settings",
+    "a-workspace-with-no-usable-key-opens-the-wizard",
+    "test-hands-back-the-url-that-actually-answered"
+  ],
   "freshness": {
     "hash": "6ef4a7218af8ff10",
     "fileHashes": {

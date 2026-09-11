@@ -1,0 +1,10 @@
+{
+  "id": "c2ab3951-a915-4f16-8d38-b5cb0f612175",
+  "featureIds": [
+    "changes-panel"
+  ],
+  "status": "ready",
+  "createdAt": "2026-09-09T18:30:14.455Z",
+  "updatedAt": "2026-09-11T08:06:42.865Z",
+  "body": "WHAT\nEvery `file_edited` event from the engine (a unified diff of one edit) is collected per file for the session. The Changes panel lists each changed file with edit count and +/- line counts, expands to show every diff, and offers an Undo that reverts the file's edits through the main process.\n\nWHY\nWithout it the user cannot see what the agent changed across a session or take it back in one step.\n\nWHERE\napp/renderer/modules/events.js — sessionChanges Map and sessionChangeOrder, parseDiff(diff, fallbackPath), onFileEdited(event), resetChanges(), rebuildSessionChanges(), discardSessionFileChanges(relPath), renderChanges(). app/renderer/modules/workbench.js — sessionChangeTotals(), appendDiffCounts(), renderInspectorChanges(), renderInlineChangesCard(), renderReviewDrawer(preferredPath), openReviewDrawer(), undoFileChange(relPath) which calls window.magentra.undoChanges(relPath, change.diffs). app/main.js — ipcMain.handle(\"changes:undo\") → undoWorkspaceDiffs(workspace, relPath, diffs) (app/main/changes.js).\n\nTEST CHECKLIST\n1. Two file_edited events for the same relPath produce one row with count 2, adds/dels summed, and a detail block containing both diffs with '── edit 1 of 2 ──' / '── edit 2 of 2 ──' headers.\n2. parseDiff extracts relPath from the '+++ b/<path>' line and counts '+'/'-' lines excluding the '---'/'+++' headers.\n3. A diff without a '+++ b/' header falls back to event.path for the file name.\n4. undoFileChange with a main-process reply { ok: true } removes that file from sessionChanges and appends a 'undid <path>' note; a reply { ok: false, error } leaves the entry in place and shows a sys error — the view never drops a change the disk still has.\n5. resetChanges() (session start / clear) empties the map, hides the nav badge, and the summary reads 'no edits yet' / 'No changes yet'."
+}

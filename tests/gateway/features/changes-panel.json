@@ -13,7 +13,11 @@
   ],
   "invariant": "Changed files are listed with counts, expandable diffs, and a transactional Undo.",
   "deferred": true,
-  "tests": [],
+  "tests": [
+    "edits-to-one-file-are-collected-counted-and-listed-in-order",
+    "a-failed-undo-leaves-the-change-where-it-is",
+    "a-fresh-session-starts-with-no-changes"
+  ],
   "freshness": {
     "hash": "4cf908ff9dc80255",
     "fileHashes": {

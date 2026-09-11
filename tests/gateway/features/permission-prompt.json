@@ -5,7 +5,6 @@
   "section": "Desktop app",
   "prose": "a `permission_request` surfaces a dialog, and the decision reaches the engine.",
   "kinds": [
-    "llm",
     "ui"
   ],
   "entryFiles": [
@@ -14,7 +13,11 @@
   ],
   "invariant": "A permission request reaches the user, the decision returns to the right tab's engine, and the queue drains in order.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-decision-goes-to-the-engine-that-asked",
+    "requests-are-shown-one-at-a-time-in-arrival-order",
+    "an-engine-that-exits-clears-its-pending-requests"
+  ],
   "freshness": {
     "hash": "327e98061b32f45b",
     "fileHashes": {

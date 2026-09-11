@@ -12,7 +12,12 @@
   ],
   "invariant": "The shipped app carries no node_modules: the engine is bundled to a single engine.cjs.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-bundle-is-one-file-with-no-bare-specifiers-left",
+    "the-bundle-starts-where-there-is-no-node-modules",
+    "the-bundler-refuses-when-the-engine-is-not-built",
+    "the-package-manifest-ships-no-node-modules"
+  ],
   "freshness": {
     "hash": "3e912cb4bc15ac7e",
     "fileHashes": {

@@ -13,7 +13,11 @@
   ],
   "invariant": "Each block renders when complete, so a half-streamed fence, table or formula stays plain text until its closing delimiter arrives.",
   "deferred": true,
-  "tests": [],
+  "tests": [
+    "a-cut-inside-an-unbalanced-fence-or-formula-is-refused",
+    "committed-blocks-render-while-the-tail-stays-plain",
+    "finishing-re-renders-the-whole-message-once"
+  ],
   "freshness": {
     "hash": "1416f05a9000107d",
     "fileHashes": {

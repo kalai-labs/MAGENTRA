@@ -12,7 +12,13 @@
   ],
   "invariant": "A 401 says the base URL or the key may be wrong and points at TEST; a 404 says the model id may need qualifying.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-refusal-everywhere-names-the-endpoint-and-the-key",
+    "a-refusal-on-the-way-to-a-working-path-is-not-reported",
+    "a-refused-connection-names-the-code-and-address",
+    "a-timeout-says-how-long-it-waited",
+    "a-self-signed-certificate-points-at-the-opt-in"
+  ],
   "freshness": {
     "hash": "d4a9fb670267f05c",
     "fileHashes": {

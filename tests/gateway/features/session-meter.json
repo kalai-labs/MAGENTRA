@@ -13,7 +13,11 @@
   ],
   "invariant": "The session meter shows context now and this turn's output, never their sum.",
   "deferred": true,
-  "tests": [],
+  "tests": [
+    "the-context-figure-is-the-engines-number-and-nothing-else",
+    "the-context-figure-never-accumulates-and-follows-a-compaction-down",
+    "the-top-bar-meter-sums-open-consoles-and-only-when-tiled"
+  ],
   "freshness": {
     "hash": "4e91d8ee0e5d2aed",
     "fileHashes": {

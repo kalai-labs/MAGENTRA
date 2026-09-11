@@ -186,12 +186,13 @@ export function inventoryLinkageProblems(t: FeatureTest, record: FeatureRecordSu
     );
   }
 
-  if (record.deferred === true) {
-    problems.push(
-      `${rel} is marked deferred, which means it carries no test expectation at this stage (SPEC §2.1). ` +
-        `A test for it is not wrong, but the flag is: removing it is a decision, and it has to be made in the gateway first.`,
-    );
-  }
+  // `deferred` is NOT checked here, deliberately. §2.1 says a deferred feature
+  // "carries no test expectation" and "never counts against coverage" — it does
+  // not say a test is forbidden, and this rule used to read it that way and
+  // refuse one. That was an overreach: it made the flag, which is set BY RULE
+  // from a record's entry files, into a prohibition nobody had decided on.
+  // decisions/0008 records the correction. A deferred feature may be proven;
+  // it is simply never counted as a gap when it is not.
 
   if (t.whyItExists.trim().length < 20 || PLACEHOLDER.test(t.whyItExists.trim())) {
     problems.push(

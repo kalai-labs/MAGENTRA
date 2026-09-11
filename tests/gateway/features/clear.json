@@ -12,7 +12,12 @@
   ],
   "invariant": "Clear resets the local view and starts a fresh session.",
   "deferred": true,
-  "tests": [],
+  "tests": [
+    "clear-sends-the-command-and-wipes-what-belonged-to-the-old-session",
+    "clear-is-refused-while-a-turn-is-running",
+    "a-typed-draft-survives-clear-and-a-typed-command-does-not",
+    "the-wipe-clears-the-task-list-unless-it-is-asked-not-to"
+  ],
   "freshness": {
     "hash": "d3c39cd158b8b979",
     "fileHashes": {

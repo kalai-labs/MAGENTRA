@@ -5,7 +5,8 @@
   "section": "Packaging",
   "prose": "AppImage/tar.gz launches on a clean machine, with a working Grep (the bundled `rg`).",
   "kinds": [
-    "ui"
+    "pure",
+    "proc"
   ],
   "entryFiles": [
     "app/package.json",
@@ -13,7 +14,11 @@
   ],
   "invariant": "The Linux build produces AppImage, tar.gz and deb with the documented artifact names.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-linux-targets-and-artifact-names-are-pinned",
+    "a-missing-ripgrep-fails-a-linux-package-but-not-a-local-build",
+    "publishing-is-never-implicit-and-the-runtime-is-pinned"
+  ],
   "freshness": {
     "hash": "ddf9d3d8f7f2f700",
     "fileHashes": {

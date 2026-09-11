@@ -88,6 +88,18 @@ app.whenReady().then(async () => {
         app.exit(0);
         return;
       }
+      // Run JS in the MAIN process, with the window and Electron's own modules
+      // in scope. Some of what the app promises is only observable here — a
+      // key event delivered to the window's webContents, whether the window is
+      // full screen — and none of it is reachable from the renderer. Test
+      // scaffolding, in a test file: the product is not asked to expose it.
+      if (command.cmd === "main") {
+        Promise.resolve()
+          .then(() => new Function("win", "electron", "require", `return (async () => { ${command.js} })();`)(win, require("electron"), require))
+          .then((value) => report({ type: "harness", event: "result", id: command.id, ok: true, value: value === undefined ? null : value }))
+          .catch((err) => report({ type: "harness", event: "result", id: command.id, ok: false, error: err && err.message ? err.message : String(err) }));
+        return;
+      }
       // `true` is userGesture — some renderer paths refuse without one.
       win.webContents
         .executeJavaScript(command.js, true)

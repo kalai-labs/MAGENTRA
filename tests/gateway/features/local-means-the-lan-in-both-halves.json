@@ -5,7 +5,9 @@
   "section": "Desktop app",
   "prose": "the app and the engine each decide whether a keyless connection is complete, in separate code (the app cannot import the engine). The engine's copy only knew loopback, so a keyless `http://192.168.1.20:1234/v1` that the app accepted made the engine refuse to boot with \"No API key found\". Both now cover loopback, `.local`, the private ranges and `host.docker.internal`; nothing asserts the parity any more, which is what makes this one worth writing first.",
   "kinds": [
-    "pure"
+    "pure",
+    "fs",
+    "ui"
   ],
   "entryFiles": [
     "engine/core/src/config/providerFactory.ts",
@@ -13,7 +15,12 @@
   ],
   "invariant": "The app and the engine agree on whether a keyless connection is complete: both cover loopback, .local, the private ranges and host.docker.internal.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "both-halves-know-the-lan-and-the-internet",
+    "the-two-copies-never-disagree",
+    "a-keyless-lan-endpoint-boots-the-engine",
+    "the-app-starts-an-engine-for-a-keyless-lan-workspace"
+  ],
   "freshness": {
     "hash": "af0a5b3e42b7ff2f",
     "fileHashes": {

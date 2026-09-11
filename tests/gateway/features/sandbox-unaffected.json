@@ -5,14 +5,18 @@
   "section": "Terminal UI (tui/)",
   "prose": "the linux TUI branch starts no Chromium; the GUI path's sandbox detection is byte-identical to before, and the TUI's GUI handoff re-enters the wrapper, not `magentra-bin`.",
   "kinds": [
-    "proc"
+    "proc",
+    "fs"
   ],
   "entryFiles": [
     "app/scripts/afterPack.js"
   ],
   "invariant": "Packaging does not disturb Electron's sandbox detection on Linux.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "packaging-renames-the-linux-binary-and-writes-the-wrapper",
+    "the-wrapper-reaches-the-sandbox-decision-not-the-tui"
+  ],
   "freshness": {
     "hash": "595c98f900fe14eb",
     "fileHashes": {

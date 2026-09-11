@@ -13,7 +13,11 @@
   ],
   "invariant": "Full screen can always be left by three routes that are not native chrome: F11 handled in main, the VIEW menu, and the app's own top-strip buttons.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "f11-leaves-full-screen-and-puts-it-back",
+    "the-apps-own-buttons-leave-full-screen-and-minimize",
+    "the-buttons-appear-in-full-screen-and-the-view-menu-lists-the-toggle"
+  ],
   "freshness": {
     "hash": "5c3234fb3fad80b3",
     "fileHashes": {

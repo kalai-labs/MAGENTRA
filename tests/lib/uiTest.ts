@@ -29,10 +29,10 @@
  * as the app's own smoke job already does.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { ChildProcesses, type ProcHandle } from "./childProcesses.ts";
 import { FeatureTest } from "./featureTest.ts";
@@ -74,6 +74,16 @@ export interface AppHandle {
    * `magentra.applyProfile(...)` resolves to what the main process returned.
    */
   evaluate<T>(js: string): Promise<T>;
+  /**
+   * Run JavaScript in the MAIN process, with `win` (the app's window) and
+   * `electron` in scope.
+   *
+   * For what the renderer cannot see: whether the window is full screen, a key
+   * event delivered to its webContents, an ipcMain round trip. The product is
+   * never asked to expose any of it — this is the harness's own door, and it is
+   * why `appHarness.cjs` hosts `app/main.js` rather than being hosted by it.
+   */
+  evaluateInMain<T>(js: string): Promise<T>;
 }
 
 export abstract class UiTest extends FeatureTest {
@@ -85,6 +95,17 @@ export abstract class UiTest extends FeatureTest {
   readonly #processes = new ChildProcesses(this.constructor.name);
   #tempDirs: string[] = [];
   #nextEvalId = 1;
+
+  /** A fresh directory, removed after the app is dead. See {@link removeAfterApp}. */
+  protected makeTempDir(prefix = "magentra-ui-"): string {
+    return this.removeAfterApp(mkdtempSync(join(tmpdir(), prefix)));
+  }
+
+  /** Write a JSON file, creating its directory — for the fixture a workspace needs before it is opened. */
+  protected writeJsonFile(path: string, value: unknown): void {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  }
 
   /**
    * Remove `dir` at teardown, AFTER the app is dead.
@@ -103,13 +124,16 @@ export abstract class UiTest extends FeatureTest {
    *
    * @param env extra environment for the Electron process (`DISPLAY`, say).
    */
-  protected async launchApp(env: Readonly<Record<string, string | undefined>> = {}): Promise<AppHandle> {
+  protected async launchApp(
+    env: Readonly<Record<string, string | undefined>> = {},
+    extraArgs: readonly string[] = [],
+  ): Promise<AppHandle> {
     const userDataDir = mkdtempSync(join(tmpdir(), "magentra-ui-"));
     this.#tempDirs.push(userDataDir);
 
     const child = this.#processes.spawn(
       electronBinary(),
-      [join(repoRoot(), HARNESS), `--user-data-dir=${userDataDir}`],
+      [join(repoRoot(), HARNESS), `--user-data-dir=${userDataDir}`, ...extraArgs],
       { label: "magentra (electron)", env },
     );
 
@@ -121,14 +145,17 @@ export abstract class UiTest extends FeatureTest {
     return {
       process: child,
       userDataDir,
-      evaluate: async <T,>(js: string): Promise<T> => {
-        const id = this.#nextEvalId++;
-        child.send(JSON.stringify({ id, cmd: "eval", js }));
-        const result = await this.#nextHarnessLine(child, (m) => m["event"] === "result" && m["id"] === id, EVAL_TIMEOUT_MS);
-        if (result["ok"] !== true) throw new Error(`renderer evaluation failed: ${String(result["error"])}`);
-        return result["value"] as T;
-      },
+      evaluate: async <T,>(js: string): Promise<T> => this.#run(child, "eval", js),
+      evaluateInMain: async <T,>(js: string): Promise<T> => this.#run(child, "main", js),
     };
+  }
+
+  async #run<T>(child: ProcHandle, cmd: "eval" | "main", js: string): Promise<T> {
+    const id = this.#nextEvalId++;
+    child.send(JSON.stringify({ id, cmd, js }));
+    const result = await this.#nextHarnessLine(child, (m) => m["event"] === "result" && m["id"] === id, EVAL_TIMEOUT_MS);
+    if (result["ok"] !== true) throw new Error(`${cmd === "eval" ? "renderer" : "main-process"} evaluation failed: ${String(result["error"])}`);
+    return result["value"] as T;
   }
 
   /**
