@@ -25,6 +25,8 @@ const state = {
   gate: null,
   /** featureId → "draft" | "ready" | "none" — derived from /api/state's descriptions. */
   descOf: new Map(),
+  /** { scanned, found, problems } — how discovery got on reading tests/features/. */
+  testDiscovery: null,
   filters: { area: "", kind: "", status: "", fresh: "", desc: "" },
   selected: null,
 };
@@ -93,8 +95,11 @@ function renderHeader() {
   $("lamp-conn").classList.toggle("on", connected);
 
   const n = (pred) => state.features.filter(pred).length;
+  const disagree = n((f) => f.testsAgree === false);
   $("count").textContent =
-    `${state.features.length} features · ${n((f) => f.status === "untested" && !f.deferred)} untested · ${n((f) => f.deferred)} deferred` +
+    `${state.features.length} features · ${n((f) => f.status === "untested" && !f.deferred)} untested · ` +
+    `${n((f) => f.status === "partial")} partial · ${n((f) => f.status === "covered")} covered · ${n((f) => f.deferred)} deferred` +
+    `${disagree ? ` · ${disagree} RECORD/FILE MISMATCH` : ""}` +
     `   |   descriptions: ${n((f) => f.desc === "ready")} ready · ${n((f) => f.desc === "draft")} draft · ${n((f) => f.desc === "none")} missing`;
 }
 
@@ -189,6 +194,11 @@ function renderList() {
     tags.append(tag(f.status, f.status));
     tags.append(f.fresh ? tag("fresh", "fresh") : tag("STALE", "stale"));
     if (f.deferred) tags.append(tag("deferred", "deferred"));
+    // How many tests actually exist and run for this row, and whether the
+    // record's own array still agrees with them. Both come from reading
+    // tests/features/, so a row can no longer look proven without being it.
+    if (f.proven > 0) tags.append(tag(`${f.proven} test${f.proven === 1 ? "" : "s"}`, "covered"));
+    if (f.testsAgree === false) tags.append(tag("RECORD ≠ FILES", "stale"));
     card.append(tags);
 
     card.onclick = () => select(f.id);
@@ -291,7 +301,12 @@ function renderDetail(payload) {
   host.append(section(`ENTRY FILES — hashed ${freshness.recordedAt}`, files));
 
   host.append(section("DEPENDENCIES", renderDeps(dependencies)));
-  host.append(section(`TESTS — ${feature.tests.length}`, renderTests(feature)));
+  const proof = payload.tests || { discovered: [], drift: null, problems: [] };
+  const runnable = proof.discovered.filter((t) => t.registered).length;
+  host.append(section(
+    runnable === proof.discovered.length ? `TESTS — ${runnable}` : `TESTS — ${runnable} of ${proof.discovered.length} run`,
+    renderTests(feature, proof, ready.length),
+  ));
 
   // Last, and apart: ready is approved and waiting for an agent. It lives in
   // descriptions/ready/ on disk and here it is folded shut, so the working
@@ -362,15 +377,67 @@ function renderDeps(deps) {
   return box;
 }
 
-function renderTests(feature) {
+/**
+ * What proves this feature — read out of `tests/features/<id>.test.ts` by the
+ * server, never from the record's array alone (SPEC §11 step 6, decisions/0007).
+ *
+ * Every row carries its `whyItExists`, which §9 requires of a test row and
+ * which nothing could show before discovery existed. The two disagreements
+ * worth a red border are a test that cannot run and an id the record claims
+ * with no test behind it; the second is a ticked box, and it is the reason the
+ * comparison is here rather than left to a reader of two files.
+ */
+function renderTests(feature, proof, readyCount) {
   const box = el("div");
-  if (feature.tests.length === 0) {
+  const discovered = proof.discovered || [];
+  const drift = proof.drift;
+
+  if (discovered.length === 0) {
     box.append(el("div", "empty", feature.deferred
       ? "no tests — this feature is deferred (renderer-only). It never counts against coverage, and removing that flag is a decision."
       : "no tests. This feature is unproven: nothing in the repository asserts the invariant above."));
-  } else {
-    for (const t of feature.tests) box.append(el("div", null, t));
-    box.append(el("div", "note", "whyItExists comes from the test file (SPEC §11 step 6)."));
+    // Say which of the two states this is. A ready description and no test is
+    // work waiting to be done; no description and no test is work not yet
+    // specified, and the two need different things next.
+    box.append(el("div", "note", readyCount
+      ? `a ready description is waiting for an agent to implement it, and tests/features/${feature.id}.test.ts does not exist yet. Ready is not proof.`
+      : `discovery read tests/features/${feature.id}.test.ts and found no test class there.`));
+  }
+
+  for (const t of discovered) {
+    const card = el("div", `test-row${t.registered ? "" : " dead"}`);
+    const head = el("div", "test-head");
+    head.append(el("b", null, t.id), tag(t.kind), t.registered ? tag("runs", "covered") : tag("NEVER RUNS", "untested"));
+    card.append(head);
+    // Ability 2: why this test exists, in the test's own words.
+    card.append(el("div", "why", t.whyItExists));
+    card.append(el("div", "note", `${t.className} · ${t.file}:${t.line}`));
+    if (t.invariant !== feature.invariant) {
+      card.append(el("div", "mismatch", `its invariant does not match this record's — the test says: "${t.invariant}"`));
+    }
+    box.append(card);
+  }
+
+  if (drift && !drift.agrees) {
+    const warn = el("div", "empty");
+    warn.append(el("b", null, "the record and the files disagree"));
+    for (const id of drift.recordedWithoutTest) {
+      warn.append(el("div", "file", `"${id}" is listed in this record's tests array, but no test in the files defines it — a ticked box with nothing behind it.`));
+    }
+    for (const id of drift.testedWithoutRecord) {
+      warn.append(el("div", "file", `"${id}" exists and runs, but this record's tests array does not list it. §2.1 defines that array as the ids present in the test file — add it.`));
+    }
+    for (const m of drift.invariantMismatch) {
+      warn.append(el("div", "file", `"${m.id}" states a different invariant from this record.`));
+    }
+    warn.append(el("div", "note", "Status above is derived from the FILES, so it is already honest; the array is the stored copy that has drifted."));
+    box.append(warn);
+  } else if (discovered.length > 0) {
+    box.append(el("div", "note", "the record's tests array agrees with the files."));
+  }
+
+  for (const p of proof.problems || []) {
+    box.append(el("div", "mismatch", `${p.file}${p.line ? `:${p.line}` : ""} — ${p.detail}`));
   }
   return box;
 }
@@ -631,6 +698,25 @@ function renderGate() {
     );
   }
 
+  /* test discovery — reported beside the gate, not as a third stage of it */
+  const td = state.testDiscovery;
+  if (td) {
+    host.append(el("h2", null, `TESTS — ${td.found} in ${td.scanned} file${td.scanned === 1 ? "" : "s"}`));
+    if (td.problems.length === 0) {
+      host.append(el("div", "note", td.scanned === 0
+        ? "tests/features/ is empty. Every testable record therefore reads untested, which is the truth."
+        : "every test file was read; each test names the feature it proves."));
+    } else {
+      for (const p of td.problems) {
+        const item = el("div", "stale-item");
+        item.append(el("b", null, `${p.file}${p.line ? `:${p.line}` : ""}`));
+        item.append(el("span", "file", p.detail));
+        host.append(item);
+      }
+      host.append(el("div", "recon-warning", "A test file discovery cannot read is a test the inventory cannot count. This does not block the gate (decisions/0005 defines two stages) — it is a gap to close."));
+    }
+  }
+
   /* stage 2 */
   const conn = gate.connection;
   host.append(el("h2", null, "CONNECTION"));
@@ -713,6 +799,7 @@ async function refresh() {
   }
   state.features = data.features;
   state.gate = data.gate;
+  state.testDiscovery = data.testDiscovery || null;
   applyGate();
   applyDescriptions(data.descriptions || []);
   if ($("f-kind").options.length === 1) {
@@ -750,7 +837,9 @@ document.addEventListener("keydown", (e) => {
 const events = new EventSource("/api/events");
 events.onmessage = (e) => {
   const msg = JSON.parse(e.data);
-  if (msg.type === "descriptions") {
+  if (msg.type === "descriptions" || msg.type === "tests") {
+    // "tests" means a test file changed what the inventory can claim, so the
+    // derived status of some record moved. Only a re-read carries that.
     refresh();
     return;
   }

@@ -16,6 +16,7 @@
     "build": "tsc -b",
     "clean": "tsc -b --clean",
     "typecheck": "tsc -b",
+    "test": "node --test \"tests/features/**/*.test.ts\"",
     "app": "npm start --workspace app",
     "prompt-lab": "node tools/prompt-lab/server.mjs",
     "gateway": "tsx tools/magentra-gateway/src/cli.ts",
@@ -30,6 +31,7 @@
     "version:check": "node tools/version/bin/magentra-version.mjs check",
     "typecheck:version": "tsc -p tools/version",
     "typecheck:gateway": "tsc -p tools/magentra-gateway",
+    "typecheck:tests": "tsc -p tests",
     "fetch:rg-win": "npm install --no-save --force --os=win32 --cpu=x64 @vscode/ripgrep-win32-x64"
   },
   "devDependencies": {

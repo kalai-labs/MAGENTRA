@@ -1,15 +1,21 @@
 # magentra-gateway — implementation specification
 
-Status: **§11 steps 1–5, 7 and 9 implemented 2026-09-09. Steps 6 (test hierarchy) and 8 (runner) outstanding.**
+Status: **§11 steps 1–5, 7 and 9 implemented 2026-09-09. Step 6 part-built
+2026-09-10/11 — `tests/lib` carries the base, the `proc` kind and the `ui` kind;
+the gateway discovers what `tests/features/` holds; one feature is proven end to
+end over both its halves. The `pure`, `fs`, `net` and `llm` kinds are
+outstanding. Step 8 (runner) withdrawn.**
 Decisions: [0001](0001-the-gateway-is-the-inventory.md) ·
 [0002](0002-the-gateway-is-typescript-in-process.md) ·
 [0003](0003-storage-is-committed-json-per-feature.md) ·
 [0004](0004-tests-inherit-on-kind.md) ·
-[0005](0005-the-two-stage-gate.md)
+[0005](0005-the-two-stage-gate.md) ·
+[0007](0007-tests-are-discovered-not-declared.md)
 
 If this document and the implementation disagree, one of them is a bug. Read the
-five decision records first; they carry the *why*, and this document deliberately
-does not repeat it.
+decision records first; they carry the *why*, and this document deliberately
+does not repeat it. (0006 is cited throughout and was never written — see
+[0007](0007-tests-are-discovered-not-declared.md)'s last section.)
 
 ---
 
@@ -28,12 +34,14 @@ tools/magentra-gateway/
 │   ├── connection.ts       stage 2 (§4.2) — wraps tui/src/profiles.ts
 │   ├── gate.ts             §4.3 — composes the two stages; owns the hard block
 │   ├── deps.ts             dependency resolution (§6) — calls blast-radius --json
+│   ├── tests.ts            reads tests/features/ (§11 step 6, 0007)
 │   └── ui/
 │       ├── index.html      single page, no framework, no CDN
 │       ├── app.js          vanilla; SSE consumer
 │       └── style.css
 tests/
 ├── lib/                    the class hierarchy (§3)
+├── tsconfig.json           typecheck only; not in the root `tsc -b` chain
 ├── features/               <feature-id>.test.ts, one per feature
 └── gateway/
     ├── features/           <feature-id>.json     committed
@@ -45,8 +53,15 @@ Root `package.json` gains:
 
 ```json
 "gateway": "tsx tools/magentra-gateway/src/cli.ts",
-"typecheck:gateway": "tsc -p tools/magentra-gateway"
+"typecheck:gateway": "tsc -p tools/magentra-gateway",
+"test": "node --test \"tests/features/**/*.test.ts\"",
+"typecheck:tests": "tsc -p tests"
 ```
+
+`node --test` takes a glob, not a directory: a directory argument is loaded as
+if it were a module and the run fails. Tests are TypeScript run by Node's own
+type stripping — no build step, so a broken `npm run build` still leaves a
+runnable suite — which puts the floor at Node 22.18.
 
 `tests/` is permanent and root-level. Nothing else holds tests, ever.
 
@@ -89,6 +104,16 @@ and it must never be silently promoted: removing the flag is a decision.
 `status` is **derived, never authored**: `untested` = no tests; `partial` = tests
 exist but not for every declared kind; `covered` = one per kind. It is computed
 on load and never written to disk.
+
+It is derived from **the test files**, not from the `tests` array
+([0007](0007-tests-are-discovered-not-declared.md)). This section defines that
+array as "test ids present in `tests/features/<id>.test.ts`", so the file is the
+referent and the array is a stored copy of it; `src/tests.ts` parses the files,
+counts only tests that exist *and* run, and reports any disagreement with the
+array as drift. Deriving status from the copy instead left `covered` unreachable
+by construction, and would have let an id typed into the array read as coverage
+with nothing behind it. Neither had happened when this changed — there were no
+test files at all, so `untested` was the honest answer for all 164 records.
 
 ### 2.2 Description
 
@@ -235,8 +260,8 @@ Serves `127.0.0.1` only. Default port `4320` (prompt-lab holds 4319).
 | Method | Route | Does |
 | --- | --- | --- |
 | GET | `/` | the UI |
-| GET | `/api/state` | everything: features (with derived status), descriptions, gate state |
-| GET | `/api/features/:id` | one feature, with resolved dependencies (§6) |
+| GET | `/api/state` | everything: features (with derived status, test count and record/file agreement), descriptions, gate state, test-discovery health |
+| GET | `/api/features/:id` | one feature, with resolved dependencies (§6) and the tests found for it (§11 step 6) |
 | POST | `/api/features` | create/update a record — **approval-gated** |
 | POST | `/api/features/:id/reconcile` | re-record freshness — **approval-gated** |
 | GET | `/api/descriptions` | every description |
@@ -344,7 +369,14 @@ Rules the layout must enforce:
   the feature.
 - `untested` is visually equal to `failing`, never neutral. 155 untested
   testable features is the current truth and the UI must not make it comfortable.
-- Every test row shows its `whyItExists`. If it cannot, that is a finding.
+- Every test row shows its `whyItExists`, read out of the test file itself, with
+  the class and the `file:line` beside it. A row that never runs is drawn in the
+  same red as `untested`, because it is not a test — it only looks like one. If a
+  row cannot show its `whyItExists`, that is a finding.
+- **The record's `tests` array is shown against the files, never instead of
+  them.** An id the record claims with no test behind it is a ticked box, and it
+  is named as one on the feature and counted in the header
+  ([0007](0007-tests-are-discovered-not-declared.md)).
 - The connection panel shows what the folder is **pointed at** before offering
   to change it, and every state it can reach has a way out. A gate you can enter
   and not leave gets worked around outside the tool.
@@ -389,7 +421,20 @@ Not in v1. Recorded so they are not mistaken for oversights.
 3. ~~`freshness.ts` + the gate; assert it hard-blocks~~ — **DONE 2026-09-09**: `hashFiles()` verified digest-identical to `bigpicture.mjs` over all 96 entry files; a one-character edit blocks all 164, a `touch` does not.
 4. ~~`connection.ts` over `tui/src/profiles.ts`; all four branches of §4.2~~ — **DONE 2026-09-09**: all four branches exercised; the module imports nothing but that file.
 5. ~~`server.ts` + UI read-only. Gate visible, RUN disabled~~ — **DONE 2026-09-09**; `RUN` itself removed later the same day ([0006](0006-the-gateway-does-not-run-or-brief.md)).
-6. `tests/lib/` hierarchy; then the first real test end to end.
+6. `tests/lib/` hierarchy; then the first real test end to end. — **PART DONE
+   2026-09-10/11**: `tests/lib/` carries `FeatureTest` (abstract; enforces
+   `whyItExists`, refuses a run that asserted nothing, and fails a test that
+   disagrees with its record), `ProcTest` (own process group, SIGTERM→SIGKILL on
+   teardown, a survivor fails the test) and `UiTest` (the real app under
+   Electron, on an isolated `--user-data-dir` so the single-instance lock at
+   app/main.js:48 cannot make a test depend on whether the developer has the app
+   open). `src/tests.ts` parses `tests/features/` so a test is discoverable at
+   all, and `status` derives from it
+   ([0007](0007-tests-are-discovered-not-declared.md)). The first real test is
+   done: `a-connection-change-re-points-the-live-session`, seven tests across
+   `proc` and `ui`, each verified by breaking the feature and confirming the
+   right one failed. Outstanding: the `pure` / `fs` / `net` / `llm` kinds, each
+   best written against the first test that needs it.
 7. ~~`deps.ts` + `brief.ts`~~ — **DONE 2026-09-09**: `blast-radius.mjs --json` for §6 items 1–3, the inventory for item 4. `brief.ts` removed the same day ([0006](0006-the-gateway-does-not-run-or-brief.md)); `deps.ts` stays, read in the UI.
 8. ~~`runner.ts`; RUN enabled~~ — **WITHDRAWN 2026-09-09** ([0006](0006-the-gateway-does-not-run-or-brief.md)): the implementing agent runs the tests, outside the gateway.
 9. ~~Descriptions: write, edit, user-only `done`~~ — **DONE 2026-09-09**: saving an edit provably cannot change `status`. Later the same day the states were renamed `draft` / `ready` (§2.2): "done" had read as "the test was done", which a description can never know.

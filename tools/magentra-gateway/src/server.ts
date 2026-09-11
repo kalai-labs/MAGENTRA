@@ -37,6 +37,7 @@ import {
   UnknownFeatureError,
 } from "./registry.js";
 import { AREAS, KINDS, STATUSES, type Feature } from "./schema.js";
+import { discoverTests, driftOf, proofByFeature, testsDir, type TestInventory } from "./tests.js";
 
 const UIDIR = join(dirname(fileURLToPath(import.meta.url)), "ui");
 
@@ -84,24 +85,39 @@ function isUserAction(req: IncomingMessage, origin: string): boolean {
  * `fresh` per feature is derived from the gate's own report rather than hashed
  * a second time, so the list and the lamp can never disagree about one record.
  */
-function stateOf(root: string, features: readonly Feature[], gate: GateState) {
+function stateOf(root: string, features: readonly Feature[], gate: GateState, tests: TestInventory) {
   const stale = new Set(gate.freshness.stale.map((s) => s.id));
   return {
-    features: features.map((f) => ({
-      id: f.id,
-      name: f.name,
-      area: f.area,
-      section: f.section,
-      kinds: f.kinds,
-      status: f.status,
-      deferred: f.deferred === true,
-      entryFiles: f.entryFiles,
-      invariant: f.invariant,
-      tests: f.tests,
-      fresh: !stale.has(f.id),
-    })),
+    features: features.map((f) => {
+      const drift = driftOf(f, tests);
+      return {
+        id: f.id,
+        name: f.name,
+        area: f.area,
+        section: f.section,
+        kinds: f.kinds,
+        status: f.status,
+        deferred: f.deferred === true,
+        entryFiles: f.entryFiles,
+        invariant: f.invariant,
+        /** The record's own array — a stored copy of what the files hold (§2.1). */
+        tests: f.tests,
+        /** Tests that exist AND run, from `tests/features/`. What `status` was derived from. */
+        proven: tests.tests.filter((t) => t.featureId === f.id && t.registered).length,
+        /** False when the record's array and the files disagree; the detail panel says how. */
+        testsAgree: drift.agrees,
+        fresh: !stale.has(f.id),
+      };
+    }),
     descriptions: loadDescriptions(root),
     gate,
+    /**
+     * Discovery's own health. NOT part of the gate's verdict: decisions/0005
+     * defines two stages and adding a third is a decision, not a side effect of
+     * fixing discovery. It is reported beside the gate instead, because a test
+     * file the parser could not read is a gap that must not be invisible.
+     */
+    testDiscovery: { scanned: tests.scanned, found: tests.tests.length, problems: tests.problems },
     vocabulary: { areas: AREAS, kinds: KINDS, statuses: STATUSES },
   };
 }
@@ -120,7 +136,11 @@ export function createGateway(options: GatewayOptions = {}): Gateway {
   // Loaded once and reloaded when a record file changes. A malformed record
   // throws out of loadFeatures and is reported to the client; the previously
   // loaded good set is kept rather than being replaced by a partial one.
-  let features: Feature[] = loadFeatures(root);
+  // Discovery comes FIRST: `status` is derived from the test files, so loading
+  // records without having read them would report every feature untested
+  // (decisions/0007).
+  let testInventory: TestInventory = discoverTests(root);
+  let features: Feature[] = loadFeatures(root, proofByFeature(testInventory));
   let loadError: RegistryError | null = null;
 
   const clients = new Set<ServerResponse>();
@@ -129,7 +149,8 @@ export function createGateway(options: GatewayOptions = {}): Gateway {
 
   function reload(): void {
     try {
-      features = loadFeatures(root);
+      testInventory = discoverTests(root);
+      features = loadFeatures(root, proofByFeature(testInventory));
       loadError = null;
     } catch (err) {
       if (err instanceof RegistryError) loadError = err;
@@ -157,7 +178,10 @@ export function createGateway(options: GatewayOptions = {}): Gateway {
    * `git checkout` of an identical version, a touch) therefore changes nothing.
    */
   function startWatching(): void {
-    const dirs = new Set<string>([featuresDir(root)]);
+    // `tests/features/` is watched for the same reason the record directory is:
+    // a test written or deleted changes what the inventory may claim, and a UI
+    // that needed a reload to notice would be the drift this tool removes.
+    const dirs = new Set<string>([featuresDir(root), testsDir(root)]);
     for (const f of features) for (const e of f.entryFiles) dirs.add(join(root, dirname(e)));
 
     let timer: NodeJS.Timeout | undefined;
@@ -165,12 +189,19 @@ export function createGateway(options: GatewayOptions = {}): Gateway {
     const settle = (): void => {
       if (timer !== undefined) clearTimeout(timer);
       timer = setTimeout(() => {
+        const provenBefore = JSON.stringify(features.map((f) => [f.id, f.status]));
         reload();
         const g = gate();
         const signature = JSON.stringify([g.blocked, g.freshness.stale.map((s) => [s.id, s.currentHash])]);
         if (signature !== lastSignature) {
           lastSignature = signature;
           broadcast({ type: "gate", gate: g, loadError: loadError?.message ?? null });
+        }
+        // A test file edit changes derived status, which the "gate" event does
+        // not carry — the client replaces only its gate on that one. So the
+        // status change gets its own event, and the client re-reads state.
+        if (JSON.stringify(features.map((f) => [f.id, f.status])) !== provenBefore) {
+          broadcast({ type: "tests" });
         }
       }, 300);
     };
@@ -204,7 +235,7 @@ export function createGateway(options: GatewayOptions = {}): Gateway {
     if (path === "/api/state") {
       if (method !== "GET") return void json(res, 405, { error: "GET only" });
       if (loadError !== null) return void json(res, 500, { error: loadError.message, problems: loadError.problems });
-      return void json(res, 200, stateOf(root, features, gate()));
+      return void json(res, 200, stateOf(root, features, gate(), testInventory));
     }
 
     const featureMatch = /^\/api\/features\/([^/]+)(\/reconcile)?$/.exec(path);
@@ -223,6 +254,13 @@ export function createGateway(options: GatewayOptions = {}): Gateway {
           freshness: checkFeature(root, feature),
           descriptions: loadDescriptions(root).filter((d) => d.featureIds.includes(id)),
           dependencies: await resolveDependencies(root, feature, features),
+          // What proves this feature, read out of tests/features/ — with the
+          // record's own array beside it and any disagreement named (§11 step 6).
+          tests: {
+            discovered: testInventory.tests.filter((t) => t.featureId === id),
+            drift: driftOf(feature, testInventory),
+            problems: testInventory.problems.filter((p) => p.file === `tests/features/${id}.test.ts`),
+          },
         });
       }
 

@@ -163,19 +163,39 @@ export type DescriptionRecord = z.infer<typeof DescriptionRecordSchema>;
 export type DescriptionStatus = DescriptionRecord["status"];
 
 /**
+ * What the test FILES hold for one feature — the evidence `status` is derived
+ * from. Produced by `tests.ts`'s `proofByFeature()`; only tests that exist AND
+ * are registered to run appear in it.
+ *
+ * It is a set of ids and a set of kinds rather than the record's array because
+ * the kind a test proves lives in the file, as the class it extends
+ * (decisions/0004) — an id carries no kind, so the record alone could never
+ * answer whether every declared kind is covered.
+ */
+export interface FeatureProof {
+  readonly ids: ReadonlySet<string>;
+  readonly kinds: ReadonlySet<Kind>;
+}
+
+/**
  * §2.1's derivation: `untested` = no tests; `partial` = tests exist but not for
  * every declared kind; `covered` = one per kind.
  *
- * The kind a given test proves lives in the test FILE (the class it extends,
- * decisions/0004), not in the record — `tests` is a list of ids and an id
- * carries no kind. So `covered` is only reachable when the caller supplies the
- * kinds it resolved from `tests/features/`, which does not exist yet (SPEC §11
- * step 6). Until then every record with tests reads `partial`, and this
- * function never guesses: claiming `covered` from a count of test ids is
- * precisely the ticked-box-with-no-assertion failure of the deleted suite.
+ * DERIVED FROM THE FILES, NOT FROM THE RECORD (fixed 2026-09-10, decisions/0007).
+ * §2.1 defines `tests` as "test ids present in `tests/features/<id>.test.ts`",
+ * so the file is the referent and the array is a stored copy of it. Deriving
+ * status from the copy meant a hand-typed id read as coverage and a real test
+ * read as nothing: every record stayed `untested` while `covered` was
+ * unreachable by construction. `proof` comes from parsing those files;
+ * `tests.ts`'s `driftOf()` is what reports the array disagreeing with them.
+ *
+ * `proof === undefined` means the caller has not scanned the files at all — not
+ * that there are no tests. It falls back to the record's array and can never
+ * reach `covered`, because claiming `covered` from a count of ids is precisely
+ * the ticked-box-with-no-assertion failure of the deleted suite.
  */
-export function deriveStatus(rec: FeatureRecord, coveredKinds?: ReadonlySet<Kind>): Status {
-  if (rec.tests.length === 0) return "untested";
-  if (coveredKinds === undefined) return "partial";
-  return rec.kinds.every((k) => coveredKinds.has(k)) ? "covered" : "partial";
+export function deriveStatus(rec: FeatureRecord, proof?: FeatureProof): Status {
+  if (proof === undefined) return rec.tests.length === 0 ? "untested" : "partial";
+  if (proof.ids.size === 0) return "untested";
+  return rec.kinds.every((k) => proof.kinds.has(k)) ? "covered" : "partial";
 }

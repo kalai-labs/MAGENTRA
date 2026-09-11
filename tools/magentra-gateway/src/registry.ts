@@ -31,8 +31,8 @@ import {
   type DescriptionRecord,
   type DescriptionStatus,
   type Feature,
+  type FeatureProof,
   type FeatureRecord,
-  type Kind,
 } from "./schema.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -100,15 +100,18 @@ function parseOne<T>(schema: z.ZodType<T>, file: string, raw: string): { ok: tru
 /**
  * All feature records, sorted by id, each with its derived status.
  *
- * `coveredKinds` maps a feature id to the kinds its tests actually prove; it
- * comes from `tests/features/`, which does not exist yet (SPEC §11 step 6).
- * Without it no record can read `covered` — see `deriveStatus`.
+ * `proof` maps a feature id to the tests that exist AND run for it, parsed out
+ * of `tests/features/` by `tests.ts` (SPEC §11 step 6, decisions/0007). Pass it
+ * and `status` reflects the repository; omit it and every record falls back to
+ * its own `tests` array, which can never read `covered` — see `deriveStatus`.
+ * A caller that omits it is saying "I have not looked at the test files", which
+ * is why `cli.ts`'s startup banner counts only what it can honestly count.
  *
  * @throws RegistryError naming every file that failed.
  */
 export function loadFeatures(
   root = repoRoot(),
-  coveredKinds?: ReadonlyMap<string, ReadonlySet<Kind>>,
+  proof?: ReadonlyMap<string, FeatureProof>,
 ): Feature[] {
   const dir = featuresDir(root);
   let entries: string[];
@@ -148,7 +151,7 @@ export function loadFeatures(
     }
     seenIds.set(rec.id, relFile);
 
-    features.push({ ...rec, status: deriveStatus(rec, coveredKinds?.get(rec.id)) });
+    features.push({ ...rec, status: deriveStatus(rec, proof?.get(rec.id)) });
   }
 
   if (problems.length > 0) throw new RegistryError("feature", problems);

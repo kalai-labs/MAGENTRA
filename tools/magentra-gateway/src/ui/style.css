@@ -386,6 +386,44 @@ kbd {
   color: #f5cf72;
 }
 
+/* ---- tests ------------------------------------------------------------
+ * A test row is bordered green because it is the one thing in this UI that is
+ * evidence rather than intent. `dead` is a class that will never run, drawn in
+ * the same red as untested: it is not a test, it only looks like one.
+ */
+
+.test-row {
+  padding: 7px 9px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--good);
+  border-radius: 3px;
+  background: var(--panel);
+}
+
+.test-row.dead { border-left-color: var(--bad); background: var(--bad-dim); }
+.test-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.test-head b { font-weight: 600; }
+.test-row .why { margin-top: 4px; color: #b9bfc9; font-size: 12px; }
+.test-row .note { margin-top: 4px; font-family: var(--mono); }
+
+/* A test whose invariant no longer matches its record, and any problem
+ * discovery hit in the file — the same amber as an untyped seam. */
+.mismatch {
+  margin-top: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--warn);
+  border-radius: 3px;
+  background: #2a2008;
+  color: #f5cf72;
+  font-size: 12px;
+}
+
+/* The drift block reuses .empty's red frame; its lines read like the gate's. */
+.empty .file { display: block; padding-left: 12px; margin-top: 4px; font-size: 11px; color: #f0a0a3; }
+.empty .file::before { content: "\21b3  "; }
+.empty > b { display: block; margin-bottom: 2px; }
+
 /* ---- descriptions --------------------------------------------------- */
 
 .desc {

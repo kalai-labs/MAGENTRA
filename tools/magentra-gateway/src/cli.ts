@@ -19,6 +19,7 @@ import { spawn } from "node:child_process";
 import { checkConnection, describeConnection } from "./connection.js";
 import { createGateway } from "./server.js";
 import { loadFeatures, repoRoot, RegistryError } from "./registry.js";
+import { discoverTests, proofByFeature } from "./tests.js";
 import { checkFreshness } from "./freshness.js";
 
 function arg(name: string, fallback: string): string {
@@ -63,9 +64,13 @@ async function main(): Promise<number> {
   // Records load before anything is served. A malformed record names its file
   // and stops the tool: an inventory that is trusted must never be served
   // partially (SPEC §2, decisions/0001).
+  // The test files are read before the records, because a record's `status` is
+  // derived from them (decisions/0007) — loading first and asking later is what
+  // made the banner and the UI report 164 untested features while tests existed.
+  const tests = discoverTests(root);
   let features;
   try {
-    features = loadFeatures(root);
+    features = loadFeatures(root, proofByFeature(tests));
   } catch (err) {
     if (err instanceof RegistryError) {
       process.stderr.write(`\n  !! the inventory did not load\n\n${err.message}\n\n`);
@@ -102,10 +107,14 @@ async function main(): Promise<number> {
   const url = `http://${bound.host}:${bound.port}`;
 
   const deferred = features.filter((f) => f.deferred === true).length;
+  const testable = features.length - deferred;
+  const untested = features.filter((f) => f.status === "untested" && f.deferred !== true).length;
   process.stdout.write(
-    `\n  MAGENTRA Gateway — ${features.length} features (${features.length - deferred} testable, ${deferred} deferred)\n` +
+    `\n  MAGENTRA Gateway — ${features.length} features (${testable} testable, ${deferred} deferred)\n` +
       `  ${url}\n` +
       `  freshness: ${freshness.ok ? `all ${freshness.checked} records match the code` : `${freshness.stale.length} STALE — review and reconcile before trusting the inventory`}\n` +
+      `  tests: ${tests.tests.length} in ${tests.scanned} file${tests.scanned === 1 ? "" : "s"} — ${testable - untested} of ${testable} features proven` +
+      `${tests.problems.length > 0 ? `, ${tests.problems.length} DISCOVERY PROBLEM${tests.problems.length === 1 ? "" : "S"} (see the gate panel)` : ""}\n` +
       `  ${describeConnection(connection)}\n\n`,
   );
 

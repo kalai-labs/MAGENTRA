@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAGENTRA Architecture</title>
+<style>
+  :root {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --panel-2: #eef2f7;
+    --fg: #1c2430;
+    --muted: #5d6b7c;
+    --line: #d5dce6;
+    --ctl: #1f6fd6;      /* control / execution */
+    --evt: #1a8a4a;      /* events, information flowing back */
+    --ask: #b7791f;      /* blocking asks to the human */
+    --ext: #7a4fd6;      /* external systems */
+    --state: #2f7f8a;    /* persisted state */
+    --mute: #93a0b1;     /* conditional / experimental */
+    --shadow: 0 1px 2px rgba(20,30,50,.06), 0 6px 20px rgba(20,30,50,.06);
+  }
+  html[data-theme="dark"] {
+    --bg: #0d1117;
+    --panel: #161c25;
+    --panel-2: #1d2532;
+    --fg: #e6edf3;
+    --muted: #97a3b4;
+    --line: #2b3542;
+    --ctl: #58a6ff;
+    --evt: #3fb950;
+    --ask: #f0b429;
+    --ext: #c297ff;
+    --state: #4fc1d0;
+    --mute: #6b7787;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body {
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+    padding-block: 28px 64px;
+    padding-inline: clamp(16px, 3vw, 48px);
+  }
+  header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 30px; letter-spacing: .06em; margin: 0 0 6px; font-weight: 700; }
+  h1 small { font-size: 13px; letter-spacing: .12em; color: var(--muted); font-weight: 600; margin-left: 12px; vertical-align: middle; }
+  .tagline { margin: 0; max-width: 78ch; color: var(--muted); font-size: 16px; }
+  .tagline b { color: var(--fg); font-weight: 600; }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 13px; font-weight: 600; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px 12px; cursor: pointer; box-shadow: var(--shadow);
+  }
+  button:hover { border-color: var(--ctl); }
+  button[disabled] { opacity: .45; cursor: default; }
+  button.primary { background: var(--ctl); color: #fff; border-color: transparent; }
+  section { margin-top: 40px; }
+  h2 { font-size: 20px; margin: 0 0 4px; }
+  .sub { margin: 0 0 16px; color: var(--muted); font-size: 14px; max-width: 90ch; }
+  figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 18px; position: relative; }
+  figure svg { display: block; width: 100%; height: auto; max-width: 100%; }
+  figcaption { color: var(--muted); font-size: 13px; margin-top: 10px; }
+
+  /* legend */
+  .legend { display: flex; gap: 20px 28px; flex-wrap: wrap; align-items: center; margin: 14px 0 8px; font-size: 13px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .legend i { display: inline-block; width: 34px; height: 0; border-top: 3px solid var(--ctl); }
+  .legend i.evt { border-color: var(--evt); }
+  .legend i.ask { border-color: var(--ask); }
+  .legend i.ext { border-color: var(--ext); }
+  .legend i.state { border-color: var(--state); }
+  .legend i.cond { border-top-style: dashed; border-color: var(--mute); }
+  .legend i.exp { border-top-style: dotted; border-color: var(--mute); }
+
+  /* stepper */
+  .stepper { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .stepper .caption { flex: 1 1 320px; min-height: 44px; padding: 8px 12px; border-radius: 8px; background: var(--panel-2); font-size: 14px; }
+  .stepper .caption b { color: var(--ctl); }
+  .stepper .caption.idle { color: var(--muted); }
+
+  /* SVG semantics */
+  svg text { fill: var(--fg); font-family: inherit; }
+  svg .t-title { font-size: 19px; font-weight: 700; }
+  svg .t-sub { font-size: 13.5px; fill: var(--muted); }
+  svg .t-label { font-size: 13.5px; fill: var(--muted); }
+  svg .t-group { font-size: 15px; font-weight: 700; letter-spacing: .08em; fill: var(--muted); }
+  svg .t-step { font-size: 13px; font-weight: 800; fill: #fff; }
+  svg .t-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; fill: var(--muted); }
+  svg .box { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.5; }
+  svg .node { fill: var(--panel); stroke: var(--ctl); stroke-width: 2; }
+  svg .node.evt { stroke: var(--evt); }
+  svg .node.ask { stroke: var(--ask); }
+  svg .node.ext { stroke: var(--ext); }
+  svg .node.state { stroke: var(--state); }
+  svg .node.cond { stroke: var(--mute); stroke-dasharray: 7 5; }
+  svg .node.exp { stroke: var(--mute); stroke-dasharray: 2 5; }
+  svg .group { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 0; }
+  svg .group.engine { fill: color-mix(in srgb, var(--ctl) 5%, transparent); stroke: color-mix(in srgb, var(--ctl) 45%, var(--line)); }
+  svg .seam { stroke: var(--mute); stroke-width: 2; stroke-dasharray: 10 8; }
+  svg .badge { fill: var(--ctl); }
+  svg .badge.ask { fill: var(--ask); }
+  svg .badge.evt { fill: var(--evt); }
+  svg .edge { fill: none; stroke: var(--ctl); stroke-width: 2.4; }
+  svg .edge.evt { stroke: var(--evt); }
+  svg .edge.ask { stroke: var(--ask); }
+  svg .edge.ext { stroke: var(--ext); }
+  svg .edge.state { stroke: var(--state); }
+  svg .edge.cond { stroke: var(--mute); stroke-dasharray: 8 6; }
+  svg .edge.exp { stroke: var(--mute); stroke-dasharray: 2 6; }
+  svg .mk { fill: var(--ctl); }
+  svg .mk.evt { fill: var(--evt); }
+  svg .mk.ask { fill: var(--ask); }
+  svg .mk.ext { fill: var(--ext); }
+  svg .mk.state { fill: var(--state); }
+  svg .mk.mute { fill: var(--mute); }
+  svg .diamond { fill: var(--panel); stroke: var(--ctl); stroke-width: 2; }
+  svg .lifeline { stroke: var(--line); stroke-width: 2; }
+  svg .bracket { fill: none; stroke: var(--ctl); stroke-width: 2; stroke-dasharray: 6 5; opacity: .7; }
+  svg .node-g { cursor: pointer; }
+  svg .node-g:hover .node { stroke-width: 3; }
+
+  /* focus & dim */
+  svg.focused .node-g, svg.focused .edge, svg.focused .elabel { opacity: .18; transition: opacity .15s; }
+  svg.focused .node-g.lit, svg.focused .edge.lit, svg.focused .elabel.lit { opacity: 1; }
+  svg .node-g.lit .node { stroke-width: 3.5; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ctl) 50%, transparent)); }
+  svg .edge.lit { stroke-width: 3.6; }
+  svg .step-lit .node { stroke-width: 3.5; }
+
+  /* tooltip */
+  .tip {
+    position: fixed; z-index: 50; pointer-events: none; max-width: 340px;
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; box-shadow: var(--shadow); font-size: 13.5px; line-height: 1.45; display: none;
+  }
+  .tip b { display: block; font-size: 14px; margin-bottom: 3px; }
+  .tip code { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  /* cards */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  @media (max-width: 1000px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); border-top: 3px solid var(--ctl); }
+  .card.state { border-top-color: var(--state); }
+  .card.evt { border-top-color: var(--evt); }
+  .card.cond { border-top-color: var(--mute); border-top-style: dashed; }
+  .card.exp { border-top-color: var(--mute); border-top-style: dotted; }
+  .card.dev { border-top-color: var(--line); }
+  .card h3 { margin: 0 0 6px; font-size: 15px; }
+  .card p { margin: 0 0 8px; color: var(--muted); font-size: 13.5px; }
+  .card ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
+  .card li { margin: 3px 0; }
+  .card li b { font-weight: 600; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 12.5px; }
+
+  @media (max-width: 720px) {
+    h1 { font-size: 24px; }
+    figure { padding: 10px; }
+  }
+  @media print {
+    html { --bg: #fff; --panel: #fff; --panel-2: #f2f4f7; --fg: #111; --muted: #555; --line: #c8cfd8;
+           --ctl: #1f5fb8; --evt: #157a3f; --ask: #9a6400; --ext: #6b3fc0; --state: #256c75; --mute: #8a94a3; --shadow: none; }
+    body { padding: 12mm; }
+    .controls, .stepper, .tip { display: none !important; }
+    figure { break-inside: avoid; border-color: #c8cfd8; }
+    section { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>MAGENTRA <small>ARCHITECTURE MAP</small></h1>
+    <p class="tagline">A <b>frontend</b> (desktop app or terminal) spawns one headless <b>engine process</b> per workspace and talks to it over a single line-delimited JSON stream. Inside, one session runs an <b>LLM turn loop</b>: build the prompt, stream the model, gate and execute its tool calls against your workspace, feed the results back, repeat until the model stops. Every message is appended to a transcript in <b>.magentra/</b>.</p>
+  </div>
+  <div class="controls">
+    <button id="themeBtn" type="button" aria-label="Toggle light or dark theme">☀ Light</button>
+  </div>
+</header>
+
+<!-- ============================ 1. BIG PICTURE ============================ -->
+<section id="big-picture">
+  <h2>The system at a glance</h2>
+  <p class="sub">Hover a block for what it does. Click a block to see only what it talks to. Use <b>Trace a request</b> to walk one coding request through the system in order.</p>
+
+  <div class="legend">
+    <span><i></i> control / execution</span>
+    <span><i class="evt"></i> events &amp; results flowing back</span>
+    <span><i class="ask"></i> blocking ask to you</span>
+    <span><i class="ext"></i> external system</span>
+    <span><i class="state"></i> persisted state</span>
+    <span><i class="cond"></i> conditional (setting or model choice)</span>
+    <span><i class="exp"></i> experimental · known gaps</span>
+  </div>
+
+  <figure>
+    <svg id="mainSvg" viewBox="0 0 1600 940" role="img" aria-label="MAGENTRA big picture: a frontend talks to one engine process per workspace over NDJSON; the engine runs a loop of assemble prompt, stream model, gate tool calls, execute tools, feed results back; external LLM API and workspace; state persisted in .magentra">
+      <defs>
+        <marker id="m-ctl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="m-evt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mk evt" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="m-ask" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mk ask" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="m-ext" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mk ext" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="m-state" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mk state" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="m-mute" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mk mute" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+
+      <!-- ===== containers ===== -->
+      <rect class="group engine" x="420" y="100" width="830" height="720" rx="16"/>
+      <text class="t-group" x="440" y="130">ENGINE PROCESS · headless · one per open workspace</text>
+
+      <rect class="group" x="40" y="200" width="300" height="300" rx="14"/>
+      <text class="t-group" x="60" y="230">FRONTEND</text>
+      <text class="t-sub" x="60" y="252">renders events, collects your input</text>
+
+      <rect class="group" x="1300" y="180" width="260" height="600" rx="14" style="stroke-dasharray:0"/>
+      <text class="t-group" x="1320" y="210">OUTSIDE THE PROCESS</text>
+
+      <!-- seam -->
+      <line class="seam" x1="380" y1="80" x2="380" y2="900"/>
+      <text class="t-label" x="380" y="66" text-anchor="middle">process boundary · JSON lines over stdin / stdout</text>
+
+      <!-- ===== frontend nodes ===== -->
+      <g class="node-g" id="n-you" data-title="You" data-body="Type a request, watch the answer stream in, and decide whenever the engine hits a permission rule or asks a clarifying question." data-code="human in the loop">
+        <rect class="node ask" x="60" y="100" width="260" height="60" rx="10"/>
+        <text class="t-title" x="190" y="137" text-anchor="middle">You</text>
+      </g>
+
+      <g class="node-g" id="n-desktop" data-title="Desktop app" data-body="Electron. The main process supervises up to four engine children (one per workspace tab), holds credentials and config, and forwards every JSON line to the renderer unchanged. The renderer paints markdown, tool cards, diffs, permission modals and questions." data-code="app/main.js · app/renderer/">
+        <rect class="node" x="60" y="270" width="260" height="90" rx="10"/>
+        <text class="t-title" x="190" y="305" text-anchor="middle">Desktop app</text>
+        <text class="t-sub" x="190" y="330" text-anchor="middle">Electron · window + engine supervisor</text>
+        <text class="t-sub" x="190" y="348" text-anchor="middle">up to 4 workspaces, one engine each</text>
+      </g>
+
+      <g class="node-g" id="n-tui" data-title="Terminal UI" data-body="Ink (React for terminals). Spawns the identical engine binary and speaks the same protocol. Adds a trusted-folder gate and a connection-profile picker before boot; lacks the addon wizard, connection editing and session management the desktop has." data-code="tui/src/ · same engine, same .env and settings">
+        <rect class="node" x="60" y="385" width="260" height="90" rx="10"/>
+        <text class="t-title" x="190" y="420" text-anchor="middle">Terminal UI</text>
+        <text class="t-sub" x="190" y="445" text-anchor="middle">Ink in your shell · same protocol</text>
+        <text class="t-sub" x="190" y="463" text-anchor="middle">chosen when launched from a terminal</text>
+      </g>
+
+      <!-- you <-> frontend -->
+      <path class="edge" id="e-you-fe" data-from="n-you" data-to="n-desktop" d="M150,160 V200" marker-end="url(#m-ctl)"/>
+      <text class="t-label elabel" data-edge="e-you-fe" x="140" y="187" text-anchor="end">types a request</text>
+      <path class="edge evt" id="e-fe-you" data-from="n-desktop" data-to="n-you" d="M230,200 V160" marker-end="url(#m-evt)"/>
+      <text class="t-label elabel" data-edge="e-fe-you" x="240" y="187">sees the stream, diffs, asks</text>
+
+      <!-- ===== engine router ===== -->
+      <g class="node-g" id="n-engine" data-title="Engine · request router" data-body="Decodes each incoming request and dispatches it. Holds exactly one live session and a single outbound event queue. Serialises turns: a message that arrives while a turn is running becomes a steer, not a new turn. Also handles slash commands, session resume and live connection or model changes." data-code="engine/host (stdio) + engine/core Engine">
+        <rect class="node" x="440" y="330" width="150" height="110" rx="10"/>
+        <text class="t-title" x="515" y="368" text-anchor="middle">Engine</text>
+        <text class="t-sub" x="515" y="392" text-anchor="middle">routes requests</text>
+        <text class="t-sub" x="515" y="410" text-anchor="middle">streams events</text>
+        <text class="t-sub" x="515" y="428" text-anchor="middle">one live session</text>
+      </g>
+
+      <!-- boundary crossings -->
+      <path class="edge" id="e-req" data-from="n-desktop" data-to="n-engine" d="M340,360 H440" marker-end="url(#m-ctl)"/>
+      <text class="t-label elabel" data-edge="e-req" x="390" y="350" text-anchor="middle">requests</text>
+      <path class="edge evt" id="e-evt" data-from="n-engine" data-to="n-desktop" d="M440,395 H340" marker-end="url(#m-evt)"/>
+      <text class="t-label elabel" data-edge="e-evt" x="390" y="418" text-anchor="middle">events</text>
+      <path class="edge ask" id="e-ask" data-from="n-engine" data-to="n-desktop" d="M440,432 H340" marker-start="url(#m-ask)" marker-end="url(#m-ask)"/>
+      <text class="t-label elabel" data-edge="e-ask" x="390" y="455" text-anchor="middle">blocking asks</text>
+      <text class="t-label elabel" data-edge="e-ask" x="390" y="472" text-anchor="middle">permission · question</text>
+
+      <!-- engine -> loop start -->
+      <path class="edge" id="e-start" data-from="n-engine" data-to="n-assemble" d="M515,330 V242 H620" marker-end="url(#m-ctl)"/>
+      <text class="t-label elabel" data-edge="e-start" x="560" y="232" text-anchor="middle">start turn</text>
+
+      <!-- ===== THE TURN LOOP ===== -->
+      <text class="t-group" x="640" y="180">THE TURN LOOP · one session, repeats until the model stops calling tools</text>
+
+      <g class="node-g" id="n-assemble" data-title="1 · Assemble the prompt" data-body="Builds the system prompt fresh each iteration: behaviour rules, environment facts, installed addon names, dynamic sections (overdrive, deletion policy), an optional STANDARDS.md. Appends the whole conversation history and the JSON schemas of every enabled tool. Before the first iteration of a turn, an optional clarify step may make one extra model call and ask you a question." data-code="Session.buildSystemPrompt · toolSchemas · maybeClarify">
+        <rect class="node" x="620" y="200" width="280" height="84" rx="10"/>
+        <circle class="badge" cx="620" cy="200" r="14"/><text class="t-step" x="620" y="205" text-anchor="middle">1</text>
+        <text class="t-title" x="760" y="236" text-anchor="middle">Assemble prompt</text>
+        <text class="t-sub" x="760" y="260" text-anchor="middle">rules + history + tool schemas</text>
+      </g>
+
+      <g class="node-g" id="n-stream" data-title="2 · Stream the model response" data-body="Sends the prompt through the provider adapter and consumes the stream: text and thinking deltas are forwarded to the frontend immediately, tool-use blocks are collected. Usage is banked for the context ledger. A context-overflow error triggers compaction and a retry." data-code="Session.streamAssistantTurn · Provider.stream">
+        <rect class="node" x="940" y="200" width="280" height="84" rx="10"/>
+        <circle class="badge" cx="940" cy="200" r="14"/><text class="t-step" x="940" y="205" text-anchor="middle">2</text>
+        <text class="t-title" x="1080" y="236" text-anchor="middle">Stream model response</text>
+        <text class="t-sub" x="1080" y="260" text-anchor="middle">text streamed live · tool calls collected</text>
+      </g>
+
+      <!-- decision -->
+      <g class="node-g" id="n-decide" data-title="Did the model ask for tools?" data-body="Yes: every tool call goes through the gate below. No: the turn is over, subject to finishing checks that can nudge the model to continue (e.g. it edited code but never ran anything, or left tasks incomplete)." data-code="Session.runTurn · finishing rungs">
+        <path class="diamond" d="M1080,312 L1132,346 L1080,380 L1028,346 Z"/>
+        <text class="t-sub" x="1080" y="351" text-anchor="middle" style="fill:var(--fg);font-weight:600">tool calls?</text>
+      </g>
+      <path class="edge" id="e-1-2" data-from="n-assemble" data-to="n-stream" d="M900,242 H940" marker-end="url(#m-ctl)"/>
+      <path class="edge" id="e-2-d" data-from="n-stream" data-to="n-decide" d="M1080,284 V312" marker-end="url(#m-ctl)"/>
+      <path class="edge" id="e-d-gate" data-from="n-decide" data-to="n-gate" d="M1080,380 V410" marker-end="url(#m-ctl)"/>
+      <text class="t-label elabel" data-edge="e-d-gate" x="1092" y="401">yes</text>
+      <path class="edge evt" id="e-finish" data-from="n-decide" data-to="n-engine" d="M1028,346 H590" marker-end="url(#m-evt)"/>
+      <text class="t-label elabel" data-edge="e-finish" x="810" y="336" text-anchor="middle">no → finishing checks → turn finished (usage, stop reason)</text>
+
+      <g class="node-g" id="n-gate" data-title="3 · Validate &amp; gate each tool call" data-body="Parses the call against the tool's schema (with one repair pass). Then the permission engine decides: deny rules → protected paths (.magentra, .env) → deletion guard → saved allow rules → default allow. Anything that lands on ask blocks the loop until you answer in the frontend; an always-allow answer is saved to settings." data-code="PermissionEngine.check · permission_request / response">
+        <rect class="node ask" x="940" y="410" width="280" height="84" rx="10"/>
+        <circle class="badge ask" cx="940" cy="410" r="14"/><text class="t-step" x="940" y="415" text-anchor="middle">3</text>
+        <text class="t-title" x="1080" y="446" text-anchor="middle">Validate &amp; gate</text>
+        <text class="t-sub" x="1080" y="470" text-anchor="middle">schema · permission rules · ask if needed</text>
+      </g>
+      <path class="edge ask" id="e-gate-ask" data-from="n-gate" data-to="n-engine" d="M940,470 H515 V440" marker-end="url(#m-ask)"/>
+      <text class="t-label elabel" data-edge="e-gate-ask" x="740" y="490" text-anchor="middle">rule says ask → waits for your decision</text>
+
+      <path class="edge" id="e-gate-exec" data-from="n-gate" data-to="n-exec" d="M1080,494 V560" marker-end="url(#m-ctl)"/>
+      <text class="t-label elabel" data-edge="e-gate-exec" x="1092" y="532">allowed</text>
+
+      <g class="node-g" id="n-exec" data-title="4 · Execute tools" data-body="Runs the calls: read-only ones in parallel, mutating ones one after another. Built-ins cover reading, searching, editing, shell, web, tasks and background work; MCP servers add more. Output streams to the frontend as it happens; file edits emit a unified diff; results are clipped to a byte budget." data-code="engine/tools registry · Session.executeToolCalls">
+        <rect class="node" x="940" y="560" width="280" height="84" rx="10"/>
+        <circle class="badge" cx="940" cy="560" r="14"/><text class="t-step" x="940" y="565" text-anchor="middle">4</text>
+        <text class="t-title" x="1080" y="596" text-anchor="middle">Execute tools</text>
+        <text class="t-sub" x="1080" y="620" text-anchor="middle">read · search · edit · run · web · tasks</text>
+      </g>
+
+      <g class="node-g" id="n-feed" data-title="5 · Feed results back" data-body="Tool results (plus any queued reminders such as background-job notifications) become the next message in the history. The context ledger is checked: if the conversation is near the model's window, older history is summarised into a compaction record. A stall detector notices three identical rounds and nudges the model to change approach. Then the loop returns to step 1." data-code="Session.pushMessage · maybeCompact · stall detector">
+        <rect class="node" x="620" y="560" width="280" height="84" rx="10"/>
+        <circle class="badge" cx="620" cy="560" r="14"/><text class="t-step" x="620" y="565" text-anchor="middle">5</text>
+        <text class="t-title" x="760" y="596" text-anchor="middle">Feed results back</text>
+        <text class="t-sub" x="760" y="620" text-anchor="middle">append to history · compact near the limit</text>
+      </g>
+      <path class="edge evt" id="e-exec-feed" data-from="n-exec" data-to="n-feed" d="M940,602 H900" marker-end="url(#m-evt)"/>
+      <path class="edge" id="e-feed-1" data-from="n-feed" data-to="n-assemble" d="M680,560 V284" marker-end="url(#m-ctl)"/>
+      <text class="t-label elabel" data-edge="e-feed-1" x="668" y="420" text-anchor="end">next</text>
+      <text class="t-label elabel" data-edge="e-feed-1" x="668" y="437" text-anchor="end">iteration</text>
+
+      <!-- side machinery -->
+      <g class="node-g" id="n-bg" data-title="Background jobs" data-body="Long shell commands, monitors and scheduled wake-ups run detached and write to an output file. When one finishes, a notification event is emitted and a reminder is queued; the reminder rides along with the next message the model sees. Nothing wakes an idle session except a scheduled job." data-code="BackgroundManager · CronScheduler · .magentra/tasks/*.output">
+        <rect class="node cond" x="620" y="700" width="280" height="70" rx="10"/>
+        <text class="t-title" x="760" y="730" text-anchor="middle">Background jobs</text>
+        <text class="t-sub" x="760" y="752" text-anchor="middle">detached commands · monitors · schedules</text>
+      </g>
+      <path class="edge cond" id="e-bg-feed" data-from="n-bg" data-to="n-feed" d="M760,700 V644" marker-end="url(#m-mute)"/>
+      <text class="t-label elabel" data-edge="e-bg-feed" x="773" y="680">completion joins the next message</text>
+
+      <g class="node-g" id="n-sub" data-title="Sub-agent (experimental)" data-body="The Agent tool starts a child session with the same loop, a restricted tool set, and the parent's permission engine; its final text returns as an ordinary tool result. Wired end to end, but with known gaps: child task lists overwrite the parent's, children get no addons or hooks, recursion is not actually blocked, and a child's background jobs outlive an interrupt. Treat as not yet reliable." data-code="Session.spawnAgent · engine/tools Agent · Workflow">
+        <rect class="node exp" x="940" y="700" width="280" height="70" rx="10"/>
+        <text class="t-title" x="1080" y="730" text-anchor="middle">Sub-agent</text>
+        <text class="t-sub" x="1080" y="752" text-anchor="middle">child loop, fewer tools · known gaps</text>
+      </g>
+      <path class="edge exp" id="e-sub" data-from="n-exec" data-to="n-sub" d="M1080,644 V700" marker-start="url(#m-mute)" marker-end="url(#m-mute)"/>
+
+      <!-- ===== external ===== -->
+      <g class="node-g" id="n-llm" data-title="LLM API" data-body="Anthropic (official SDK, prompt caching), any OpenAI-compatible endpoint (hand-rolled SSE, learns which optional fields the server rejects), or Ollama natively. One adapter normalises all of them into the same seven stream events; retries with backoff on rate limits and 5xx and reports each retry to the frontend." data-code="engine/providers · providerFactory · withRetry">
+        <rect class="node ext" x="1310" y="220" width="240" height="90" rx="10"/>
+        <text class="t-title" x="1430" y="256" text-anchor="middle">LLM API</text>
+        <text class="t-sub" x="1430" y="280" text-anchor="middle">Anthropic · OpenAI-compatible</text>
+        <text class="t-sub" x="1430" y="298" text-anchor="middle">Ollama · one adapter with retry</text>
+      </g>
+      <path class="edge ext" id="e-llm-req" data-from="n-stream" data-to="n-llm" d="M1220,230 H1310" marker-end="url(#m-ext)"/>
+      <text class="t-label elabel" data-edge="e-llm-req" x="1260" y="220" text-anchor="middle">prompt</text>
+      <path class="edge ext" id="e-llm-res" data-from="n-llm" data-to="n-stream" d="M1310,262 H1220" marker-end="url(#m-ext)"/>
+      <text class="t-label elabel" data-edge="e-llm-res" x="1260" y="284" text-anchor="middle">stream</text>
+
+      <g class="node-g" id="n-ws" data-title="Your workspace" data-body="The folder the engine was started in. Tools read and search files (ripgrep), write and edit them (emitting diffs), and run shell commands with no sandbox and a kill-on-timeout. Git is used for worktrees and for the overdrive safety snapshot." data-code="Read · Grep · Glob · Write · Edit · Bash · Monitor">
+        <rect class="node ext" x="1310" y="560" width="240" height="84" rx="10"/>
+        <text class="t-title" x="1430" y="596" text-anchor="middle">Your workspace</text>
+        <text class="t-sub" x="1430" y="620" text-anchor="middle">files · shell · git</text>
+      </g>
+      <path class="edge ext" id="e-ws-req" data-from="n-exec" data-to="n-ws" d="M1220,588 H1310" marker-end="url(#m-ext)"/>
+      <text class="t-label elabel" data-edge="e-ws-req" x="1265" y="578" text-anchor="middle" style="font-size:12px">read · edit · run</text>
+      <path class="edge ext" id="e-ws-res" data-from="n-ws" data-to="n-exec" d="M1310,620 H1220" marker-end="url(#m-ext)"/>
+      <text class="t-label elabel" data-edge="e-ws-res" x="1260" y="642" text-anchor="middle">output</text>
+
+      <g class="node-g" id="n-web" data-title="Web &amp; MCP servers" data-body="Optional reach beyond the workspace: fetch pages, run web searches (DuckDuckGo, Brave, Tavily), and call tools exposed by MCP servers listed in settings. All of these are off or absent unless configured." data-code="WebFetch · WebSearch · integrations/mcp">
+        <rect class="node cond" x="1310" y="690" width="240" height="70" rx="10"/>
+        <text class="t-title" x="1430" y="720" text-anchor="middle">Web &amp; MCP servers</text>
+        <text class="t-sub" x="1430" y="742" text-anchor="middle">only when configured</text>
+      </g>
+      <path class="edge cond" id="e-web" data-from="n-exec" data-to="n-web" d="M1220,636 L1310,714" marker-end="url(#m-mute)"/>
+
+      <!-- ===== state ===== -->
+      <g class="node-g" id="n-state" data-title="Workspace state on disk" data-body="Everything the engine needs to resume lives in the workspace's .magentra folder: an append-only JSONL transcript per session (messages, permission decisions, compaction records, per-turn stats), a per-session task list, background output files, lazily built code-graph caches, and settings including saved always-allow rules. Credentials sit in .env; connection profiles in ~/.magentra." data-code=".magentra/sessions/*.jsonl · settings.json · tasks/ · .env">
+        <rect class="node state" x="420" y="850" width="830" height="70" rx="10"/>
+        <text class="t-title" x="835" y="879" text-anchor="middle">Workspace state · .magentra/</text>
+        <text class="t-sub" x="835" y="902" text-anchor="middle">append-only transcript · settings &amp; always-allow rules · tasks · caches · .env credentials</text>
+      </g>
+      <path class="edge state" id="e-state-w" data-from="n-feed" data-to="n-state" d="M640,820 V850" marker-end="url(#m-state)"/>
+      <text class="t-label elabel" data-edge="e-state-w" x="652" y="840">every message appended · resume from here</text>
+      <path class="edge state" id="e-state-r" data-from="n-state" data-to="n-engine" d="M460,850 V820" marker-end="url(#m-state)"/>
+      <text class="t-label elabel" data-edge="e-state-r" x="448" y="840" text-anchor="end">settings at boot</text>
+      <path class="edge state" id="e-fe-state" data-from="n-desktop" data-to="n-state" d="M190,500 V885 H420" marker-end="url(#m-state)"/>
+      <text class="t-label elabel" data-edge="e-fe-state" x="200" y="875">writes connection, .env, settings · reads logs</text>
+    </svg>
+    <figcaption>One engine per workspace, one boundary, one loop. Solid lines are the confirmed main path of a typical request; dashed lines are conditional; dotted is experimental.</figcaption>
+
+    <div class="stepper">
+      <button class="primary" id="playBtn" type="button">▶ Trace a request</button>
+      <button id="prevBtn" type="button" disabled>‹ Prev</button>
+      <button id="nextBtn" type="button" disabled>Next ›</button>
+      <button id="resetBtn" type="button" disabled>Reset</button>
+      <div class="caption idle" id="stepCaption">Press <b>Trace a request</b> to follow a coding request from your keyboard to the finished turn.</div>
+    </div>
+  </figure>
+</section>
+
+<!-- ============================ 2. JOURNEY ============================ -->
+<section id="journey">
+  <h2>One coding request, across the system</h2>
+  <p class="sub">The same request as a sequence. Time runs downward. The bracket marks the loop that repeats until the model stops calling tools; the amber detour happens only when a permission rule says ask.</p>
+  <figure>
+    <svg id="seqSvg" viewBox="0 0 1600 780" role="img" aria-label="Sequence of one coding request across You, Desktop renderer, Desktop main process, Engine, Turn loop, LLM API and Workspace tools">
+      <defs>
+        <marker id="s-ctl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="s-evt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mk evt" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="s-ask" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mk ask" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="s-ext" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mk ext" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="s-mute" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mk mute" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="s-state" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mk state" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+
+      <!-- process shading -->
+      <rect x="230" y="30" width="440" height="730" rx="12" style="fill:color-mix(in srgb, var(--fg) 3%, transparent)"/>
+      <text class="t-group" x="450" y="24" text-anchor="middle">DESKTOP APP PROCESS</text>
+      <rect x="690" y="30" width="440" height="730" rx="12" style="fill:color-mix(in srgb, var(--ctl) 6%, transparent)"/>
+      <text class="t-group" x="910" y="24" text-anchor="middle">ENGINE PROCESS</text>
+
+      <!-- lane heads -->
+      <g class="lanes">
+        <rect class="node ask" x="60" y="40" width="140" height="48" rx="9"/><text class="t-title" x="130" y="71" text-anchor="middle" style="font-size:16px">You</text>
+        <rect class="node" x="250" y="40" width="180" height="48" rx="9"/><text class="t-title" x="340" y="64" text-anchor="middle" style="font-size:16px">Renderer</text><text class="t-sub" x="340" y="81" text-anchor="middle" style="font-size:12px">paints the UI</text>
+        <rect class="node" x="470" y="40" width="180" height="48" rx="9"/><text class="t-title" x="560" y="64" text-anchor="middle" style="font-size:16px">Main process</text><text class="t-sub" x="560" y="81" text-anchor="middle" style="font-size:12px">owns the engine child</text>
+        <rect class="node" x="710" y="40" width="180" height="48" rx="9"/><text class="t-title" x="800" y="64" text-anchor="middle" style="font-size:16px">Engine</text><text class="t-sub" x="800" y="81" text-anchor="middle" style="font-size:12px">router · event queue</text>
+        <rect class="node" x="930" y="40" width="180" height="48" rx="9"/><text class="t-title" x="1020" y="64" text-anchor="middle" style="font-size:16px">Turn loop</text><text class="t-sub" x="1020" y="81" text-anchor="middle" style="font-size:12px">the session</text>
+        <rect class="node ext" x="1170" y="40" width="180" height="48" rx="9"/><text class="t-title" x="1260" y="71" text-anchor="middle" style="font-size:16px">LLM API</text>
+        <rect class="node ext" x="1390" y="40" width="180" height="48" rx="9"/><text class="t-title" x="1480" y="64" text-anchor="middle" style="font-size:16px">Workspace</text><text class="t-sub" x="1480" y="81" text-anchor="middle" style="font-size:12px">files · shell · web</text>
+      </g>
+      <!-- lifelines -->
+      <line class="lifeline" x1="130" y1="88" x2="130" y2="750"/>
+      <line class="lifeline" x1="340" y1="88" x2="340" y2="750"/>
+      <line class="lifeline" x1="560" y1="88" x2="560" y2="750"/>
+      <line class="lifeline" x1="800" y1="88" x2="800" y2="750"/>
+      <line class="lifeline" x1="1020" y1="88" x2="1020" y2="750"/>
+      <line class="lifeline" x1="1260" y1="88" x2="1260" y2="750"/>
+      <line class="lifeline" x1="1480" y1="88" x2="1480" y2="750"/>
+
+      <!-- 1 -->
+      <path class="edge" d="M130,130 H340" marker-end="url(#s-ctl)"/>
+      <circle class="badge" cx="130" cy="130" r="12"/><text class="t-step" x="130" y="135" text-anchor="middle">1</text>
+      <text class="t-label" x="235" y="121" text-anchor="middle">type a request, press Enter</text>
+      <!-- 2 -->
+      <path class="edge" d="M340,175 H560" marker-end="url(#s-ctl)"/>
+      <circle class="badge" cx="340" cy="175" r="12"/><text class="t-step" x="340" y="180" text-anchor="middle">2</text>
+      <text class="t-label" x="460" y="166" text-anchor="middle">user message over IPC</text>
+      <!-- 3 -->
+      <path class="edge" d="M560,220 H800" marker-end="url(#s-ctl)"/>
+      <circle class="badge" cx="560" cy="220" r="12"/><text class="t-step" x="560" y="225" text-anchor="middle">3</text>
+      <text class="t-label" x="690" y="211" text-anchor="middle">one JSON line to the child's stdin</text>
+      <!-- 4 -->
+      <path class="edge" d="M800,265 H1020" marker-end="url(#s-ctl)"/>
+      <circle class="badge" cx="800" cy="265" r="12"/><text class="t-step" x="800" y="270" text-anchor="middle">4</text>
+      <text class="t-label" x="920" y="256" text-anchor="middle">start turn (busy → steer instead)</text>
+      <path class="edge evt" d="M1020,285 H340" marker-end="url(#s-evt)"/>
+      <text class="t-label" x="680" y="303" text-anchor="middle">turn started</text>
+      <!-- optional clarify -->
+      <path class="edge cond" d="M1020,330 H1260" marker-start="url(#s-mute)" marker-end="url(#s-mute)"/>
+      <text class="t-label" x="1140" y="321" text-anchor="middle">optional: one clarify call over a workspace skim</text>
+      <path class="edge cond" d="M1020,350 H130" marker-start="url(#s-mute)" marker-end="url(#s-mute)"/>
+      <text class="t-label" x="575" y="368" text-anchor="middle">optional: clarifying question → your answer</text>
+
+      <!-- loop bracket -->
+      <path class="bracket" d="M1130,392 H1560 V690 H1130"/>
+      <text class="t-label" x="1345" y="384" text-anchor="middle" style="fill:var(--ctl);font-weight:700">LOOP · repeats until the model answers without tool calls</text>
+
+      <!-- 5 -->
+      <path class="edge ext" d="M1020,420 H1260" marker-end="url(#s-ext)"/>
+      <circle class="badge" cx="1020" cy="420" r="12"/><text class="t-step" x="1020" y="425" text-anchor="middle">5</text>
+      <text class="t-label" x="1150" y="411" text-anchor="middle">prompt + history + tool schemas</text>
+      <!-- 6 -->
+      <path class="edge ext" d="M1260,460 H1020" marker-end="url(#s-ext)"/>
+      <text class="t-label" x="1140" y="451" text-anchor="middle">streamed text, thinking, tool calls</text>
+      <path class="edge evt" d="M1020,480 H340" marker-end="url(#s-evt)"/>
+      <circle class="badge evt" cx="1020" cy="480" r="12"/><text class="t-step" x="1020" y="485" text-anchor="middle">6</text>
+      <text class="t-label" x="680" y="498" text-anchor="middle">text deltas relayed line by line → markdown painted live</text>
+      <!-- 7 permission -->
+      <path class="edge ask" d="M1020,535 H130" marker-end="url(#s-ask)"/>
+      <circle class="badge ask" cx="1020" cy="535" r="12"/><text class="t-step" x="1020" y="540" text-anchor="middle">7</text>
+      <text class="t-label" x="575" y="526" text-anchor="middle">only if a rule says ask: permission request → modal</text>
+      <path class="edge ask" d="M130,565 H1020" marker-end="url(#s-ask)"/>
+      <text class="t-label" x="575" y="583" text-anchor="middle">allow · always allow (saved) · deny</text>
+      <!-- 8 execute -->
+      <path class="edge ext" d="M1020,620 H1480" marker-end="url(#s-ext)"/>
+      <circle class="badge" cx="1020" cy="620" r="12"/><text class="t-step" x="1020" y="625" text-anchor="middle">8</text>
+      <text class="t-label" x="1250" y="611" text-anchor="middle">execute: read-only calls in parallel, edits and commands one by one</text>
+      <path class="edge ext" d="M1480,650 H1020" marker-end="url(#s-ext)"/>
+      <text class="t-label" x="1250" y="668" text-anchor="middle">results · unified diffs · streamed command output</text>
+      <path class="edge evt" d="M1020,680 H340" marker-end="url(#s-evt)"/>
+      <text class="t-label" x="680" y="698" text-anchor="middle">tool cards, diffs, output → results appended to history → back to 5</text>
+
+      <!-- 9 finish -->
+      <path class="edge evt" d="M1020,730 H340" marker-end="url(#s-evt)"/>
+      <circle class="badge evt" cx="1020" cy="730" r="12"/><text class="t-step" x="1020" y="735" text-anchor="middle">9</text>
+      <text class="t-label" x="680" y="748" text-anchor="middle">turn finished with usage · transcript record written · composer re-enabled</text>
+    </svg>
+    <figcaption>Everything the frontend shows is a rendering of events; the frontend never reaches into the engine. The engine never contacts you directly; it emits an ask and waits.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================ 3. STATE & EDGES ============================ -->
+<section id="state">
+  <h2>Where state lives, and what is off the main path</h2>
+  <p class="sub">Useful when you plan a change: the left three cards say who owns which state; the right three say what the main diagram deliberately leaves out and why.</p>
+  <div class="cards">
+    <div class="card">
+      <h3>Frontend process</h3>
+      <p>Holds only what it needs to render and to start engines.</p>
+      <ul>
+        <li><b>Rendered transcript</b> as DOM, rebuilt from events (restored sessions arrive as one event).</li>
+        <li><b>App config</b>: window, theme, recent workspaces, one tab state bundle per workspace.</li>
+        <li><b>Credentials &amp; profiles</b> stay in the main process; the renderer never sees a key.</li>
+        <li><b>Session log</b> of every JSON line, redacted, under .magentra/logs.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Engine process memory</h3>
+      <p>The truth while a turn is running.</p>
+      <ul>
+        <li><b>Conversation history</b> and queued reminders inside the single session.</li>
+        <li><b>Pending asks</b>: unanswered permission and question requests (no timeout).</li>
+        <li><b>Context ledger</b>: tokens per model, phases, compaction threshold.</li>
+        <li><b>Live settings</b>, provider instance and tool registry, replaceable mid-session.</li>
+      </ul>
+    </div>
+    <div class="card state">
+      <h3>Workspace disk · .magentra/</h3>
+      <p>Everything needed to resume or audit.</p>
+      <ul>
+        <li><b>sessions/*.jsonl</b>: append-only messages, permission decisions, compactions, per-turn stats.</li>
+        <li><b>settings.json</b>: provider, model, permissions incl. saved always-allow rules; merged over ~/.magentra/settings.json.</li>
+        <li><b>tasks/</b>: task lists and background output files. <b>graph.json / symbols.json</b>: lazily built code index.</li>
+        <li><b>.env</b> beside it holds the API key; <b>~/.magentra/profiles.json</b> holds saved connections.</li>
+      </ul>
+    </div>
+
+    <div class="card cond">
+      <h3>Conditional · present, gated</h3>
+      <p>Real code that runs only under a setting or when the model chooses it.</p>
+      <ul>
+        <li><b>Clarify round</b> before the first model call (on by default, skipped for addon invocations).</li>
+        <li><b>Overdrive</b>: skips deletion guards, takes a git snapshot, adds a self-verify obligation.</li>
+        <li><b>Hooks</b>, <b>MCP servers</b>, <b>web search</b>, <b>vision</b>, <b>cron</b>, <b>worktrees</b>, <b>addons</b> as invocable procedures.</li>
+        <li><b>Code graph</b> and <b>write-reuse reminder</b>: built on demand, never at startup.</li>
+      </ul>
+    </div>
+    <div class="card exp">
+      <h3>Experimental · not yet reliable</h3>
+      <p>Wired end to end but with gaps visible in code.</p>
+      <ul>
+        <li><b>Sub-agents</b>: child task lists overwrite the parent's, no addons or hooks for children, recursion via Workflow is not blocked, child background jobs survive interrupt.</li>
+        <li><b>Workflow runner</b>: multi-agent scripts; advertised model and phase options are ignored.</li>
+        <li><b>No automated tests</b> guard any of this today; the test inventory exists but every feature lists zero tests.</li>
+      </ul>
+    </div>
+    <div class="card dev">
+      <h3>Not runtime · left out</h3>
+      <p>In the repository, not in the running product.</p>
+      <ul>
+        <li><b>magentra-gateway</b>: feature inventory and test gate for developers.</li>
+        <li><b>prompt-lab</b>, <b>version tool</b>, <b>benchmarks</b>, <b>vision_probe.py</b>: development utilities.</li>
+        <li><b>Stale or dead</b>: the unused protocol envelope type, the ignored --serve flag, an orphaned addon markdown copy in app/, unused counting and cron seams.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>Derived from the MAGENTRA source tree on the tests/lab-1 branch, version 0.17.4. Diagrams show the confirmed primary runtime path; interpretation is limited to grouping.</footer>
+
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+(function () {
+  // ---------- theme ----------
+  var root = document.documentElement, themeBtn = document.getElementById('themeBtn');
+  function applyTheme(t) {
+    root.setAttribute('data-theme', t);
+    themeBtn.textContent = t === 'dark' ? '☀ Light' : '☾ Dark';
+    try { localStorage.setItem('magentra-arch-theme', t); } catch (e) {}
+  }
+  var saved = null; try { saved = localStorage.getItem('magentra-arch-theme'); } catch (e) {}
+  applyTheme(saved === 'light' ? 'light' : 'dark');
+  themeBtn.addEventListener('click', function () {
+    applyTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+
+  // ---------- tooltip ----------
+  var tip = document.getElementById('tip');
+  function showTip(g, ev) {
+    tip.innerHTML = '<b>' + g.getAttribute('data-title') + '</b>' + g.getAttribute('data-body') +
+      (g.getAttribute('data-code') ? '<code>' + g.getAttribute('data-code') + '</code>' : '');
+    tip.style.display = 'block'; moveTip(ev);
+  }
+  function moveTip(ev) {
+    var pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+    var x = ev.clientX + pad, y = ev.clientY + pad;
+    if (x + w > window.innerWidth - 8) x = ev.clientX - w - pad;
+    if (y + h > window.innerHeight - 8) y = ev.clientY - h - pad;
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  }
+  function hideTip() { tip.style.display = 'none'; }
+
+  var svg = document.getElementById('mainSvg');
+  var nodes = Array.prototype.slice.call(svg.querySelectorAll('.node-g'));
+  var edges = Array.prototype.slice.call(svg.querySelectorAll('.edge'));
+  var labels = Array.prototype.slice.call(svg.querySelectorAll('.elabel'));
+
+  nodes.forEach(function (g) {
+    g.addEventListener('mouseenter', function (ev) { showTip(g, ev); });
+    g.addEventListener('mousemove', moveTip);
+    g.addEventListener('mouseleave', hideTip);
+    g.addEventListener('click', function (ev) { ev.stopPropagation(); focusNode(g.id); });
+  });
+
+  // ---------- focus / highlight ----------
+  var focusedId = null;
+  function clearFocus() {
+    focusedId = null;
+    svg.classList.remove('focused');
+    nodes.forEach(function (n) { n.classList.remove('lit'); });
+    edges.forEach(function (e) { e.classList.remove('lit'); });
+    labels.forEach(function (l) { l.classList.remove('lit'); });
+  }
+  function litEdgeIds(ids) {
+    edges.forEach(function (e) { if (ids.indexOf(e.id) >= 0) e.classList.add('lit'); });
+    labels.forEach(function (l) { if (ids.indexOf(l.getAttribute('data-edge')) >= 0) l.classList.add('lit'); });
+  }
+  function focusNode(id) {
+    if (focusedId === id) { clearFocus(); return; }
+    stopTrace(true);
+    clearFocus();
+    focusedId = id;
+    svg.classList.add('focused');
+    var lit = {}; lit[id] = true; var eids = [];
+    edges.forEach(function (e) {
+      if (e.getAttribute('data-from') === id || e.getAttribute('data-to') === id) {
+        eids.push(e.id); lit[e.getAttribute('data-from')] = true; lit[e.getAttribute('data-to')] = true;
+      }
+    });
+    nodes.forEach(function (n) { if (lit[n.id]) n.classList.add('lit'); });
+    litEdgeIds(eids);
+  }
+  svg.addEventListener('click', function () { clearFocus(); });
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') { clearFocus(); stopTrace(true); } });
+
+  // ---------- trace stepper ----------
+  var steps = [
+    { n: ['n-you', 'n-desktop'], e: ['e-you-fe'],
+      t: '<b>1 · You type a coding request.</b> The desktop app paints your bubble immediately and sends one request object over IPC to its main process.' },
+    { n: ['n-desktop', 'n-engine'], e: ['e-req'],
+      t: '<b>2 · Across the boundary.</b> The main process writes the request as a single JSON line to the stdin of the engine child it spawned for this workspace.' },
+    { n: ['n-engine', 'n-assemble'], e: ['e-start', 'e-state-r'],
+      t: '<b>3 · The engine starts a turn.</b> If a turn were already running the message would become a steer. Settings loaded at boot decide clarify, permissions, model and limits.' },
+    { n: ['n-assemble'], e: ['e-feed-1'],
+      t: '<b>4 · Assemble the prompt.</b> Behaviour rules, workspace facts, addon names, the full history and the schemas of every enabled tool. Optionally one clarify call first, which may ask you a question.' },
+    { n: ['n-assemble', 'n-stream', 'n-llm'], e: ['e-1-2', 'e-llm-req', 'e-llm-res'],
+      t: '<b>5 · Stream the model.</b> The provider adapter calls the LLM API with retry. Text and thinking deltas go straight out as events; tool-use blocks are collected.' },
+    { n: ['n-stream', 'n-engine', 'n-desktop', 'n-you'], e: ['e-evt', 'e-fe-you'],
+      t: '<b>6 · You watch it think.</b> Each delta crosses stdout as its own line, the main process stamps the tab and forwards it, the renderer paints completed markdown blocks.' },
+    { n: ['n-stream', 'n-decide', 'n-gate'], e: ['e-2-d', 'e-d-gate'],
+      t: '<b>7 · The model asked for tools.</b> Each call is parsed against the tool schema, then the permission engine applies deny rules, protected paths, the deletion guard and saved allow rules.' },
+    { n: ['n-gate', 'n-engine', 'n-desktop', 'n-you'], e: ['e-gate-ask', 'e-ask', 'e-fe-you', 'e-you-fe'],
+      t: '<b>8 · Sometimes it asks you.</b> A call that lands on ask blocks the loop. A permission request travels out, a modal appears, your allow / always-allow / deny travels back. Always-allow is saved to settings.' },
+    { n: ['n-gate', 'n-exec', 'n-ws'], e: ['e-gate-exec', 'e-ws-req', 'e-ws-res'],
+      t: '<b>9 · Execute.</b> Read-only calls run in parallel, edits and commands one after another. Files are read, edited (a diff is emitted) and commands run in your workspace with output streamed live.' },
+    { n: ['n-exec', 'n-feed', 'n-state'], e: ['e-exec-feed', 'e-state-w'],
+      t: '<b>10 · Results become the next message.</b> Appended to history and to the on-disk transcript. If the conversation is near the context window, older history is compacted into a summary.' },
+    { n: ['n-feed', 'n-assemble', 'n-stream', 'n-decide'], e: ['e-feed-1', 'e-1-2', 'e-2-d'],
+      t: '<b>11 · Around again.</b> Prompt, model, gate, execute, feed back. This continues until the model answers without any tool call.' },
+    { n: ['n-decide', 'n-engine', 'n-desktop', 'n-you'], e: ['e-finish', 'e-evt', 'e-fe-you'],
+      t: '<b>12 · Finish.</b> Finishing checks may nudge the model once more (it changed code but ran nothing, tasks left open). Then a turn-finished event with usage goes out, a stats record is written, and the composer unlocks.' }
+  ];
+  var stepIdx = -1, timer = null;
+  var playBtn = document.getElementById('playBtn'), prevBtn = document.getElementById('prevBtn'),
+      nextBtn = document.getElementById('nextBtn'), resetBtn = document.getElementById('resetBtn'),
+      cap = document.getElementById('stepCaption');
+
+  function renderStep() {
+    clearFocus();
+    if (stepIdx < 0) {
+      cap.classList.add('idle');
+      cap.innerHTML = 'Press <b>Trace a request</b> to follow a coding request from your keyboard to the finished turn.';
+      prevBtn.disabled = nextBtn.disabled = resetBtn.disabled = true;
+      playBtn.disabled = false;
+      return;
+    }
+    var s = steps[stepIdx];
+    svg.classList.add('focused');
+    nodes.forEach(function (n) { if (s.n.indexOf(n.id) >= 0) n.classList.add('lit'); });
+    litEdgeIds(s.e);
+    cap.classList.remove('idle');
+    cap.innerHTML = s.t + ' <span style="color:var(--muted)">(' + (stepIdx + 1) + '/' + steps.length + ')</span>';
+    prevBtn.disabled = stepIdx === 0;
+    nextBtn.disabled = stepIdx === steps.length - 1;
+    resetBtn.disabled = false;
+  }
+  function stopTrace(reset) {
+    if (timer) { clearInterval(timer); timer = null; }
+    playBtn.textContent = '▶ Trace a request';
+    if (reset) { stepIdx = -1; renderStep(); }
+  }
+  playBtn.addEventListener('click', function () {
+    if (timer) { stopTrace(false); return; }
+    if (stepIdx < 0 || stepIdx >= steps.length - 1) stepIdx = 0; else stepIdx++;
+    renderStep();
+    playBtn.textContent = '❚❚ Pause';
+    timer = setInterval(function () {
+      if (stepIdx >= steps.length - 1) { stopTrace(false); return; }
+      stepIdx++; renderStep();
+    }, 3800);
+  });
+  nextBtn.addEventListener('click', function () { stopTrace(false); if (stepIdx < steps.length - 1) { stepIdx++; renderStep(); } });
+  prevBtn.addEventListener('click', function () { stopTrace(false); if (stepIdx > 0) { stepIdx--; renderStep(); } });
+  resetBtn.addEventListener('click', function () { stopTrace(true); });
+})();
+</script>
+</body>
+</html>
