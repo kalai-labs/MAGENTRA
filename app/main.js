@@ -881,9 +881,21 @@ function wireWindowChrome(win) {
   // The opening posture is applied before the page loads, so the first state
   // the renderer ever hears about has to be sent when it is ready to listen.
   win.webContents.on("did-finish-load", push);
-  win.webContents.on("before-input-event", (_evt, input) => {
+  win.webContents.on("before-input-event", (evt, input) => {
     if (input.type !== "keyDown" || input.key !== "F11") return;
     if (win.isDestroyed()) return;
+    // CONSUME IT, or the key is handled TWICE and the window never moves.
+    // Electron's default application menu is kept in development and on macOS
+    // (Menu.setApplicationMenu(null) runs only for packaged non-mac builds),
+    // and its togglefullscreen role binds F11 on Windows and Linux. Left
+    // unhandled here, the same press reaches that accelerator afterwards and
+    // toggles back: setFullScreen is asked for false and then immediately for
+    // true, so F11 does nothing at all. macOS binds Ctrl+Cmd+F to that role
+    // instead, which is why this never showed there. Nothing in the renderer
+    // listens for the key — its VIEW item and top-strip button are clicks that
+    // go through windowControl("toggleFullScreen") — so consuming it costs
+    // nothing.
+    evt.preventDefault();
     win.setFullScreen(!win.isFullScreen());
   });
 }

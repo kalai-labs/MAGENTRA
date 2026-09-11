@@ -16,8 +16,11 @@
  * own door (`evaluateInMain`) — the product is not asked to expose anything.
  */
 
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
-import { UiTest } from "../lib/uiTest.ts";
+import { UiTest, type AppHandle } from "../lib/uiTest.ts";
 
 const FEATURE = "full-screen-can-always-be-left";
 
@@ -59,14 +62,54 @@ abstract class FullScreenTest extends UiTest {
   /**
    * The posture the app settled into on its own — full screen, or the maximize
    * it falls back to when the window manager refuses.
+   *
+   * WAITS FOR THE APP'S OWN ACCOUNT OF IT, not for the window to merely look
+   * right. `applyOpeningPosture` (app/main.js:853) decides in two steps — it
+   * re-asserts full screen at `ready-to-show`, then 400 ms later maximizes
+   * instead if the desktop refused — and it writes `window-posture` when it is
+   * finished, which main.js calls "the one fact that separates 'the WM refused
+   * full screen' from 'the app never asked'".
+   *
+   * Polling the WINDOW cannot serve as that signal, because the window is
+   * constructed with `fullscreen: true` (main.js:902): `isFullScreen()` reads
+   * true from the first moment, long before `ready-to-show` has fired, so the
+   * old wait returned while the app was still going to act. F11 then left full
+   * screen, the ready-to-show handler found the window no longer full screen
+   * and asked for it back, and the test saw `setFullScreen` called twice —
+   * [false, true] where the feature promises [false]. It failed once in a full
+   * run and passed on its own, which is the worst kind of test.
    */
-  protected async settledPosture(app: { evaluateInMain<T>(js: string): Promise<T> }): Promise<boolean> {
-    return app.evaluateInMain<boolean>(`
-      const deadline = Date.now() + 20000;
-      while (Date.now() < deadline && !win.isFullScreen() && !win.isMaximized()) await new Promise((r) => setTimeout(r, 150));
-      await new Promise((r) => setTimeout(r, 400));
-      return win.isFullScreen();
-    `);
+  protected async settledPosture(app: AppHandle): Promise<boolean> {
+    await this.waitForOpeningPosture(app.userDataDir);
+    return app.evaluateInMain<boolean>("return win.isFullScreen();");
+  }
+
+  /**
+   * Wait for the `window-posture` line the app writes when it has finished
+   * applying its opening posture.
+   *
+   * With no workspace open the app logs to `<userData>/logs` (`initFallbackLog`),
+   * and the log is buffered and flushed periodically — so this polls the file
+   * rather than assuming it is there the moment the event happened.
+   */
+  protected async waitForOpeningPosture(userDataDir: string, timeoutMs = 30_000): Promise<void> {
+    const dir = join(userDataDir, "logs");
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if (existsSync(dir)) {
+        for (const name of readdirSync(dir)) {
+          if (readFileSync(join(dir, name), "utf8").includes('"window-posture"')) return;
+        }
+      }
+      if (Date.now() > deadline) {
+        throw new Error(
+          `waited ${timeoutMs}ms for the app to log "window-posture" in ${dir}. ` +
+            `applyOpeningPosture writes it unconditionally (shouldStartFullScreen() is true), so its absence means the opening ` +
+            `posture never ran — which is the feature this file is about, not a slow machine.`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
   }
 
   /**
@@ -133,6 +176,14 @@ class F11IsHandledInMain extends FullScreenTest {
         [!before],
         "F11 must reach the main process and ask the window for the opposite of what it is",
       );
+      // EXACTLY ONE, which is the half that was broken. Electron's default
+      // application menu is present here — `Menu.setApplicationMenu(null)` runs
+      // only for packaged non-mac builds — and its togglefullscreen role binds
+      // F11 on Windows and Linux. A handler that did not consume the key was
+      // followed by that accelerator toggling straight back, so F11 did nothing
+      // at all on those platforms; the list read [false, true] where the feature
+      // promises [false]. macOS binds Ctrl+Cmd+F to the role, which is why the
+      // suite was green there and red here.
 
       // A key the handler must ignore, so the assertion above is about F11 and
       // not about any key at all reaching the window.
@@ -145,6 +196,26 @@ class F11IsHandledInMain extends FullScreenTest {
         (await app.evaluateInMain<boolean[]>("return globalThis.__asked;")).length,
         1,
         "only F11 toggles full screen; another key must not",
+      );
+
+      // AND WITH NO APPLICATION MENU AT ALL — the packaged non-mac build this
+      // feature exists for, where `Menu.setApplicationMenu(null)` has already
+      // run and F11 has nowhere else to go. Without this the test could not
+      // tell the app's own handler from Electron's accelerator: delete the
+      // `before-input-event` handler and the menu role answers the key instead,
+      // asking for the same value, and the assertion above still passes. Here
+      // it cannot — with the menu gone, a missing handler leaves __asked empty.
+      await this.isFullScreen(app, !before);
+      await app.evaluateInMain("electron.Menu.setApplicationMenu(null); return true;");
+      await app.evaluateInMain(`
+        win.webContents.sendInputEvent({ type: "keyDown", keyCode: "F11" });
+        await new Promise((r) => setTimeout(r, 500));
+        return true;
+      `);
+      t.assert.deepEqual(
+        await app.evaluateInMain<boolean[]>("return globalThis.__asked;"),
+        [!before, before],
+        "with no application menu, the handler in app/main.js is the only way out of full screen and must still answer F11",
       );
     } finally {
       await app.evaluateInMain("win.setFullScreen = globalThis.__realSetFullScreen; return true;");

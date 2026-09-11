@@ -30,12 +30,24 @@ tests/
 ## Running them
 
 ```
-npm test              # node --test "tests/features/**/*.test.ts"
+npm test              # node --test --test-concurrency=1 "tests/features/**/*.test.ts"
 npm run typecheck:tests
 ```
 
-Two things about that command, both verified on Node 24.20.0 rather than assumed:
+Three things about that command, all verified on the platform rather than assumed:
 
+- **`--test-concurrency=1` is load-bearing, and not a speed knob.** `node --test`
+  runs test FILES in parallel processes, defaulting to roughly one per core.
+  Eighteen of the twenty-eight files hold `ui` tests, so the default opened up to
+  sixteen real desktop applications at once — sixteen Electrons fighting over one
+  display, one GPU and one disk. That is a design fault rather than a platform
+  one, so the fix is not per-OS: files run one at a time, `node:test` already runs
+  the tests inside a file sequentially, and the suite therefore starts **exactly
+  one app at a time** everywhere. It also removes at a stroke the whole class of
+  cross-file races this file used to catalogue: the packager's single output
+  directory, and macOS serialising full-screen transitions across applications.
+  `lib/exclusive.ts` stays, because it is what makes two *runs* on one machine
+  safe, and because the cost of holding it when it is uncontended is nothing.
 - **`node --test tests/` does not work, on any Node this suite can use.** A
   directory argument is not expanded; it is loaded as if it were a module, and
   the run fails with `Cannot find module …/tests`. Bare `node --test` from the
@@ -98,6 +110,7 @@ without proving anything, each fixed and re-checked:
 | two queued requests make `shift` and `pop` identical | queue three |
 | hiding the card does not prove the queue was cleared | deliver a fresh request and check which one shows |
 | the log cannot say which tab's engine got a frame | kill the asking engine and require the drop |
+| with a menu present, deleting the F11 handler passes — Electron's own accelerator answers instead | press it again with `Menu.setApplicationMenu(null)`, the packaged non-mac condition, where the handler is the only route |
 
 **Kinds are a claim about what proving a feature requires, and fifteen records
 were wrong.** `a-404-on-models-is-disambiguated-not-assumed` and
@@ -139,26 +152,60 @@ platform can express, never skipped where it cannot.
   rather than assuming, since only the running platform's is installed.
 - **The electron-builder stand-in** is a `.cmd` under cmd.exe and a shell script
   elsewhere, because `dist.js` spawns it through the platform's own shell.
+- **The app is driven over a loopback socket, never over its stdin.** Electron's
+  MAIN process has no usable `process.stdin` on Windows: `electron.exe` is a
+  GUI-subsystem binary, and the browser process hands Node a placeholder
+  `Readable` that emits `end` immediately instead of the pipe the parent opened.
+  Every command written to it is accepted by the parent, delivered to nothing,
+  and answered never — while stdOUT on the same process is real, so the app
+  announced itself and then ignored every instruction. That is the whole of why
+  this suite passed on macOS and failed on Windows, at thirty seconds per
+  `evaluate`, with all forty-nine `ui` tests red. `UiTest` listens on 127.0.0.1
+  on a port the OS picks and passes it in `MAGENTRA_HARNESS_PORT`;
+  `lib/appHarness.cjs` connects back before it does anything else, so even a
+  boot that fails can say why. One mechanism on all three platforms, not one per
+  OS. (`node tests/lib/…` cannot show this — it needs Electron; the probe that
+  established it spawns Electron directly and prints `{"stdinType":"Readable"}`
+  followed by `end` before the parent has written a byte.)
+- **A temp directory is removed with retries.** Windows keeps one open a moment
+  after its process is gone, and `rm`'s `force` only forgives ENOENT, so three
+  `ui` tests failed in teardown with EPERM after every assertion had passed.
+  `maxRetries`/`retryDelay` forgive EPERM and EBUSY; the final attempt is allowed
+  to fail, because a handle the operating system has not finished closing is not
+  a defect in the feature under test. A leaked live PROCESS is still reported —
+  that check is `stopAll`'s and is unchanged.
 
 `full-screen-can-always-be-left` asserts the ASK, not the grant, and that is a
-deliberate line: macOS serialises full-screen transitions across applications
-and the suite runs its files in parallel, so a window's actual posture depends
-on a desktop that is free to refuse — `app/main.js` already treats it that way
+deliberate line: macOS serialises full-screen transitions across applications,
+so a window's actual posture depends on a desktop that is free to refuse — `app/main.js` already treats it that way
 and falls back to maximizing. Every route the feature promises (F11, the VIEW
 item, the top-strip buttons) is asserted as reaching the window with the right
 request, exactly once. Asserting on the grant instead made that file fail
 roughly one full run in four, always for a reason that had nothing to do with
-the app. The renderer's half — the strip appearing while full screen — is driven
+the app.
+
+Asserting the ask is also what FOUND a real bug, on 2026-09-12, the first time
+these tests could run on Windows at all: one F11 press was recorded as
+`[false, true]` — two toggles, so the window never moved. Electron's default
+application menu (kept in development and on macOS; `Menu.setApplicationMenu(null)`
+runs only for packaged non-mac builds) binds F11 to its own togglefullscreen
+role on Windows and Linux, and `app/main.js` was not consuming the key. macOS
+binds Ctrl+Cmd+F to that role, which is why the same suite was green on a Mac.
+Fixed with `evt.preventDefault()` in the `before-input-event` handler, whose
+comment had claimed this route was "handled here rather than through a menu
+accelerator" all along. The renderer's half — the strip appearing while full screen — is driven
 by delivering `window:fullscreen` on the same channel `app/main.js` pushes it.
 
 Flakiness is treated as a defect in the test, not something to re-run past. Six
 were found here and each was fixed at the level the product actually owns, with
 every fix re-checked by mutation to confirm it still catches a real break. Two
-were not timing at all but SHARED STATE between files: `node --test` runs files
+were not timing at all but SHARED STATE between files: `node --test` ran files
 in parallel processes, and three features run the packager, which removes and
 rewrites one fixed output directory. `lib/exclusive.ts` is the lock that makes
 that a critical section; a fixed pause that was long enough alone and not under
-a full run is polled for instead.
+a full run is polled for instead. `--test-concurrency=1` has since removed the
+cross-file case outright (see *Running them*), and the lock is kept because it
+is also what makes two concurrent RUNS on one machine safe.
 
 What the base enforces, by mechanism rather than by reminder:
 
