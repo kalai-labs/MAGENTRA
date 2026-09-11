@@ -16,7 +16,7 @@
     "build": "tsc -b",
     "clean": "tsc -b --clean",
     "typecheck": "tsc -b",
-    "test": "node --test \"tests/features/**/*.test.ts\"",
+    "test": "node --test --test-concurrency=1 \"tests/features/**/*.test.ts\"",
     "app": "npm start --workspace app",
     "prompt-lab": "node tools/prompt-lab/server.mjs",
     "gateway": "tsx tools/magentra-gateway/src/cli.ts",

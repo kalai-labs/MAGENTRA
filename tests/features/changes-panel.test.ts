@@ -180,8 +180,16 @@ class AFailedUndoKeepsTheRow extends ChangesTest {
     await app.evaluate(`undoFileChange("notes.txt")`);
     await new Promise((resolve) => setTimeout(resolve, 1_200));
 
+    // LINE ENDINGS ARE NOT WHAT THIS ASSERTS, and on Windows they are not the
+    // test's to choose. The undo is `git apply --reverse` (app/main/changes.js:39),
+    // and git rewrites what it writes according to `core.autocrlf` — true by
+    // default on a Windows install — so the reversed file comes back
+    // "first line\r\n" from a workspace that was written "first line\n". The
+    // claim here is that the ADDED LINE IS GONE and the original content is
+    // back; comparing the terminator as well would make this test pass or fail
+    // on the developer's git configuration.
     t.assert.equal(
-      readFileSync(join(workspace, "notes.txt"), "utf8"),
+      readFileSync(join(workspace, "notes.txt"), "utf8").replace(/\r\n/g, "\n"),
       "first line\n",
       "a successful undo really reverses the edit on disk",
     );

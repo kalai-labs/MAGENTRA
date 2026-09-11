@@ -14,7 +14,9 @@
  * still alive" needs a child that IGNORES SIGTERM, and the child is the real
  * engine, which does not. Substituting one would mean testing the substitute.
  * What is asserted instead is the half that decides whether the timer is ever
- * needed: the engine really does go on SIGTERM, well inside the budget.
+ * needed: asked to stop, the engine really does go, well inside the budget —
+ * on SIGTERM where signals exist, and on the stdin EOF `stopEngine` sends
+ * first on Windows, where they do not. See the note at that assertion.
  */
 
 import { existsSync, writeFileSync } from "node:fs";
@@ -61,13 +63,32 @@ class TheEngineGoesOnSigterm extends ProcTest {
     // It has to be up before its shutdown means anything.
     await engine.nextLine((line) => line.includes("\"type\""), 20_000);
 
+    // ASKED TO STOP IN THE TERMS THE PLATFORM HAS. `stopEngine` (app/main.js:235)
+    // makes two requests, in this order: it ends the child's stdin, then it
+    // sends SIGTERM, and only after three more seconds does it escalate. On
+    // POSIX both are real and the signal is the one the budget is about. On
+    // Windows there are no signals at all: `child.kill("SIGTERM")` is
+    // TerminateProcess and `taskkill /F` is what this suite's teardown uses, so
+    // a run that "answered SIGTERM" there would only be proving that Windows
+    // can kill a process — which is not in doubt, and would never be slow.
+    // What the budget actually rests on there is the FIRST request, the EOF:
+    // if the engine did not go on its own when its stdin closed, every
+    // workspace close would sit out the three seconds and every quit would look
+    // like a hang. So that is what is asserted, as the Windows expression of
+    // the same sentence, rather than skipped for want of a signal.
+    const windows = process.platform === "win32";
     const sentAt = Date.now();
-    engine.kill("SIGTERM");
+    if (windows) engine.endInput();
+    else engine.kill("SIGTERM");
     const exit = await engine.exited();
     const tookMs = Date.now() - sentAt;
 
     t.assert.ok(tookMs < 3_000, `the engine must go well inside the SIGKILL budget; it took ${tookMs}ms`);
-    t.assert.ok(exit.code === 0 || exit.signal === "SIGTERM", `it must terminate cleanly, got code=${String(exit.code)} signal=${String(exit.signal)}`);
+    if (windows) {
+      t.assert.equal(exit.code, 0, `an engine whose stdin closed must drain and exit 0, got code=${String(exit.code)} signal=${String(exit.signal)}`);
+    } else {
+      t.assert.ok(exit.code === 0 || exit.signal === "SIGTERM", `it must terminate cleanly, got code=${String(exit.code)} signal=${String(exit.signal)}`);
+    }
   }
 }
 

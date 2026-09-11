@@ -128,8 +128,15 @@ class AMissingRipgrepFailsTheBuild extends ProcTest {
       t.assert.equal(localExit.code, 0, `a local build must not be blocked by another OS's binary:\n${local.stderr()}`);
 
       // Checklist 3: what a successful bundle leaves behind.
+      //
+      // THE RIPGREP IS NAMED FOR THE PLATFORM WHOSE PACKAGE IS INSTALLED, and
+      // only the running one is (that is the premise of `absent` above). Windows
+      // stages `rg.exe` and the other two stage `rg` — bundle-engine.js:48-55 —
+      // so asserting "rg" everywhere asserted a POSIX fact on a Windows machine
+      // and failed for a reason that had nothing to do with the build.
       const out = join(repoRoot(), "app", "build-resources", "engine");
-      for (const name of ["engine.cjs", "doc-extract.mjs", "tui.mjs", "rg"]) {
+      const ripgrep = process.platform === "win32" ? "rg.exe" : "rg";
+      for (const name of ["engine.cjs", "doc-extract.mjs", "tui.mjs", ripgrep]) {
         t.assert.equal(existsSync(join(out, name)), true, `the bundle must include ${name}`);
       }
       if (process.platform !== "win32") {
@@ -173,7 +180,27 @@ class PublishingIsNeverImplicit extends ProcTest {
     // cmd.exe wants a `.cmd`, everything else an executable script. Both write
     // one argument per line.
     if (process.platform === "win32") {
-      writeFileSync(join(dir, "electron-builder.cmd"), `@echo off\r\n(for %%a in (%*) do @echo %%~a) > ${JSON.stringify(record)}\r\nexit /b 0\r\n`, "utf8");
+      // A BATCH FILE CANNOT READ ITS OWN ARGUMENTS FAITHFULLY, and a stand-in
+      // that mangles them tests the stand-in. cmd splits a batch file's `%1`,
+      // `%2`, … on `=` and `,` as well as on whitespace, and `for %%a in (%*)`
+      // splits the same way — so `-c.electronVersion=33.4.11` was recorded as
+      // two lines and the pin this test exists to check read as absent. Nothing
+      // was wrong with `dist.js`: only `%*`, the raw remainder of the command
+      // line, is intact, and forwarding it to a program with real argument
+      // parsing is how the REAL `electron-builder.cmd` npm shim works too
+      // (`"%_prog%" "…\cli.js" %*`). So the stand-in is that shim — one line
+      // that hands `%*` to node — and node reports what any such tool receives.
+      const recorder = join(dir, "record-argv.cjs");
+      writeFileSync(
+        recorder,
+        `require("node:fs").writeFileSync(${JSON.stringify(record)}, process.argv.slice(2).map((a) => a + "\\n").join(""), "utf8");\n`,
+        "utf8",
+      );
+      writeFileSync(
+        join(dir, "electron-builder.cmd"),
+        ["@echo off", `"${process.execPath}" "${recorder}" %*`, "exit /b %errorlevel%", ""].join("\r\n"),
+        "utf8",
+      );
     } else {
       const stub = join(dir, "electron-builder");
       writeFileSync(stub, `#!/bin/sh\nprintf '%s\\n' "$@" > ${JSON.stringify(record)}\nexit 0\n`, { encoding: "utf8", mode: 0o755 });
@@ -186,7 +213,11 @@ class PublishingIsNeverImplicit extends ProcTest {
     const exit = await dist.exited();
     t.assert.equal(exit.code, 0, `dist.js failed:\n${dist.stderr()}`);
 
-    const argv = readFileSync(record, "utf8").split("\n").filter((line) => line !== "");
+    // One argument per line, in the line terminator the stand-in's own shell
+    // writes: cmd.exe's `echo` ends every line CRLF, so splitting on "\n" alone
+    // left a carriage return glued to each value and `--publish` compared unequal
+    // to '--publish\r'. The file is text written by the platform; read it as such.
+    const argv = readFileSync(record, "utf8").split(/\r?\n/).filter((line) => line !== "");
     t.assert.equal(argv[0], "--publish", "publishing must be settled before anything the caller passed");
     t.assert.equal(argv[1], "never");
     t.assert.ok(argv.includes("--linux"), "the caller's own arguments must still reach electron-builder");
