@@ -25,11 +25,41 @@ const state = {
   gate: null,
   /** featureId → "draft" | "ready" | "none" — derived from /api/state's descriptions. */
   descOf: new Map(),
+  /** featureId → the description records themselves, for the real-model view to read out. */
+  descsOf: new Map(),
   /** { scanned, found, problems } — how discovery got on reading tests/features/. */
   testDiscovery: null,
   filters: { area: "", kind: "", status: "", fresh: "", desc: "" },
+  /** "features" — the whole inventory. "llm" — only what needs a real model. */
+  view: "features",
   selected: null,
 };
+
+/**
+ * How a description says "this one needs a real model".
+ *
+ * The product owner writes it in prose, not in a field, and that is deliberate:
+ * the note carries the REASON, and a boolean would have thrown it away. This is
+ * the phrase every one of those notes contains, so it is what the view keys on.
+ *
+ * It is the SECOND signal, and the weaker one. The record's `kinds` is the
+ * first — `llm` there is what decides the base class a test extends and
+ * therefore whether it runs. When the two disagree the view says so rather than
+ * picking a winner: retagging a record is a claim about what proving the
+ * feature requires (tests/README, *kinds are a claim*), and nobody should make
+ * that claim by writing a string match.
+ */
+const LLM_NOTE_MARK = "real LLM";
+
+/** Everything that must be proved against a real endpoint, by either signal. */
+function needsRealModel(f) {
+  return f.kinds.includes("llm") || f.llmNote === true;
+}
+
+/** A record the product owner marked but whose `kinds` does not declare `llm`. */
+function noteWithoutKind(f) {
+  return f.llmNote === true && !f.kinds.includes("llm");
+}
 
 /* ---- helpers -------------------------------------------------------- */
 
@@ -73,13 +103,24 @@ function applyGate() {
  */
 function applyDescriptions(descriptions) {
   state.descOf = new Map();
+  state.descsOf = new Map();
   for (const d of descriptions) {
     for (const id of d.featureIds) {
       const cur = state.descOf.get(id);
       if (d.status === "draft" || cur === undefined) state.descOf.set(id, d.status);
+      const list = state.descsOf.get(id);
+      if (list) list.push(d);
+      else state.descsOf.set(id, [d]);
     }
   }
-  for (const f of state.features) f.desc = state.descOf.get(f.id) || "none";
+  for (const f of state.features) {
+    f.desc = state.descOf.get(f.id) || "none";
+    // Drafts first: the real-model view is for reading what is still being
+    // written, and a ready one is already settled.
+    const mine = (state.descsOf.get(f.id) || []).slice().sort((a, b) => (a.status === b.status ? 0 : a.status === "draft" ? -1 : 1));
+    state.descsOf.set(f.id, mine);
+    f.llmNote = mine.some((d) => d.body.includes(LLM_NOTE_MARK));
+  }
 }
 
 const DESC_LABEL = { draft: "draft", ready: "ready", none: "no description" };
@@ -100,7 +141,11 @@ function renderHeader() {
     `${state.features.length} features · ${n((f) => f.status === "untested" && !f.deferred)} untested · ` +
     `${n((f) => f.status === "partial")} partial · ${n((f) => f.status === "covered")} covered · ${n((f) => f.deferred)} deferred` +
     `${disagree ? ` · ${disagree} RECORD/FILE MISMATCH` : ""}` +
-    `   |   descriptions: ${n((f) => f.desc === "ready")} ready · ${n((f) => f.desc === "draft")} draft · ${n((f) => f.desc === "none")} missing`;
+    `   |   descriptions: ${n((f) => f.desc === "ready")} ready · ${n((f) => f.desc === "draft")} draft · ${n((f) => f.desc === "none")} missing` +
+    // Named in the header because these are the ones a plain `npm test` does
+    // not run: a count that only appears once you click into the view is a
+    // count you can forget exists.
+    `   |   ${n(needsRealModel)} need a real model`;
 }
 
 /* ---- left column ---------------------------------------------------- */
@@ -151,6 +196,40 @@ function renderDescNav() {
   }
 }
 
+/**
+ * The switch into the real-model view, and back out of it.
+ *
+ * Two rows rather than one toggle: a view you can enter and cannot obviously
+ * leave is the same fault the connection panel was fixed for, and "all
+ * features" being visibly the other choice costs one line.
+ */
+function renderLlmNav() {
+  const host = $("llm");
+  host.textContent = "";
+  const n = state.features.filter(needsRealModel).length;
+  const rows = [
+    ["features", "all features", state.features.length, ""],
+    ["llm", "needs a real model", n, "llmrow"],
+  ];
+  for (const [value, label, count, cls] of rows) {
+    const row = el("div", `row ${cls}${state.view === value ? " sel" : ""}`.trim());
+    row.append(el("span", null, label), el("span", "n", String(count)));
+    row.onclick = () => {
+      if (state.view === value) return;
+      state.view = value;
+      renderLlmNav(); // re-marks the selected row, and applies the view class
+      renderList();
+    };
+    host.append(row);
+  }
+  applyView();
+}
+
+/** The grid needs to know which view this is — the reading column is wider. */
+function applyView() {
+  document.body.classList.toggle("llm-view", state.view === "llm");
+}
+
 function fillSelect(select, values) {
   for (const v of values) select.append(new Option(v, v));
 }
@@ -161,6 +240,8 @@ function visible() {
   const { area, kind, status, fresh, desc } = state.filters;
   return state.features.filter(
     (f) =>
+      // The view narrows first, so ↑/↓ walk exactly what is on screen.
+      (state.view !== "llm" || needsRealModel(f)) &&
       (!area || f.area === area) &&
       (!kind || f.kinds.includes(kind)) &&
       (!status || f.status === status) &&
@@ -175,6 +256,8 @@ function descTag(f) {
 }
 
 function renderList() {
+  if (state.view === "llm") return renderLlmList();
+
   const host = $("list");
   host.textContent = "";
   const rows = visible();
@@ -206,6 +289,79 @@ function renderList() {
   }
 
   if (rows.length === 0) host.append(el("div", "note", "nothing matches these filters."));
+}
+
+/**
+ * The real-model view — every feature a scripted provider cannot prove, with
+ * its descriptions written out in full, drafts included.
+ *
+ * WHY THE BODIES ARE INLINE and not one click away, which is how the ordinary
+ * list works. These are the records that get read one after another rather than
+ * looked up: the question being asked of them is "is this the test I want
+ * written", and answering it 16 times through a detail panel is 16 round trips
+ * for the same answer. A draft is shown open for the same reason it exists — it
+ * is the one still being decided.
+ *
+ * Every write still goes through the detail panel. Nothing here edits, so
+ * nothing here can approve a directive by accident.
+ */
+function renderLlmList() {
+  const host = $("list");
+  host.textContent = "";
+  const rows = visible();
+
+  host.append(el("h2", null, `NEEDS A REAL MODEL — ${rows.length} shown`));
+  host.append(el("div", "llm-lede",
+    "A scripted provider answers what the script told it to, so it cannot prove anything whose subject is the model's own behaviour. " +
+    "These run only when asked for: npm run test:llm. A plain npm test reports them skipped and names every one."));
+
+  const mismatched = rows.filter(noteWithoutKind).length;
+  if (mismatched > 0) {
+    host.append(el("div", "llm-warn",
+      `${mismatched} of these carry a product-owner note saying a real model is required, while their record's kinds does not declare llm. ` +
+      `Kind decides the base class a test extends, so until the record says llm the test cannot be written as one — reconcile the two deliberately, not by assuming which is right.`));
+  }
+
+  for (const f of rows) {
+    const card = el("div", `feat llm-card ${f.status}${state.selected === f.id ? " sel" : ""}`);
+
+    // Only the title opens the detail panel. The rest of the card is a column
+    // of prose being read, and a click target that large turns "scroll past a
+    // checklist" into "the layout moved".
+    const line = el("div", "feat-head llm-open");
+    line.append(el("b", null, f.name), el("span", "sect", f.section));
+    line.title = "open this feature — description editing, dependencies and tests";
+    line.onclick = () => select(f.id);
+    card.append(line);
+
+    const tags = el("div", "tags");
+    tags.append(descTag(f));
+    for (const k of f.kinds) tags.append(tag(k, k === "llm" ? "kind-llm" : ""));
+    tags.append(tag(f.status, f.status));
+    if (f.deferred) tags.append(tag("deferred", "deferred"));
+    if (noteWithoutKind(f)) tags.append(tag("NOTE SAYS llm · RECORD DOES NOT", "stale"));
+    card.append(tags);
+
+    card.append(el("div", "llm-inv", f.invariant));
+
+    const descs = state.descsOf.get(f.id) || [];
+    if (descs.length === 0) {
+      card.append(el("div", "empty", "no description yet — nothing here says what to test, so nothing can be written."));
+    }
+    for (const d of descs) {
+      const box = el("div", `desc ${d.status}`);
+      box.append(descMeta(d));
+      box.append(renderDescBody(d.body));
+      card.append(box);
+    }
+
+    host.append(card);
+  }
+
+  if (rows.length === 0) {
+    host.append(el("div", "note",
+      "nothing needs a real model under these filters. A feature lands here when its record declares the llm kind, or a description says so."));
+  }
 }
 
 /** ↑/↓ through whatever the filters are currently showing; Esc closes. */
@@ -809,6 +965,7 @@ async function refresh() {
   renderHeader();
   renderAreas();
   renderDescNav();
+  renderLlmNav();
   renderList();
   renderGate();
   if (state.selected) select(state.selected);

@@ -23,6 +23,9 @@ change its meaning: it is superseded by a later record that names it.
 | [0004](0004-tests-inherit-on-kind.md) | The test class hierarchy and `tests/` layout |
 | [0005](0005-the-two-stage-gate.md) | Freshness and connection gating, and hard-block semantics |
 | [0006](0006-the-gateway-does-not-run-or-brief.md) | No run button and no agent brief; the implementing agent runs the tests |
+| [0007](0007-tests-are-discovered-not-declared.md) | A record's `status` is derived from the test files, not from its `tests` array |
+| [0008](0008-a-deferred-feature-may-still-be-proven.md) | `deferred` means "not required", not "not allowed" |
+| [0009](0009-real-model-tests-are-opt-in.md) | `llm` tests run only when asked for, and are counted as skipped when they are not |
 | [SPEC.md](SPEC.md) | The implementation specification |
 | [INVENTORY.md](INVENTORY.md) | Verified feature count, and the three gaps `FEATURES.md` has |
 | [inventory-notes/](inventory-notes/) | Per-area reading notes the inventory was built from |
@@ -34,8 +37,11 @@ Design settled 2026-09-09 over four grilling rounds. **`SPEC.md` §11 steps 1–
 gate is live and hard-blocking, dependencies resolve, descriptions are writable,
 and `npm run gateway` serves the lot. Step 8 (the runner) was withdrawn the same
 day by [0006](0006-the-gateway-does-not-run-or-brief.md), along with the agent
-brief: the coding agent that implements a description runs its tests. What
-remains is step 6 (the test class hierarchy, and with it `whyItExists`).
+brief: the coding agent that implements a description runs its tests. Step 6 —
+the test class hierarchy, and with it `whyItExists` — was built over
+2026-09-10/11 and completed on 2026-09-16, when `LlmTest` closed the last of the
+six kinds. It is the one kind a plain `npm test` does not run
+([0009](0009-real-model-tests-are-opt-in.md)).
 
 `SPEC.md` is the contract an implementer works from; if the implementation and
 the spec disagree, that is a bug in one of them, not a matter of taste.

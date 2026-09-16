@@ -12,9 +12,17 @@
  * real Engine, and only the Provider is a double.
  *
  * WHAT IS FAKED, AND WHAT THAT COSTS. `EngineOptions.providerFactory` exists
- * for exactly this, and `FakeProvider` is the repo's own scripted provider — no
- * test may call a real API. Everything else is the shipped code: the real
- * Session, the real settings object, the real registry, the real frame decoder.
+ * for exactly this, and `FakeProvider` is the repo's own scripted provider —
+ * nothing that reaches this harness calls a real API. Everything else is the
+ * shipped code: the real Session, the real settings object, the real registry,
+ * the real frame decoder.
+ *
+ * What a scripted provider CANNOT prove is anything whose subject is the
+ * model's own behaviour — whether a reminder changes the next turn, whether a
+ * compaction summary kept what the session needed. `FakeProvider` answers what
+ * the script told it to. That is the `llm` kind's business, and `llmTest.ts` is
+ * where a real endpoint is reached; this harness is deliberately not a route to
+ * one (decisions/0009).
  *
  * HOW THE TEST SEES INSIDE. Three of the four things `set_connection` must do
  * happen to state that never leaves this process — `process.env`, the in-memory

@@ -11,6 +11,7 @@ tests/
 │   ├── fsTest.ts                 kind: a temp workspace, a redirectable HOME
 │   ├── procTest.ts               kind: spawns a real process, owns its life
 │   ├── netTest.ts                kind: a real server on 127.0.0.1, closed after
+│   ├── llmTest.ts                kind: a real model, on the connection this folder names
 │   ├── uiTest.ts                 kind: runs the real desktop app under Electron
 │   ├── childProcesses.ts         the kill-the-tree guarantee the kinds share
 │   ├── localServer.ts            the far end of a socket, for net and ui alike
@@ -30,7 +31,8 @@ tests/
 ## Running them
 
 ```
-npm test              # node --test --test-concurrency=1 "tests/features/**/*.test.ts"
+npm test              # every kind except llm; real-model tests report skipped
+npm run test:llm      # the same suite, with the real-model tests too
 npm run typecheck:tests
 ```
 
@@ -86,9 +88,12 @@ its ticked boxes had no assertion behind them. The inventory in
 `gateway/features/` is the backlog, and it is verified against the source rather
 than against `FEATURES.md`.
 
-`lib/` is SPEC §11 step 6: the base plus the `pure`, `fs`, `proc`, `net` and
-`ui` kinds. `llm` is not written — no feature has yet needed a real model to
-prove, and several that declared one did not (see *kinds are a claim* below).
+`lib/` is SPEC §11 step 6: the base plus all six kinds. `llm` was written last
+(2026-09-16), when the product owner went through the engine descriptions
+marking the ones a scripted provider cannot prove — *no mockup or scaffold test
+for this*. It is the one kind `npm test` does not run; see *Real-model tests are
+opt-in* below. Several records that declared `llm` did not need it (see *kinds
+are a claim*), and one that needs it does not declare it.
 
 **Every approved description is implemented: 28 features, 101 tests** — 45
 `ui`, 30 `pure`, 17 `proc`, 8 `fs`, 1 `net`.
@@ -127,6 +132,33 @@ test written for one. SPEC §2.1 says only that such a feature "carries no test
 expectation" and "never counts against coverage"; it does not forbid a test. All
 nine are now proven, through the real page in a real app. See
 [`../decisions/0008`](../decisions/0008-a-deferred-feature-may-still-be-proven.md).
+
+**Real-model tests are opt-in, and counted as skipped.** `llm` is the one kind
+`npm test` does not run: it calls a real endpoint, costs tokens per turn, and
+can fail for a provider's reasons rather than for a defect here. It runs when
+asked for, and only then:
+
+```
+npm test           every other kind. Each real-model test is reported skipped,
+                   named, with the command that runs it printed on stderr.
+npm run test:llm   the same suite, with the real-model tests too.
+```
+
+`MAGENTRA_LLM_TESTS=1` is the contract — CI or a bare `node --test` can set it
+directly. The script ALSO works through `npm_lifecycle_event`, because
+`MAGENTRA_LLM_TESTS=1 node …` is sh syntax and npm runs scripts through
+`cmd.exe` on Windows, where it is not an assignment but a missing command; see
+[`../decisions/0009`](../decisions/0009-real-model-tests-are-opt-in.md).
+
+**This is not rule 4's skip, and the first attempt at it was worse.** Not
+registering a withheld test looks stricter and is the opposite: `node:test`
+reports a file that registers NO tests as one PASSING test — the file itself, so
+three withheld tests printed `tests 1 · pass 1` with nothing behind it. Measured,
+then changed. Registering with `{ skip }` counts them as `pass 0 · skipped 1`,
+each named with its reason. Rule 4 forbids a test quieting *itself*, which is
+enforced by `run()` never receiving a `skip`; this decision is made once in the
+registrar, before any body exists, from a question answered on the command line.
+A real-model test you DID ask for has no escape hatch at all.
 
 **A `ui` test needs a display.** macOS and Windows have one; Linux and CI need
 `xvfb-run`, exactly as the app's own smoke job already does. A `proc` or `ui`
@@ -212,7 +244,7 @@ What the base enforces, by mechanism rather than by reminder:
 | Rule | How |
 | --- | --- |
 | every test names its record, invariant and `whyItExists` | abstract members — a test missing one does not compile |
-| no skip, no soft assert, no expected-failure | `run()` is handed a narrowed `TestRun`, which has no `skip`, `todo` or `plan` |
+| no skip, no soft assert, no expected-failure | `run()` is handed a narrowed `TestRun`, which has no `skip`, `todo` or `plan`. The registrar's own `skip`, for a real-model test nobody asked for, is decided before any body exists and cannot be reached from one |
 | **a test asserts something** | `run()` uses the counted `t.assert` it is given; a run that asserts nothing fails, naming the 28 boxes |
 | a test agrees with its record | its kind must be one the record declares, its `invariant` must match verbatim, and its id must be listed in the record's `tests` |
 | a `pure` test really is pure | the environment and working directory are snapshotted and compared; a test that leaks either fails, because the next test in the process inherits it and fails somewhere else |
@@ -255,7 +287,9 @@ Design and rationale: [`../decisions/`](../decisions/). Read
    `llm` / `ui` decide setup, teardown, and whether the test can run at all.
 3. **Every test states `whyItExists`** — the failure it would have caught.
 4. **A failing test stays failing until the feature is fixed correctly.** No
-   skip, no soft assertion, no expected-failure state.
+   skip, no soft assertion, no expected-failure state. The one `skip` in the
+   suite is the registrar's, for an `llm` test nobody asked for; it is decided
+   before any test body exists and no test can reach it (decisions/0009).
 5. **The suite must run without the gateway.** `npm test` imports nothing from
    `tools/magentra-gateway/` — `lib/inventory.ts` reads the committed records
    with `readFileSync` for exactly this reason. A broken tool must never mean no
@@ -263,7 +297,10 @@ Design and rationale: [`../decisions/`](../decisions/). Read
    `node --test tests/`.)
 6. **Stale blocks everything.** If any record's entry files have changed since
    the record was last reviewed, no test runs until it is reconciled.
-7. **No connection, no run** — whether or not the test involves a model.
+7. **No connection, no run** — whether or not the test involves a model. An
+   `llm` test that gets as far as running says so loudly rather than passing
+   against nothing: it resolves the connection this folder names and throws when
+   there is none.
 
 ## The 164 records
 

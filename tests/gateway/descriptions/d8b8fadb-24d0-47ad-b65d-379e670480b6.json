@@ -1,0 +1,10 @@
+{
+  "id": "d8b8fadb-24d0-47ad-b65d-379e670480b6",
+  "featureIds": [
+    "bounded-runs-stay-bounded"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-16T07:13:19.217Z",
+  "updatedAt": "2026-09-16T07:13:19.217Z",
+  "body": "sub agent mechanism isn't ready and has to be improved first"
+}

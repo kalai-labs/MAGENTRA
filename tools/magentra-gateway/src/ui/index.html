@@ -24,6 +24,13 @@
     <!-- The tracking view: ready / draft / missing, each a click away. -->
     <h2>TEST DESCRIPTIONS</h2>
     <div id="descs"></div>
+    <!--
+      The real-model view, apart from the rest. These are the tests a scripted
+      provider cannot prove, and they are the ones `npm test` does not run —
+      so they need somewhere to be read that is not "the list, filtered".
+    -->
+    <h2>REAL-MODEL TESTS</h2>
+    <div id="llm"></div>
     <h2>AREAS</h2>
     <div id="areas"></div>
     <h2>FILTERS</h2>

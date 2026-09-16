@@ -4,15 +4,17 @@ Status: **§11 steps 1–5, 7 and 9 implemented 2026-09-09. Step 6 built
 2026-09-10/11 — `tests/lib` carries the base and the `pure`, `fs`, `proc`, `net`
 and `ui` kinds; the gateway discovers what `tests/features/` holds; EVERY
 approved description is implemented — 28 features, 101 tests, each verified by
-mutation. `llm` is unwritten: no feature has needed a real model to prove. Step
-8 (runner) withdrawn.**
+mutation. `llm` completed the hierarchy on 2026-09-16 and is OPT-IN — `npm test`
+reports those skipped, `npm run test:llm` runs them
+([0009](0009-real-model-tests-are-opt-in.md)). Step 8 (runner) withdrawn.**
 Decisions: [0001](0001-the-gateway-is-the-inventory.md) ·
 [0002](0002-the-gateway-is-typescript-in-process.md) ·
 [0003](0003-storage-is-committed-json-per-feature.md) ·
 [0004](0004-tests-inherit-on-kind.md) ·
 [0005](0005-the-two-stage-gate.md) ·
 [0007](0007-tests-are-discovered-not-declared.md) ·
-[0008](0008-a-deferred-feature-may-still-be-proven.md)
+[0008](0008-a-deferred-feature-may-still-be-proven.md) ·
+[0009](0009-real-model-tests-are-opt-in.md)
 
 If this document and the implementation disagree, one of them is a bug. Read the
 decision records first; they carry the *why*, and this document deliberately
@@ -182,11 +184,20 @@ Subclass responsibilities:
 | `FsTest` | a temp workspace per test, removed on teardown even on throw |
 | `ProcTest` | child process lifecycle; kill on teardown; no orphans |
 | `NetTest` | network, no model |
-| `LlmTest` | a resolved profile; may assume §4.2 already passed |
+| `LlmTest` | a resolved profile, a temp workspace, and the single drain of `Engine.events`. It does NOT assume §4.2 passed — it resolves the connection and throws when there is none |
 | `UiTest` | an Electron process, headless flags, teardown |
 
 No skip. No soft assert. No expected-failure state. A failing test stays failing
 until the feature is fixed.
+
+`llm` is the one kind that does not run on a plain `npm test`
+([0009](0009-real-model-tests-are-opt-in.md)): a real endpoint costs tokens and
+needs a connection this repository does not carry. `registerFeatureTests`
+registers those with `{ skip }` unless `MAGENTRA_LLM_TESTS` (or `npm run
+test:llm`) asked for them, so they are counted as skipped and never as passed —
+NOT left unregistered, which `node:test` reports as one passing test per file.
+The decision is the registrar's, made before any test body exists; nothing in
+`run()` can reach it, so the rule above is untouched.
 
 ---
 
@@ -330,7 +341,12 @@ cache invalidates on exactly the event that could make an answer wrong.
 The gateway does not run tests
 ([0006](0006-the-gateway-does-not-run-or-brief.md)). The coding agent that
 implements a description runs them as the mandatory last step of that work, and
-CI runs them the same way: `node --test tests/`, standalone, no gateway.
+CI runs them the same way: `npm test`, standalone, no gateway.
+
+`npm run test:llm` is the same suite with the real-model tests included
+([0009](0009-real-model-tests-are-opt-in.md)). The gateway shows WHICH tests need
+a model — the REAL-MODEL TESTS view in §9 — and the command. It does not hold the
+switch, and there is no route that sets it.
 
 ---
 
@@ -402,6 +418,21 @@ Rules the layout must enforce:
   `tests/gateway/descriptions/`, where a coding agent reads it (§8). `save`
   and `mark ready` are separate buttons, and saving an edit can never change
   `status` — §2.2's rule made structural rather than remembered.
+- **The real-model tests get a view of their own, not a filter.** `llm` is the
+  one kind `npm test` does not run ([0009](0009-real-model-tests-are-opt-in.md)),
+  so the nav carries `all features` / `needs a real model`, the header counts
+  them, and the view writes each feature's descriptions out IN FULL, drafts
+  included — these are records read one after another to decide whether they are
+  the test you want written, and answering that 16 times through a detail panel
+  is 16 round trips for one answer. The list column takes the wide slot there;
+  a checklist wrapped into a 340px gutter is a checklist nobody reads.
+
+  It lists BOTH signals and reconciles neither: a record whose `kinds` declares
+  `llm`, and a description carrying the product owner's real-model note. Where
+  they disagree the view says so and names the count. Kind decides the base
+  class a test extends, so re-declaring one is a claim about what proving the
+  feature requires — not something a string match settles.
+
 - **Ready is set apart, in three places that agree.** The nav counts
   `draft / ready / missing` and each is a filter; a ready description is folded
   shut at the bottom of the detail, never mixed with the draft; and the file
@@ -443,8 +474,11 @@ Not in v1. Recorded so they are not mistaken for oversights.
    descriptions are implemented: `a-connection-change-re-points-the-live-session`
    (7 tests, `proc` + `ui`) and `a-404-on-models-is-disambiguated-not-assumed`
    (5 tests, `pure`), each verified by breaking the feature and confirming the
-   right test failed. Outstanding: the `fs` / `net` / `llm` kinds, each best
-   written against the first test that needs it.
+   right test failed. The `fs` and `net` kinds followed;
+   `llm` completed the hierarchy on 2026-09-16, opt-in per
+   [0009](0009-real-model-tests-are-opt-in.md).
+   Outstanding: the first real-model test itself, and the one record whose
+   product-owner note and declared `kinds` disagree (`circular-check-floor`).
 
    **A record's `kinds` is a claim about what proving the feature requires, and
    one was wrong.** `a-404-on-models-is-disambiguated-not-assumed` was seeded

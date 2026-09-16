@@ -424,6 +424,80 @@ kbd {
 .empty .file::before { content: "\21b3  "; }
 .empty > b { display: block; margin-bottom: 2px; }
 
+/* ---- the real-model view -------------------------------------------- */
+
+/*
+ * Warn-coloured, not accent-coloured. These are the tests `npm test` does not
+ * run, and the colour rule at the top of this file applies: a gap the UI draws
+ * in a comfortable colour is a gap nobody closes.
+ */
+nav .row.llmrow.sel { box-shadow: inset 2px 0 0 var(--warn); }
+nav .row.llmrow .n { color: var(--warn); }
+
+/*
+ * The list column is sized for one-line rows (340px at most). This view reads
+ * whole descriptions inside it, and a TEST CHECKLIST wrapped into a 340px
+ * gutter is the reason nobody reads it — so here the list takes the wide
+ * column, and the detail panel appears beside it only once something is
+ * selected.
+ *
+ * Confined to wide windows on purpose. Under 1240px the layout is already
+ * one-column-at-a-time with its own rules, and a second opinion about the grid
+ * would fight them — a media query adds no specificity, so these selectors
+ * would have won that fight and broken the narrow case.
+ */
+@media (min-width: 1241px) {
+  body.llm-view main { grid-template-columns: 190px minmax(320px, 1fr) minmax(0, 1fr) 330px; }
+  body.llm-view:not(.detail-open) #detail { display: none; }
+  body.llm-view:not(.detail-open) main { grid-template-columns: 190px minmax(0, 1fr) 330px; }
+}
+
+.llm-lede {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  margin: -2px 0 10px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+}
+
+.llm-warn {
+  margin: 0 0 10px;
+  padding: 7px 9px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #f7d88b;
+  border: 1px solid var(--warn);
+  border-radius: 3px;
+  background: #241c07;
+}
+
+/*
+ * Wider than a list row, because the whole description is read inside it — and
+ * NOT a click target, for the same reason. `.feat` is a row you pick; this is a
+ * page you read, so the pointer and the hover flash are cancelled and the title
+ * line carries them instead.
+ */
+.feat.llm-card { padding: 10px 12px; margin-bottom: 10px; border-left-width: 3px; cursor: default; }
+.feat.llm-card:hover { background: var(--panel); }
+.feat.llm-card .tags { margin-bottom: 6px; }
+.feat.llm-card .desc.ready { opacity: 1; }
+.feat.llm-card .empty { margin: 4px 0 0; }
+
+/* Full width, so `.sect` keeps the right-alignment it has everywhere else;
+ * one line tall, so it is still a small target next to the card it sits on. */
+.feat-head.llm-open { cursor: pointer; }
+.feat-head.llm-open:hover b { color: var(--accent); text-decoration: underline; }
+
+.llm-inv {
+  margin: 2px 0 8px;
+  color: #c8cedb;
+  border-left: 2px solid var(--line);
+  padding-left: 8px;
+}
+
+.tag.kind-llm { color: var(--warn); border-color: var(--warn); background: #241c07; }
+
 /* ---- descriptions --------------------------------------------------- */
 
 .desc {

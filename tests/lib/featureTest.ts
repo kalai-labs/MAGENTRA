@@ -39,6 +39,11 @@
  * initializers in a subclass run after the base constructor returns, so a
  * constructor here would read `undefined` for every one of them. Registration
  * time is the first moment a test is fully built.
+ *
+ * THE ONE KIND THAT IS OPT-IN (decisions/0009). `llm` tests call a real model:
+ * they cost tokens and can fail for a provider's reasons rather than this
+ * repository's. They are withheld unless {@link realModelTestsEnabled}, and
+ * WITHHELD IS NOT SKIPPED — see {@link registerFeatureTests}.
  */
 
 import { test } from "node:test";
@@ -205,14 +210,81 @@ export function inventoryLinkageProblems(t: FeatureTest, record: FeatureRecordSu
 }
 
 /**
+ * The environment variable that turns the real-model tests on.
+ *
+ * An ENVIRONMENT VARIABLE and not a file, deliberately (decisions/0009): the
+ * opt-in belongs to one run, not to the repository. A checked-in flag would
+ * turn real API calls on for everyone who pulled it — including CI, which has
+ * no connection and would go red for a reason that is nobody's defect.
+ */
+export const LLM_OPT_IN_VAR = "MAGENTRA_LLM_TESTS";
+
+/** Values that mean "yes" in an environment variable, spelled the ways people spell it. */
+const TRUTHY = new Set(["1", "true", "yes", "on"]);
+
+/** The npm script that exists for no other purpose than running these. */
+const OPT_IN_SCRIPT = "test:llm";
+
+/**
+ * Whether the user asked for the real-model tests in THIS run.
+ *
+ * `npm test` does not ask, so the default stays: every kind that can prove
+ * itself locally runs, and the one that needs a real endpoint waits to be
+ * asked.
+ *
+ * TWO SIGNALS, ONE QUESTION. The variable is the contract — anything can set
+ * it, including CI and a single `node --test` invocation with no npm in front
+ * of it. `npm_lifecycle_event` is the second, and it is what makes
+ * `npm run test:llm` work on all three platforms: the obvious spelling,
+ * `"test:llm": "MAGENTRA_LLM_TESTS=1 node --test …"`, is sh syntax, and npm
+ * runs scripts through `cmd.exe` on Windows, where it is not a variable
+ * assignment but a command named `MAGENTRA_LLM_TESTS=1` that does not exist.
+ * The alternatives were a `cross-env` dependency or a wrapper script that
+ * spawns the runner; npm already exports the name of the script it is running,
+ * to every child of it, on every platform, so neither was worth adding.
+ */
+export function realModelTestsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (TRUTHY.has((env[LLM_OPT_IN_VAR] ?? "").trim().toLowerCase())) return true;
+  return env["npm_lifecycle_event"] === OPT_IN_SCRIPT;
+}
+
+/**
  * Register tests with `node:test` — the one way a `tests/features/*.test.ts`
  * file turns its classes into runnable tests.
  *
  * The name is `<featureId> · <test id>`, so `--test-name-pattern` filters by
  * feature the same way the gateway does.
+ *
+ * A WITHHELD TEST IS REGISTERED AND MARKED SKIPPED, and the first attempt at
+ * this got it backwards. Not registering the test at all looks like the purer
+ * answer — nothing registered cannot read green — and it is the opposite: a
+ * file that registers NOTHING is reported by `node:test` as one passing test,
+ * the file itself. A run of three real-model tests then printed
+ * `tests 1 · pass 1` with not one assertion behind it, which is precisely the
+ * ticked box with nothing behind it that the 2026-09-09 reset removed. Measured,
+ * not reasoned about.
+ *
+ * Registering with `{ skip }` counts them where they belong — `pass 0`,
+ * `skipped 3`, each one named in the reporter with its reason. That is the
+ * honest number.
+ *
+ * This is NOT the skip tests/README rule 4 forbids. That rule is about a test
+ * quieting ITSELF: `run()` is handed a {@link TestRun} with no `skip`, `todo`
+ * or `plan`, so a failing test can never be talked out of failing from the
+ * inside. Nothing here can reach that. The decision is made once, before any
+ * test body exists, from the one question the user answered on the command
+ * line — and a real-model test the user DID ask for has no escape hatch at all.
+ *
+ * {@link announceWithheld} adds the part a reporter line cannot: the command
+ * that runs them. The gateway's REAL-MODEL TESTS view is the durable half of
+ * the same answer — making the absence of a test visible and specific is what
+ * that tool is for.
  */
 export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
   const seen = new Map<string, string>();
+  const withheld: FeatureTest[] = [];
+  const enabled = realModelTestsEnabled();
+
   for (const t of tests) {
     const key = `${t.featureId}/${t.id}`;
     const dupe = seen.get(key);
@@ -220,12 +292,48 @@ export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
       throw new Error(`two tests registered as "${key}" — a test id is unique within its feature, and the record's "tests" array cannot list one twice`);
     }
     seen.set(key, key);
+
+    // The duplicate check runs FIRST, so two tests colliding on one id is still
+    // a loud error in a run that was not going to execute either of them.
+    if (t.kind === "llm" && !enabled) {
+      withheld.push(t);
+      registerOne(t, `needs a real model — not run without ${LLM_OPT_IN_VAR}. Run: npm run test:llm`);
+      continue;
+    }
     registerOne(t);
   }
+
+  if (withheld.length > 0) announceWithheld(withheld);
 }
 
-function registerOne(t: FeatureTest): void {
-  test(`${t.featureId} · ${t.id}`, { timeout: t.timeoutMs }, async (ctx) => {
+/**
+ * Say, on stderr, exactly which real-model tests this run did not execute.
+ *
+ * stderr rather than stdout because stdout is where the test reporter's own
+ * stream lives, and a line that looks like part of a TAP or spec report is a
+ * line that reads as a result. This is not a result; it is the absence of one.
+ */
+function announceWithheld(withheld: readonly FeatureTest[]): void {
+  const lines = [
+    "",
+    `  ┌─ ${withheld.length} real-model test${withheld.length === 1 ? "" : "s"} NOT RUN in this session`,
+    ...withheld.map((t) => `  │  ${t.featureId} · ${t.id}`),
+    `  │`,
+    `  │  These need a real model — a scripted provider cannot prove them.`,
+    `  │  Run them with:  npm run test:llm   (or ${LLM_OPT_IN_VAR}=1)`,
+    `  └─ They are counted as skipped, never as passed.`,
+    "",
+  ];
+  process.stderr.write(`${lines.join("\n")}\n`);
+}
+
+/**
+ * @param skip - present only for a real-model test the user did not ask for.
+ * It is the ONE reason a body here does not run, it is decided before the body
+ * exists, and no test can set it for itself — see {@link registerFeatureTests}.
+ */
+function registerOne(t: FeatureTest, skip?: string): void {
+  test(`${t.featureId} · ${t.id}`, { timeout: t.timeoutMs, ...(skip !== undefined ? { skip } : {}) }, async (ctx) => {
     // Rule 3 first: a test that disagrees with its record has nothing to prove
     // yet, and running it would report on a feature the record no longer
     // describes. The plain `baseAssert` here is uncounted on purpose — passing
