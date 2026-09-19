@@ -115,7 +115,7 @@ decoder, `/name` announced an addon as loaded even when the engine was busy
 and refused the turn, and an unknown command was echoed with a doubled slash.
 Phase 2 found and fixed two more, each inside the record's own entry file: the
 symbol index recorded every TypeScript declaration that follows a blank line
-one line too early (`^s*` let the export regex start its match on the line
+one line too early (`^\s*` let the export regex start its match on the line
 above), and Prompt Lab's `/api/reset-all` echoed a `changed` event per cleared
 prompt to the page it had just told to reset everything. Two checklist clauses
 are withheld until their records are reconciled, because the approved spec and
