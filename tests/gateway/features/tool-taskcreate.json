@@ -5,14 +5,20 @@
   "section": "Tools",
   "prose": "Adds a task so the user can follow progress. Built in logically feasible order.",
   "kinds": [
-    "pure"
+    "fs"
   ],
   "entryFiles": [
     "engine/tools/src/tasks.ts"
   ],
   "invariant": "A created task lands in the session list with its dependency edges intact.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-created-task-is-pending-with-a-numeric-id-and-empty-edges",
+    "a-dependency-added-to-one-task-appears-on-the-other-side-too",
+    "a-create-emits-task-list-updated-and-lands-in-the-tasks-file",
+    "activeform-and-metadata-are-stored-when-given-and-absent-otherwise",
+    "a-second-store-over-the-same-session-reloads-the-task-and-the-next-id"
+  ],
   "freshness": {
     "hash": "77a380779a3e9d01",
     "fileHashes": {
