@@ -12,7 +12,14 @@
   ],
   "invariant": "Configured hooks run at their event and their outcome reaches the turn.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-event-payload-reaches-the-hooks-stdin-and-a-matcher-keeps-the-wrong-tool-out",
+    "exit-2-is-a-block-with-its-stderr-as-the-reason-and-exit-0-is-context",
+    "a-hook-that-never-exits-is-killed-and-one-that-cannot-be-spawned-reports-127",
+    "a-pretooluse-hook-exiting-2-stops-the-tool-before-it-runs-and-the-model-is-told-why",
+    "a-stop-hook-exiting-2-pushes-its-reason-and-buys-one-more-model-turn",
+    "a-sessionstart-hooks-stdout-becomes-a-system-reminder-the-model-sees"
+  ],
   "freshness": {
     "hash": "75577a14d6f6c37c",
     "fileHashes": {
