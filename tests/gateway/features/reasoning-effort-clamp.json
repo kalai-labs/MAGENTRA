@@ -5,7 +5,8 @@
   "section": "Protocol & host",
   "prose": "One vocabulary of seven levels for every provider, each mapping onto its own knob.",
   "kinds": [
-    "pure"
+    "pure",
+    "net"
   ],
   "entryFiles": [
     "engine/protocol/src/types.ts",
@@ -13,7 +14,13 @@
   ],
   "invariant": "A level the endpoint does not have maps to the nearest one it does; a request is never refused over a level and never silently sent with the wrong one.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-rejected-level-above-high-lowers-the-ceiling-one-rung-at-a-time",
+    "a-rejected-level-below-high-raises-the-floor-and-off-is-handled-on-its-own",
+    "a-refused-high-or-an-unknown-field-drops-the-setting-for-good",
+    "describe-says-what-was-sent-only-when-it-differs-from-what-was-chosen",
+    "a-400-over-max-is-answered-with-one-retry-at-xhigh-and-the-turn-completes"
+  ],
   "freshness": {
     "hash": "7877495829318388",
     "fileHashes": {
