@@ -13,7 +13,13 @@
   ],
   "invariant": "The Addon tool returns the body, substitutes $ARGUMENTS or appends args, and errors with the real roster on an unknown name.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "every-arguments-placeholder-in-the-body-is-replaced-with-the-args",
+    "without-a-placeholder-args-are-appended-as-an-arguments-line-and-omitted-args-add-nothing",
+    "an-unknown-addon-is-an-error-naming-the-installed-addons-or-none-installed",
+    "the-content-opens-with-the-invocation-header-naming-the-addon",
+    "a-directory-addons-resources-are-listed-in-a-reminder-and-a-flat-addon-has-no-such-block"
+  ],
   "freshness": {
     "hash": "86ae0d4310b652fa",
     "fileHashes": {
