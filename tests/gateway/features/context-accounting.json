@@ -5,7 +5,8 @@
   "section": "Runtime — the turn loop",
   "prose": "`contextTokens` (`B(t)`) is the *last* request's whole INPUT (input + cacheWrite + cacheRead). Point-in-time: it does NOT accumulate across rounds, and generated output is NOT part of it. Only the root conversation's window is measured — a subagent's context never overwrites it.",
   "kinds": [
-    "pure"
+    "pure",
+    "fs"
   ],
   "entryFiles": [
     "engine/protocol/src/tokens.ts",
@@ -13,7 +14,13 @@
   ],
   "invariant": "contextTokens is the last request's whole INPUT, point-in-time: it never accumulates and never includes output.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "inputtokensof-adds-the-three-input-classes-and-excludes-output",
+    "a-second-response-replaces-the-context-figure-instead-of-adding-to-it",
+    "an-all-zero-usage-leaves-the-last-known-context-in-place",
+    "a-non-conversational-call-banks-its-usage-without-touching-the-context-figure",
+    "a-subagents-response-banks-its-usage-without-moving-the-root-sessions-context"
+  ],
   "freshness": {
     "hash": "ee2fa511c9bacff7",
     "fileHashes": {
