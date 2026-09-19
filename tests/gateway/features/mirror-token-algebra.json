@@ -13,7 +13,13 @@
   ],
   "invariant": "estimateTokens and formatTokens produce identical output in the renderer and the protocol.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "estimatetokens-agrees-on-numbers-and-strings",
+    "formattokens-agrees-across-every-band",
+    "negative-input-is-zero-on-both-sides-and-the-undefined-guard-is-the-renderers",
+    "chars-per-token-is-3-5-on-both-sides",
+    "the-9950-boundary-goes-straight-from-9-9k-to-10k"
+  ],
   "freshness": {
     "hash": "58cdc372bc4ac58e",
     "fileHashes": {
