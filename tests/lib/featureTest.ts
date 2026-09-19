@@ -127,6 +127,18 @@ export abstract class FeatureTest {
   /** Fixed by the kind subclass. Must be one the record declares. */
   abstract readonly kind: Kind;
 
+  /**
+   * True on a test that needs a PACKAGED app — one that runs the real
+   * packager and launches, or inspects, what it produced. Withheld unless
+   * {@link realArtifactTestsEnabled}, exactly as `llm` is (decisions/0010).
+   *
+   * A MEMBER AND NOT A SEVENTH KIND. Kind is a claim about what setup and
+   * teardown a proof requires, and packaging is not one of those — it is a
+   * cost. These tests keep the kind their proof actually needs and this flag
+   * says only that the proof is expensive enough to be asked for.
+   */
+  readonly artifact: boolean = false;
+
   /** Per-test limit. A kind that spawns or waits on I/O may raise it. */
   readonly timeoutMs: number = 30_000;
 
@@ -249,6 +261,33 @@ export function realModelTestsEnabled(env: NodeJS.ProcessEnv = process.env): boo
 }
 
 /**
+ * The environment variable that turns the packaged-artifact tests on.
+ *
+ * The same shape as {@link LLM_OPT_IN_VAR}, for the same reason and by the
+ * same decision extended (decisions/0010): building an installer takes
+ * minutes, holds `lib/exclusive.ts`'s lock for the whole of it, and writes
+ * hundreds of megabytes. That belongs to a run somebody asked for, not to
+ * the repository and not to CI.
+ */
+export const ARTIFACT_OPT_IN_VAR = "MAGENTRA_ARTIFACT_TESTS";
+
+/** The npm script that exists for no other purpose than running these. */
+const ARTIFACT_OPT_IN_SCRIPT = "test:artifacts";
+
+/**
+ * Whether the user asked for the packaged-artifact tests in THIS run.
+ *
+ * Two signals and one question, for the reason spelled out on
+ * {@link realModelTestsEnabled}: `MAGENTRA_ARTIFACT_TESTS=1 node …` is sh
+ * syntax and npm runs scripts through `cmd.exe` on Windows, so the script
+ * NAME is the second way of asking and the one `npm run` uses.
+ */
+export function realArtifactTestsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (TRUTHY.has((env[ARTIFACT_OPT_IN_VAR] ?? "").trim().toLowerCase())) return true;
+  return env["npm_lifecycle_event"] === ARTIFACT_OPT_IN_SCRIPT;
+}
+
+/**
  * Register tests with `node:test` — the one way a `tests/features/*.test.ts`
  * file turns its classes into runnable tests.
  *
@@ -283,7 +322,9 @@ export function realModelTestsEnabled(env: NodeJS.ProcessEnv = process.env): boo
 export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
   const seen = new Map<string, string>();
   const withheld: FeatureTest[] = [];
+  const withheldArtifacts: FeatureTest[] = [];
   const enabled = realModelTestsEnabled();
+  const artifactsEnabled = realArtifactTestsEnabled();
 
   for (const t of tests) {
     const key = `${t.featureId}/${t.id}`;
@@ -300,10 +341,21 @@ export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
       registerOne(t, `needs a real model — not run without ${LLM_OPT_IN_VAR}. Run: npm run test:llm`);
       continue;
     }
+
+    if (t.artifact && !artifactsEnabled) {
+      withheldArtifacts.push(t);
+      registerOne(t, `needs a packaged app — not run without ${ARTIFACT_OPT_IN_VAR}. Run: npm run test:artifacts`);
+      continue;
+    }
     registerOne(t);
   }
 
-  if (withheld.length > 0) announceWithheld(withheld);
+  if (withheld.length > 0) {
+    announceWithheld(withheld, "real-model", "a scripted provider cannot prove them", LLM_OPT_IN_VAR, "npm run test:llm");
+  }
+  if (withheldArtifacts.length > 0) {
+    announceWithheld(withheldArtifacts, "packaged-artifact", "they need the real installer, built and launched", ARTIFACT_OPT_IN_VAR, "npm run test:artifacts");
+  }
 }
 
 /**
@@ -313,14 +365,20 @@ export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
  * stream lives, and a line that looks like part of a TAP or spec report is a
  * line that reads as a result. This is not a result; it is the absence of one.
  */
-function announceWithheld(withheld: readonly FeatureTest[]): void {
+function announceWithheld(
+  withheld: readonly FeatureTest[],
+  what: string,
+  why: string,
+  optInVar: string,
+  command: string,
+): void {
   const lines = [
     "",
-    `  ┌─ ${withheld.length} real-model test${withheld.length === 1 ? "" : "s"} NOT RUN in this session`,
+    `  ┌─ ${withheld.length} ${what} test${withheld.length === 1 ? "" : "s"} NOT RUN in this session`,
     ...withheld.map((t) => `  │  ${t.featureId} · ${t.id}`),
     `  │`,
-    `  │  These need a real model — a scripted provider cannot prove them.`,
-    `  │  Run them with:  npm run test:llm   (or ${LLM_OPT_IN_VAR}=1)`,
+    `  │  Withheld because ${why}.`,
+    `  │  Run them with:  ${command}   (or ${optInVar}=1)`,
     `  └─ They are counted as skipped, never as passed.`,
     "",
   ];

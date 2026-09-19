@@ -19,6 +19,8 @@
     "test": "node --test --test-concurrency=1 \"tests/features/**/*.test.ts\"",
     "//test:llm": "NOT a duplicate of `test` — the command is identical on purpose. The opt-in signal is the script NAME: npm exports it as npm_lifecycle_event to every child, which realModelTestsEnabled() in tests/lib/featureTest.ts reads. `MAGENTRA_LLM_TESTS=1` in front of it is sh syntax and would not work under cmd.exe on Windows. See decisions/0009.",
     "test:llm": "node --test --test-concurrency=1 \"tests/features/**/*.test.ts\"",
+    "//test:artifacts": "Same shape as test:llm and for the same reason: the script NAME is the opt-in, read by realArtifactTestsEnabled() in tests/lib/featureTest.ts. These build a real installer and launch what it produced, which takes minutes and holds the exclusive lock. See decisions/0010.",
+    "test:artifacts": "node --test --test-concurrency=1 \"tests/features/**/*.test.ts\"",
     "app": "npm start --workspace app",
     "prompt-lab": "node tools/prompt-lab/server.mjs",
     "gateway": "tsx tools/magentra-gateway/src/cli.ts",
