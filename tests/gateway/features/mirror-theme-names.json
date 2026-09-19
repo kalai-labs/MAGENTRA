@@ -5,7 +5,7 @@
   "section": "Mirrored constants",
   "prose": "An index-based mismatch applies the wrong theme.",
   "kinds": [
-    "pure"
+    "ui"
   ],
   "entryFiles": [
     "app/main/config.js",
@@ -13,7 +13,12 @@
   ],
   "invariant": "The theme list and its order match between main and the renderer.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "main-and-the-renderer-list-the-same-themes-in-the-same-order",
+    "mains-default-theme-is-the-renderers-default-theme",
+    "every-theme-has-a-title-bar-colour-entry",
+    "an-unknown-theme-resets-to-the-default-in-main-and-in-the-renderer"
+  ],
   "freshness": {
     "hash": "4be17a7c2f15b47b",
     "fileHashes": {
