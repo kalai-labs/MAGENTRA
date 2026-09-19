@@ -5,7 +5,8 @@
   "section": "Mirrored constants",
   "prose": "When they disagreed, the app accepted a keyless http://192.168.1.20:1234/v1 and the engine then refused to boot with \"No API key found\".",
   "kinds": [
-    "pure"
+    "pure",
+    "fs"
   ],
   "entryFiles": [
     "engine/core/src/config/providerFactory.ts",
@@ -13,7 +14,13 @@
   ],
   "invariant": "isLocalBaseUrl decides identically in both halves for loopback, .local, the private ranges and host.docker.internal.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "loopback-lan-and-docker-addresses-are-local-on-both-sides",
+    "hosted-and-out-of-range-addresses-are-not-local-on-either-side",
+    "garbage-input-is-not-local-and-does-not-throw",
+    "the-two-copies-agree-on-fifty-mixed-addresses",
+    "bootstrapengine-boots-a-keyless-lan-endpoint"
+  ],
   "freshness": {
     "hash": "af0a5b3e42b7ff2f",
     "fileHashes": {
