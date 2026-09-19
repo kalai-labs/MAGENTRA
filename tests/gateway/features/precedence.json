@@ -13,7 +13,13 @@
   ],
   "invariant": "Precedence is builtin, then ~/.magentra/addons, then the workspace; a later tier replaces an earlier addon of the same name.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-workspace-addon-named-for-a-built-in-replaces-it-rather-than-appearing-beside-it",
+    "an-addon-in-the-home-tier-loads-into-a-workspace-that-has-none-marked-global",
+    "the-same-name-in-home-and-in-the-workspace-resolves-to-the-workspace-copy",
+    "two-files-declaring-the-same-frontmatter-name-collapse-to-one-addon-and-the-last-read-wins",
+    "the-returned-list-is-sorted-by-name-whatever-tier-and-filename-the-addons-came-from"
+  ],
   "freshness": {
     "hash": "624a959fac7a2b2d",
     "fileHashes": {
