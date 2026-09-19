@@ -5,7 +5,7 @@
   "section": "Runtime — the turn loop",
   "prose": "OpenAI-compatible `prompt_tokens` (whole prompt) minus `cached_tokens` (a subset) yields disjoint classes; Anthropic already reports them disjoint. Getting this wrong double-counts cache.",
   "kinds": [
-    "pure"
+    "net"
   ],
   "entryFiles": [
     "engine/providers/src/openai-compat.ts",
@@ -13,7 +13,13 @@
   ],
   "invariant": "OpenAI-compatible prompt_tokens minus cached_tokens yields disjoint classes; Anthropic already reports them disjoint.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "prompt-tokens-minus-cached-tokens-is-the-fresh-input-and-the-four-classes-still-sum-to-the-prompt",
+    "an-openai-chunk-with-no-prompt-tokens-details-is-all-fresh-input-and-no-cache-read",
+    "cached-tokens-larger-than-prompt-tokens-clamps-the-fresh-input-to-zero-never-negative",
+    "anthropics-three-input-classes-are-already-disjoint-and-are-not-subtracted",
+    "an-anthropic-message-delta-sets-only-the-output-class-and-leaves-the-three-input-classes-alone"
+  ],
   "freshness": {
     "hash": "53f72fc284778401",
     "fileHashes": {
