@@ -12,7 +12,13 @@
   ],
   "invariant": "Project settings merge OVER global, and the effective value reports its source.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-project-file-wins-over-the-global-one-and-says-so",
+    "a-nested-block-merges-leaf-by-leaf-not-wholesale",
+    "a-key-set-in-neither-file-reports-the-schema-default",
+    "an-env-var-beats-both-files-and-a-blank-one-does-not",
+    "an-unknown-key-and-a-broken-layer-warn-while-the-other-layer-still-loads"
+  ],
   "freshness": {
     "hash": "d3f06cfa52514272",
     "fileHashes": {
