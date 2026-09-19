@@ -13,7 +13,13 @@
   ],
   "invariant": "A 400 naming stream_options, max_tokens or num_ctx drops or renames that field and re-sends once, then remembers; tools is never dropped.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-400-naming-stream-options-drops-it-re-sends-once-and-never-sends-it-again",
+    "a-400-naming-max-tokens-renames-it-to-max-completion-tokens-with-the-same-value",
+    "a-400-saying-max-tokens-plus-prompt-exceed-the-context-throws-instead-of-renaming",
+    "tools-rides-every-re-send-and-a-400-naming-tools-fails-the-turn-instead-of-dropping-them",
+    "a-value-complaint-re-sends-down-the-ladder-while-an-unknown-field-drops-reasoning-effort-with-one-note"
+  ],
   "freshness": {
     "hash": "bb8d4a9912129214",
     "fileHashes": {
