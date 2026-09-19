@@ -12,7 +12,13 @@
   ],
   "invariant": "Read returns line-numbered text, refuses a directory/missing/binary file with a distinct explanatory error, extracts documents, and never hands an image to the coding model.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-file-comes-back-as-numbered-lines-with-a-window-and-a-continuation-offset",
+    "a-directory-a-missing-path-and-a-relative-path-fail-with-different-messages",
+    "a-nul-byte-refuses-the-read-while-an-empty-file-reads-as-empty",
+    "an-image-is-refused-without-a-vision-model-and-comes-back-as-text-with-one",
+    "a-docx-and-a-pdf-come-back-as-extracted-numbered-text-and-a-huge-one-is-refused"
+  ],
   "freshness": {
     "hash": "6d92f6e4ae10d9dd",
     "fileHashes": {
