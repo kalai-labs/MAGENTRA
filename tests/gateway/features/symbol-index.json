@@ -12,7 +12,13 @@
   ],
   "invariant": "The symbol index locates definitions and finds similar symbols across the workspace.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-files-exported-names-and-their-declaration-lines-are-indexed-and-persisted",
+    "an-unchanged-workspace-is-not-rewritten-and-an-appended-export-is-rescanned",
+    "an-exact-name-match-scores-one-and-the-excluded-file-is-never-its-own-hit",
+    "a-version-1-or-corrupt-symbols-json-is-discarded-and-rebuilt-at-version-2",
+    "build-output-oversized-files-and-non-source-extensions-are-absent-while-python-is-indexed"
+  ],
   "freshness": {
     "hash": "5caab45287139a40",
     "fileHashes": {
