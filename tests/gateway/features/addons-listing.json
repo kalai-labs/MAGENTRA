@@ -5,14 +5,20 @@
   "section": "Addons",
   "prose": "names each addon, the actual file it came from, and how many files it bundles.",
   "kinds": [
-    "pure"
+    "fs"
   ],
   "entryFiles": [
     "engine/core/src/runtime/engine.ts"
   ],
   "invariant": "/addons names each addon, the file it came from, and how many files it bundles.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "with-no-addons-the-listing-says-none-are-installed-and-where-one-goes",
+    "a-flat-addon-is-listed-as-slash-name-with-its-description-and-its-file-path-and-no-bundle-count",
+    "a-directory-addon-names-its-addon-md-and-how-many-files-it-bundles",
+    "the-built-in-magentron-shows-built-in-as-its-origin-and-no-bundle-count",
+    "the-final-line-reports-addons-installed-equal-to-the-roster-size"
+  ],
   "freshness": {
     "hash": "114232a5bf174d79",
     "fileHashes": {
