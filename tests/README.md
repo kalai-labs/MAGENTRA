@@ -106,10 +106,13 @@ opt-in* below. Several records that declared `llm` did not need it (see *kinds
 are a claim*), and one that needs it does not declare it.
 
 **86 features, 387 tests** — 115 `pure`, 178 `fs`, 50 `ui`, 29 `proc`, 15
-`net`. One of them is red on purpose (rule 4) because it found a mismatch
-whose fix lies outside its feature's own files: `tui-protocol-parity`'s
-compiler check (the TUI narrows `background_notification.payload`, which the
-engine declares `unknown`). Phase 1 also found and fixed three defects: a
+`net`. All of them are green. One was red on purpose (rule 4) from 2026-09-19
+to 2026-09-20 because it found a mismatch whose fix lies outside its feature's
+own files: `tui-protocol-parity`'s compiler check (the TUI narrows
+`background_notification.payload`, which the engine declares `unknown`). The
+product owner then ruled background tasks out of that check's scope until the
+feature matures; the test excludes that one arm, says so, and still fails on
+any other mismatch. Phase 1 also found and fixed three defects: a
 multi-byte character split across stdin chunks was corrupted by the NDJSON
 decoder, `/name` announced an addon as loaded even when the engine was busy
 and refused the turn, and an unknown command was echoed with a doubled slash.
