@@ -5,14 +5,22 @@
   "section": "Runtime — the turn loop",
   "prose": "exactly two: normal (reads/interactions/file edits allowed, commands ask with once/session/always grants) and OVERDRIVE (everything allowed); deny-rule beats allow-rule beats stance.",
   "kinds": [
-    "pure"
+    "pure",
+    "fs"
   ],
   "entryFiles": [
     "engine/core/src/runtime/permissions.ts"
   ],
   "invariant": "Resolution order is deny rules > protected-path guard > deletion guard > allow rules > stance default.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-deny-rule-refuses-before-every-other-branch-including-overdrive",
+    "a-protected-path-edit-asks-ahead-of-broad-allow-rules",
+    "the-deletion-guard-outranks-broad-grants-and-yields-only-to-an-explicit-subject-rule",
+    "with-no-guard-triggered-a-rule-allows-as-rule-and-every-class-falls-through-to-the-allow-stance",
+    "overdrive-turns-off-both-target-guards-and-the-out-of-workspace-downgrade-but-not-deny",
+    "a-real-turn-writes-without-a-prompt-and-still-stops-for-a-magentra-edit-under-a-broad-allow-rule"
+  ],
   "freshness": {
     "hash": "5e675cbefa29932b",
     "fileHashes": {
