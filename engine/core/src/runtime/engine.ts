@@ -409,10 +409,15 @@ export class Engine {
     const body = addon.body.includes("$ARGUMENTS")
       ? addon.body.replaceAll("$ARGUMENTS", trimmed)
       : addon.body + (trimmed ? `\nARGUMENTS: ${trimmed}` : "");
-    this.emit({ type: "command_output", text: `🧩 ${addon.name} loaded — following its instructions.` });
-    this.startExclusive(`running /${addon.name}`, () =>
+    // The "loaded" notice only when the turn really starts: startExclusive
+    // refuses while another turn is running and says so, and announcing the
+    // addon as loaded right before that refusal told the user two things that
+    // could not both be true. The turn itself begins on a later microtask, so
+    // the notice still precedes its turn_started.
+    const started = this.startExclusive(`running /${addon.name}`, () =>
       this.session.runTurn(addonInvocationHeader(addon.name) + body),
     );
+    if (started) this.emit({ type: "command_output", text: `🧩 ${addon.name} loaded — following its instructions.` });
     return true;
   }
 
@@ -921,7 +926,9 @@ export class Engine {
         // claims is an unknown command.
         const name = command.replace(/^\//, "").toLowerCase();
         if (this.handleAddonCommand(name, args)) break;
-        this.emit({ type: "command_output", text: `Unknown command: /${command}. Try /help.` });
+        // `name`, not `command`: a frontend that sends the slash along with the
+        // name would otherwise be told about "//nope".
+        this.emit({ type: "command_output", text: `Unknown command: /${name}. Try /help.` });
       }
     }
   }

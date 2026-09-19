@@ -21,11 +21,11 @@
     "with-no-addons-the-roster-is-empty-and-commands-are-exactly-the-built-in-list"
   ],
   "freshness": {
-    "hash": "434c54a8eff7f52b",
+    "hash": "50fb3b9b2f3dab86",
     "fileHashes": {
-      "engine/core/src/runtime/engine.ts": "114232a5bf174d79",
+      "engine/core/src/runtime/engine.ts": "ef7418a5eb86e339",
       "engine/core/src/agent/addons.ts": "ff424ed1464098d4"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-19"
   }
 }
