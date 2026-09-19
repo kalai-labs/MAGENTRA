@@ -13,7 +13,12 @@
   ],
   "invariant": "DEFAULT_BASE_URL is the same string in both halves.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-engine-and-the-app-hold-the-same-default",
+    "both-defaults-are-absolute-https-urls-with-no-trailing-slash",
+    "a-settings-layer-with-no-base-url-resolves-to-the-apps-default",
+    "each-half-holds-exactly-one-literal-of-the-default"
+  ],
   "freshness": {
     "hash": "01ea71c8a6a6a8f0",
     "fileHashes": {
