@@ -12,7 +12,12 @@
   ],
   "invariant": "A write the lab makes itself does not retrigger its own file watcher.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-put-is-not-echoed-to-the-browser-while-another-editors-write-is",
+    "the-guard-expires-so-a-later-external-write-of-the-same-id-is-reported",
+    "a-delete-through-the-api-is-not-echoed-to-the-browser-either",
+    "reset-all-and-import-say-reset-all-once-and-never-changed-per-prompt"
+  ],
   "freshness": {
     "hash": "fcfa8ac38468599a",
     "fileHashes": {
