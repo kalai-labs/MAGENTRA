@@ -12,7 +12,13 @@
   ],
   "invariant": "A folder with no credentials picks up a saved profile by writing .env and .magentra/settings.json exactly as the IDE writes them.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "an-empty-folder-reads-as-unconnected-and-applying-a-profile-connects-it",
+    "the-env-carries-one-key-line-named-for-the-provider-and-retires-the-legacy-one",
+    "settings-json-spells-the-provider-openai-compatible-and-drops-any-apikeyenv-pin",
+    "a-keyless-endpoint-creates-no-env-file-and-still-counts-as-connected",
+    "a-mangled-profile-store-reads-as-empty-and-clearing-undoes-only-what-applying-wrote"
+  ],
   "freshness": {
     "hash": "f58764adffb01ee0",
     "fileHashes": {
