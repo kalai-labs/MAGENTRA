@@ -17,6 +17,8 @@ tests/
 │   ├── localServer.ts            the far end of a socket, for net and ui alike
 │   ├── exclusive.ts              a lock for what the whole suite shares
 │   ├── engineHarness.ts          a real engine + a fake provider, for proc tests
+│   ├── scriptedEngine.ts         a real engine in this process on a scripted provider, for fs tests
+│   ├── directTool.ts             one tool, validated and run exactly as the Session runs it
 │   ├── appHarness.cjs            hosts app/main.js unchanged, for ui tests
 │   ├── appDriver.ts              driving that app: workspaces, profiles, its log
 │   ├── appConnection.ts          app/main/connection.js, loaded as main loads it
@@ -82,11 +84,14 @@ as a type error instead of as an unrunnable test.
 
 ## Status
 
-**There are no feature tests yet — 164 of 164 records read `untested`.** The
-previous suite was deleted on 2026-09-09 (21 files, 6,366 lines) because 28 of
-its ticked boxes had no assertion behind them. The inventory in
-`gateway/features/` is the backlog, and it is verified against the source rather
-than against `FEATURES.md`.
+**63 of 165 records read `covered`; 102 are still `untested`.** The previous
+suite was deleted on 2026-09-09 (21 files, 6,366 lines) because 28 of its ticked
+boxes had no assertion behind them. The inventory in `gateway/features/` is the
+backlog, and it is verified against the source rather than against
+`FEATURES.md`. The approved descriptions are being worked through in four
+phases; phase 1 (2026-09-19) covered the 35 `pure`-declared features outside the
+turn loop — mirrored constants, protocol and host, config, the task and ask
+tools and the registry, the version tool, addons, prompt assembly.
 
 `lib/` is SPEC §11 step 6: the base plus all six kinds. `llm` was written last
 (2026-09-16), when the product owner went through the engine descriptions
@@ -95,8 +100,24 @@ for this*. It is the one kind `npm test` does not run; see *Real-model tests are
 opt-in* below. Several records that declared `llm` did not need it (see *kinds
 are a claim*), and one that needs it does not declare it.
 
-**Every approved description is implemented: 28 features, 101 tests** — 45
-`ui`, 30 `pure`, 17 `proc`, 8 `fs`, 1 `net`.
+**63 features, 272 tests** — 113 `pure`, 82 `fs`, 50 `ui`, 17 `proc`, 10
+`net`. One of them is red on purpose (rule 4) because it found a mismatch
+whose fix lies outside its feature's own files: `tui-protocol-parity`'s
+compiler check (the TUI narrows `background_notification.payload`, which the
+engine declares `unknown`). Phase 1 also found and fixed three defects: a
+multi-byte character split across stdin chunks was corrupted by the NDJSON
+decoder, `/name` announced an addon as loaded even when the engine was busy
+and refused the turn, and an unknown command was echoed with a doubled slash.
+
+Two fixtures were added for the `fs` tests that prove a tool or a turn-loop
+rung. `lib/scriptedEngine.ts` runs the real Engine in this process on the
+repo's own `FakeProvider` and records every request the real Session sends —
+the same double the engine harness uses, without the child process, for
+features whose subject is not the wire. `lib/directTool.ts` validates one
+tool's input with its own schema and runs it, the two steps
+`Session.executeToolCalls` performs, against the real services the tool
+reaches for; a service the test did not build throws by name rather than
+reading `undefined`.
 
 Every one of them was checked by breaking the feature on purpose and confirming
 that the right test, and only it, failed. That found eleven tests that passed
@@ -124,7 +145,14 @@ were wrong.** `a-404-on-models-is-disambiguated-not-assumed` and
 `permission-prompt` was `llm` and is about a queue (`ui`).
 `images-go-to-a-second-model-never-to-the-coding-one` was `llm` and is about
 routing, which a stub at the second endpoint proves (`proc`). Each was
-re-declared where the test sits, and the test file says why.
+re-declared where the test sits, and the test file says why. Phase 1
+re-declared twenty-four more, almost all `pure` → `fs`: a record whose
+checklist reads a file the store wrote, boots an engine on a workspace, or
+sends frames to a running Engine was never pure. Four gained `net` because the
+OpenAI-compatible provider reaches the network through the global `fetch` and
+the only place to read what it sent is the far end of a socket; two gained
+`ui` because the renderer's copy of a mirrored constant exists only in a
+running page.
 
 **A deferred feature may be proven.** Nine records are `deferred` by rule — all
 their entry files sit under `app/renderer/` — and this base used to refuse any
