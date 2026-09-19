@@ -12,7 +12,13 @@
   ],
   "invariant": "The import graph is built and cached, and GraphData.version must be bumped on any extraction change or cached entries hide the fix.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "blast-radius-walks-importers-and-dependencies-walks-imports",
+    "the-graph-is-written-on-the-first-load-and-left-alone-on-the-second",
+    "an-edited-file-is-re-extracted-while-an-untouched-entry-is-reused",
+    "a-version-2-or-corrupt-graph-json-is-discarded-and-rebuilt-at-version-3",
+    "package-imports-become-pkg-nodes-that-deps-lists-and-blast-never-returns"
+  ],
   "freshness": {
     "hash": "e0b546c2d5a61fd4",
     "fileHashes": {
