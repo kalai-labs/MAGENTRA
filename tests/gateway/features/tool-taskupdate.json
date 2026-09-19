@@ -5,14 +5,20 @@
   "section": "Tools",
   "prose": "Mark in_progress before starting and completed the moment it is fully done.",
   "kinds": [
-    "pure"
+    "fs"
   ],
   "entryFiles": [
     "engine/tools/src/tasks.ts"
   ],
   "invariant": "An update changes only the fields given and never marks completed work that is still partial.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-status-change-leaves-subject-description-and-owner-untouched",
+    "metadata-merges-key-by-key-and-a-null-value-deletes-the-key",
+    "starting-a-blocked-task-or-a-second-task-adds-an-advisory",
+    "echoed-reference-forms-resolve-and-an-unknown-edge-refuses-the-whole-update",
+    "completing-the-last-open-task-appends-the-verification-note-and-deleted-strips-edges"
+  ],
   "freshness": {
     "hash": "77a380779a3e9d01",
     "fileHashes": {
