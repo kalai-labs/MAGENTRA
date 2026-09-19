@@ -12,7 +12,13 @@
   ],
   "invariant": "checkMessage accepts the 11 configured types and 10 scopes, rejects an over-length subject, and exempts git-generated messages.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "every-configured-type-and-scope-passes-and-unknown-ones-are-named",
+    "a-72-character-subject-passes-and-a-73-character-one-is-refused",
+    "merge-and-revert-messages-git-writes-are-exempt-but-a-look-alike-is-not",
+    "full-stop-capital-letter-body-spacing-and-empty-breaking-footer-are-each-reported",
+    "parsecommit-reads-the-bang-and-the-breaking-change-footer-and-rejects-nonsense"
+  ],
   "freshness": {
     "hash": "ed7e21237097e0a6",
     "fileHashes": {
