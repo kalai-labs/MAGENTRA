@@ -12,7 +12,14 @@
   ],
   "invariant": "promote locates the prompt's TypeScript source literal, replaces it, typechecks, and restores the file if the typecheck fails.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-single-quoted-default-with-an-escaped-apostrophe-is-located",
+    "a-default-that-is-only-a-prefix-of-the-source-literal-is-refused",
+    "empty-text-an-unknown-id-and-two-identical-literals-are-each-refused-without-a-write",
+    "a-successful-promote-rewrites-the-crlf-literal-in-place-and-deletes-the-override",
+    "replacement-text-containing-dollar-ampersand-is-written-verbatim",
+    "a-failing-typecheck-restores-the-source-file-byte-for-byte"
+  ],
   "freshness": {
     "hash": "fcfa8ac38468599a",
     "fileHashes": {
