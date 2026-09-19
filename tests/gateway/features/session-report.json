@@ -5,7 +5,8 @@
   "section": "Runtime — the turn loop",
   "prose": "API vs wall time, code churn, current context (with its per-part breakdown, free space and % of the auto-compact limit), cumulative usage per model.",
   "kinds": [
-    "pure"
+    "pure",
+    "fs"
   ],
   "entryFiles": [
     "engine/core/src/runtime/sessionStats.ts",
@@ -13,7 +14,13 @@
   ],
   "invariant": "/session reports API vs wall time, code churn, current context with its breakdown, and cumulative usage per model.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "api-time-and-wall-time-are-reported-as-two-different-numbers",
+    "code-churn-counts-the-diff-body-and-never-its-file-headers",
+    "before-any-response-the-context-is-the-estimate-and-says-so-and-the-limit-decides-the-free-space-line",
+    "usage-is-one-line-per-model-in-four-classes-and-the-report-prints-no-price",
+    "the-slash-command-emits-a-session-report-carrying-the-live-context-breakdown"
+  ],
   "freshness": {
     "hash": "5e5ff25fa4880fcb",
     "fileHashes": {
