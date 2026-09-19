@@ -5,7 +5,7 @@
   "section": "Addons",
   "prose": "`session_started` carries the roster, and each addon rides in the command registry as `/<name>`.",
   "kinds": [
-    "pure"
+    "fs"
   ],
   "entryFiles": [
     "engine/core/src/runtime/engine.ts",
@@ -13,7 +13,13 @@
   ],
   "invariant": "session_started carries the addon roster and each addon rides the command registry as /<name>.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-workspace-addon-appears-in-session-started-addons-with-builtin-false",
+    "session-started-commands-carry-slash-foo-next-to-every-built-in",
+    "the-built-in-magentron-addon-is-listed-with-builtin-true",
+    "after-clear-the-new-session-started-carries-the-same-roster-and-slash-foo",
+    "with-no-addons-the-roster-is-empty-and-commands-are-exactly-the-built-in-list"
+  ],
   "freshness": {
     "hash": "434c54a8eff7f52b",
     "fileHashes": {
