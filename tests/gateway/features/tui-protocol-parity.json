@@ -13,7 +13,13 @@
   ],
   "invariant": "PROTOCOL_VERSION and every event and request type in the TUI's copy match engine/protocol.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "protocol-version-is-the-same-number-in-both-files",
+    "every-event-discriminant-the-tui-declares-is-an-engine-event",
+    "every-request-the-tui-sends-exists-on-the-engine-with-the-same-required-properties",
+    "every-event-field-the-tui-reads-exists-on-the-engine-arm-and-is-no-more-optional-there",
+    "an-engine-event-is-assignable-to-the-tui-type-and-the-reverse-fails-only-on-the-catch-all"
+  ],
   "freshness": {
     "hash": "321a343878d74aa6",
     "fileHashes": {
