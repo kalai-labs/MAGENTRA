@@ -5,14 +5,23 @@
   "section": "Runtime — the turn loop",
   "prose": "deleting a folder *named* `.magentra` (or a glob/unparseable command that could hit one) always asks, in both stances; it beats the \"allow deletions\" setting, explicit allow rules, OVERDRIVE, and never offers \"always allow\". Deeper paths like `.magentra/worktrees/foo` stay routine.",
   "kinds": [
-    "pure"
+    "pure",
+    "fs"
   ],
   "entryFiles": [
     "engine/core/src/runtime/permissions.ts"
   ],
   "invariant": "An edit into a .magentra path segment or a .env* file confirms every time; broad grants and OVERDRIVE never satisfy it.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-magentra-segment-or-a-dot-env-basename-is-protected-and-nothing-else-is",
+    "a-protected-edit-asks-through-broad-allow-rules-and-a-session-allow",
+    "an-always-allow-on-a-protected-edit-records-only-that-exact-file",
+    "a-deletion-that-could-reach-the-state-dir-is-classified-protected-and-a-deeper-path-is-not",
+    "a-protected-deletion-asks-with-no-subject-even-with-the-guard-off-and-an-explicit-rule",
+    "overdrive-skips-both-protected-guards",
+    "a-real-write-to-dot-env-asks-once-and-the-grant-is-written-into-this-workspaces-settings"
+  ],
   "freshness": {
     "hash": "5e675cbefa29932b",
     "fileHashes": {
