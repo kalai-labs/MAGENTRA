@@ -12,7 +12,12 @@
   ],
   "invariant": "All 43 registered prompts appear in the catalog, an override file is re-read live, and emptying a prompt cancels its inference round rather than sending a blank message.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "an-override-file-is-picked-up-without-a-restart-and-deleting-it-restores-the-default",
+    "an-empty-override-file-switches-the-prompt-off",
+    "disabling-the-compaction-prompt-cancels-the-summariser-call-instead-of-blanking-it",
+    "orphan-files-are-listed-a-reset-deletes-the-file-and-a-duplicate-id-throws"
+  ],
   "freshness": {
     "hash": "cd3be27b66ec95fc",
     "fileHashes": {
