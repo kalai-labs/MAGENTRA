@@ -20,10 +20,10 @@
     "quitting-leaves-no-engine-behind"
   ],
   "freshness": {
-    "hash": "7e664025a5da3100",
+    "hash": "97287a90f013d4ba",
     "fileHashes": {
-      "app/main.js": "7e664025a5da3100"
+      "app/main.js": "97287a90f013d4ba"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-19"
   }
 }

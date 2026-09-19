@@ -19,11 +19,11 @@
     "the-buttons-appear-in-full-screen-and-the-view-menu-lists-the-toggle"
   ],
   "freshness": {
-    "hash": "5c3234fb3fad80b3",
+    "hash": "8f9a6aee36f0f9ca",
     "fileHashes": {
-      "app/main.js": "7e664025a5da3100",
+      "app/main.js": "97287a90f013d4ba",
       "app/renderer/modules/views.js": "5b08f42b45600fe7"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-19"
   }
 }

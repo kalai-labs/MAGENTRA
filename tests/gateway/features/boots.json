@@ -20,11 +20,11 @@
     "without-smoke-the-app-keeps-running"
   ],
   "freshness": {
-    "hash": "ab7382c5e03e14f0",
+    "hash": "6b87e27df2c4d600",
     "fileHashes": {
-      "app/main.js": "7e664025a5da3100",
+      "app/main.js": "97287a90f013d4ba",
       "app/renderer/index.html": "a84edad7b4d5fba1"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-19"
   }
 }
