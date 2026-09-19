@@ -12,7 +12,13 @@
   ],
   "invariant": "Both layouts load — flat <name>.md and <name>/ADDON.md — and a directory without ADDON.md is skipped.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-flat-name-md-without-a-frontmatter-name-loads-under-its-file-stem",
+    "a-folder-holding-an-addon-md-loads-under-the-folder-name",
+    "a-folder-with-no-addon-md-contributes-nothing-not-even-its-readme",
+    "a-non-md-file-at-the-top-level-is-not-an-addon-while-an-uppercase-md-is",
+    "an-empty-body-and-an-unreadable-entry-file-are-skipped-and-the-rest-of-the-roster-still-loads"
+  ],
   "freshness": {
     "hash": "ff424ed1464098d4",
     "fileHashes": {
