@@ -5,14 +5,20 @@
   "section": "Tools",
   "prose": "Retrieves one task with blocks and blockedBy so a caller can check it is unblocked.",
   "kinds": [
-    "pure"
+    "fs"
   ],
   "entryFiles": [
     "engine/tools/src/tasks.ts"
   ],
   "invariant": "TaskGet returns the full description and both dependency lists for one task.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "taskget-returns-the-description-and-both-dependency-lists-as-json",
+    "hash-task-dash-and-subject-forms-all-resolve-to-the-task",
+    "an-unknown-reference-is-an-error-that-lists-the-current-tasks",
+    "a-substring-matching-two-subjects-is-not-found-while-a-unique-one-is",
+    "owner-and-status-set-by-taskupdate-are-reflected-by-taskget"
+  ],
   "freshness": {
     "hash": "77a380779a3e9d01",
     "fileHashes": {
