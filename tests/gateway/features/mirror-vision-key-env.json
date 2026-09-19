@@ -13,7 +13,12 @@
   ],
   "invariant": "VISION_API_KEY_ENV names the same variable on both sides.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-app-writes-the-variable-the-engine-reads",
+    "the-vision-variable-is-not-the-main-connections-variable",
+    "the-environment-wins-and-the-stored-key-is-the-fallback",
+    "a-whitespace-variable-and-no-stored-key-resolve-to-nothing"
+  ],
   "freshness": {
     "hash": "01ea71c8a6a6a8f0",
     "fileHashes": {
