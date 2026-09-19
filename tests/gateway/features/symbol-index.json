@@ -14,10 +14,10 @@
   "deferred": false,
   "tests": [],
   "freshness": {
-    "hash": "fefe5592edeb5a6e",
+    "hash": "5caab45287139a40",
     "fileHashes": {
-      "engine/core/src/knowledge/symbols.ts": "fefe5592edeb5a6e"
+      "engine/core/src/knowledge/symbols.ts": "5caab45287139a40"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-19"
   }
 }

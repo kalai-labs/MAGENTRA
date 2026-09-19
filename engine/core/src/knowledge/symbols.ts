@@ -50,9 +50,9 @@ function toNodeId(cwd: string, absPath: string): string {
 // Symbol extraction (conservative — prefer missing a symbol over inventing one).
 // ---------------------------------------------------------------------------
 
-/** `export [default|abstract|async|declare]* (function|class|const|let|var|interface|type|enum) NAME`. */
+/** `export [default|abstract|async|declare]* (function|class|const|let|var|interface|type|enum) NAME`. Leading whitespace is HORIZONTAL only (`[^\S\n]`, so a BOM still passes): with `\s*` the match could begin on a preceding blank line, and `at(m.index)` then reported every declaration under a blank line one line early (found by the symbol-index feature test, 2026-09-20). */
 const RE_TS_EXPORT_DECL =
-  /^\s*export\s+(?:default\s+|abstract\s+|async\s+|declare\s+)*(?:function\s*\*?|class|const|let|var|interface|type|enum)\s+([A-Za-z_$][\w$]*)/gm;
+  /^[^\S\n]*export\s+(?:default\s+|abstract\s+|async\s+|declare\s+)*(?:function\s*\*?|class|const|let|var|interface|type|enum)\s+([A-Za-z_$][\w$]*)/gm;
 /** `export { a, b as c, type D }` — captures the brace body for per-entry parsing. */
 const RE_TS_EXPORT_LIST = /\bexport\s+(?:type\s+)?\{([^}]*)\}/g;
 /** CommonJS `module.exports.NAME = …`. */
