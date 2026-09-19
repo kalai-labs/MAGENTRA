@@ -683,7 +683,16 @@ const server = createServer(async (req, res) => {
     }
 
     if (path === "/api/reset-all" && req.method === "POST") {
-      for (const p of promptCatalog()) if (p.overridden) clearPromptOverride(p.id);
+      // Marked as our own writes FIRST: the watcher stays live across a reset,
+      // so without the mark every cleared override came straight back as a
+      // `changed` event on the heels of `reset-all`, and the page reloaded once
+      // per prompt — or, while someone was typing, flashed "changed on disk"
+      // once per prompt. Found by the promptlab-self-write feature test, 2026-09-20.
+      for (const p of promptCatalog()) {
+        if (!p.overridden) continue;
+        markSelfWrite(p.id);
+        clearPromptOverride(p.id);
+      }
       broadcast({ type: "reset-all" });
       return json(res, 200, { ok: true });
     }

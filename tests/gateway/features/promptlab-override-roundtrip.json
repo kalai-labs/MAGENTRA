@@ -5,7 +5,8 @@
   "section": "Tooling",
   "prose": "The override directory is configurable with --dir, so an experiment set can be kept separate.",
   "kinds": [
-    "fs"
+    "fs",
+    "proc"
   ],
   "entryFiles": [
     "tools/prompt-lab/server.mjs",
@@ -15,11 +16,11 @@
   "deferred": false,
   "tests": [],
   "freshness": {
-    "hash": "e2315d2c650eeecc",
+    "hash": "1078c224d97803d6",
     "fileHashes": {
-      "tools/prompt-lab/server.mjs": "079c153726f6073e",
+      "tools/prompt-lab/server.mjs": "fcfa8ac38468599a",
       "engine/protocol/src/prompts.ts": "cd3be27b66ec95fc"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-19"
   }
 }

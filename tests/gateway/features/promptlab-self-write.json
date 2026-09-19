@@ -5,7 +5,7 @@
   "section": "Tooling",
   "prose": "Without this the lab loops on every save.",
   "kinds": [
-    "fs"
+    "proc"
   ],
   "entryFiles": [
     "tools/prompt-lab/server.mjs"
@@ -14,10 +14,10 @@
   "deferred": false,
   "tests": [],
   "freshness": {
-    "hash": "079c153726f6073e",
+    "hash": "fcfa8ac38468599a",
     "fileHashes": {
-      "tools/prompt-lab/server.mjs": "079c153726f6073e"
+      "tools/prompt-lab/server.mjs": "fcfa8ac38468599a"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-19"
   }
 }
