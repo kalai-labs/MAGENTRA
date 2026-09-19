@@ -13,7 +13,13 @@
   ],
   "invariant": "Sessions can be listed, renamed, archived and deleted.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-listed-session-is-labelled-with-the-first-user-message-reminders-stripped",
+    "renaming-appends-a-meta-record-that-keeps-the-previous-stats-and-model",
+    "archiving-moves-the-transcript-into-archive-and-refuses-the-active-session",
+    "deleting-removes-the-transcript-and-its-task-file-and-refuses-the-active-session",
+    "a-subagent-transcript-is-never-listed-and-a-corrupt-first-line-costs-only-the-label"
+  ],
   "freshness": {
     "hash": "ce67130a42e6a067",
     "fileHashes": {
