@@ -12,7 +12,13 @@
   ],
   "invariant": "Deleting a .magentra target asks in every mode except OVERDRIVE.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-bash-classifier-splits-a-deletion-into-workspace-protected-and-unprovable",
+    "a-protected-deletion-asks-with-no-subject-even-with-the-deletion-guard-off",
+    "an-explicit-allow-rule-does-not-beat-a-protected-deletion",
+    "always-allow-on-a-protected-deletion-records-no-grant-so-the-next-one-asks-again",
+    "overdrive-is-the-one-mode-that-skips-a-protected-deletion"
+  ],
   "freshness": {
     "hash": "5e675cbefa29932b",
     "fileHashes": {
