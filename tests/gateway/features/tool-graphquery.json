@@ -13,7 +13,13 @@
   ],
   "invariant": "All five modes answer from the workspace import graph: slice, blast, deps, structure and rank.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "blast-lists-every-transitive-importer-with-its-hop-distance",
+    "deps-lists-the-forward-closure-with-packages-on-an-external-line",
+    "structure-reports-pagerank-articulation-points-bridges-and-counts",
+    "rank-sorts-by-descending-score-and-slice-puts-its-seed-first-with-the-edges-among-it",
+    "a-seedless-query-is-an-error-and-a-long-answer-is-truncated-at-200-lines"
+  ],
   "freshness": {
     "hash": "0dacf5f716cd15a5",
     "fileHashes": {
