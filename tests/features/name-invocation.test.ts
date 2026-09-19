@@ -76,7 +76,9 @@ abstract class NameInvocationTest extends FsTest {
   protected lastUserText(engine: ScriptedEngine): string {
     const request = engine.provider.requests.at(-1);
     if (!request) throw new Error("the model was never called");
-    const user = request.messages.find((m) => m.role === "user");
+    // `messages` on a recorded request is the live session history, so the
+    // invocation under test is the LAST user message in it, not the first.
+    const user = request.messages.filter((m) => m.role === "user").at(-1);
     const first = user?.content.find((b) => b.type === "text");
     return first?.type === "text" ? first.text : "";
   }
