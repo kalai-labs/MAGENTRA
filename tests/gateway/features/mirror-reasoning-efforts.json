@@ -13,7 +13,12 @@
   ],
   "invariant": "REASONING_EFFORTS holds the same seven levels in the same order on both sides.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "both-ladders-hold-the-same-seven-levels-in-the-same-order",
+    "off-is-the-first-level-and-max-the-last-on-both-sides",
+    "the-wire-ladder-maps-onto-the-protocol-ladder-index-for-index",
+    "neither-ladder-lists-a-level-twice"
+  ],
   "freshness": {
     "hash": "aca7d17438bd3c75",
     "fileHashes": {
