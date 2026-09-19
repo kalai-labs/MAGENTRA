@@ -75,7 +75,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { Engine, loadSettings, type Settings } from "@magentra/core";
+import { Engine, loadSettings, type Addon, type Settings } from "@magentra/core";
 import type { CoreEvent, FrontendRequest, PermissionDecision } from "@magentra/protocol";
 import { FakeProvider, type FakeTurn } from "@magentra/providers";
 import { createDefaultRegistry } from "@magentra/tools";
@@ -94,6 +94,13 @@ export interface ScriptedEngineOptions {
   readonly turns: readonly FakeTurn[];
   /** Overlaid on the settings loaded from the workspace (and the fixture's two pins). */
   readonly settings?: Partial<Settings>;
+  /**
+   * The addon roster the engine starts with — `EngineOptions.addons`, passed
+   * through untouched. Omit it and the engine has none (the option is absent,
+   * as it is for an embedder that never loads any); pass `loadAddons(workspace)`
+   * to get what the host would load, built-ins included.
+   */
+  readonly addons?: Addon[];
   /**
    * Answer every `permission_request` with this decision, in the tick it
    * arrives — the frontend's role, played by the test. Omit it and the test
@@ -163,6 +170,7 @@ export async function startScriptedEngine(opts: ScriptedEngineOptions): Promise<
     settings,
     provider,
     registry: createDefaultRegistry(),
+    ...(opts.addons !== undefined ? { addons: opts.addons } : {}),
   });
 
   const events: CoreEvent[] = [];
