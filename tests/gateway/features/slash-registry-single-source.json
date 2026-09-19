@@ -5,7 +5,7 @@
   "section": "Protocol & host",
   "prose": "A frontend that derives slash commands itself drifts from what the engine will actually dispatch.",
   "kinds": [
-    "pure"
+    "fs"
   ],
   "entryFiles": [
     "engine/core/src/runtime/engine.ts",
@@ -13,7 +13,13 @@
   ],
   "invariant": "/help and the frontend palette both render from one registry, and addons_updated re-ships it so a newly installed addon appears.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "every-built-in-command-shipped-in-session-started-is-dispatched-without-unknown-command",
+    "help-lists-every-built-in-cmd-and-desc-and-nothing-that-is-not-in-the-registry",
+    "an-installed-addon-appears-as-slash-review-with-addon-true-and-dispatches",
+    "install-addon-emits-addons-updated-with-a-commands-list-equal-to-the-next-clears-session-started",
+    "every-built-in-entry-has-a-slash-prefixed-cmd-a-description-and-no-duplicate"
+  ],
   "freshness": {
     "hash": "6b2c55de4404c234",
     "fileHashes": {
