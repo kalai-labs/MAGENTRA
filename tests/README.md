@@ -84,14 +84,19 @@ as a type error instead of as an unrunnable test.
 
 ## Status
 
-**63 of 165 records read `covered`; 102 are still `untested`.** The previous
+**86 of 165 records read `covered`; 79 are still `untested`.** The previous
 suite was deleted on 2026-09-09 (21 files, 6,366 lines) because 28 of its ticked
 boxes had no assertion behind them. The inventory in `gateway/features/` is the
 backlog, and it is verified against the source rather than against
 `FEATURES.md`. The approved descriptions are being worked through in four
 phases; phase 1 (2026-09-19) covered the 35 `pure`-declared features outside the
 turn loop — mirrored constants, protocol and host, config, the task and ask
-tools and the registry, the version tool, addons, prompt assembly.
+tools and the registry, the version tool, addons, prompt assembly. Phase 2
+(2026-09-20) covered the 22 `fs`-declared features and the one `net` one —
+the addon loader, the file tools and their freshness store, the knowledge
+indexes and the tools over them, layered settings and secret handling, the
+prompt registry and the Prompt Lab, sessions and the transcript, profile
+pickup, version sync, and the OpenAI-compatible negotiation loop.
 
 `lib/` is SPEC §11 step 6: the base plus all six kinds. `llm` was written last
 (2026-09-16), when the product owner went through the engine descriptions
@@ -100,7 +105,7 @@ for this*. It is the one kind `npm test` does not run; see *Real-model tests are
 opt-in* below. Several records that declared `llm` did not need it (see *kinds
 are a claim*), and one that needs it does not declare it.
 
-**63 features, 272 tests** — 113 `pure`, 82 `fs`, 50 `ui`, 17 `proc`, 10
+**86 features, 387 tests** — 115 `pure`, 178 `fs`, 50 `ui`, 29 `proc`, 15
 `net`. One of them is red on purpose (rule 4) because it found a mismatch
 whose fix lies outside its feature's own files: `tui-protocol-parity`'s
 compiler check (the TUI narrows `background_notification.payload`, which the
@@ -108,6 +113,16 @@ engine declares `unknown`). Phase 1 also found and fixed three defects: a
 multi-byte character split across stdin chunks was corrupted by the NDJSON
 decoder, `/name` announced an addon as loaded even when the engine was busy
 and refused the turn, and an unknown command was echoed with a doubled slash.
+Phase 2 found and fixed two more, each inside the record's own entry file: the
+symbol index recorded every TypeScript declaration that follows a blank line
+one line too early (`^s*` let the export regex start its match on the line
+above), and Prompt Lab's `/api/reset-all` echoed a `changed` event per cleared
+prompt to the page it had just told to reset everything. Two checklist clauses
+are withheld until their records are reconciled, because the approved spec and
+the code disagree on a number: `prompt-registry` pins 43 prompts in 7 groups
+where the catalog holds 46 in 6 (73 in 7 once the tool registry is built), and
+`symbol-index`'s similarity score for `userFormatter` against `formatUser` is
+one third, not above one half.
 
 Two fixtures were added for the `fs` tests that prove a tool or a turn-loop
 rung. `lib/scriptedEngine.ts` runs the real Engine in this process on the
@@ -152,7 +167,12 @@ sends frames to a running Engine was never pure. Four gained `net` because the
 OpenAI-compatible provider reaches the network through the global `fetch` and
 the only place to read what it sent is the far end of a socket; two gained
 `ui` because the renderer's copy of a mirrored constant exists only in a
-running page.
+running page. Phase 2 re-declared four: `transcript` gained `pure` for its
+pairing repair, and the three Prompt Lab records became `proc` (two outright,
+one beside `fs`), because `server.mjs` exports nothing and starts listening on
+import, so the only honest way to prove it is to spawn it — in a sandbox copy
+of the repository, since `promote` edits the real engine sources and runs the
+real compiler.
 
 **A deferred feature may be proven.** Nine records are `deferred` by rule — all
 their entry files sit under `app/renderer/` — and this base used to refuse any
