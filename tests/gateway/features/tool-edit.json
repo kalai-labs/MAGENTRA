@@ -12,7 +12,13 @@
   ],
   "invariant": "Edit requires a prior Read, requires old_string to be unique unless replace_all, and reports 0 and >1 occurrences differently.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "editing-a-file-never-read-this-session-fails",
+    "editing-a-file-that-moved-on-disk-since-the-read-fails",
+    "no-match-and-several-matches-fail-with-different-messages",
+    "identical-strings-and-a-relative-path-are-refused",
+    "replace-all-changes-every-occurrence-announces-the-diff-and-restamps-the-record"
+  ],
   "freshness": {
     "hash": "7b8ef13cac18cb18",
     "fileHashes": {
