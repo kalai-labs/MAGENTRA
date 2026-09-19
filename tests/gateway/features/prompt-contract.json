@@ -5,6 +5,7 @@
   "section": "OVERDRIVE — fully-autonomous stance",
   "prose": "the OVERDRIVE system-prompt section (plan-first, consequence-thinking, query-shaped evidence, ask-rubric, cleanup license) is present exactly while ON.",
   "kinds": [
+    "fs",
     "pure"
   ],
   "entryFiles": [
@@ -12,7 +13,13 @@
   ],
   "invariant": "The OVERDRIVE stance is stated in the prompt, so the model knows nothing will stop to ask.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "while-overdrive-is-off-the-section-is-absent-and-the-harness-line-still-points-at-it",
+    "switching-overdrive-on-puts-the-section-in-the-next-request-exactly-once",
+    "switching-overdrive-off-takes-the-section-back-out-of-the-following-request",
+    "overdrive-changed-is-emitted-once-per-real-change-and-not-for-a-repeat",
+    "an-extra-section-is-appended-after-the-environment-block-where-the-overdrive-section-lands"
+  ],
   "freshness": {
     "hash": "c9b93e743f4cabbf",
     "fileHashes": {
