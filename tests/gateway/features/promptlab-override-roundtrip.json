@@ -14,7 +14,14 @@
   ],
   "invariant": "Editing a prompt in the browser writes an override .txt the engine re-reads live, with no restart.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-written-override-normalises-crlf-and-is-in-force-at-once",
+    "an-external-edit-of-the-file-is-picked-up-without-a-restart",
+    "the-default-text-deletes-the-file-while-blank-text-disables-the-prompt",
+    "an-unknown-prompt-id-throws-and-writes-nothing",
+    "the-dir-flag-points-the-running-lab-at-an-experiment-set",
+    "a-delete-through-the-api-removes-the-override-file"
+  ],
   "freshness": {
     "hash": "1078c224d97803d6",
     "fileHashes": {
