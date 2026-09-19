@@ -5,7 +5,8 @@
   "section": "Addons",
   "prose": "only names and descriptions enter the system prompt; no addon body ever rides in the standing prompt.",
   "kinds": [
-    "pure"
+    "pure",
+    "fs"
   ],
   "entryFiles": [
     "engine/core/src/agent/prompts.ts",
@@ -13,7 +14,13 @@
   ],
   "invariant": "Only names and descriptions enter the standing system prompt; no addon body ever rides in it.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "with-no-addons-there-is-no-available-addons-header",
+    "an-addon-renders-as-a-single-name-colon-description-line",
+    "the-first-request-names-and-describes-the-addon-but-never-carries-its-body",
+    "the-addon-tool-result-carries-the-body-while-the-next-system-prompt-still-does-not",
+    "no-addons-argument-and-an-empty-roster-build-the-identical-prompt"
+  ],
   "freshness": {
     "hash": "b88c200efa0ffe96",
     "fileHashes": {
