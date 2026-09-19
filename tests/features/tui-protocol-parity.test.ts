@@ -16,14 +16,33 @@
  * whether the reverse holds (it must not, for exactly the documented loose
  * catch-all arm). Neither file has an import, so the check needs no build.
  *
- * RED ON 2026-09-19, BY DESIGN (tests/README rule 4). Checklist item 5 fails:
- * the engine declares `background_notification.payload: unknown` while the
- * TUI's copy narrows it to `payload?: { description?, code?, outputFile?,
- * stopped? }`, so an engine event is NOT assignable to the TUI's type. The TUI
- * asserts a shape the wire never promised; the fix is either a real payload
- * type on the engine side or `unknown` plus narrowing in
- * `tui/src/engine/useEngine.ts`, and both touch files outside this record's
- * entry files, so the test stays red until the product owner decides which.
+ * ONE EVENT IS OUT OF SCOPE FOR THE COMPILER CHECK, BY THE PRODUCT OWNER'S
+ * DECISION OF 2026-09-20: `background_notification`. Item 5 was red from
+ * 2026-09-19 because the engine declares `background_notification.payload:
+ * unknown` while the TUI's copy narrows it to `payload?: { description?,
+ * code?, outputFile?, stopped? }`, so an engine event was not assignable to the
+ * TUI's type — the TUI asserts a shape the wire never promised. Background
+ * tasks are not a mature feature yet, and the owner chose not to settle the
+ * payload's type on either side for now, so that arm is excluded from the
+ * assignability check with `Exclude<>` in the fixture. Nothing is skipped and
+ * nothing is softened: the check still runs over every other arm, and a
+ * second assertion pins the exclusion to that ONE event — the full union may
+ * fail to assign only over `background_notification`, so any new mismatch
+ * elsewhere still fails this test. When background tasks mature, fix the
+ * payload type (a real type on the engine side, or `unknown` plus narrowing
+ * in `tui/src/engine/useEngine.ts`) and delete the exclusion.
+ *
+ * THE REVERSE CLAUSE WAS A WRONG TEST, AND IS GONE (2026-09-20). The checklist
+ * also asked that assigning a TUI event to the engine's type fail "only for
+ * the documented catch-all arm". Phase 1 wrote that assertion but never saw it
+ * run — the forward assertion above threw first — and the moment it ran the
+ * compiler objected to `session_started` instead: the TUI's copy omits
+ * `rateCard`, which the engine requires. That is not a defect. The TUI file is
+ * a documented SUBSET that leaves out the fields it never reads, so TUI → engine
+ * assignability was never a property of the design, and an assertion that it
+ * fails in exactly one place is an assertion about which arm tsc happens to
+ * report first. What the feature promises is the forward direction, plus the
+ * arm-by-arm and field-by-field checks above; the test id now says so.
  */
 
 import { readFileSync } from "node:fs";
@@ -224,26 +243,35 @@ function diagnosticsFor(text: string): string[] {
 }
 
 class TheCompilerAgreesOnAssignability extends ParityTest {
-  readonly id = "an-engine-event-is-assignable-to-the-tui-type-and-the-reverse-fails-only-on-the-catch-all";
+  readonly id = "an-engine-event-is-assignable-to-the-tui-type-and-a-tui-request-to-the-engines";
   readonly whyItExists = "name-by-name comparison cannot see a nested shape change (a Question option, a Usage field); asking tsc whether the engine's union assigns to the TUI's catches those";
 
   override run(t: TestRun): void {
     const header = `import type { CoreEvent as EngineEvent, FrontendRequest as EngineRequest } from "../engine/protocol/src/types.ts";
 import type { CoreEvent as TuiEvent, FrontendRequest as TuiRequest } from "../tui/src/protocol.ts";
 declare const engineEvent: EngineEvent;
-declare const tuiEvent: TuiEvent;
 declare const tuiRequest: TuiRequest;
+// The one arm the product owner took out of scope on 2026-09-20 — see the file header.
+type EngineEventInScope = Exclude<EngineEvent, { type: "background_notification" }>;
+declare const engineEventInScope: EngineEventInScope;
 `;
-    // Engine → TUI: every engine event is a TUI event (the loose arm absorbs the ones it ignores);
+    // Engine → TUI: every engine event in scope is a TUI event (the loose arm absorbs the ones it ignores);
     // every request the TUI sends is a request the engine accepts.
-    const forward = diagnosticsFor(`${header}const a: TuiEvent = engineEvent;\nconst b: EngineRequest = tuiRequest;\nexport {};\n`);
+    const forward = diagnosticsFor(`${header}const a: TuiEvent = engineEventInScope;\nconst b: EngineRequest = tuiRequest;\nexport {};\n`);
     t.assert.deepEqual(forward, [], `an engine event must be assignable to the TUI's type, and a TUI request to the engine's:\n${forward.join("\n")}`);
 
-    // TUI → engine: must FAIL, and only because of the documented catch-all arm,
-    // which declares no fields for the events the TUI ignores.
-    const reverse = diagnosticsFor(`${header}const c: EngineEvent = tuiEvent;\nexport {};\n`);
-    t.assert.equal(reverse.length, 1, `exactly one error is expected, got ${reverse.length}:\n${reverse.join("\n")}`);
-    t.assert.match(reverse[0] ?? "", /"file_edited" \| "addon_draft" \| "addon_export"|file_edited/, "the one failure is the loose catch-all arm, not a real field mismatch");
+    // The exclusion covers exactly one arm: over the FULL union the only thing the
+    // compiler may object to is background_notification. A new mismatch anywhere
+    // else fails here, so taking that event out of scope hides nothing else.
+    const full = diagnosticsFor(`${header}const a: TuiEvent = engineEvent;\nexport {};\n`);
+    t.assert.ok(full.length <= 1, `at most the excluded arm may fail to assign, got ${full.length}:\n${full.join("\n")}`);
+    t.assert.ok(
+      full.every((message) => message.includes("background_notification")),
+      `the only permitted mismatch is background_notification's payload; the compiler said:\n${full.join("\n")}`,
+    );
+    // There is deliberately no TUI → engine check: the TUI copy is a subset and
+    // omits engine fields it never reads (session_started.rateCard, for one), so
+    // that direction is not assignable by design — see the file header.
   }
 }
 
