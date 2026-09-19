@@ -13,7 +13,13 @@
   ],
   "invariant": "syncTargets writes the same version into all eight configured package.json files.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-config-lists-the-eight-manifests-and-each-one-exists-with-a-version",
+    "one-call-writes-the-same-version-into-every-one-of-the-eight-manifests",
+    "a-crlf-four-space-manifest-keeps-every-byte-but-the-version-value",
+    "a-dry-run-writes-nothing-a-missing-target-is-skipped-and-broken-json-names-itself",
+    "a-star-segment-expands-to-the-visible-subdirectories-sorted"
+  ],
   "freshness": {
     "hash": "87bf979d9ba23bcd",
     "fileHashes": {
