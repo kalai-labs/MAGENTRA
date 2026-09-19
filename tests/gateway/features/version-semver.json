@@ -12,7 +12,13 @@
   ],
   "invariant": "parse and format round-trip every supported form, bump applies the right level, and compare orders correctly including legacy builds.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "parse-and-format-round-trip-and-a-legacy-fourth-part-is-read-then-dropped",
+    "parse-throws-invalid-version-for-every-malformed-form",
+    "bump-raises-one-level-zeroes-the-smaller-parts-and-never-mutates-its-input",
+    "compare-orders-numerically-per-part-and-ignores-a-legacy-build",
+    "largestlevel-picks-the-biggest-level-null-for-none-and-throws-on-an-unknown-one"
+  ],
   "freshness": {
     "hash": "2768f226763100b0",
     "fileHashes": {
