@@ -12,7 +12,13 @@
   ],
   "invariant": "Glob keeps .magentra out of results unless the pattern or path names it, matched on a path SEGMENT, and orders by mtime descending.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-dot-true-search-skips-magentra-node-modules-and-git-but-not-a-lookalike-name",
+    "naming-magentra-in-the-pattern-or-in-the-search-path-lists-it",
+    "results-are-ordered-by-modification-time-newest-first",
+    "a-pattern-that-matches-nothing-is-an-ordinary-result",
+    "a-thousand-paths-are-returned-followed-by-a-truncation-note"
+  ],
   "freshness": {
     "hash": "e3c275f1bdd221a5",
     "fileHashes": {
