@@ -14,7 +14,15 @@
   ],
   "invariant": "Anything that removes a file, folder or worktree always asks, in both stances, overridable only by an explicit literal subject grant.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-classifier-flags-what-destroys-and-passes-over-what-does-not",
+    "a-broad-allow-rule-or-session-grant-does-not-get-past-the-guard",
+    "a-declined-deletion-refuses-and-says-that-deletions-always-require-approval",
+    "an-explicit-subject-rule-is-the-one-standing-override-and-only-for-that-subject",
+    "always-allow-on-a-deletion-grants-that-literal-command-and-nothing-else",
+    "turning-the-guard-off-or-overdrive-on-computes-no-deletion-subject-at-all",
+    "a-real-rm-is-stopped-by-a-refusal-and-removes-the-file-on-an-approval"
+  ],
   "freshness": {
     "hash": "a0c96b9ea713850c",
     "fileHashes": {
