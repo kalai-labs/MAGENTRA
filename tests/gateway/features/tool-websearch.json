@@ -1,0 +1,23 @@
+{
+  "id": "tool-websearch",
+  "name": "WebSearch",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "DuckDuckGo works with no key; Brave and Tavily are available. parseDuckDuckGoHtml is separately testable.",
+  "kinds": [
+    "net"
+  ],
+  "entryFiles": [
+    "engine/tools/src/webSearch.ts"
+  ],
+  "invariant": "All three backends return normalized results, and allowed_domains/blocked_domains filter them.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "d2a0e5b579580cd5",
+    "fileHashes": {
+      "engine/tools/src/webSearch.ts": "d2a0e5b579580cd5"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

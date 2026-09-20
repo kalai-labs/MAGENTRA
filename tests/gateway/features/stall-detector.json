@@ -1,0 +1,24 @@
+{
+  "id": "stall-detector",
+  "name": "Stall detector",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "three consecutive identical rounds (same calls, same results) force a strategy pivot; after two pivots, the model must ask the user one concrete question.",
+  "kinds": [
+    "llm",
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "Three identical consecutive rounds force a pivot; after two pivots the model must ask one concrete question.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7c7930bc5724d79f",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

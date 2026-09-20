@@ -1,0 +1,10 @@
+{
+  "id": "c9e0e228-fa08-4608-bedf-f94478300d37",
+  "featureIds": [
+    "saving-a-connection-clears-the-stale-pin-in-both-layers"
+  ],
+  "status": "ready",
+  "createdAt": "2026-09-09T18:30:20.087Z",
+  "updatedAt": "2026-09-11T08:28:09.335Z",
+  "body": "WHAT\nWhen the wizard saves a connection to a workspace, it deletes any `apiKeyEnv` pin from the workspace's .magentra/settings.json and, through one shared helper, from the global ~/.magentra/settings.json too. The same helper also clears contextWindow, reasoningEffort, visionConnection and vision globally when the new connection has none.\n\nWHY\nThe engine merges project settings over global, so a pin left in the global file wins back the moment the project copy is removed.\n\nWHERE\napp/main.js — applyValidatedConnection(): `delete settings.apiKeyEnv` inside updateWorkspaceSettings(), staleGlobalKeys array starting with [\"apiKeyEnv\"], then clearGlobalSettingsKeys(staleGlobalKeys); clearGlobalSettingsKeys(keys) reads readGlobalSettings(), deletes keys and writes with writeJsonAtomic(globalSettingsPath(), …, 0o600). app/main/config.js — globalSettingsPath(), readGlobalSettings(), readEffectiveWorkspaceSettings(), updateWorkspaceSettings(), writeJsonAtomic().\n\nTEST CHECKLIST\n1. Given a global settings.json with apiKeyEnv 'DEEPINFRA_API_KEY' and a project settings.json with apiKeyEnv 'OLD', after applyValidatedConnection neither file contains an apiKeyEnv key.\n2. readEffectiveWorkspaceSettings(workspace) after the save reports no apiKeyEnv (merged view is clean).\n3. clearGlobalSettingsKeys(['apiKeyEnv']) on a global file without that key does not rewrite the file (mtime unchanged) and does not throw when the file is missing.\n4. Saving a connection with no contextWindow / reasoningEffort also removes those keys from the global file; saving one with a contextWindow leaves a global contextWindow untouched.\n5. Other keys in the global file (e.g. permissions, hooks) are preserved byte-for-byte in value and the file mode is 0600 after the rewrite (non-Windows)."
+}

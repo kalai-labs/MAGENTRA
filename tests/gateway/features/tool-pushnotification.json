@@ -1,0 +1,23 @@
+{
+  "id": "tool-pushnotification",
+  "name": "PushNotification",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "A proactive OS notification for genuinely notification-worthy moments.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/tools/src/pushNotification.ts"
+  ],
+  "invariant": "Delivery is best-effort and never interrupts or fails the current work.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "343cd4219416462d",
+    "fileHashes": {
+      "engine/tools/src/pushNotification.ts": "343cd4219416462d"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

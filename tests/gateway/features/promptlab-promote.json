@@ -1,0 +1,30 @@
+{
+  "id": "promptlab-promote",
+  "name": "Promote writes back into the source literal",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "This is how an experiment becomes the default. It once reported \"typecheck failed\" with an empty body because the compiler could not be spawned at all.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "tools/prompt-lab/server.mjs"
+  ],
+  "invariant": "promote locates the prompt's TypeScript source literal, replaces it, typechecks, and restores the file if the typecheck fails.",
+  "deferred": false,
+  "tests": [
+    "a-single-quoted-default-with-an-escaped-apostrophe-is-located",
+    "a-default-that-is-only-a-prefix-of-the-source-literal-is-refused",
+    "empty-text-an-unknown-id-and-two-identical-literals-are-each-refused-without-a-write",
+    "a-successful-promote-rewrites-the-crlf-literal-in-place-and-deletes-the-override",
+    "replacement-text-containing-dollar-ampersand-is-written-verbatim",
+    "a-failing-typecheck-restores-the-source-file-byte-for-byte"
+  ],
+  "freshness": {
+    "hash": "fcfa8ac38468599a",
+    "fileHashes": {
+      "tools/prompt-lab/server.mjs": "fcfa8ac38468599a"
+    },
+    "recordedAt": "2026-09-19"
+  }
+}

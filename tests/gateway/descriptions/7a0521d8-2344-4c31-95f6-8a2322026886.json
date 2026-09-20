@@ -1,0 +1,10 @@
+{
+  "id": "7a0521d8-2344-4c31-95f6-8a2322026886",
+  "featureIds": [
+    "cron-idle-gating"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:15.587Z",
+  "updatedAt": "2026-09-09T18:43:07.240Z",
+  "body": "WHAT\nThe scheduler checks every 30 seconds whether a job is due. A due job fires only when the session is idle (no turn is running). If the session is busy, the job is left in place and re-checked on the next tick, so it lands at the start of a fresh turn, never in the middle of one.\n\nWHY\nA prompt injected into a running turn would interleave with the agent's own work and corrupt the conversation.\n\nWHERE\nengine/core/src/scheduling/cron.ts — `CronScheduler.tick()` (`if (!idle) continue;`), `isDue()`, `fireKey()` / `lastFireKey` (so one occurrence fires once), `const TICK_MS`; the idle predicate is supplied in engine/core/src/runtime/engine.ts `constructor` as `isIdle: () => !this.session.isBusy()` and the fired prompt goes through `enqueue` (slash command or `user_message`).\n\nTEST CHECKLIST\n1. With a controllable `isIdle` returning false and a matching minute, tick() calls enqueue zero times and list() still contains the job.\n2. Flip isIdle to true and tick() again within the same minute; enqueue is called exactly once with the job's prompt and source 'cron'.\n3. With isIdle true, two tick() calls in the same matching minute enqueue only once (lastFireKey dedupes the occurrence).\n4. A wakeup job (scheduleWakeup) whose fireAt has passed is also held while busy and fires on the first idle tick, then is removed.\n5. Engine-level: while a FakeProvider turn is in progress (session.isBusy() true), a scheduler tick enqueues nothing; after the turn finishes the next tick starts a new user turn."
+}

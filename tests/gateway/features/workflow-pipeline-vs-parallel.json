@@ -1,0 +1,23 @@
+{
+  "id": "workflow-pipeline-vs-parallel",
+  "name": "pipeline has no barrier; parallel does",
+  "area": "engine",
+  "section": "Scheduling",
+  "prose": "The default for multi-stage work is pipeline, so one slow item never holds up the rest. A barrier is only for when a stage genuinely needs every prior result at once.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/scheduling/workflow.ts"
+  ],
+  "invariant": "pipeline runs each item through all stages independently with no barrier between stages, while parallel awaits all; a throwing stage or thunk yields null instead of failing the run.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "4a893e4a13ee8b3a",
+    "fileHashes": {
+      "engine/core/src/scheduling/workflow.ts": "4a893e4a13ee8b3a"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

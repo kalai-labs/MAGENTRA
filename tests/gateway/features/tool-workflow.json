@@ -1,0 +1,23 @@
+{
+  "id": "tool-workflow",
+  "name": "Workflow tool",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Runs a workflow script that orchestrates multiple subagents deterministically. The script is plain JavaScript and must open with a pure meta literal.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/tools/src/workflow.ts"
+  ],
+  "invariant": "The tool requires script or scriptPath, reads scriptPath relative to cwd or absolute, and reports an unreadable path rather than running nothing.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "3f879e28a69163eb",
+    "fileHashes": {
+      "engine/tools/src/workflow.ts": "3f879e28a69163eb"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

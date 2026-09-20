@@ -1,0 +1,23 @@
+{
+  "id": "cron-expiry",
+  "name": "Recurring jobs auto-expire",
+  "area": "engine",
+  "section": "Scheduling",
+  "prose": "An unattended recurring job is a slow leak; the expiry bounds it. The tool tells the user this when the job is created.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/scheduling/cron.ts"
+  ],
+  "invariant": "A recurring job stops firing 7 days after creation without needing to be deleted.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "af544b91103e2848",
+    "fileHashes": {
+      "engine/core/src/scheduling/cron.ts": "af544b91103e2848"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

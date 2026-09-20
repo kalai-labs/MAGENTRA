@@ -1,0 +1,24 @@
+{
+  "id": "standards-md",
+  "name": "STANDARDS.md",
+  "area": "engine",
+  "section": "Knowledge",
+  "prose": "re-read every turn (not cached at boot), capped at 16 KB with a truncation notice.",
+  "kinds": [
+    "fs",
+    "llm"
+  ],
+  "entryFiles": [
+    "engine/core/src/knowledge/standards.ts"
+  ],
+  "invariant": "STANDARDS.md is loaded into the system prompt when present.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "06529298c7f7a14a",
+    "fileHashes": {
+      "engine/core/src/knowledge/standards.ts": "06529298c7f7a14a"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

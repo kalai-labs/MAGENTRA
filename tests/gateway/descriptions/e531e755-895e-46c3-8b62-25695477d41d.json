@@ -1,0 +1,10 @@
+{
+  "id": "e531e755-895e-46c3-8b62-25695477d41d",
+  "featureIds": [
+    "tool-taskoutput"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:23.120Z",
+  "updatedAt": "2026-09-09T18:43:16.183Z",
+  "body": "WHAT\nTaskOutput reads the output file of a background task (Bash, Monitor or Agent) and returns it under a header with the task status and exit code. With block:true (default) it polls every 100ms until the task is no longer running, the timeout (default 30s) passes, or the turn is aborted; with block:false it returns whatever is in the file right now. An unknown id is a tool error.\n\nWHY\nWithout it the agent could not collect a background Agent's report or check on a long command without reading the file path by hand.\n\nWHERE\nengine/tools/src/taskControl.ts — taskOutputTool (outputSchema task_id/block/timeout), execute(): ctx.session.background.get(), the `while (info.status === 'running' && Date.now() < deadline && !signal.aborted)` loop, readFileSync(info.outputFile), header 'Task <id> [<status>, exit N]:'. Status/outputFile come from engine/core/src/scheduling/background.ts — BackgroundManager.\n\nTEST CHECKLIST\n1. Launch a fake background job (temp stateDir) that writes 'partial' to its output file and stays running; TaskOutput { block:false } returns immediately with header '[running]' and body 'partial'.\n2. Same job; TaskOutput { block:true, timeout: 300 } returns after about 300ms while still '[running]' (timeout respected).\n3. Launch a job, then finish it (onExit(0) and write 'done') 200ms later; TaskOutput { block:true, timeout: 5000 } returns before the timeout with header containing 'completed, exit 0' and body 'done'.\n4. TaskOutput for id 'bash_nope' returns isError:true with 'No background task with id'.\n5. A running job whose output file is empty returns body '(no output yet)'; an aborted signal makes the blocking loop exit early."
+}

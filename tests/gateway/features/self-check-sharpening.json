@@ -1,0 +1,31 @@
+{
+  "id": "self-check-sharpening",
+  "name": "Self-check sharpening",
+  "area": "engine",
+  "section": "Finishing rungs — what stands between \"stopped talking\" and \"delivered\"",
+  "prose": "the self-verify text flips its closing clause once the turn changed code: instead of warning off invented rituals it demands evidence about the real thing, names the changed files, and refuses \"compiled\", \"re-read\", or \"a stand-in agreed with me\" as proof — while accepting a stated gap.",
+  "kinds": [
+    "pure",
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/finishing.ts"
+  ],
+  "invariant": "The self-check's closing clause flips on whether the turn changed code: demand evidence if it did, forbid invented rituals if it did not.",
+  "deferred": false,
+  "tests": [
+    "the-plain-closing-forbids-invented-rituals-and-the-code-closing-demands-the-evidence",
+    "the-rung-is-one-prompt-with-a-closing-slot-so-the-sentinel-instructions-cannot-diverge",
+    "an-overdrive-turn-that-wrote-a-file-is-self-checked-with-the-closing-that-names-it",
+    "an-overdrive-turn-whose-only-tool-call-was-a-read-is-self-checked-without-a-demand-for-evidence",
+    "the-same-code-changing-turn-in-the-normal-stance-is-never-self-checked",
+    "an-overdrive-turn-that-called-no-tool-at-all-ends-on-its-first-answer"
+  ],
+  "freshness": {
+    "hash": "81dd55bfbeb78d6c",
+    "fileHashes": {
+      "engine/core/src/runtime/finishing.ts": "81dd55bfbeb78d6c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

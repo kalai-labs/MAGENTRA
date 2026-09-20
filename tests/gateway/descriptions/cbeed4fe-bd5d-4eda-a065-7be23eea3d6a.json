@@ -1,0 +1,10 @@
+{
+  "id": "cbeed4fe-bd5d-4eda-a065-7be23eea3d6a",
+  "featureIds": [
+    "one-click-no-earlier-download"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-11T08:27:04.441Z",
+  "updatedAt": "2026-09-11T08:27:04.441Z",
+  "body": "Our update mechanism isn't fully implemented yet, we can delay this test."
+}

@@ -1,0 +1,23 @@
+{
+  "id": "interrupt",
+  "name": "Interrupt",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "a running turn stops promptly, including pending question rounds.",
+  "kinds": [
+    "llm"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "An interrupt stops a running turn promptly, including pending question rounds.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7c7930bc5724d79f",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

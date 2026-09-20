@@ -209,8 +209,9 @@ async function cmdMap() {
    *
    * So: reach (who breaks if this changes) + coordination (how much this file
    * pulls together) + size (where the logic actually is). Test files are
-   * excluded — app/tests/ui.e2e.js is 1877 lines and scores well, but nobody
-   * orients themselves by reading it.
+   * excluded — the deleted app/tests/ui.e2e.js was 1877 lines and scored well,
+   * but nobody orients themselves by reading a test. The filter stays for the
+   * suite being rebuilt.
    */
   const score = (r) => r.loc / 50 + r.transitive * 1.5 + r.imports.length * 1.5;
   const isTest = (f) => /(^|\/)tests?\//.test(f) || /\.test\.|\.e2e\./.test(f);

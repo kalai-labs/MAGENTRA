@@ -1,0 +1,30 @@
+{
+  "id": "transcript",
+  "name": "Transcript",
+  "area": "engine",
+  "section": "State",
+  "prose": "every message/permission/compaction is appended; replay reconstructs history exactly.",
+  "kinds": [
+    "fs",
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/state/transcript.ts"
+  ],
+  "invariant": "Every dangling tool_use gets a tool_result, or the provider rejects the next request and /resume replays the wound forever.",
+  "deferred": false,
+  "tests": [
+    "a-transcript-that-stops-after-an-unanswered-tool-batch-replays-with-synthetic-results",
+    "a-half-answered-tool-batch-gains-the-missing-result-inside-the-same-user-message",
+    "a-history-whose-tool-calls-are-all-answered-comes-back-identical",
+    "replay-applies-a-compaction-record-as-a-summary-plus-the-tail-and-keeps-the-latest-meta",
+    "an-interrupted-tool-batch-lands-in-the-transcript-already-paired"
+  ],
+  "freshness": {
+    "hash": "07a6ca3aedda6222",
+    "fileHashes": {
+      "engine/core/src/state/transcript.ts": "07a6ca3aedda6222"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

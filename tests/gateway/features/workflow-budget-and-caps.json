@@ -1,0 +1,23 @@
+{
+  "id": "workflow-budget-and-caps",
+  "name": "Budget and caps are enforced",
+  "area": "engine",
+  "section": "Scheduling",
+  "prose": "A workflow can spawn dozens of agents, so the ceilings are enforced in the runner rather than trusted to the script.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/scheduling/workflow.ts"
+  ],
+  "invariant": "agent() throws once the output-token budget reaches zero, concurrent agents never exceed 4, and total agent calls never exceed 100.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "4a893e4a13ee8b3a",
+    "fileHashes": {
+      "engine/core/src/scheduling/workflow.ts": "4a893e4a13ee8b3a"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

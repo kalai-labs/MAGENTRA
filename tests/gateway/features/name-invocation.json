@@ -1,0 +1,29 @@
+{
+  "id": "name-invocation",
+  "name": "`/<name>` invocation",
+  "area": "engine",
+  "section": "Addons",
+  "prose": "typing an addon's name runs a turn with its instructions loaded; an unclaimed name is still an unknown command.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/engine.ts"
+  ],
+  "invariant": "Typing an addon's name runs a turn with its instructions loaded; an unclaimed name stays an unknown command.",
+  "deferred": false,
+  "tests": [
+    "slash-foo-with-args-starts-a-turn-whose-user-message-is-the-header-plus-the-substituted-body",
+    "without-a-placeholder-args-become-a-trailing-arguments-line-and-empty-args-add-nothing",
+    "slash-nope-prints-unknown-command-and-the-model-is-never-called",
+    "slash-foo-in-capitals-resolves-the-addon-named-foo",
+    "while-a-turn-is-running-slash-foo-is-refused-with-the-busy-notice-and-no-second-turn-starts"
+  ],
+  "freshness": {
+    "hash": "ef7418a5eb86e339",
+    "fileHashes": {
+      "engine/core/src/runtime/engine.ts": "ef7418a5eb86e339"
+    },
+    "recordedAt": "2026-09-19"
+  }
+}

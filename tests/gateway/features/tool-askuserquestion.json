@@ -1,0 +1,29 @@
+{
+  "id": "tool-askuserquestion",
+  "name": "AskUserQuestion",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "The UI always adds an \"Other\" free-text option.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/tools/src/askUserQuestion.ts"
+  ],
+  "invariant": "Up to five questions block until answered, and the answers key positionally.",
+  "deferred": false,
+  "tests": [
+    "the-schema-allows-one-to-five-questions-with-two-to-four-options-each",
+    "two-questions-with-identical-text-keep-their-own-answers-by-position",
+    "an-answer-keyed-by-question-text-is-still-read",
+    "an-unanswered-question-reads-no-answer",
+    "execute-does-not-resolve-before-the-frontend-answers"
+  ],
+  "freshness": {
+    "hash": "928c6c50835c4f14",
+    "fileHashes": {
+      "engine/tools/src/askUserQuestion.ts": "928c6c50835c4f14"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

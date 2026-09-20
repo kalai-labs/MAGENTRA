@@ -1,0 +1,10 @@
+{
+  "id": "00a5a44d-b18f-4072-9c40-a2cc7db19532",
+  "featureIds": [
+    "tool-bash-background"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:21.792Z",
+  "updatedAt": "2026-09-09T18:42:57.132Z",
+  "body": "WHAT\nBash with run_in_background:true does not wait for the command. It registers the job with the BackgroundManager, starts the shell, pipes stdout and stderr into the job's output file, and returns the task id right away. When the shell exits, the manager emits a background_notification and queues a <task-notification> for the next turn.\n\nWHY\nWithout it a long build or a watcher would hold the turn until the Bash timeout, and the agent could not keep working while waiting.\n\nWHERE\nengine/tools/src/bash.ts — bashTool.execute(), the `if (input.run_in_background)` branch: ctx.session.background.launch({ kind:'bash', start }) where start() calls spawnShell(command, cwd, false), pipes child.stdout/stderr into createWriteStream(outputFile), calls onExit(code) on 'close', and returns { stop: () => killTree(child.pid) }. engine/core/src/scheduling/background.ts — BackgroundManager.launch() and the exit notification.\n\nTEST CHECKLIST\n1. With a temp stateDir and a real BackgroundManager, execute Bash { command: 'echo hi; sleep 1', run_in_background: true } and assert it resolves in well under 1s with content containing 'task id: bash_' and the output file path, and background.get(id).status is 'running'.\n2. Wait for the child to finish; assert the output file contains 'hi', status becomes 'completed' with exitCode 0, exactly one 'exit' background_notification was emitted and exactly one remind() call contains the task id.\n3. Run { command: 'echo err 1>&2; exit 3', run_in_background: true }; assert the output file contains 'err' (stderr is captured) and the final status is 'failed' with exitCode 3.\n4. Run a long command in background, then call background.stop(id); assert it returns true, the process is gone (pid no longer alive) and status is 'stopped'.\n5. Assert the background branch does not append the PWD marker (spawnShell called with trackPwd false): the output file must not contain '__MAGENTRA_PWD__'."
+}

@@ -1,0 +1,10 @@
+{
+  "id": "c9b073ae-9ef6-4557-87ad-74a244d37c21",
+  "featureIds": [
+    "workflow-schema-retry"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:24.931Z",
+  "updatedAt": "2026-09-09T18:43:14.417Z",
+  "body": "WHAT\nWhen `agent()` is called with a `schema`, the runner appends an instruction asking for a single JSON object, then parses the reply after stripping markdown code fences and surrounding prose. If parsing fails it sends exactly one correction prompt quoting the bad reply; if that also fails, `agent()` returns `null`.\n\nWHY\nStructured output is needed for scripts to compose results, but an unbounded retry loop would burn the budget on a model that cannot comply.\n\nWHERE\nengine/core/src/scheduling/workflow.ts — the `agent` hook inside `WorkflowRunner.run()` (schema branch), `schemaInstruction()`, `correctionPrompt()`, `parseJsonReply()`, `stripFences()`, `const PARSE_FAIL`.\n\nTEST CHECKLIST\n1. With a fake spawnAgent returning '```json\\n{\"a\":1}\\n```', agent('p', {schema}) resolves to {a:1} after exactly one spawn, and the prompt sent contains 'Reply with ONLY a single JSON object'.\n2. With replies ['not json', '{\"a\":2}'], agent() resolves to {a:2}, spawnAgent was called twice, and the second prompt contains 'could not be parsed as JSON' and the first reply text.\n3. With replies ['garbage', 'still garbage'], agent() resolves to null, spawnAgent was called exactly twice (never a third time), and meta.failures stays 0 (a parse failure is not an exception).\n4. A reply with prose around the object ('Here you go: {\"k\":true} done') parses to {k:true} without a retry.\n5. Without a schema option the raw string reply is returned unchanged and no correction prompt is ever sent."
+}

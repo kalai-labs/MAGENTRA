@@ -1,0 +1,30 @@
+{
+  "id": "single-consumer-events",
+  "name": "Single-consumer events",
+  "area": "engine",
+  "section": "Protocol & host",
+  "prose": "`Engine.events` has exactly one consumer by design; a second one silently steals events. Either enforce it or document it in a test.",
+  "kinds": [
+    "pure",
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/util/asyncQueue.ts"
+  ],
+  "invariant": "The event queue has exactly one consumer; a second silently steals events, which is why multi-workspace is a process pool.",
+  "deferred": false,
+  "tests": [
+    "items-pushed-before-anyone-reads-are-yielded-in-order",
+    "two-concurrent-readers-split-the-events-between-them",
+    "close-resolves-a-waiting-reader-with-done-and-drops-later-pushes",
+    "one-consumer-over-engine-events-sees-session-started-turn-started-and-turn-finished-in-order",
+    "the-queue-never-yields-undefined-so-an-event-is-always-an-object"
+  ],
+  "freshness": {
+    "hash": "4b14496e3af5dc6a",
+    "fileHashes": {
+      "engine/core/src/util/asyncQueue.ts": "4b14496e3af5dc6a"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

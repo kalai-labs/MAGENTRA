@@ -1,0 +1,29 @@
+{
+  "id": "engine-lifecycle",
+  "name": "Engine lifecycle",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "the child engine spawns on workspace open, restarts on model change, and is killed on quit.",
+  "kinds": [
+    "proc",
+    "ui"
+  ],
+  "entryFiles": [
+    "app/main.js"
+  ],
+  "invariant": "The engine child is spawned, restarted and reaped per tab, and a dying child exits before a replacement spawns.",
+  "deferred": false,
+  "tests": [
+    "the-engine-stops-on-sigterm-well-inside-the-kill-budget",
+    "opening-a-workspace-spawns-exactly-one-engine-for-it",
+    "a-replacement-waits-for-the-previous-child-to-exit",
+    "quitting-leaves-no-engine-behind"
+  ],
+  "freshness": {
+    "hash": "97287a90f013d4ba",
+    "fileHashes": {
+      "app/main.js": "97287a90f013d4ba"
+    },
+    "recordedAt": "2026-09-19"
+  }
+}

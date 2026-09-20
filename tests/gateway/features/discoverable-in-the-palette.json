@@ -1,0 +1,31 @@
+{
+  "id": "discoverable-in-the-palette",
+  "name": "Discoverable in the palette",
+  "area": "engine",
+  "section": "Addons",
+  "prose": "`session_started` carries the roster, and each addon rides in the command registry as `/<name>`.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/engine.ts",
+    "engine/core/src/agent/addons.ts"
+  ],
+  "invariant": "session_started carries the addon roster and each addon rides the command registry as /<name>.",
+  "deferred": false,
+  "tests": [
+    "a-workspace-addon-appears-in-session-started-addons-with-builtin-false",
+    "session-started-commands-carry-slash-foo-next-to-every-built-in",
+    "the-built-in-magentron-addon-is-listed-with-builtin-true",
+    "after-clear-the-new-session-started-carries-the-same-roster-and-slash-foo",
+    "with-no-addons-the-roster-is-empty-and-commands-are-exactly-the-built-in-list"
+  ],
+  "freshness": {
+    "hash": "50fb3b9b2f3dab86",
+    "fileHashes": {
+      "engine/core/src/runtime/engine.ts": "ef7418a5eb86e339",
+      "engine/core/src/agent/addons.ts": "ff424ed1464098d4"
+    },
+    "recordedAt": "2026-09-19"
+  }
+}

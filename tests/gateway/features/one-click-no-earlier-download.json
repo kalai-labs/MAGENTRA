@@ -1,0 +1,23 @@
+{
+  "id": "one-click-no-earlier-download",
+  "name": "One click, no earlier download",
+  "area": "app",
+  "section": "Packaging",
+  "prose": "nothing reaches the network until the user clicks Update; the inspector footer then shows progress and offers Restart now.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/main/updates.js"
+  ],
+  "invariant": "Self-update asks first, then downloads with progress and installs on quit; nothing reaches the network before one click.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "924ffeb15d514ced",
+    "fileHashes": {
+      "app/main/updates.js": "924ffeb15d514ced"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

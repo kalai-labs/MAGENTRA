@@ -1,0 +1,8 @@
+{
+  "name": "@magentra/gateway",
+  "version": "0.17.4",
+  "private": true,
+  "type": "module",
+  "description": "The single source of truth for every feature MAGENTRA ships, the tests that prove each one, and the reasons those tests exist. Dev tooling: never enters the Electron bundle.",
+  "engines": { "node": ">=20" }
+}

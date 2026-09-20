@@ -1,0 +1,23 @@
+{
+  "id": "turn-loop",
+  "name": "Turn loop",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "user message → streamed thinking/text → tool calls → turn end.",
+  "kinds": [
+    "llm"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "A user message drives streamed thinking/text, tool calls, and one turn end.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7c7930bc5724d79f",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

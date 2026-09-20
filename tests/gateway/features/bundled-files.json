@@ -1,0 +1,29 @@
+{
+  "id": "bundled-files",
+  "name": "Bundled files",
+  "area": "engine",
+  "section": "Addons",
+  "prose": "a directory addon advertises its sibling notes and scripts as paths, never inlining their contents.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/agent/addons.ts"
+  ],
+  "invariant": "A directory addon advertises sibling notes and scripts as paths, never inlining their contents.",
+  "deferred": false,
+  "tests": [
+    "a-directory-addons-siblings-are-loaded-as-workspace-relative-paths-without-its-own-addon-md",
+    "invoking-the-addon-in-a-turn-sends-the-model-a-dash-line-per-path-and-none-of-the-note-text",
+    "a-flat-addon-and-the-built-in-magentron-both-load-with-an-empty-resources-list",
+    "an-addon-shipping-more-than-twenty-four-siblings-advertises-exactly-twenty-four",
+    "a-sibling-one-folder-down-is-advertised-and-one-two-folders-down-is-not"
+  ],
+  "freshness": {
+    "hash": "ff424ed1464098d4",
+    "fileHashes": {
+      "engine/core/src/agent/addons.ts": "ff424ed1464098d4"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

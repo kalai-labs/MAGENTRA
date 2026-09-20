@@ -1,0 +1,29 @@
+{
+  "id": "addons-listing",
+  "name": "`/addons` listing",
+  "area": "engine",
+  "section": "Addons",
+  "prose": "names each addon, the actual file it came from, and how many files it bundles.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/engine.ts"
+  ],
+  "invariant": "/addons names each addon, the file it came from, and how many files it bundles.",
+  "deferred": false,
+  "tests": [
+    "with-no-addons-the-listing-says-none-are-installed-and-where-one-goes",
+    "a-flat-addon-is-listed-as-slash-name-with-its-description-and-its-file-path-and-no-bundle-count",
+    "a-directory-addon-names-its-addon-md-and-how-many-files-it-bundles",
+    "the-built-in-magentron-shows-built-in-as-its-origin-and-no-bundle-count",
+    "the-final-line-reports-addons-installed-equal-to-the-roster-size"
+  ],
+  "freshness": {
+    "hash": "ef7418a5eb86e339",
+    "fileHashes": {
+      "engine/core/src/runtime/engine.ts": "ef7418a5eb86e339"
+    },
+    "recordedAt": "2026-09-19"
+  }
+}

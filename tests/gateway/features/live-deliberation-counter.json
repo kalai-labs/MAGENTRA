@@ -1,0 +1,27 @@
+{
+  "id": "live-deliberation-counter",
+  "name": "Live deliberation counter",
+  "area": "protocol",
+  "section": "Runtime — the turn loop",
+  "prose": "`outputTokens` (`D(t)`) is what the CURRENT turn has generated, over every model call it made including subagents'. Starts each turn at 0, climbs in the chat's liveness strip as the agent works, and is replaced at turn end by the API's exact total.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/tokens.ts",
+    "engine/core/src/runtime/sessionStats.ts",
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "outputTokens is what the CURRENT turn generated across every model call including subagents', starting each turn at 0.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "1fb45a5594a88f46",
+    "fileHashes": {
+      "engine/protocol/src/tokens.ts": "034eedec535e4a01",
+      "engine/core/src/runtime/sessionStats.ts": "4ecc8795d6575450",
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

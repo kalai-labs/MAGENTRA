@@ -1,0 +1,32 @@
+{
+  "id": "engine-host",
+  "name": "Engine host",
+  "area": "engine",
+  "section": "Protocol & host",
+  "prose": "spawns, serves NDJSON over stdio, drains in-flight work on stdin close, and exits cleanly.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/host/src/serve.ts",
+    "engine/host/src/main.ts"
+  ],
+  "invariant": "The host speaks NDJSON over stdio and nothing else crosses the process boundary.",
+  "deferred": false,
+  "tests": [
+    "every-stdout-line-is-a-json-frame-and-the-first-one-is-session-started",
+    "a-request-frame-written-to-stdin-is-answered-on-stdout",
+    "a-line-that-is-not-a-request-is-refused-and-the-host-keeps-serving",
+    "closing-stdin-drains-the-work-in-flight-and-exits-zero",
+    "a-fatal-boot-failure-is-an-error-frame-on-stdout-before-exit-1",
+    "a-multibyte-character-split-across-two-stdin-chunks-arrives-whole"
+  ],
+  "freshness": {
+    "hash": "a806484ead89e3e3",
+    "fileHashes": {
+      "engine/host/src/serve.ts": "93e02b8a3893c4fd",
+      "engine/host/src/main.ts": "50afc8ffb16fe8c3"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

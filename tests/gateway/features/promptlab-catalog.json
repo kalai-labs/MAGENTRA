@@ -1,0 +1,29 @@
+{
+  "id": "promptlab-catalog",
+  "name": "Prompt Lab serves the live catalog",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "A local console for every prompt the engine sends, on 127.0.0.1:4319.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "tools/prompt-lab/server.mjs"
+  ],
+  "invariant": "/api/catalog reflects the registry as built, and /api/events streams changes as they happen.",
+  "deferred": false,
+  "tests": [
+    "catalog-lists-exactly-the-real-registrys-prompts-for-the-configured-directory",
+    "every-entry-carries-real-token-counts-and-the-preview-sums-tool-tokens",
+    "an-override-written-from-outside-the-server-appears-in-the-catalog-and-on-the-event-stream",
+    "the-event-stream-opens-with-a-connected-comment-and-a-disconnect-does-not-break-later-broadcasts",
+    "an-unknown-path-is-404-and-the-server-binds-only-to-127-0-0-1"
+  ],
+  "freshness": {
+    "hash": "fcfa8ac38468599a",
+    "fileHashes": {
+      "tools/prompt-lab/server.mjs": "fcfa8ac38468599a"
+    },
+    "recordedAt": "2026-09-19"
+  }
+}

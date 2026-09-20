@@ -1,0 +1,23 @@
+{
+  "id": "tool-schedulewakeup",
+  "name": "ScheduleWakeup",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "A single delayed wakeup that injects a prompt once the REPL is next idle. It never interrupts a running turn.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/tools/src/cron.ts"
+  ],
+  "invariant": "The delay is clamped to [60,3600] seconds, it fires exactly once, and it is then removed.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7a287af2d9d76db8",
+    "fileHashes": {
+      "engine/tools/src/cron.ts": "7a287af2d9d76db8"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

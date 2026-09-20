@@ -1,0 +1,10 @@
+{
+  "id": "7784d630-3eac-43cd-a43d-2a64dcafde02",
+  "featureIds": [
+    "offline-rests"
+  ],
+  "status": "ready",
+  "createdAt": "2026-09-09T18:30:18.185Z",
+  "updatedAt": "2026-09-11T08:26:25.148Z",
+  "body": "WHAT\nThe update check reads github.com/kalai-labs/MAGENTRA/releases/latest (a redirecting web page served as JSON), never api.github.com. If the request fails (offline), returns a non-OK status, or electron-updater reports an error such as a missing channel file, the state rests at 'uptodate' — there is no error status. On the assisted tier, when no artifact exists for this platform/arch, the click opens the release page instead of guessing a file name.\n\nWHY\napi.github.com is rate-limited per IP (60/h), and an error banner for a failed check gives the user nothing to act on.\n\nWHERE\napp/main/updates.js — LATEST_URL (`${RELEASES_URL}/latest`), latestTag() (fetch with accept: application/json, 8 s timeout, returns null when !res.ok), checkNow() (catch → setState({ status: \"uptodate\" }), null tag → uptodate), selfUpdater() autoUpdater.on(\"error\") → status \"uptodate\", assetName(version) returning null for Intel mac / non-x64 Linux, startUpdate() falling back to `${RELEASES_URL}/tag/v${version}`.\n\nTEST CHECKLIST\n1. With fetch stubbed to reject (network error), checkNow() leaves state.status 'uptodate' and logs 'update-check-failed'; no exception escapes.\n2. With fetch returning status 404 for /releases/latest, latestTag() returns null and checkNow() sets status 'uptodate' and version null.\n3. The URL fetched by latestTag starts with 'https://github.com/' and never contains 'api.github.com'.\n4. On the self tier, an autoUpdater 'error' event (e.g. 'Cannot find latest.yml') sets status 'uptodate' and records 'update-error' rather than an error status.\n5. On the assisted tier with process.platform 'darwin' and arch 'x64', assetName returns null and startUpdate opens https://github.com/kalai-labs/MAGENTRA/releases/tag/v<version> via shell.openExternal."
+}

@@ -36,8 +36,13 @@ jobs:
         with:
           node-version: 20
 
-      - name: Test the version tool
-        run: npm run test:version
+      # TODO(tests): restore when the new suite lands. This gated every release
+      # on the deleted tools/version/test/ suite. Until it is rebuilt, a release
+      # runs with the version tool unverified — the tool still writes VERSION,
+      # CHANGELOG.md and the tag below with no test standing behind it.
+      #
+      # - name: Test the version tool
+      #   run: npm run test:version
 
       - name: Set the identity of the release author
         run: |
@@ -132,6 +137,39 @@ jobs:
 
       - name: Package the app
         run: npm run ${{ matrix.dist }}
+
+      # LAUNCH WHAT WAS JUST PACKAGED. `ci.yml` already smokes the app, but it
+      # smokes it from SOURCE, and a packaging fault cannot show up there by
+      # construction: a missing bundled engine, an unresolved native module, an
+      # asar that omitted a file are all defects OF the artifact, so only the
+      # artifact can show them. Without this step the first run of a release
+      # build is the user's.
+      #
+      # `--smoke` exits 0 five seconds after the renderer's first paint and 1 if
+      # the renderer crashed (app/main.js). A non-zero exit fails the leg, and a
+      # failed leg leaves the release a draft that no client can resolve — the
+      # safe direction the `publish` job below already relies on.
+      - name: Smoke the packaged app (windows)
+        if: matrix.name == 'windows'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem app/dist/*-win-portable.exe | Select-Object -First 1
+          if (-not $exe) { throw "no portable exe was packaged" }
+          & $exe.FullName --smoke
+          if ($LASTEXITCODE -ne 0) { throw "the packaged app exited $LASTEXITCODE" }
+
+      # The dmg is what gets uploaded, so the dmg is what gets launched: mounting
+      # it proves the shipped image carries an app that runs, which running the
+      # unpacked mac-arm64/ tree beside it would not.
+      - name: Smoke the packaged app (mac)
+        if: matrix.name == 'mac'
+        run: |
+          set -euo pipefail
+          dmg=$(ls app/dist/*.dmg | head -1)
+          mountpoint=$(mktemp -d)
+          hdiutil attach "$dmg" -mountpoint "$mountpoint" -nobrowse -quiet
+          trap 'hdiutil detach "$mountpoint" -quiet || true' EXIT
+          "$mountpoint/MAGENTRA.app/Contents/MacOS/MAGENTRA" --smoke
 
       - name: Upload the artifacts to the release
         shell: bash

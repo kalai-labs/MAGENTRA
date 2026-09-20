@@ -1,0 +1,25 @@
+{
+  "id": "resume",
+  "name": "Resume",
+  "area": "engine",
+  "section": "State",
+  "prose": "`/resume <id>` restores real conversational context, not just metadata, and continues the *same* transcript.",
+  "kinds": [
+    "llm"
+  ],
+  "entryFiles": [
+    "engine/core/src/state/transcript.ts",
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "/resume rebuilds a render-ready paint list with tool calls already paired and harness scaffolding stripped.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "8de05e470def2c08",
+    "fileHashes": {
+      "engine/core/src/state/transcript.ts": "07a6ca3aedda6222",
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

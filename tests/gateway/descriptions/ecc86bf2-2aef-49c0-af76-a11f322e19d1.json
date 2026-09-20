@@ -1,0 +1,10 @@
+{
+  "id": "ecc86bf2-2aef-49c0-af76-a11f322e19d1",
+  "featureIds": [
+    "tool-pushnotification"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:22.661Z",
+  "updatedAt": "2026-09-09T18:43:17.093Z",
+  "body": "WHAT\nPushNotification shows a desktop toast to the human (Windows toast via PowerShell, osascript on macOS, notify-send on Linux) with the message cut to 200 characters. The message is passed as an argument or environment variable, never spliced into a shell string. If delivery fails, the tool returns a plain note saying so; it never returns isError and never throws.\n\nWHY\nWithout it the agent cannot get the user's attention when a long task finishes, and a failing notifier on a headless system would otherwise break the turn.\n\nWHERE\nengine/tools/src/pushNotification.ts — pushNotificationTool (permissionClass 'interact', status literal 'proactive'), MAX_MESSAGE_CHARS, execute() (slice + deliver + non-error result either way), deliver() platform switch, run() (execFile with 10s timeout, resolves false on error), runWindows() (message via env MAGENTRA_NOTIFY_MSG), appleScriptString().\n\nTEST CHECKLIST\n1. Stub child_process.execFile to call back with an Error; execute { message:'hi', status:'proactive' }; assert the promise resolves, isError is undefined and content contains 'could not be delivered' and the message.\n2. Stub execFile to succeed; assert content is 'Notification sent: \"hi\"'.\n3. Pass a 300-char message; assert the message handed to execFile (or the env var on win32) is exactly 200 chars.\n4. Pass a message containing a double quote and '$(rm -rf x)'; assert it reaches execFile only as an argument/env value and no shell string containing it is built (on darwin the AppleScript string has the quote escaped).\n5. inputSchema.safeParse({ message:'x', status:'urgent' }) fails and with empty message fails."
+}

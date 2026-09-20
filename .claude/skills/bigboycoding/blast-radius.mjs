@@ -16,6 +16,7 @@
  *   node .claude/skills/bigboycoding/blast-radius.mjs --symbol <Name>
  *   node .claude/skills/bigboycoding/blast-radius.mjs --frame <frame-type>
  *   node .claude/skills/bigboycoding/blast-radius.mjs --entrypoints
+  node .claude/skills/bigboycoding/blast-radius.mjs --json <file...>
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -283,6 +284,80 @@ function reportFrame(type) {
     console.log(`\n${appSide.length} of these live in app/ — untyped. Rename this string and the build still passes.`);
 }
 
+/**
+ * The same facts reportFile prints, as JSON — so a tool can consume them
+ * instead of parsing prose. Added 2026-09-09 for tools/magentra-gateway, whose
+ * SPEC §6 says to call this script rather than grow a second graph reader; a
+ * second reader is exactly what parsing the human output would have become the
+ * first time a label changed.
+ *
+ * Prints ONE object for the whole invocation, keyed by the paths asked for.
+ */
+function reportJson(targets) {
+  const out = { root: rel(ROOT) || ".", indexed: allFiles.length, files: {}, unknown: [] };
+  for (const target of targets) {
+    const abs = resolve(ROOT, target);
+    if (!source.has(abs)) {
+      out.unknown.push(target);
+      continue;
+    }
+    const direct = [...(importers.get(abs) ?? [])].map(rel).sort();
+    const trans = transitiveImporters(abs);
+    const exps = exportsOf(abs);
+
+    const seam = [];
+    for (const name of exps) {
+      const { untyped } = textReach(name, true);
+      if (untyped.length) seam.push({ name, files: untyped.map((u) => rel(u.file)) });
+    }
+
+    // Frame strings this file names, and where the OTHER side of each lives.
+    // This is the seam tsc cannot see at all: rename one and everything still
+    // compiles. Candidates come from `type: "..."` and `case "..."` only, so a
+    // random string constant is not mistaken for a wire frame.
+    const frames = [];
+    const text = source.get(abs) ?? "";
+    const candidates = new Set(
+      [...text.matchAll(/(?:type\s*:\s*|case\s+)["'`]([a-z][a-z0-9_]{2,40})["'`]/g)].map((m) => m[1]),
+    );
+    for (const type of candidates) {
+      const re = new RegExp(`["'\`]${type}["'\`]`);
+      const emitted = [];
+      const handled = [];
+      for (const [file, body] of source) {
+        if (!re.test(body)) continue;
+        body.split("\n").forEach((l, i) => {
+          if (!re.test(l)) return;
+          const entry = { file: rel(file), line: i + 1, untyped: isApp(file) };
+          if (/case\s|===|==|\.type\s*[=!]==?|switch/.test(l)) handled.push(entry);
+          else emitted.push(entry);
+        });
+      }
+      // A string only this file mentions is not a seam — it crosses nothing.
+      const others = [...emitted, ...handled].filter((e) => e.file !== rel(abs));
+      if (others.length === 0) continue;
+      frames.push({
+        type,
+        emitted,
+        handled,
+        crossesIntoApp: [...emitted, ...handled].some((e) => e.untyped),
+      });
+    }
+
+    out.files[rel(abs)] = {
+      risk: riskVerdict(direct.length, trans.size, rel(abs)),
+      exports: exps,
+      fanOut: [...(imports.get(abs) ?? [])].map(rel).sort(),
+      directImporters: direct,
+      transitiveImporters: [...trans].map(rel).sort(),
+      untypedAppReach: [...trans].filter(isApp).map(rel).sort(),
+      untypedSeam: seam,
+      frames,
+    };
+  }
+  process.stdout.write(JSON.stringify(out));
+}
+
 function reportEntrypoints() {
   console.log(bar("ENTRYPOINTS & COVERAGE"));
   for (const e of ENTRYPOINTS) {
@@ -295,11 +370,12 @@ function reportEntrypoints() {
   console.log(`\n  engine/  ${eng} .ts files   — checked by \`npm run build\` (tsc -b)`);
   console.log(`  app/     ${app} .js/.html files — NOT typechecked by anything`);
   console.log(`\n  regression gates that actually exist:`);
-  console.log(`    npm run build                 typecheck engine/* only`);
-  console.log(`    npm run test:ui               app/tests/run-ui-tests.js`);
-  console.log(`    npm run test:main --workspace app   changes/window/connection/reasoning`);
-  console.log(`    npm run test:version          tools/version`);
-  console.log(`\n  engine/* has NO unit test suite. tsc is its only automated gate.`);
+  console.log(`    npm run build                 typecheck engine/* + tui/* only`);
+  console.log(`    npm run smoke --workspace app boots the app; fails on a renderer crash`);
+  console.log(`\n  That is the whole list. The test suite was reset to zero on 2026-09-09`);
+  console.log(`  (app/tests/, tools/version/test/, every *-check.mjs) and is being rebuilt.`);
+  console.log(`  NOTHING in this repo has a test suite. Reading the fan-in below IS the`);
+  console.log(`  verification, not a preliminary to it.`);
 }
 
 // ── main ───────────────────────────────────────────────────────────────────
@@ -311,14 +387,19 @@ if (!argv.length) {
   node .claude/skills/bigboycoding/blast-radius.mjs --symbol <Name>
   node .claude/skills/bigboycoding/blast-radius.mjs --frame <frame-type>
   node .claude/skills/bigboycoding/blast-radius.mjs --entrypoints
+  node .claude/skills/bigboycoding/blast-radius.mjs --json <file...>
 
 Indexed ${allFiles.length} files (${engineFiles.length} engine .ts, ${appFiles.length} app, ${toolFiles.length} tools, ${tuiFiles.length} tui).`);
   process.exit(0);
 }
 
 const mode = argv[0];
-if (mode === "--entrypoints") reportEntrypoints();
-else if (mode === "--symbol") argv.slice(1).forEach(reportSymbol);
-else if (mode === "--frame") argv.slice(1).forEach(reportFrame);
-else argv.forEach(reportFile);
-console.log("");
+if (mode === "--json") {
+  reportJson(argv.slice(1)); // machine-readable: no trailing newline, no banner
+} else {
+  if (mode === "--entrypoints") reportEntrypoints();
+  else if (mode === "--symbol") argv.slice(1).forEach(reportSymbol);
+  else if (mode === "--frame") argv.slice(1).forEach(reportFrame);
+  else argv.forEach(reportFile);
+  console.log("");
+}

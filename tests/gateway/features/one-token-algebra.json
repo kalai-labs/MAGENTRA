@@ -1,0 +1,29 @@
+{
+  "id": "one-token-algebra",
+  "name": "One token algebra",
+  "area": "protocol",
+  "section": "Runtime — the turn loop",
+  "prose": "every token quantity in the app (context, deliberation, turn usage, estimates, display rounding, cost) is defined exactly once, in `engine/protocol/src/tokens.ts`, mirrored for the renderer in `app/renderer/modules/tokens.js`. No surface computes its own.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/tokens.ts"
+  ],
+  "invariant": "Every token quantity in the system is defined exactly once here; no surface computes its own.",
+  "deferred": false,
+  "tests": [
+    "formattokens-rounds-on-one-ladder-and-never-renders-a-negative",
+    "estimatetokens-is-ceil-chars-over-3-5-and-clamps-a-negative-count-to-zero",
+    "contextpercentof-and-freecontextof-are-defined-for-an-unknown-window-and-an-overfull-one",
+    "addusage-sums-each-class-into-its-target-and-emptyusage-is-the-identity",
+    "no-second-chars-per-token-constant-or-k-m-formatter-exists-outside-the-two-sanctioned-files"
+  ],
+  "freshness": {
+    "hash": "034eedec535e4a01",
+    "fileHashes": {
+      "engine/protocol/src/tokens.ts": "034eedec535e4a01"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

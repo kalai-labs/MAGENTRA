@@ -1,0 +1,32 @@
+{
+  "id": "tool-registry-contract",
+  "name": "Tool registry contract",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Every registered tool has a complete contract, and the read-only ones are actually RUN against a temp workspace so \"registered\" is never mistaken for \"working\".",
+  "kinds": [
+    "pure",
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/tools/src/index.ts",
+    "engine/core/src/agent/tool.ts"
+  ],
+  "invariant": "createDefaultRegistry registers exactly 27 tools, each with a name, description, real zod schema, valid permission class and execute.",
+  "deferred": false,
+  "tests": [
+    "the-default-registry-holds-exactly-the-27-expected-tools",
+    "every-tool-has-a-name-a-description-a-zod-schema-a-permission-class-and-an-execute",
+    "every-description-slot-has-a-matching-descriptionvars-key-and-no-tool-leaks-an-unfilled-one",
+    "registering-a-name-twice-throws-duplicate-tool-and-subset-keeps-only-the-named-tools",
+    "read-glob-grep-tasklist-cronlist-and-graphquery-run-against-a-workspace-and-answer"
+  ],
+  "freshness": {
+    "hash": "5ba26cf8988a447b",
+    "fileHashes": {
+      "engine/tools/src/index.ts": "014afda5d9dbf689",
+      "engine/core/src/agent/tool.ts": "789027d09aaa17fd"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "interactive-turns-run-uncapped",
+  "name": "Interactive turns run uncapped",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "no iteration cap, no per-turn token budget, unlimited signal-driven recovery nudges (failed batch, length cutoff, open tasks); the wrap-up nudge keeps its cap and the stall detector is the brake.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "An interactive root turn has no iteration cap, no per-turn token budget, and unlimited signal-driven recovery nudges.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7c7930bc5724d79f",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

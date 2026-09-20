@@ -1,0 +1,25 @@
+{
+  "id": "subagent-spawn",
+  "name": "Subagent spawn",
+  "area": "engine",
+  "section": "Agent",
+  "prose": "a child runs, streams tagged events, and returns its final text to the parent.",
+  "kinds": [
+    "llm"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts",
+    "engine/tools/src/agent.ts"
+  ],
+  "invariant": "A subagent gets its own context and restricted tools, shares cwd, has no memory of the conversation, and cannot nest or ask the user.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "374113b481a0fc67",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f",
+      "engine/tools/src/agent.ts": "3a034a6c1522e0fe"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

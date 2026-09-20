@@ -1,0 +1,31 @@
+{
+  "id": "wire-round-trip",
+  "name": "Wire round-trip",
+  "area": "protocol",
+  "section": "Protocol & host",
+  "prose": "every `CoreEvent` and `FrontendRequest` survives NDJSON encode → decode.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/ndjson.ts",
+    "engine/protocol/src/types.ts"
+  ],
+  "invariant": "A frame survives the round trip, and a malformed line yields an error frame instead of killing the transport.",
+  "deferred": false,
+  "tests": [
+    "every-core-event-variant-survives-encode-then-decode",
+    "every-frontend-request-variant-survives-encode-then-decode",
+    "newlines-unicode-and-backslashes-encode-to-one-line-and-decode-unchanged",
+    "n-encoded-frames-concatenated-decode-to-the-same-n-frames-in-order",
+    "a-garbage-line-between-two-frames-yields-an-error-frame-with-both-frames-intact"
+  ],
+  "freshness": {
+    "hash": "ca666dab578cbe59",
+    "fileHashes": {
+      "engine/protocol/src/ndjson.ts": "11b0052ceeedde08",
+      "engine/protocol/src/types.ts": "11d32208f2241da2"
+    },
+    "recordedAt": "2026-09-19"
+  }
+}

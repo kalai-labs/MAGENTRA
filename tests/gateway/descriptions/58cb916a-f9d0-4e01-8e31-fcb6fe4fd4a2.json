@@ -1,0 +1,10 @@
+{
+  "id": "58cb916a-f9d0-4e01-8e31-fcb6fe4fd4a2",
+  "featureIds": [
+    "workflow-pipeline-vs-parallel"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:24.865Z",
+  "updatedAt": "2026-09-09T18:43:04.184Z",
+  "body": "WHAT\nScripts get two helpers. `pipeline(items, ...stages)` runs each item through all stages on its own, so item 3 can be in stage 2 while item 1 is still in stage 1 — there is no waiting point between stages. `parallel([thunks])` runs all thunks and waits for every one before returning. In both, a stage or thunk that throws produces `null` for that slot instead of failing the whole run.\n\nWHY\nOne slow item must never hold up the rest, and one failing subagent must not throw away every other result.\n\nWHERE\nengine/core/src/scheduling/workflow.ts — the `pipeline` and `parallel` hooks defined inside `WorkflowRunner.run()` (per-item `for (const stage of stageFns)` with try/catch → null; `Promise.all` over thunks with try/catch → null); they are passed to the script via `new AsyncFunction('agent','parallel','pipeline','phase','log','args','budget', body)`.\n\nTEST CHECKLIST\n1. pipeline([a,b], stage1, stage2) where stage1 for `a` is slow: record the order of stage entries and assert stage2 for `b` starts before stage1 for `a` finishes (no barrier).\n2. parallel([slowThunk, fastThunk]) resolves only after both settle, and the result array preserves thunk order regardless of finish order.\n3. pipeline where stage2 throws for item 1 only returns [null, result2] and the run result is ok:true.\n4. parallel where one thunk rejects returns null in that position and the other values intact; the run result is ok:true.\n5. pipeline(nonArray) and parallel(nonArray) throw with the 'expects an array' message, which surfaces as {ok:false, error} for the run."
+}

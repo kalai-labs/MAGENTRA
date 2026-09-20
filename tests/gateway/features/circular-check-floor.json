@@ -1,0 +1,23 @@
+{
+  "id": "circular-check-floor",
+  "name": "Circular-check floor",
+  "area": "engine",
+  "section": "Finishing rungs — what stands between \"stopped talking\" and \"delivered\"",
+  "prose": "the floor's second shape, for the turn that DID run something where what it ran leans on a stand-in the same turn wrote (mock/fake/stub/patch, matched on high-precision markers in the written text only, never in the file already on disk). One reminder that a double agrees with whatever its author believed and so proves nothing about the dependency it replaced: name where each contract came from, confirm it from the dependency itself, and fix both sides if they disagree. Its own once-per-turn fuse; the two shapes disagree on whether a command ran, so only one can fire at a given stop.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/finishing.ts"
+  ],
+  "invariant": "When the turn's checking leaned on self-written stand-ins, the reminder says a passing check against your own mock proves only self-consistency.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "81dd55bfbeb78d6c",
+    "fileHashes": {
+      "engine/core/src/runtime/finishing.ts": "81dd55bfbeb78d6c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

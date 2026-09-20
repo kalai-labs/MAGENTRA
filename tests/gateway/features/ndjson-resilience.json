@@ -1,0 +1,29 @@
+{
+  "id": "ndjson-resilience",
+  "name": "Malformed frames cannot kill the transport",
+  "area": "protocol",
+  "section": "Protocol & host",
+  "prose": "One bad frame from either side must not take the session down with it.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/ndjson.ts"
+  ],
+  "invariant": "An unparseable line yields an error frame and the stream continues; CRLF and an unterminated trailing line are both handled.",
+  "deferred": false,
+  "tests": [
+    "an-unparseable-line-yields-an-error-frame-and-the-next-frame-still-arrives",
+    "a-crlf-terminated-line-decodes-without-a-stray-carriage-return",
+    "a-final-line-with-no-newline-is-yielded-when-the-stream-ends",
+    "a-frame-split-across-chunk-boundaries-decodes-as-exactly-one-frame",
+    "blank-lines-yield-nothing-and-a-bad-line-is-quoted-to-at-most-200-characters"
+  ],
+  "freshness": {
+    "hash": "11b0052ceeedde08",
+    "fileHashes": {
+      "engine/protocol/src/ndjson.ts": "11b0052ceeedde08"
+    },
+    "recordedAt": "2026-09-19"
+  }
+}

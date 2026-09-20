@@ -18,5 +18,5 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["bin/**/*.mjs", "lib/**/*.mjs", "test/**/*.mjs"]
+  "include": ["bin/**/*.mjs", "lib/**/*.mjs"]
 }

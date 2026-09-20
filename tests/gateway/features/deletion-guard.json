@@ -1,0 +1,34 @@
+{
+  "id": "deletion-guard",
+  "name": "Deletion guard",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "destructive Bash always asks, *in both stances*, until explicitly disabled. Covers `rm`, `mv`, force-push, `DROP TABLE`, …",
+  "kinds": [
+    "proc",
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/permissions.ts",
+    "engine/tools/src/bash.ts"
+  ],
+  "invariant": "Anything that removes a file, folder or worktree always asks, in both stances, overridable only by an explicit literal subject grant.",
+  "deferred": false,
+  "tests": [
+    "the-classifier-flags-what-destroys-and-passes-over-what-does-not",
+    "a-broad-allow-rule-or-session-grant-does-not-get-past-the-guard",
+    "a-declined-deletion-refuses-and-says-that-deletions-always-require-approval",
+    "an-explicit-subject-rule-is-the-one-standing-override-and-only-for-that-subject",
+    "always-allow-on-a-deletion-grants-that-literal-command-and-nothing-else",
+    "turning-the-guard-off-or-overdrive-on-computes-no-deletion-subject-at-all",
+    "a-real-rm-is-stopped-by-a-refusal-and-removes-the-file-on-an-approval"
+  ],
+  "freshness": {
+    "hash": "a0c96b9ea713850c",
+    "fileHashes": {
+      "engine/core/src/runtime/permissions.ts": "5e675cbefa29932b",
+      "engine/tools/src/bash.ts": "b45fd5c652cc6bd9"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

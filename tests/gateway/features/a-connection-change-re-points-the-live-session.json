@@ -1,0 +1,34 @@
+{
+  "id": "a-connection-change-re-points-the-live-session",
+  "name": "A connection change re-points the LIVE session",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "saving a connection or applying a profile no longer respawns the engine while one is running: the `set_connection` frame rebuilds the provider in place, so the conversation, the session id, the task list and the stance all survive a move from a local server to a hosted API mid-task. Only a dead or unstarted engine is spawned, and the UI says which happened. `/settings baseUrl|apiKey|provider|apiKeyEnv|allowInsecureTls` takes the same path, so `SETTING_TIMING` now honestly reports \"session\" for all five.",
+  "kinds": [
+    "proc",
+    "ui"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/engine.ts",
+    "app/main.js"
+  ],
+  "invariant": "Saving a connection rebuilds the provider in place via set_connection, so the conversation, session id, task list and stance all survive.",
+  "deferred": false,
+  "tests": [
+    "swaps-the-provider-without-restarting-the-session",
+    "moves-the-api-key-into-the-environment",
+    "an-absent-vision-block-clears-the-vision-endpoint",
+    "settings-on-a-connection-key-rebuilds-the-provider",
+    "a-live-engine-is-re-pointed-not-respawned",
+    "with-no-engine-running-the-connection-spawns-one",
+    "a-set-connection-frame-to-a-dead-engine-is-reported"
+  ],
+  "freshness": {
+    "hash": "c1354fbae8ba730b",
+    "fileHashes": {
+      "engine/core/src/runtime/engine.ts": "ef7418a5eb86e339",
+      "app/main.js": "97287a90f013d4ba"
+    },
+    "recordedAt": "2026-09-19"
+  }
+}

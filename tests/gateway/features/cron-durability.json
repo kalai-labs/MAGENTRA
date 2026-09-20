@@ -1,0 +1,23 @@
+{
+  "id": "cron-durability",
+  "name": "Durable vs session-only jobs",
+  "area": "engine",
+  "section": "Scheduling",
+  "prose": "Most scheduling is a within-session convenience; durability is opt-in.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/scheduling/cron.ts"
+  ],
+  "invariant": "A job is session-only unless durable is set, and a durable job survives a restart.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "af544b91103e2848",
+    "fileHashes": {
+      "engine/core/src/scheduling/cron.ts": "af544b91103e2848"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

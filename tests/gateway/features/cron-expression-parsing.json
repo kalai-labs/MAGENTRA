@@ -1,0 +1,23 @@
+{
+  "id": "cron-expression-parsing",
+  "name": "Cron expression parsing",
+  "area": "engine",
+  "section": "Scheduling",
+  "prose": "The scheduler's own expression engine, hand-rolled with no dependency.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/scheduling/cron.ts"
+  ],
+  "invariant": "parseCron accepts every field form it claims to, matchesCron agrees with it, and nextCronMatch returns the next matching minute.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "af544b91103e2848",
+    "fileHashes": {
+      "engine/core/src/scheduling/cron.ts": "af544b91103e2848"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

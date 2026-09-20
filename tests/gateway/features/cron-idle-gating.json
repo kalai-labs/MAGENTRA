@@ -1,0 +1,23 @@
+{
+  "id": "cron-idle-gating",
+  "name": "Jobs fire only when idle",
+  "area": "engine",
+  "section": "Scheduling",
+  "prose": "A prompt injected into a running turn would interleave with the agent's own work, so the scheduler waits for the REPL to be idle.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/scheduling/cron.ts"
+  ],
+  "invariant": "A job fires only when the minute matches AND the session is idle; it never lands mid-turn.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "af544b91103e2848",
+    "fileHashes": {
+      "engine/core/src/scheduling/cron.ts": "af544b91103e2848"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

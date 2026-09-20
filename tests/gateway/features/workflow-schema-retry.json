@@ -1,0 +1,23 @@
+{
+  "id": "workflow-schema-retry",
+  "name": "Schema validation retries once",
+  "area": "engine",
+  "section": "Scheduling",
+  "prose": "Structured agent output without an unbounded retry loop.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/scheduling/workflow.ts"
+  ],
+  "invariant": "With a schema, the reply is parsed with markdown fences stripped, retried exactly once on failure, and returns null if it still cannot parse.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "4a893e4a13ee8b3a",
+    "fileHashes": {
+      "engine/core/src/scheduling/workflow.ts": "4a893e4a13ee8b3a"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

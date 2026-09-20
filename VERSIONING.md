@@ -217,9 +217,12 @@ TypeScript check them. TypeScript is a development dependency only. The tool
 does not need it to run.
 
 ```bash
-npm run test:version       # Run the tests
 npm run typecheck:version  # Check the types
 ```
+
+> The tool's tests (`tools/version/test/`) were deleted in the 2026-09-09 test
+> reset, so `npm run test:version` does not exist at the moment and the release
+> workflow's test step is commented out. Both come back with the new suite.
 
 | File                  | It does this                                  |
 | --------------------- | --------------------------------------------- |

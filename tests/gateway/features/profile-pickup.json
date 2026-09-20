@@ -1,0 +1,29 @@
+{
+  "id": "profile-pickup",
+  "name": "Profile pickup",
+  "area": "tui",
+  "section": "Terminal UI (tui/)",
+  "prose": "a folder with no credentials offers `~/.magentra/profiles.json` profiles and connecting writes the same `.env` + `.magentra/settings.json` the IDE writes.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "tui/src/profiles.ts"
+  ],
+  "invariant": "A folder with no credentials picks up a saved profile by writing .env and .magentra/settings.json exactly as the IDE writes them.",
+  "deferred": false,
+  "tests": [
+    "an-empty-folder-reads-as-unconnected-and-applying-a-profile-connects-it",
+    "the-env-carries-one-key-line-named-for-the-provider-and-retires-the-legacy-one",
+    "settings-json-spells-the-provider-openai-compatible-and-drops-any-apikeyenv-pin",
+    "a-keyless-endpoint-creates-no-env-file-and-still-counts-as-connected",
+    "a-mangled-profile-store-reads-as-empty-and-clearing-undoes-only-what-applying-wrote"
+  ],
+  "freshness": {
+    "hash": "f58764adffb01ee0",
+    "fileHashes": {
+      "tui/src/profiles.ts": "f58764adffb01ee0"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

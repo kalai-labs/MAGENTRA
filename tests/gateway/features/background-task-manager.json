@@ -1,0 +1,23 @@
+{
+  "id": "background-task-manager",
+  "name": "Background task manager",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "One owner for backgrounded Bash commands, Monitors and background Agents.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/core/src/scheduling/background.ts"
+  ],
+  "invariant": "The manager tracks every background task's lifecycle and delivers its completion notification exactly once.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "3bde1c70a8bcb222",
+    "fileHashes": {
+      "engine/core/src/scheduling/background.ts": "3bde1c70a8bcb222"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

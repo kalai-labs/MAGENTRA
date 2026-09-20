@@ -1,0 +1,10 @@
+{
+  "id": "18901b19-c931-457a-bfe5-ca947ce4e3d6",
+  "featureIds": [
+    "workflow-meta-literal"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:24.799Z",
+  "updatedAt": "2026-09-09T18:42:59.411Z",
+  "body": "WHAT\nA workflow script must begin with `export const meta = { ... }`. The runner cuts that object literal out of the source text and evaluates it on its own, before the rest of the script runs, then validates it (name, description, optional whenToUse and phases). If the block refers to a variable, calls a function or uses template interpolation, evaluating it alone fails and the run is rejected before any agent is spawned.\n\nWHY\nThe permission dialog and the phase list are read from meta before the script runs, so it has to be statically readable; otherwise the user approves a workflow whose description could change at run time.\n\nWHERE\nengine/core/src/scheduling/workflow.ts — `extractMeta()`, `scanBalanced()`, `metaSchema` (zod), `WorkflowRunner.run()` (the `new Function('return (' + literal + ')')()` step and `metaSchema.safeParse`), types `ParsedMeta`, `WorkflowMeta`.\n\nTEST CHECKLIST\n1. A script whose meta is `{ name: someVar, description: 'x' }` returns {ok:false, error starting 'Could not evaluate the meta literal'} and the fake spawnAgent is never called.\n2. A script whose meta uses a call (`name: pick()`) or a template literal with `${x}` is likewise rejected before any spawn.\n3. A script with no `export const meta =` prefix returns {ok:false, error:'Workflow script must begin with `export const meta = { ... }`.'}.\n4. A literal missing `description` (or with an empty name) returns {ok:false, error starting 'Invalid workflow meta:'} naming the field.\n5. A valid literal containing braces inside strings (`description: 'uses {curly} text'`) is extracted correctly and the run proceeds to execute the body; the returned meta echoes name/description/phases."
+}

@@ -1,0 +1,23 @@
+{
+  "id": "tool-enterworktree",
+  "name": "EnterWorktree",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Isolated work that does not touch the main checkout. Name validation is per path segment. Only works inside a git repository.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/tools/src/worktree.ts"
+  ],
+  "invariant": "A worktree is created under .magentra/worktrees on branch magentra/<name>, the session cwd moves into it, and baseRef fresh vs head is honoured.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "a6838b7237489b7c",
+    "fileHashes": {
+      "engine/tools/src/worktree.ts": "a6838b7237489b7c"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "id": "discovery",
+  "name": "Discovery",
+  "area": "engine",
+  "section": "Addons",
+  "prose": "both layouts load: a flat `.magentra/addons/<name>.md` and a `<name>/ADDON.md` directory; a directory without an `ADDON.md` is skipped.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/agent/addons.ts"
+  ],
+  "invariant": "Both layouts load — flat <name>.md and <name>/ADDON.md — and a directory without ADDON.md is skipped.",
+  "deferred": false,
+  "tests": [
+    "a-flat-name-md-without-a-frontmatter-name-loads-under-its-file-stem",
+    "a-folder-holding-an-addon-md-loads-under-the-folder-name",
+    "a-folder-with-no-addon-md-contributes-nothing-not-even-its-readme",
+    "a-non-md-file-at-the-top-level-is-not-an-addon-while-an-uppercase-md-is",
+    "an-empty-body-and-an-unreadable-entry-file-are-skipped-and-the-rest-of-the-roster-still-loads"
+  ],
+  "freshness": {
+    "hash": "ff424ed1464098d4",
+    "fileHashes": {
+      "engine/core/src/agent/addons.ts": "ff424ed1464098d4"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

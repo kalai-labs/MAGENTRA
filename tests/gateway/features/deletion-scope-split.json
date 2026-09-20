@@ -1,0 +1,29 @@
+{
+  "id": "deletion-scope-split",
+  "name": "Deletion scope-split",
+  "area": "engine",
+  "section": "OVERDRIVE — fully-autonomous stance",
+  "prose": "deletions provably inside the workspace skip the guard (rm/del/find/mv with analyzable paths, judged against Bash's tracked cwd); history rewrites, substitution, `~`, root wildcards, out-of-tree paths, and `.magentra` state dirs still ask.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/permissions.ts"
+  ],
+  "invariant": "Deleting a .magentra target asks in every mode except OVERDRIVE.",
+  "deferred": false,
+  "tests": [
+    "the-bash-classifier-splits-a-deletion-into-workspace-protected-and-unprovable",
+    "a-protected-deletion-asks-with-no-subject-even-with-the-deletion-guard-off",
+    "an-explicit-allow-rule-does-not-beat-a-protected-deletion",
+    "always-allow-on-a-protected-deletion-records-no-grant-so-the-next-one-asks-again",
+    "overdrive-is-the-one-mode-that-skips-a-protected-deletion"
+  ],
+  "freshness": {
+    "hash": "5e675cbefa29932b",
+    "fileHashes": {
+      "engine/core/src/runtime/permissions.ts": "5e675cbefa29932b"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

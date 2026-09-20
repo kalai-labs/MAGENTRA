@@ -1,0 +1,23 @@
+{
+  "id": "tool-webfetch",
+  "name": "WebFetch",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Fetches a URL, converts it to readable text, and answers a prompt about it through a separate digest model.",
+  "kinds": [
+    "net"
+  ],
+  "entryFiles": [
+    "engine/tools/src/webFetch.ts"
+  ],
+  "invariant": "http is upgraded to https, a same-host redirect is followed while a cross-host redirect is NOT, and the page is cached for 15 minutes.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "9ddf1b9e6b0dff3e",
+    "fileHashes": {
+      "engine/tools/src/webFetch.ts": "9ddf1b9e6b0dff3e"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

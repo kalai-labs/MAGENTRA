@@ -1,0 +1,23 @@
+{
+  "id": "tool-monitor",
+  "name": "Monitor",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Watches a log, dev server, file tail or test watcher for specific output. Explicitly the wrong tool for a single event.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/tools/src/monitor.ts"
+  ],
+  "invariant": "Each stdout line becomes an event delivered in batches on the next turn, without interrupting the running turn.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "2fb1de2cf06873c0",
+    "fileHashes": {
+      "engine/tools/src/monitor.ts": "2fb1de2cf06873c0"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

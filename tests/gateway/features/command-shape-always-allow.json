@@ -1,0 +1,29 @@
+{
+  "id": "command-shape-always-allow",
+  "name": "Command-shape always-allow",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "\"Always allow\" on an ordinary command remembers its shape (`mkdir …` covers all mkdir; `git push`/`npm run build` keep the subcommand/script; compound or substituted commands stay literal); the card states the scope; shape grants persist across sessions and never override the deletion guard.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/permissions.ts"
+  ],
+  "invariant": "An always-allow on an execute call remembers the command SHAPE, keeping two tokens for multi-command CLIs and three for script runners.",
+  "deferred": false,
+  "tests": [
+    "the-shape-keeps-one-token-two-for-a-multi-command-cli-and-three-for-a-script-runner",
+    "a-compound-substituted-quoted-or-flag-headed-command-has-no-shape",
+    "an-always-allow-persists-the-shape-and-a-different-argument-list-stops-asking",
+    "the-prompt-payload-names-the-grant-only-when-it-is-broader-than-the-subject",
+    "a-prefix-grant-never-satisfies-the-deletion-guard"
+  ],
+  "freshness": {
+    "hash": "5e675cbefa29932b",
+    "fileHashes": {
+      "engine/core/src/runtime/permissions.ts": "5e675cbefa29932b"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

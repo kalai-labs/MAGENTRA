@@ -1,0 +1,29 @@
+{
+  "id": "permission-prompt",
+  "name": "Permission prompt",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "a `permission_request` surfaces a dialog, and the decision reaches the engine.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/renderer/modules/landing.js",
+    "app/main.js"
+  ],
+  "invariant": "A permission request reaches the user, the decision returns to the right tab's engine, and the queue drains in order.",
+  "deferred": false,
+  "tests": [
+    "the-decision-goes-to-the-engine-that-asked",
+    "requests-are-shown-one-at-a-time-in-arrival-order",
+    "an-engine-that-exits-clears-its-pending-requests"
+  ],
+  "freshness": {
+    "hash": "fbe5c662580d3d46",
+    "fileHashes": {
+      "app/renderer/modules/landing.js": "4e7fbe06fa9a6471",
+      "app/main.js": "97287a90f013d4ba"
+    },
+    "recordedAt": "2026-09-19"
+  }
+}

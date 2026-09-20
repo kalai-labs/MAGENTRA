@@ -11,6 +11,23 @@
 "use strict";
 
 const { execFileSync, spawnSync } = require("node:child_process");
+const { join } = require("node:path");
+
+// electron-builder resolves the project it is building from the CWD, so this
+// script has to name its own rather than inherit whatever the caller had.
+// `npm run dist:mac` goes through `--workspace app` and so happened to be in
+// the right place; anything that calls this file directly — a developer, and
+// the mac-artifact/windows-artifact tests, which spawn it with no cwd — was in
+// the repo root, where electron-builder picks the ROOT package.json as the
+// project and then refuses the build outright:
+//
+//   'build' in the application package.json (app/package.json) is not
+//   supported since 3.0 anymore. Please move 'build' into the development
+//   package.json (package.json)
+//
+// which reads as a config error and is really just the wrong directory. The
+// git call below already anchors itself to __dirname for the same reason.
+const APP_DIR = join(__dirname, "..");
 
 // Workspaces hoist electron to the repo root, where electron-builder cannot
 // resolve the "^33.0.0" range on its own — hand it the exact installed version.
@@ -54,7 +71,7 @@ const result = spawnSync(
     `-c.electronVersion=${electronVersion}`,
     ...(commit ? [`-c.extraMetadata.magentraCommit=${commit}`] : []),
   ],
-  { stdio: "inherit", shell: true },
+  { stdio: "inherit", shell: true, cwd: APP_DIR },
 );
 
 process.exit(result.status ?? 1);

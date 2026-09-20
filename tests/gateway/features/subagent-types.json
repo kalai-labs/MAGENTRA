@@ -1,0 +1,23 @@
+{
+  "id": "subagent-types",
+  "name": "Subagent types",
+  "area": "engine",
+  "section": "Agent",
+  "prose": "each type gets its declared toolset and role.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/core/src/agent/agents.ts"
+  ],
+  "invariant": "Only agent types with a non-empty blurb are spawnable, and the list is read live so a disabled blurb drops its type.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "23e3022b0e512330",
+    "fileHashes": {
+      "engine/core/src/agent/agents.ts": "23e3022b0e512330"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

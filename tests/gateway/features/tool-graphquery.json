@@ -1,0 +1,31 @@
+{
+  "id": "tool-graphquery",
+  "name": "GraphQuery",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "A structural alternative to reading files one by one — ranked minimal context, transitive importers by hop distance, forward closure, repo skeleton, and centrality.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/tools/src/graphQuery.ts",
+    "engine/core/src/knowledge/graph.ts"
+  ],
+  "invariant": "All five modes answer from the workspace import graph: slice, blast, deps, structure and rank.",
+  "deferred": false,
+  "tests": [
+    "blast-lists-every-transitive-importer-with-its-hop-distance",
+    "deps-lists-the-forward-closure-with-packages-on-an-external-line",
+    "structure-reports-pagerank-articulation-points-bridges-and-counts",
+    "rank-sorts-by-descending-score-and-slice-puts-its-seed-first-with-the-edges-among-it",
+    "a-seedless-query-is-an-error-and-a-long-answer-is-truncated-at-200-lines"
+  ],
+  "freshness": {
+    "hash": "0dacf5f716cd15a5",
+    "fileHashes": {
+      "engine/tools/src/graphQuery.ts": "456c6d0780907ed5",
+      "engine/core/src/knowledge/graph.ts": "e0b546c2d5a61fd4"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

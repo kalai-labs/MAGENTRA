@@ -123,8 +123,10 @@ const LINUX_ARCH = { AppImage: "x86_64", deb: "amd64", "tar.gz": "x64" };
  * The release asset that matches this install's format, so an assisted update
  * never asks the user to choose among every artifact of the release.
  *
- * The names mirror `build.*.artifactName` in app/package.json, and
- * tests/updates.test.js checks them against the real files a build produces.
+ * The names mirror `build.*.artifactName` in app/package.json. That mirror was
+ * checked against the real files a build produces by app/tests/updates.test.js,
+ * deleted in the test reset — NOTHING CHECKS IT NOW, and the failure mode is a
+ * 404 on a user's update. TODO(tests): re-pin this.
  *
  * @param {string} version
  * @returns {string | null} `null` when this platform and architecture has no
@@ -342,7 +344,9 @@ module.exports = {
   installNow,
   // Both describe this install rather than doing anything to it, and both are
   // the parts most worth pinning down: a wrong tier hands a portable build an
-  // installer, and a wrong asset name is a 404. tests/updates.test.js covers them.
+  // installer, and a wrong asset name is a 404. They are exported for exactly
+  // that reason. app/tests/updates.test.js covered them until the test reset;
+  // nothing does now. TODO(tests): these two are first in line.
   installTier,
   assetName,
 };

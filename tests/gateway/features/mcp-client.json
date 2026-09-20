@@ -1,0 +1,23 @@
+{
+  "id": "mcp-client",
+  "name": "MCP client",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "External MCP servers become tools the agent can call. An image in any MCP result is described or replaced with a note, so the coding model never sees a picture.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/core/src/integrations/mcp.ts"
+  ],
+  "invariant": "A configured MCP server's tools are discovered and registered as ordinary tools, and a server error surfaces as a tool error rather than killing the session.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "0fd61178c2f8a069",
+    "fileHashes": {
+      "engine/core/src/integrations/mcp.ts": "0fd61178c2f8a069"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

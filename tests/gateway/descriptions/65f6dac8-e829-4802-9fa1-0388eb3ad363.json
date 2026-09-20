@@ -1,0 +1,10 @@
+{
+  "id": "65f6dac8-e829-4802-9fa1-0388eb3ad363",
+  "featureIds": [
+    "tool-crondelete"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:22.068Z",
+  "updatedAt": "2026-09-09T18:43:05.331Z",
+  "body": "WHAT\nCronDelete removes a scheduled cron job or wakeup by its id. It reports 'Deleted scheduled job <id>' when something was removed and 'No scheduled job with id <id>' (as a tool error, not an exception) when nothing matched.\n\nWHY\nWithout it a mistaken or finished schedule could not be cancelled, and an unknown id would either crash the turn or be reported as success.\n\nWHERE\nengine/tools/src/cron.ts — cronDeleteTool (deleteSchema { id }, execute() calls cron.delete(id) and branches on the boolean). engine/core/src/scheduling/cron.ts — CronScheduler.delete() (Map.delete, persist() when something was removed).\n\nTEST CHECKLIST\n1. Create a job via CronScheduler.create(), execute CronDelete { id }; assert the content is 'Deleted scheduled job <id>.', isError is undefined, and cron.list() is empty.\n2. Execute CronDelete { id: 'nope' }; assert the promise resolves (does not reject), isError:true and content 'No scheduled job with id nope.'.\n3. Create a wakeup via scheduleWakeup(); CronDelete its id; assert list() no longer contains the wakeup.\n4. Create a durable job, delete it; assert the persisted file on disk no longer lists it.\n5. Execute against a session with cron undefined; assert isError:true and the NO_CRON message."
+}

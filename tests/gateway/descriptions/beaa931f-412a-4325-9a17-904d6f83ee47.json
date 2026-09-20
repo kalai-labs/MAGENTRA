@@ -1,0 +1,10 @@
+{
+  "id": "beaa931f-412a-4325-9a17-904d6f83ee47",
+  "featureIds": [
+    "cron-durability"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-09T18:30:15.344Z",
+  "updatedAt": "2026-09-09T18:43:13.323Z",
+  "body": "WHAT\nThe in-process scheduler (`CronScheduler`) keeps scheduled jobs in memory. A job is session-only by default and disappears when the engine process ends. Only a job created with `durable: true` is written to `<stateDir>/scheduled_tasks.json` and reloaded when a new scheduler is built for that state directory.\n\nWHY\nMost scheduling is a within-session convenience; without an explicit opt-in, every throwaway reminder would pile up on disk and fire again after every restart.\n\nWHERE\nengine/core/src/scheduling/cron.ts — `class CronScheduler`: `create()` (only calls `persist()` when `job.durable`), `persist()` (filters `j.durable`), `load()` (called in the constructor, sets `durable: true` on everything read back), `stateFile()` (`scheduled_tasks.json`), `delete()`. Wired in engine/core/src/runtime/engine.ts `constructor` (`new CronScheduler({ stateDir, isIdle, enqueue })`) and exposed to the model via engine/tools/src/cron.ts `cronCreateTool`.\n\nTEST CHECKLIST\n1. Create a job without `durable` in a temp stateDir; assert list() shows durable:false and no scheduled_tasks.json file exists.\n2. Create a job with durable:true; assert scheduled_tasks.json exists and its jobs array contains that id with the same cron and prompt.\n3. Create one durable and one non-durable job, then construct a second CronScheduler on the same stateDir; assert its list() contains only the durable job.\n4. Delete a durable job, then construct a new scheduler; assert the job is gone from list() (persist ran on delete).\n5. Write a scheduled_tasks.json whose job has an unparseable cron; assert the new scheduler drops it silently and list() is empty (no throw)."
+}

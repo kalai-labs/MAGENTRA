@@ -1,0 +1,37 @@
+{
+  "id": "mac-artifact",
+  "name": "macOS artifact",
+  "area": "app",
+  "section": "Packaging",
+  "prose": "the arm64 dmg's app opens for a standard (non-admin) macOS user, with a working Grep (the bundled `rg`) and a bootable engine bundle.",
+  "kinds": [
+    "pure",
+    "proc"
+  ],
+  "entryFiles": [
+    "app/package.json",
+    "app/scripts/dist.js",
+    "app/scripts/afterPack.js",
+    "app/scripts/bundle-engine.js"
+  ],
+  "invariant": "The macOS build produces the arm64 dmg with the documented name, and its app launches for a non-admin user with the engine and rg bundled.",
+  "deferred": false,
+  "tests": [
+    "the-packager-produces-the-dmg-on-a-mac-or-nothing-anywhere-else",
+    "the-mac-build-declares-an-unsigned-non-admin-app",
+    "the-app-launches-for-a-non-admin-user-or-cannot-be-mounted-elsewhere",
+    "the-bundled-rg-and-engine-run-standalone-or-the-darwin-rg-is-absent-here",
+    "the-updater-dmg-name-agrees-with-the-build-and-x64-mac-publishes-nothing",
+    "ci-smoke-launches-the-packaged-mac-app-and-fails-the-job-otherwise"
+  ],
+  "freshness": {
+    "hash": "4955a2466f5b8a5d",
+    "fileHashes": {
+      "app/package.json": "93c1974d3675fe15",
+      "app/scripts/dist.js": "4cfce29a6cfe7b3d",
+      "app/scripts/afterPack.js": "595c98f900fe14eb",
+      "app/scripts/bundle-engine.js": "3e912cb4bc15ac7e"
+    },
+    "recordedAt": "2026-09-19"
+  }
+}

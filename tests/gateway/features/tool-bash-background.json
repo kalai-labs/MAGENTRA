@@ -1,0 +1,25 @@
+{
+  "id": "tool-bash-background",
+  "name": "Bash background tasks",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Detaches the command so a long build or watcher does not hold the turn.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/tools/src/bash.ts",
+    "engine/core/src/scheduling/background.ts"
+  ],
+  "invariant": "run_in_background returns a task id immediately, streams output to a file, and fires a notification when the command exits.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "3a638df4cae9587d",
+    "fileHashes": {
+      "engine/tools/src/bash.ts": "b45fd5c652cc6bd9",
+      "engine/core/src/scheduling/background.ts": "3bde1c70a8bcb222"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

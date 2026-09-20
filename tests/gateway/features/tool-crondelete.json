@@ -1,0 +1,23 @@
+{
+  "id": "tool-crondelete",
+  "name": "CronDelete",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "Deletes a scheduled cron job or wakeup by id.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/tools/src/cron.ts"
+  ],
+  "invariant": "Deleting by id removes the job, and an unknown id is reported rather than raised.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "7a287af2d9d76db8",
+    "fileHashes": {
+      "engine/tools/src/cron.ts": "7a287af2d9d76db8"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

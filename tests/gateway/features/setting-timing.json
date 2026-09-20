@@ -1,0 +1,32 @@
+{
+  "id": "setting-timing",
+  "name": "Setting timing",
+  "area": "engine",
+  "section": "Config",
+  "prose": "a change takes effect when `SETTING_TIMING` says it does (live / next turn / restart / needs clear).",
+  "kinds": [
+    "pure",
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/engine.ts",
+    "engine/core/src/config/settings.ts"
+  ],
+  "invariant": "Every one of the 24 settings keys declares when it takes effect, and the note printed is the only thing telling the user whether the change took.",
+  "deferred": false,
+  "tests": [
+    "setting-timing-covers-exactly-the-24-schema-keys-with-one-of-the-four-timings",
+    "settings-model-prints-set-wrote-and-next-turn-and-the-next-request-uses-the-model",
+    "a-dotted-key-takes-the-timing-of-its-top-level-key",
+    "settings-baseurl-prints-applied-now-and-the-next-request-goes-to-the-rebuilt-provider",
+    "an-unknown-key-prints-the-valid-keys-no-timing-note-and-writes-nothing"
+  ],
+  "freshness": {
+    "hash": "66a9dcc63cd4e04c",
+    "fileHashes": {
+      "engine/core/src/runtime/engine.ts": "ef7418a5eb86e339",
+      "engine/core/src/config/settings.ts": "d3f06cfa52514272"
+    },
+    "recordedAt": "2026-09-19"
+  }
+}

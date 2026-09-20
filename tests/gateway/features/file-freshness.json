@@ -1,0 +1,29 @@
+{
+  "id": "file-freshness",
+  "name": "File freshness",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "Edit/Write on a file changed on disk since it was read is refused.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/fileState.ts"
+  ],
+  "invariant": "Writing or editing a file not Read this session, or changed on disk since, fails.",
+  "deferred": false,
+  "tests": [
+    "check-fresh-on-a-file-never-read-says-to-read-it-first",
+    "a-recorded-read-goes-stale-when-the-file-grows-on-disk",
+    "a-recorded-read-goes-stale-when-only-the-mtime-moves",
+    "a-file-deleted-since-the-read-is-not-reported-stale",
+    "edit-refuses-an-unread-file-while-write-creates-a-new-one-freely"
+  ],
+  "freshness": {
+    "hash": "aafd7d45e7ab53c9",
+    "fileHashes": {
+      "engine/core/src/runtime/fileState.ts": "aafd7d45e7ab53c9"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "self-verify-rung",
+  "name": "Self-verify rung",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "the first clean end-attempt injects the completeness+economy self-check (query-shaped evidence, no invented rituals); a silent DONE ends the turn with one visible reply; fires once per turn, re-armed by steering.",
+  "kinds": [
+    "llm"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/finishing.ts",
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "The first clean end-attempt injects the self-check once per turn; a silent DONE ends the turn with one visible reply.",
+  "deferred": false,
+  "tests": [],
+  "freshness": {
+    "hash": "25c574d3b9195553",
+    "fileHashes": {
+      "engine/core/src/runtime/finishing.ts": "81dd55bfbeb78d6c",
+      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

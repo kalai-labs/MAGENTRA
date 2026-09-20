@@ -1,0 +1,30 @@
+{
+  "id": "boots",
+  "name": "Boots",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "window opens, renderer loads, no crash. (`npm run smoke` already does this — grow it.)",
+  "kinds": [
+    "proc",
+    "ui"
+  ],
+  "entryFiles": [
+    "app/main.js",
+    "app/renderer/index.html"
+  ],
+  "invariant": "The app boots and the window comes up clean; --smoke exits nonzero when the renderer crashes.",
+  "deferred": false,
+  "tests": [
+    "a-clean-boot-paints-the-landing-page-and-exits-zero",
+    "a-renderer-that-dies-fails-the-boot",
+    "without-smoke-the-app-keeps-running"
+  ],
+  "freshness": {
+    "hash": "6b87e27df2c4d600",
+    "fileHashes": {
+      "app/main.js": "97287a90f013d4ba",
+      "app/renderer/index.html": "a84edad7b4d5fba1"
+    },
+    "recordedAt": "2026-09-19"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "id": "reuse-gate-reminds-never-blocks",
+  "name": "Reuse gate reminds, never blocks",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "a would-be new-file Write block becomes a reminder; the signal survives, the refusal doesn't.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/knowledge/reuseGate.ts"
+  ],
+  "invariant": "A would-be new-file Write becomes a reminder, never a block: the signal survives, the refusal does not.",
+  "deferred": false,
+  "tests": [
+    "a-near-duplicate-with-no-evidence-produces-a-remind-and-nothing-that-could-be-an-error",
+    "the-write-lands-on-disk-and-the-same-user-message-carries-the-reuse-reminder",
+    "a-related-term-searched-this-session-turns-the-same-write-into-a-pass",
+    "overwrites-tests-non-source-vendored-and-out-of-tree-paths-all-pass",
+    "an-index-that-throws-is-a-pass-so-the-write-is-never-affected"
+  ],
+  "freshness": {
+    "hash": "33b901cd339d374b",
+    "fileHashes": {
+      "engine/core/src/knowledge/reuseGate.ts": "33b901cd339d374b"
+    },
+    "recordedAt": "2026-09-09"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "e7467252-abf7-4884-8883-45df95521738",
+  "featureIds": [
+    "images-go-to-a-second-model-never-to-the-coding-one"
+  ],
+  "status": "ready",
+  "createdAt": "2026-09-11T08:22:56.993Z",
+  "updatedAt": "2026-09-11T08:23:06.439Z",
+  "body": "for this. test. to run vision model has to be set at connection otherwise skip this test and warn user"
+}
