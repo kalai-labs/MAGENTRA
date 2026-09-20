@@ -1,0 +1,205 @@
+MAGENTRA - feature test suite, phases 3 & 4
+Handover written 2026-09-20 on the Windows machine, branch tests/lab-1.
+Everything below is what is NOT done, plus the decisions that are yours.
+
+===============================================================================
+WHERE IT STANDS
+===============================================================================
+Phase 3 COMPLETE - 30 features, one commit each.
+  Track A (pure, 16): permission-stances, allow-all-stance,
+    command-shape-always-allow, protected-state-dir, deletion-scope-split,
+    prompt-contract, reuse-gate-reminds-never-blocks, session-report,
+    context-accounting, cost-estimate, one-token-algebra,
+    provider-usage-normalization, runtime-evidence-floor,
+    self-check-sharpening, honest-gap-outranks-a-manufactured-green,
+    pre-turn-snapshot
+  Track B (proc, 14): tool-bash, tool-bash-cwd, tool-grep, tool-exitworktree,
+    engine-host, hooks, deletion-guard, packaged-boot, tty-dispatch,
+    workspace-resume-args, version-git, version-hook, promptlab-build-guard,
+    promptlab-catalog
+
+Phase 4 PARTLY DONE.
+  DONE      the artifact opt-in: realArtifactTestsEnabled() +
+            ARTIFACT_OPT_IN_VAR + a readonly `artifact` member on FeatureTest
+            + the shared withheld announcer (tests/lib/featureTest.ts), the
+            test:artifacts npm script, and decisions/0010. Mirrors
+            decisions/0009 exactly.
+  DONE      mac-artifact and windows-artifact tests.
+  NOT DONE  the whole llm track - 15 features, listed below.
+
+Gate at handover: fresh, 0 discovery problems, 0 drift.
+Run `npm run build` before anything - the suite runs the built engine and
+dist/ is gitignored.
+
+===============================================================================
+1. THE LLM TRACK - 15 FEATURES, NOT STARTED
+===============================================================================
+  D1  turn-loop, clarify-pre-layer, interrupt
+  D2  compaction, resume, self-verify-rung
+  D3  approval-note, bounded-runs-stay-bounded, stall-detector
+  D4  reuse-check, standards-md, circular-check-floor
+  D5  mid-run-steering-both-stances, tool-agent, create-addon-wizard
+
+Connection: repo .env + .magentra/settings.json, copied into each temp
+workspace by LlmTest. Currently Fireworks,
+accounts/fireworks/models/deepseek-v4p1-flash, contextWindow 1000000.
+Run with `npm run test:llm` (or MAGENTRA_LLM_TESTS=1). Under plain `npm test`
+they are withheld and named, never passed.
+
+** THE THING TO KNOW BEFORE WRITING ANY OF THEM **
+Every one of these checklists is written in terms of FakeProvider - "with a
+FakeProvider scripted [...]", "the askUser stub is called once", "a FakeTurn
+with error". Every one also carries your note: "Tests of this has to be done
+using real LLM ... No need to write any mockup or scaffold test for this."
+Those two contradict each other. Your standing rule settles it: an llm item
+gets NO FakeProvider and NO scripted engine.
+
+So each item must be TRANSLATED - from "script this response" into "give the
+model an unambiguous task that forces this behaviour, then assert the engine's
+observable reaction" (a file the tool wrote, a tool_call_finished, a reminder
+present in the next request, a stopReason, a transcript record). Never assert
+the model's wording.
+
+These translate cleanly:
+  turn-loop 1-4, interrupt 1-5, clarify 1/2/5/6, self-verify-rung,
+  compaction 3/4/5, resume 2/4/5.
+
+These CANNOT be expressed against a real endpoint and should come back
+blocked-and-named, not faked:
+  turn-loop 5        needs FakeTurn.error, which throws INSTEAD of streaming
+  clarify 3, 4       need a scripted {clarify:false} and a scripted garbage reply
+  compaction 1, 2, 6 need a scripted summarizer and a forced usage figure
+  resume 1, 3        written around scripted FakeProvider turns
+
+===============================================================================
+2. KNOWN REDS - DELIBERATE, EACH NEEDS A DECISION FROM YOU
+===============================================================================
+2a. windows-artifact + mac-artifact, item 6 (CI IS THE OTHER OS)
+    .github/workflows/release.yml contains the string "smoke" ZERO times: no
+    leg launches the artifact it just built. Both descriptions say "Until those
+    steps exist this item fails - that is the point."
+    You chose: write it red, you add the workflow steps.
+    FIX: give the windows, mac and linux legs a step that launches the packaged
+    app with --smoke and fails the job on a non-zero exit. Both tests then go
+    green with no test change. release.yml is in neither record's entryFiles,
+    which is why I did not touch it.
+    NOTE: these two are `pure`, so they are red on EVERY `npm test`, not only
+    under test:artifacts.
+
+2b. windows-artifact, item 2 - A REAL PACKAGING DEFECT, FOUND BY THIS TEST
+    magentra-cli.exe ships with Electron's own icon and version info instead of
+    MAGENTRA's. Measured on the real 0.17.4 build:
+      - all 14 code and data sections are BYTE-IDENTICAL (.text, .rdata,
+        .data, .pdata, .reloc, ...)
+      - .rsrc alone differs, in 53,894 of its 99,328 bytes
+      - MAGENTRA.exe contains the string MAGENTRA in its resources;
+        magentra-cli.exe does NOT
+    Cause: app/scripts/afterPack.js writeConsoleSubsystemCopy() provably only
+    reads the exe, flips the Subsystem WORD and writes the copy. electron-
+    builder brands MAGENTRA.exe (icon, version info, product name - all .rsrc)
+    AFTER afterPack has taken that copy, and only MAGENTRA.exe gets it.
+    NOT a launch fault and NOT a UAC fault: both exes declare asInvoker,
+    neither asks for requireAdministrator or highestAvailable, and both run
+    ELECTRON_RUN_AS_NODE=1 <exe> resources/engine/engine.cjs --bogus
+    identically (fatal error frame, exit 1).
+    So it is cosmetic-but-real: wrong icon and wrong file properties on the
+    terminal binary, inside the installers too.
+    I did NOT guess at a fix. Moving the copy later means finding the right
+    electron-builder hook - afterPack is documented as running before the
+    targets are built, so a post-build fix would not reach inside the NSIS and
+    portable artifacts. Each attempt costs a ~3 minute rebuild to verify, and a
+    wrong guess ships a broken terminal command.
+    afterPack.js is an entry file of mac-artifact, so whatever you change there
+    must be restamped for EVERY record naming it (grep tests/gateway/features).
+
+===============================================================================
+3. DECISIONS STILL OPEN (carried from phase 2, still blank in your brief)
+===============================================================================
+  - prompt-registry item 1 pins 43 prompts / 7 groups. The catalog is 46/6
+    after importing core+tools+protocol and 73/7 after createDefaultRegistry().
+    43 is the number of definePrompt() call sites. Record invariant edit = yours.
+  - symbol-index: bump SymbolIndexData.version 2 -> 3 so the fixed line numbers
+    reach cached workspaces? Changes a constant the approved checklist pins.
+  - symbol-index item 3b: scoreNames("userFormatter","formatUser") = 1/3, spec
+    says > 0.5. Spec or scorer?
+  - openai-compatible-is-negotiated-not-assumed: the invariant names num_ctx but
+    no checklist item covers it. Add an item or leave.
+
+Found in phase 3, also yours:
+  - OVERDRIVE vs the state dir. allow-all-stance's invariant ("OVERDRIVE means
+    nothing asks, literally - except a deny rule") and protected-state-dir's
+    ("broad grants and OVERDRIVE never satisfy it") CONTRADICT EACH OTHER.
+    permissions.ts sides with the first: :204 skips the protected-path ask on
+    !this.overdrive, :249 computes no deletion subject, :295 skips the
+    out-of-workspace downgrade. So in OVERDRIVE a model can edit or delete
+    .magentra/** and .env* with no prompt. Both tests assert the CODE, both
+    invariants are copied verbatim, both headers say which record is stale.
+    Either fix permissions.ts or fix protected-state-dir's invariant and prose.
+  - deriveAlwaysGrant("git push --force") returns "git push" - only the
+    subcommand token is flag-checked, so a prefix grant for `git push` covers a
+    forced one. Harmless today (a forced push is a deletion subject, decided
+    above that branch - asserted in command-shape-always-allow test 5), but one
+    refactor away from mattering.
+  - The whole ask -> derive-a-shape branch is unreachable with any shipped tool:
+    stanceDefault() is always "allow", so the only route to "ask" is the
+    out-of-workspace downgrade, which needs isFileEdit, while a shape needs
+    permissionClass "execute". Write/Edit are the only isFileEdit tools and both
+    are "mutate".
+  - The rate card calls contextWindowFor(model) with NO settings, so a session's
+    own contextWindow override never reaches it (cost-estimate asserts it as is).
+  - AnthropicProvider yields the SAME usage object it later mutates in
+    message_delta, so a consumer that stores the event sees the final output
+    count. Session reads it synchronously, so it is harmless today.
+  - compaction's owner note is not a test instruction: "make sure we also apply
+    similar mechanisms, preferred LLM first", then notes on deterministic
+    bookkeeping (keep latest messages, system instructions, tool outputs, file
+    paths, plans, VCS state) and re-inspecting external state. That is a PRODUCT
+    request for the compaction design. Not done, not in scope here.
+
+===============================================================================
+4. CLAUSES WITHHELD, EACH NAMED IN ITS TEST HEADER (not skipped)
+===============================================================================
+  - reuse-gate-reminds-never-blocks item 5, 2nd clause: the non-string guard is
+    unreachable behind writeTool.inputSchema.
+  - workspace-resume-args checklist 5: session_list populating the picker races
+    app.tsx's ~100ms non-interactive shutdown (lost ~1 run in 3 even against a
+    near-instant stand-in), and useInput is {isActive: interactive}, so no key
+    could act on it in that mode.
+  - promptlab-build-guard item 3: a real execFile ENOENT against process.execPath
+    cannot happen without a stub. The identical real fallback is exercised
+    instead, in both ensureBuilt() and promote().
+  - tty-dispatch checklist 2's tty-present arm and 3's linux-sibling arm:
+    Windows has no pty. Asserted as what this platform CAN express.
+
+===============================================================================
+5. WHAT THE MAC RUN ADDS THAT WINDOWS CANNOT
+===============================================================================
+mac-artifact items 1-4 branch on process.platform. On Windows they assert the
+Windows truth (no darwin ripgrep is installed, so bundle-engine stops before
+electron-builder, and no dmg and no .app appear). ON YOUR MAC the same file
+builds and inspects the REAL dmg and .app:
+  npm run build && npm run test:artifacts
+That is the first time items 1-4 prove anything about macOS. Expect the mac
+build to take minutes and to need about 1GB free.
+windows-artifact items 1-4 will correctly refuse on the Mac with the named
+"needs a Windows machine" failure.
+
+===============================================================================
+6. HOW TO RUN THINGS
+===============================================================================
+  npm run build            required first, dist/ is gitignored
+  npm run typecheck:tests
+  npm test                 every kind except llm and artifact
+  npm run test:llm         adds the real-model tests (bills the endpoint)
+  npm run test:artifacts   adds the packaged-artifact tests (builds installers,
+                           deletes app/dist first, holds the exclusive lock)
+  node --test --test-concurrency=1 tests/features/<id>.test.ts   one file
+
+Scratchpad helpers used this session (show.mjs / set-tests.mjs / skim.mjs /
+lint.mjs / gate.mts / restamp.mts) were session-local and are GONE. Recreate
+them from the descriptions in the memory note magentra-feature-suite-phases if
+you want them again.
+
+RESTAMP RULE: after any change to a record's entry file, re-record freshness
+for EVERY record naming that file, using the gateway's own stamp() from
+tools/magentra-gateway/src/freshness.ts. Never mass-reconcile.
