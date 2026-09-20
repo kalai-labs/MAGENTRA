@@ -12,7 +12,12 @@
   ],
   "invariant": "The workspace is the positional path if given, else the launch directory; --resume takes an optional id.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-positional-path-is-the-workspace-and-the-resume-id-is-never-a-second-path",
+    "a-missing-positional-directory-exits-1-before-any-engine-spawns",
+    "dev-launch-dir-follows-init-cwd-and-sends-no-resume-frame-by-default",
+    "a-flag-right-after-resume-is-never-taken-as-an-id"
+  ],
   "freshness": {
     "hash": "4d03a316afbcce2c",
     "fileHashes": {
