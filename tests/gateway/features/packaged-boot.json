@@ -5,6 +5,7 @@
   "section": "Terminal UI (tui/)",
   "prose": "`ELECTRON_RUN_AS_NODE=1 <electron> resources/engine/tui.mjs <ws>` boots the TUI against the sibling `engine.cjs`; a turn streams; `/exit` tears both processes down.",
   "kinds": [
+    "fs",
     "proc"
   ],
   "entryFiles": [
@@ -13,7 +14,13 @@
   ],
   "invariant": "A packaged TUI resolves its engine as the sibling engine.cjs and runs through Electron's own Node.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-packaged-branch-resolves-the-sibling-engine-through-electrons-node",
+    "the-dev-branch-spawns-the-configured-engine-home-through-system-node",
+    "a-dev-config-pointing-at-an-unbuilt-checkout-throws-naming-both-paths",
+    "a-missing-config-is-created-with-a-best-guess-engine-home-not-left-absent",
+    "kill-ends-the-engine-by-closing-stdin-well-under-the-1500ms-backstop"
+  ],
   "freshness": {
     "hash": "d98fe19ff27ea1b9",
     "fileHashes": {
