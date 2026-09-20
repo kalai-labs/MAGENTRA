@@ -33,10 +33,22 @@ tests/
 ## Running them
 
 ```
-npm test              # every kind except llm; real-model tests report skipped
-npm run test:llm      # the same suite, with the real-model tests too
+npm test              # every kind except llm and ui; both report skipped
+npm run test:ui       # the ui kind ALONE — the desktop-app tests, nothing else
+npm run test:mac      # the tests whose SUBJECT is macOS, alone (implies artifacts)
+npm run test:windows  # the same for Windows
+npm run test:llm      # the same suite as `npm test`, with the real-model tests too
+npm run test:artifacts# the same suite, with the packaged-artifact tests too
 npm run typecheck:tests
 ```
+
+`npm run build` FIRST, or the run is testing the last build. The tests import
+`engine/*/dist/`, not `src/`, and `npm test` does not build — on 2026-09-20 a
+10-day-old `dist/` failed five tests that the source had already fixed.
+
+Measured on 2026-09-20: `npm test` 91s / 489 tests, `npm run test:ui` 123s /
+50 tests. The split, and why `test:ui` subtracts where `test:llm` adds, is
+[`../decisions/0011`](../decisions/0011-ui-tests-are-opt-in.md).
 
 Three things about that command, all verified on the platform rather than assumed:
 
@@ -201,6 +213,27 @@ directly. The script ALSO works through `npm_lifecycle_event`, because
 `cmd.exe` on Windows, where it is not an assignment but a missing command; see
 [`../decisions/0009`](../decisions/0009-real-model-tests-are-opt-in.md).
 
+**Desktop-app tests are opt-in too, and `test:ui` runs them ALONE.** `ui` starts
+a real Electron process and needs a display. The 50 of them were 59% of the
+suite's wall clock for 9% of its tests, and `--test-concurrency=1` — which
+exists for them — was being paid by the other 508. So:
+
+```
+npm test          every other kind, ~91s. Each ui test is reported skipped,
+                  carrying the command that runs it.
+npm run test:ui   the ui kind and nothing else, ~123s. Every other kind is
+                  set aside, carrying `npm test`.
+```
+
+`MAGENTRA_UI_TESTS=1` is the contract, and the script name is the second signal
+for the same `cmd.exe` reason. Note the asymmetry with `test:llm`, which is
+additive: this one SUBTRACTS, because an additive `test:ui` would be the 206s
+run the split exists to avoid. Neither prints a banner for `ui` — 20 files hold
+ui tests and each is its own process, so the banner became 20 copies on
+`npm test` and 109 on `test:ui`; the per-test skip reason says the same thing in
+the right place. See
+[`../decisions/0011`](../decisions/0011-ui-tests-are-opt-in.md).
+
 **This is not rule 4's skip, and the first attempt at it was worse.** Not
 registering a withheld test looks stricter and is the opposite: `node:test`
 reports a file that registers NO tests as one PASSING test — the file itself, so
@@ -220,6 +253,15 @@ engine, which is what the app spawns, and `dist/` is gitignored.
 
 Not "is expected to": each platform-specific fact is asserted as what THAT
 platform can express, never skipped where it cannot.
+
+`npm run test:mac` and `npm run test:windows` do NOT change that. A test may
+tag the OS its SUBJECT belongs to (`override readonly platform = "darwin"`),
+and the tag SELECTS for those two commands — it never excuses a test from
+asserting the truth of whatever OS is running it. A `darwin`-tagged test still
+runs, and still has to prove something, in an ordinary `npm test` on Windows.
+Asking for an OS you are not on withholds every selected test, naming the OS it
+needs, and reports `pass 0` rather than a green. See
+[`../decisions/0012`](../decisions/0012-os-tests-are-selected-by-subject.md).
 
 - **File modes** are asserted on POSIX; on Windows, which has none, the same
   tests assert that the write landed.

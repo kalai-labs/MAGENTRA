@@ -48,8 +48,39 @@
 
 import { test } from "node:test";
 import baseAssert from "node:assert/strict";
+import { realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 import { featureRecordPath, readFeatureRecord, type FeatureRecordSubset, type Kind } from "./inventory.ts";
+
+/**
+ * Resolve the temporary directory ONCE, before any test builds a path under it.
+ *
+ * On macOS `os.tmpdir()` answers `/var/folders/…`, and `/var` is a symlink to
+ * `/private/var`. Everything that reports a path back resolves it: a child's
+ * `process.cwd()`, `process.execPath`, `fs.realpathSync`. So a test that made a
+ * directory with `mkdtempSync(join(tmpdir(), …))` held the `/var` spelling,
+ * the product returned the `/private/var` one, and `assert.equal` on two names
+ * for the same directory failed. Six tests failed exactly that way on
+ * 2026-09-20 — none of them a defect in the product.
+ *
+ * Fixed HERE rather than at the 38 `mkdtempSync` call sites, because `tmpdir()`
+ * reads `TMPDIR` on macOS and Linux: setting it to the resolved path makes
+ * every later `tmpdir()` — in this process and in every child a test spawns —
+ * answer the same spelling the OS will report back. The call sites stay
+ * unchanged and cannot drift back.
+ *
+ * `realpathSync` can throw if TMPDIR names something that no longer exists; the
+ * unresolved value is still usable, so it is kept rather than failing the run.
+ */
+(() => {
+  try {
+    const resolved = realpathSync(tmpdir());
+    if (resolved !== tmpdir()) process.env["TMPDIR"] = resolved;
+  } catch {
+    /* keep whatever the platform gave us */
+  }
+})();
 
 /**
  * What `run()` is given. Deliberately narrower than `node:test`'s TestContext:
@@ -138,6 +169,23 @@ export abstract class FeatureTest {
    * says only that the proof is expensive enough to be asked for.
    */
   readonly artifact: boolean = false;
+
+  /**
+   * The OS this test's SUBJECT belongs to, when it has one — the mac artifact,
+   * the Windows handoff branch, the Linux launcher wrapper.
+   *
+   * WHAT IT DOES NOT DO: it does not withhold the test on any other OS, and
+   * that is the point. `tests/README.md`'s platform section is unchanged — each
+   * platform-specific fact is still asserted as what THAT platform can express,
+   * never skipped where it cannot, so a `darwin`-tagged test still runs on
+   * Windows and still asserts the Windows truth there.
+   *
+   * What it DOES is let `npm run test:mac` and `npm run test:windows` select by
+   * subject, so the OS-specific half of the suite — the expensive half, which
+   * packages and launches a real artifact — can be run on the machine that can
+   * actually prove it, without running everything else too. See decisions/0012.
+   */
+  readonly platform?: NodeJS.Platform;
 
   /** Per-test limit. A kind that spawns or waits on I/O may raise it. */
   readonly timeoutMs: number = 30_000;
@@ -288,6 +336,82 @@ export function realArtifactTestsEnabled(env: NodeJS.ProcessEnv = process.env): 
 }
 
 /**
+ * The environment variable that turns the desktop-app tests on.
+ *
+ * The same shape as {@link LLM_OPT_IN_VAR} and {@link ARTIFACT_OPT_IN_VAR},
+ * for a third reason (decisions/0011): `ui` tests start a real Electron
+ * process, and they need a display to do it. Measured on 2026-09-20: the 50
+ * `ui` tests are 9% of the suite and were 123s of its 206s — 59% of the wall
+ * clock. `tests/lib/uiTest.ts` had already forced `--test-concurrency=1` on the
+ * WHOLE suite because Electron fights for the display, so the other 508 tests
+ * were paying for that serialisation without needing it.
+ *
+ * ONE DIFFERENCE FROM THE OTHER TWO, AND IT IS DELIBERATE. `test:llm` and
+ * `test:artifacts` are ADDITIVE: they run the ordinary suite and their own kind
+ * on top, because each adds a handful of tests. This one SUBTRACTS — a
+ * `test:ui` run is the `ui` kind and nothing else. Additive would have made the
+ * expensive half of the suite impossible to run on its own, which is the only
+ * thing anybody wants it for.
+ */
+export const UI_OPT_IN_VAR = "MAGENTRA_UI_TESTS";
+
+/** The npm script that exists for no other purpose than running these. */
+const UI_OPT_IN_SCRIPT = "test:ui";
+
+/**
+ * Whether this run is the desktop-app run.
+ *
+ * Two signals and one question, for the reason spelled out on
+ * {@link realModelTestsEnabled}: `MAGENTRA_UI_TESTS=1 node …` is sh syntax and
+ * npm runs scripts through `cmd.exe` on Windows, so the script NAME is the
+ * second way of asking and the one `npm run` uses.
+ *
+ * True means "run the `ui` kind and ONLY the `ui` kind" — see
+ * {@link registerFeatureTests}.
+ */
+export function realUiTestsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (TRUTHY.has((env[UI_OPT_IN_VAR] ?? "").trim().toLowerCase())) return true;
+  return env["npm_lifecycle_event"] === UI_OPT_IN_SCRIPT;
+}
+
+/** The environment variables that scope a run to one operating system's tests. */
+export const MAC_OPT_IN_VAR = "MAGENTRA_MAC_TESTS";
+export const WINDOWS_OPT_IN_VAR = "MAGENTRA_WINDOWS_TESTS";
+
+/** The npm scripts that exist for no other purpose than running these. */
+const MAC_OPT_IN_SCRIPT = "test:mac";
+const WINDOWS_OPT_IN_SCRIPT = "test:windows";
+
+/**
+ * Which operating system's tests this run is scoped to, if any.
+ *
+ * `npm run test:mac` and `npm run test:windows` are SUBTRACTIVE, like
+ * {@link realUiTestsEnabled} and for the same reason: the point of asking for
+ * one OS's tests is not to run the other 500 as well.
+ *
+ * ASKING FOR AN OS YOU ARE NOT ON IS NOT AN ERROR, and it is not a green
+ * either. `npm run test:windows` on a Mac selects the Windows-subject tests and
+ * then withholds every one of them, each naming the OS it needs — so the answer
+ * is "none of these ran, here is why", never "all passed".
+ */
+export function osScopeRequested(env: NodeJS.ProcessEnv = process.env): NodeJS.Platform | undefined {
+  if (TRUTHY.has((env[MAC_OPT_IN_VAR] ?? "").trim().toLowerCase())) return "darwin";
+  if (TRUTHY.has((env[WINDOWS_OPT_IN_VAR] ?? "").trim().toLowerCase())) return "win32";
+  const script = env["npm_lifecycle_event"];
+  if (script === MAC_OPT_IN_SCRIPT) return "darwin";
+  if (script === WINDOWS_OPT_IN_SCRIPT) return "win32";
+  return undefined;
+}
+
+/** How an OS is spelled for a person, rather than for `process.platform`. */
+function osName(platform: NodeJS.Platform): string {
+  if (platform === "darwin") return "macOS";
+  if (platform === "win32") return "Windows";
+  if (platform === "linux") return "Linux";
+  return platform;
+}
+
+/**
  * Register tests with `node:test` — the one way a `tests/features/*.test.ts`
  * file turns its classes into runnable tests.
  *
@@ -324,7 +448,12 @@ export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
   const withheld: FeatureTest[] = [];
   const withheldArtifacts: FeatureTest[] = [];
   const enabled = realModelTestsEnabled();
-  const artifactsEnabled = realArtifactTestsEnabled();
+  const osScope = osScopeRequested();
+  // An OS-scoped run IS the ask for the expensive half: `test:mac` exists to
+  // build and launch the mac artifact, so requiring `test:artifacts` on top of
+  // it would make the command do nothing on its own.
+  const artifactsEnabled = realArtifactTestsEnabled() || osScope !== undefined;
+  const uiOnly = realUiTestsEnabled();
 
   for (const t of tests) {
     const key = `${t.featureId}/${t.id}`;
@@ -336,6 +465,37 @@ export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
 
     // The duplicate check runs FIRST, so two tests colliding on one id is still
     // a loud error in a run that was not going to execute either of them.
+
+    // The OS scope is the outermost gate. `test:mac` and `test:windows` select
+    // by SUBJECT, so a test tagged for another OS is set aside here whatever
+    // its kind — and one tagged for the OS being asked for, on a machine that
+    // is not it, is withheld rather than run and rather than passed over in
+    // silence.
+    if (osScope !== undefined) {
+      if (t.platform !== osScope) {
+        registerOne(t, `not a ${osName(osScope)} test — this run is scoped to one OS. Run: npm test`);
+        continue;
+      }
+      if (process.platform !== osScope) {
+        registerOne(t, `needs ${osName(osScope)} — this machine is ${osName(process.platform)}. Run it on ${osName(osScope)}.`);
+        continue;
+      }
+    }
+
+    // The `ui` gate swings BOTH ways: a `test:ui` run is the ui kind alone, and
+    // every other run is everything but. An OS-scoped run bypasses it — asking
+    // for the mac tests is asking for all of them, ui ones included. A ui test
+    // that is also `artifact` still meets the artifact gate below; this decides
+    // the kind, never the cost.
+    if (osScope === undefined && uiOnly && t.kind !== "ui") {
+      registerOne(t, "not a ui test — this run is `npm run test:ui`, which runs the ui kind alone. Run: npm test");
+      continue;
+    }
+    if (osScope === undefined && !uiOnly && t.kind === "ui") {
+      registerOne(t, `needs the desktop app — not run without ${UI_OPT_IN_VAR}. Run: npm run test:ui`);
+      continue;
+    }
+
     if (t.kind === "llm" && !enabled) {
       withheld.push(t);
       registerOne(t, `needs a real model — not run without ${LLM_OPT_IN_VAR}. Run: npm run test:llm`);
@@ -359,6 +519,25 @@ export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
 }
 
 /**
+ * WHY THE `ui` GATE PRINTS NO BANNER, where `llm` and `artifact` both do.
+ *
+ * {@link announceWithheld} writes to stderr from inside the test file's own
+ * process, and `node --test` runs every FILE in a separate process. For `llm`
+ * and `artifact` that is invisible: a handful of tests in a handful of files,
+ * so a handful of banners. The `ui` counts are a different order of magnitude
+ * and the same code produced a different result — measured on 2026-09-20, not
+ * reasoned about: 20 banners on an ordinary `npm test` (one per file holding a
+ * ui test) and 109 on a `test:ui` run (one per file whose tests were set
+ * aside). A notice repeated 109 times is not a notice.
+ *
+ * The honest channel was already there and is strictly more precise: each
+ * withheld test is registered with `{ skip: <reason> }`, and the reason names
+ * the command. `node:test` prints it against the test it belongs to, and the
+ * summary counts it under `skipped` — never under `pass`. That is the whole of
+ * what the banner was for.
+ */
+
+/**
  * Say, on stderr, exactly which real-model tests this run did not execute.
  *
  * stderr rather than stdout because stdout is where the test reporter's own
@@ -372,10 +551,16 @@ function announceWithheld(
   optInVar: string,
   command: string,
 ): void {
+  // Named, but bounded: the point is to make the absence specific, and a
+  // long wall of names is read as noise and scrolled past instead.
+  const NAMED = 10;
+  const shown = withheld.slice(0, NAMED);
+  const rest = withheld.length - shown.length;
   const lines = [
     "",
     `  ┌─ ${withheld.length} ${what} test${withheld.length === 1 ? "" : "s"} NOT RUN in this session`,
-    ...withheld.map((t) => `  │  ${t.featureId} · ${t.id}`),
+    ...shown.map((t) => `  │  ${t.featureId} · ${t.id}`),
+    ...(rest > 0 ? [`  │  …and ${rest} more`] : []),
     `  │`,
     `  │  Withheld because ${why}.`,
     `  │  Run them with:  ${command}   (or ${optInVar}=1)`,

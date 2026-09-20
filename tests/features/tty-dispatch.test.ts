@@ -225,8 +225,9 @@ class WindowsPrefersASiblingMagentraExe extends PackagedCliTest {
   readonly whyItExists =
     "if the sibling MAGENTRA.exe preference broke on Windows, the handoff would run the console-subsystem copy instead — pinning a console window to the desktop app on every single launch from a shortcut";
 
+  override readonly platform = "win32" as const;
+
   override async run(t: TestRun): Promise<void> {
-    t.assert.equal(process.platform, "win32", "this checklist item's platform branch — recorded, not assumed");
     const sandbox = this.buildSandbox({ withMagentraExe: true });
     const workspace = this.tempDir("magentra-tty-ws-");
     const child = this.runSandboxed(sandbox, [], workspace);
@@ -234,7 +235,28 @@ class WindowsPrefersASiblingMagentraExe extends PackagedCliTest {
     await child.exited();
     const entries = await this.readMarker(sandbox);
     t.assert.equal(entries.length, 1);
-    t.assert.equal(entries[0]?.execPath, join(sandbox.dir, "MAGENTRA.exe"), "with a sibling MAGENTRA.exe present, it must be preferred over process.execPath");
+
+    // The product's branch is `process.platform === 'win32' && existsSync(…)`,
+    // so a sibling MAGENTRA.exe means two DIFFERENT things and both are facts
+    // about this code. Asserting only the win32 half would leave the other two
+    // platforms proving nothing here; asserting `process.platform === 'win32'`
+    // outright — which this test used to do — makes it permanently red on the
+    // machines most of this repo is developed on, which is not a gap being
+    // stated, only a result nobody can act on. tests/README: each
+    // platform-specific fact is asserted as what THAT platform can express.
+    if (process.platform === "win32") {
+      t.assert.equal(
+        entries[0]?.execPath,
+        join(sandbox.dir, "MAGENTRA.exe"),
+        "with a sibling MAGENTRA.exe present, it must be preferred over process.execPath",
+      );
+    } else {
+      t.assert.equal(
+        entries[0]?.execPath,
+        sandbox.nodePath,
+        "off Windows the sibling MAGENTRA.exe must be IGNORED — the guard is the platform test, and a handoff that ran a .exe here would be running a binary this OS cannot execute",
+      );
+    }
   }
 }
 

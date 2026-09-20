@@ -95,6 +95,11 @@ abstract class MacArtifactTest extends ProcTest {
   readonly featureId = FEATURE;
   readonly invariant = INVARIANT;
   override readonly artifact = true;
+  // The SUBJECT is the mac artifact, so `npm run test:mac` selects these. It
+  // does not stop them running elsewhere: each one below still asserts the
+  // non-mac truth on a non-mac machine, which is the contract tests/README's
+  // platform section sets and this tag deliberately does not touch.
+  override readonly platform = "darwin" as const;
   override readonly timeoutMs: number = 900_000;
 }
 

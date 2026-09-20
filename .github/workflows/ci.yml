@@ -59,13 +59,19 @@ jobs:
       - name: Boot the app (smoke)
         run: xvfb-run --auto-servernum npm run smoke --workspace app
 
-      # TODO(tests): restore when the new suite lands. This ran the deleted
-      # app/tests/ Electron suite via the root `test:ui` script. The smoke step
-      # above still boots the real app and fails on a renderer crash, so a
-      # broken window is caught; nothing below that level is.
+      # `npm run test:ui` NO LONGER MEANS WHAT THIS STEP MEANT. It used to run
+      # the deleted app/tests/ Electron suite; since the ui/llm split it runs
+      # the `ui` kind of tests/features/ — 50 tests that drive the real app
+      # through lib/appHarness.cjs. That is the successor to what was commented
+      # out here, so this can simply be restored:
       #
       # - name: Exercise desktop UI interactions
       #   run: xvfb-run --auto-servernum npm run test:ui
+      #
+      # It is left commented for one reason only: nothing else in CI runs
+      # `npm test` yet either, so turning the ui half on first would gate every
+      # push on the slowest tests while the fast ones stay ungated. Restore the
+      # pair together.
 
   types:
     name: Types
