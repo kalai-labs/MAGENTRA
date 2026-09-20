@@ -94,6 +94,11 @@ abstract class SmokeTest extends ProcTest {
 
 class ACleanBootExitsZero extends SmokeTest {
   readonly id = "a-clean-boot-paints-the-landing-page-and-exits-zero";
+  // `proc` by kind — it proves an exit code and a log line, not a rendered
+  // window — but it spawns two real Electron processes to do it, so it belongs
+  // with the desktop tests rather than in the run that is meant to open
+  // nothing. See `desktop` on FeatureTest.
+  override readonly desktop = true;
   readonly whyItExists =
     "a renderer that fails to load leaves a window that is blank rather than a process that fails, so nothing short of launching it notices";
 

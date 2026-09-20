@@ -187,6 +187,25 @@ export abstract class FeatureTest {
    */
   readonly platform?: NodeJS.Platform;
 
+  /**
+   * True on a test that LAUNCHES THE DESKTOP APP — a real Electron process and
+   * a real window on the developer's screen.
+   *
+   * A MEMBER AND NOT THE `ui` KIND, by the same reasoning as {@link artifact}.
+   * Kind is a claim about the setup and teardown a proof requires, and every
+   * `ui` test does open a window, so `ui` is the default. But the reverse does
+   * not hold: `boots · a-clean-boot-paints-the-landing-page-and-exits-zero` is
+   * a `proc` test — it proves an EXIT CODE and a log line, owns no window and
+   * uses none of `UiTest`'s machinery — and it still spawns two real Electron
+   * processes, which is what put a MAGENTRA window on screen in the middle of
+   * an ordinary `npm test` after the ui split was supposed to have ended that.
+   *
+   * So the gate asks the question it actually means: not "is this the ui kind"
+   * but "does this open the app". Defaults to `kind === "ui"`; a test of any
+   * other kind that launches Electron sets it explicitly.
+   */
+  readonly desktop?: boolean;
+
   /** Per-test limit. A kind that spawns or waits on I/O may raise it. */
   readonly timeoutMs: number = 30_000;
 
@@ -487,11 +506,13 @@ export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
     // for the mac tests is asking for all of them, ui ones included. A ui test
     // that is also `artifact` still meets the artifact gate below; this decides
     // the kind, never the cost.
-    if (osScope === undefined && uiOnly && t.kind !== "ui") {
+    const opensDesktopApp = t.desktop ?? t.kind === "ui";
+
+    if (osScope === undefined && uiOnly && !opensDesktopApp) {
       registerOne(t, "not a ui test — this run is `npm run test:ui`, which runs the ui kind alone. Run: npm test");
       continue;
     }
-    if (osScope === undefined && !uiOnly && t.kind === "ui") {
+    if (osScope === undefined && !uiOnly && opensDesktopApp) {
       registerOne(t, `needs the desktop app — not run without ${UI_OPT_IN_VAR}. Run: npm run test:ui`);
       continue;
     }

@@ -63,6 +63,25 @@ A `ui` test that is also `artifact` still meets the artifact gate below it. Kind
 and cost stay separate questions, exactly as [0010](0010-packaged-artifact-tests-are-opt-in.md)
 settled.
 
+### The gate asks "does this open the app", not "is this the ui kind"
+
+The first cut of this gate keyed on `kind === "ui"`, and a MAGENTRA window still
+came up in the middle of an ordinary `npm test`. The cause was
+`boots · a-clean-boot-paints-the-landing-page-and-exits-zero`: a `proc` test
+that owns no window and uses none of `UiTest`'s machinery — it proves an exit
+code and a `landing-shown` log line — and spawns two real Electron processes to
+do it.
+
+Kind was the wrong question, the same way it was the wrong question for
+[0010](0010-packaged-artifact-tests-are-opt-in.md): every `ui` test opens a
+window, but not everything that opens a window is a `ui` test. So `FeatureTest`
+carries `desktop`, defaulting to `kind === "ui"`, and the gate reads
+`t.desktop ?? t.kind === "ui"`. A test of any kind that launches Electron says
+so, and joins `npm run test:ui`.
+
+Worth noting how it was found: not by reading the gate, which looked right, but
+by someone watching a window open during a run that was supposed to open none.
+
 ### No banner, unlike the other two
 
 `announceWithheld` writes from inside the test file's own process, and every

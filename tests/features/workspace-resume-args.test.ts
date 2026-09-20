@@ -199,10 +199,20 @@ class PositionalPathWinsAndTheResumeIdIsNeverMistakenForIt extends WorkspaceArgs
     t.assert.equal(resumes1[0]?.frame?.id, "id1", "the id must be the token after --resume, not the workspace path");
 
     // With NO positional path: the launch directory (this run's cwd) is the workspace.
+    //
+    // INIT_CWD IS UNSET DELIBERATELY. `cli.tsx` resolves a dev run's launch
+    // directory as `process.env.INIT_CWD ?? process.cwd()`, and npm sets
+    // INIT_CWD — to wherever npm was invoked — for every descendant of a
+    // script. So under `npm test` this run inherited the REPO ROOT, opened
+    // that instead of ws2, was stopped by the trust gate (only ws2 is trusted
+    // below) and never spawned an engine at all, while under a bare
+    // `node --test` the same test passed. A test that means "this process's
+    // own cwd" has to say so; the sibling test below, which means the other
+    // branch, sets INIT_CWD explicitly for the same reason.
     const ws2 = this.tempDir("magentra-resume-ws2-");
     this.trust(home, ws2);
     const log2 = join(home, "engine2.log");
-    const child2 = this.runCli(["--resume", "id1"], ws2, home, { MAGENTRA_TEST_ENGINE_LOG: log2 });
+    const child2 = this.runCli(["--resume", "id1"], ws2, home, { INIT_CWD: undefined, MAGENTRA_TEST_ENGINE_LOG: log2 });
     const entries2 = await this.readLog(child2, log2);
 
     const start2 = entries2.find((e) => e.ev === "start");
@@ -278,7 +288,12 @@ class AFlagRightAfterResumeIsNeverTakenAsAnId extends WorkspaceArgsTest {
     const log = join(home, "engine.log");
     const sessions = [{ id: "abc12345", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z", cwd: ws, label: "resume me please" }];
 
+    // INIT_CWD unset for the reason given in checklist 2: there is no positional
+    // path here either, so an inherited INIT_CWD would make the workspace the
+    // repo root, the trust gate would stop the launch, and the bare-resume
+    // dispatch this test is about would never be reached.
     const child = this.runCli(["--resume", "--gui"], ws, home, {
+      INIT_CWD: undefined,
       MAGENTRA_TEST_ENGINE_LOG: log,
       MAGENTRA_TEST_SESSIONS: JSON.stringify(sessions),
     });

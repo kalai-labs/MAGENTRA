@@ -285,7 +285,13 @@ class TheAppLaunchesOrCannotBeMountedElsewhere extends MacArtifactTest {
       t.assert.equal(mountOut.code, 0, `hdiutil attach must succeed:\n${mount.stderr()}`);
       const volumeLine = mount.stdout().split("\n").find((line) => line.includes("/Volumes/"));
       t.assert.notEqual(volumeLine, undefined, "hdiutil must report the mounted volume");
-      const volume = (volumeLine as string).split(/\s+/).pop() as string;
+      // The mount point is the REST OF THE LINE, not its last whitespace-run
+      // token. hdiutil prints tab-separated columns and electron-builder titles
+      // the volume `${productName} ${version}-${arch}` — "MAGENTRA 0.17.4-arm64"
+      // — so splitting on /\s+/ and taking `.pop()` yielded "0.17.4-arm64" and
+      // both checks below then stat'd a path that never existed. The dmg was
+      // correct the whole time; only this line could not read its name.
+      const volume = (volumeLine as string).slice((volumeLine as string).indexOf("/Volumes/")).trimEnd();
       t.assert.equal(existsSync(join(volume, "MAGENTRA.app")), true, "the mounted dmg must contain MAGENTRA.app");
       t.assert.equal(existsSync(join(volume, "Applications")), true, "the mounted dmg must contain the Applications symlink — the drag-to-install affordance");
       const detach = this.spawn("hdiutil", ["detach", volume]);

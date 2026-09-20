@@ -34,7 +34,7 @@ tests/
 
 ```
 npm test              # every kind except llm and ui; both report skipped
-npm run test:ui       # the ui kind ALONE — the desktop-app tests, nothing else
+npm run test:ui       # the tests that LAUNCH THE APP, alone — nothing else
 npm run test:mac      # the tests whose SUBJECT is macOS, alone (implies artifacts)
 npm run test:windows  # the same for Windows
 npm run test:llm      # the same suite as `npm test`, with the real-model tests too
@@ -213,8 +213,12 @@ directly. The script ALSO works through `npm_lifecycle_event`, because
 `cmd.exe` on Windows, where it is not an assignment but a missing command; see
 [`../decisions/0009`](../decisions/0009-real-model-tests-are-opt-in.md).
 
-**Desktop-app tests are opt-in too, and `test:ui` runs them ALONE.** `ui` starts
-a real Electron process and needs a display. The 50 of them were 59% of the
+**Desktop-app tests are opt-in too, and `test:ui` runs them ALONE.** The gate
+is `t.desktop ?? t.kind === "ui"` — "does this launch the app", not "is this the
+ui kind", because `boots · a-clean-boot-…` is a `proc` test that spawns two real
+Electron processes and kept opening a window during `npm test` until it said so
+with `override readonly desktop = true`. A test of any kind that launches the
+app sets it. The 50 of them were 59% of the
 suite's wall clock for 9% of its tests, and `--test-concurrency=1` — which
 exists for them — was being paid by the other 508. So:
 
