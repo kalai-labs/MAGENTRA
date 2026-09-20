@@ -6,7 +6,6 @@
   "prose": "the arm64 dmg's app opens for a standard (non-admin) macOS user, with a working Grep (the bundled `rg`) and a bootable engine bundle.",
   "kinds": [
     "pure",
-    "fs",
     "proc"
   ],
   "entryFiles": [
@@ -17,7 +16,14 @@
   ],
   "invariant": "The macOS build produces the arm64 dmg with the documented name, and its app launches for a non-admin user with the engine and rg bundled.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-packager-produces-the-dmg-on-a-mac-or-nothing-anywhere-else",
+    "the-mac-build-declares-an-unsigned-non-admin-app",
+    "the-app-launches-for-a-non-admin-user-or-cannot-be-mounted-elsewhere",
+    "the-bundled-rg-and-engine-run-standalone-or-the-darwin-rg-is-absent-here",
+    "the-updater-dmg-name-agrees-with-the-build-and-x64-mac-publishes-nothing",
+    "ci-smoke-launches-the-packaged-mac-app-and-fails-the-job-otherwise"
+  ],
   "freshness": {
     "hash": "4955a2466f5b8a5d",
     "fileHashes": {
