@@ -12,7 +12,12 @@
   ],
   "invariant": "The TypeScript entry script runs under the already-executing node binary, with no shell in the path, on every platform.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-source-invokes-the-compiler-with-the-running-node-binary-and-no-shell",
+    "an-unresolvable-typescript-fails-the-startup-build-with-its-own-cause-and-never-spawns",
+    "an-unresolvable-typescript-makes-promote-report-a-real-cause-and-revert-without-a-spawn",
+    "the-real-compiler-runs-to-completion-with-no-cmd-shim-in-the-path"
+  ],
   "freshness": {
     "hash": "fcfa8ac38468599a",
     "fileHashes": {
