@@ -12,7 +12,13 @@
   ],
   "invariant": "versionTags, commitsSince, originUrl, githubHttpsUrl and hasUncommittedChanges answer correctly and never mutate the repository.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "version-tags-orders-newest-first-and-ignores-a-non-version-tag",
+    "commits-since-a-tag-excludes-merges-and-splits-a-multiline-body",
+    "github-https-url-maps-every-remote-form-and-origin-url-is-null-with-none",
+    "has-uncommitted-changes-toggles-with-the-working-tree",
+    "every-exported-function-is-read-only-and-spawns-only-a-bare-git"
+  ],
   "freshness": {
     "hash": "6bc91c56abdeaa21",
     "fileHashes": {
