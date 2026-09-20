@@ -5,7 +5,8 @@
   "section": "Packaging",
   "prose": "the portable `.exe` launches, with a working Grep (the bundled `rg.exe`).",
   "kinds": [
-    "ui"
+    "pure",
+    "proc"
   ],
   "entryFiles": [
     "app/package.json",
@@ -14,7 +15,14 @@
   ],
   "invariant": "The Windows build produces both a portable exe and an NSIS installer with the documented names.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "the-build-produces-both-the-portable-exe-and-the-nsis-installer",
+    "the-exes-carry-asinvoker-and-the-console-copy-differs-only-in-subsystem",
+    "the-packaged-app-launches-for-a-non-admin-user",
+    "the-bundled-ripgrep-and-engine-bundle-run-standalone",
+    "the-updater-asset-names-agree-with-what-the-build-is-named",
+    "ci-smoke-launches-the-packaged-windows-app-and-fails-the-job-otherwise"
+  ],
   "freshness": {
     "hash": "0f94ddbc0d06175b",
     "fileHashes": {
