@@ -26,6 +26,10 @@ change its meaning: it is superseded by a later record that names it.
 | [0007](0007-tests-are-discovered-not-declared.md) | A record's `status` is derived from the test files, not from its `tests` array |
 | [0008](0008-a-deferred-feature-may-still-be-proven.md) | `deferred` means "not required", not "not allowed" |
 | [0009](0009-real-model-tests-are-opt-in.md) | `llm` tests run only when asked for, and are counted as skipped when they are not |
+| [0010](0010-packaged-artifact-tests-are-opt-in.md) | `artifact` is a cost flag, not a seventh kind, and its tests are opt-in |
+| [0011](0011-ui-tests-are-opt-in.md) | Desktop-app tests are opt-in, and a `test:ui` run is the `ui` kind alone |
+| [0012](0012-os-tests-are-selected-by-subject.md) | `test:mac` / `test:windows` select by the OS a test's SUBJECT belongs to |
+| [0013](0013-a-test-llm-run-is-the-llm-kind-alone.md) | `test:llm` subtracts like `test:ui`; supersedes 0009's additive half |
 | [SPEC.md](SPEC.md) | The implementation specification |
 | [INVENTORY.md](INVENTORY.md) | Verified feature count, and the three gaps `FEATURES.md` has |
 | [inventory-notes/](inventory-notes/) | Per-area reading notes the inventory was built from |

@@ -23,15 +23,23 @@
  * {@link realModelTestsEnabled} says the user asked for it, and says out loud
  * which tests it withheld — see `featureTest.ts`.
  *
- *     npm test           → every other kind. `llm` tests are named, not run.
- *     npm run test:llm   → MAGENTRA_LLM_TESTS=1, and they run too.
+ * ASKING FOR THEM RUNS THEM ALONE (decisions/0013). The command subtracts, as
+ * `test:ui` does: it was additive until 2026-09-21, when `npm test` and
+ * `npm run test:llm` were measured executing an identical 558 tests.
  *
- * THIS IS NOT A SKIP. tests/README rule 4 forbids a test quieting itself: a
- * failing test stays failing. A withheld `llm` test is not quieted and not
- * passed — it is never registered, so nothing about it can read green. Once it
- * IS registered, it is an ordinary test with no escape hatch: no skip, no soft
- * assert, and no `signal`-swallowing retry when the model says something
- * unexpected.
+ *     npm test           → every other kind. `llm` tests are named, not run.
+ *     npm run test:llm   → the `llm` kind, and nothing else.
+ *
+ * THIS IS NOT A SKIP IN THE SENSE RULE 4 FORBIDS. That rule is about a test
+ * quieting ITSELF: a failing test stays failing, and `run()` is handed a
+ * `TestRun` with no `skip`, `todo` or `plan` to reach for. A withheld `llm`
+ * test is not quieted and not passed — it is REGISTERED with `{ skip: reason }`
+ * and counted under `skipped`, never under `pass`. Not registering it was the
+ * first attempt and was measured wrong: `node:test` reports a file that
+ * registers nothing as one PASSING test, the file itself. decisions/0009 has
+ * the numbers. Once a test is registered to run, it is an ordinary test with no
+ * escape hatch: no skip, no soft assert, and no `signal`-swallowing retry when
+ * the model says something unexpected.
  *
  * WHAT IT OWNS.
  *

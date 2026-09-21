@@ -1,5 +1,11 @@
 # Real-model tests are opt-in, and counted as skipped
 
+> **Partly superseded by [0013](0013-a-test-llm-run-is-the-llm-kind-alone.md)
+> (2026-09-21).** The opt-in, the two signals, and skipped-not-unregistered all
+> stand. What changed is the shape of the run: `npm run test:llm` no longer
+> means "the same suite, with the real-model tests too" — it runs the `llm` kind
+> ALONE. The two commands below are correct except for that line.
+
 `llm` is the sixth kind [0004](0004-tests-inherit-on-kind.md) named and the only
 one that was never written. The reason it was never needed is also the reason it
 now is: fifteen records declare it, and the product owner has gone through the

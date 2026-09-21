@@ -35,20 +35,29 @@ tests/
 ```
 npm test              # every kind except llm and ui; both report skipped
 npm run test:ui       # the tests that LAUNCH THE APP, alone — nothing else
+npm run test:llm      # the tests that need a REAL MODEL, alone — nothing else
 npm run test:mac      # the tests whose SUBJECT is macOS, alone (implies artifacts)
 npm run test:windows  # the same for Windows
-npm run test:llm      # the same suite as `npm test`, with the real-model tests too
 npm run test:artifacts# the same suite, with the packaged-artifact tests too
 npm run typecheck:tests
 ```
+
+Four of those SUBTRACT — `test:ui`, `test:llm`, `test:mac`, `test:windows` each
+run their slice and nothing else, so `npm test` and any one of them share no
+test. `test:artifacts` is the exception and still adds its 8 to the ordinary
+suite. Asking for `test:ui` and `test:llm` in one run is an ERROR, not a winner
+picked quietly: they subtract on the same axis and together would select nothing
+at all.
 
 `npm run build` FIRST, or the run is testing the last build. The tests import
 `engine/*/dist/`, not `src/`, and `npm test` does not build — on 2026-09-20 a
 10-day-old `dist/` failed five tests that the source had already fixed.
 
-Measured on 2026-09-20: `npm test` 91s / 489 tests, `npm run test:ui` 123s /
-50 tests. The split, and why `test:ui` subtracts where `test:llm` adds, is
-[`../decisions/0011`](../decisions/0011-ui-tests-are-opt-in.md).
+Measured on 2026-09-21, engine freshly built: `npm test` 93s / 499 run of 558
+registered, `npm run test:ui` 51 tests. Why `test:ui` subtracts is
+[`../decisions/0011`](../decisions/0011-ui-tests-are-opt-in.md); why `test:llm`
+now does too, having been additive until that date, is
+[`../decisions/0013`](../decisions/0013-a-test-llm-run-is-the-llm-kind-alone.md).
 
 Three things about that command, all verified on the platform rather than assumed:
 
@@ -196,15 +205,16 @@ expectation" and "never counts against coverage"; it does not forbid a test. All
 nine are now proven, through the real page in a real app. See
 [`../decisions/0008`](../decisions/0008-a-deferred-feature-may-still-be-proven.md).
 
-**Real-model tests are opt-in, and counted as skipped.** `llm` is the one kind
-`npm test` does not run: it calls a real endpoint, costs tokens per turn, and
-can fail for a provider's reasons rather than for a defect here. It runs when
-asked for, and only then:
+**Real-model tests are opt-in, counted as skipped, and `test:llm` runs them
+ALONE.** `llm` is the one kind `npm test` does not run: it calls a real
+endpoint, costs tokens per turn, and can fail for a provider's reasons rather
+than for a defect here. It runs when asked for, and only then:
 
 ```
 npm test           every other kind. Each real-model test is reported skipped,
                    named, with the command that runs it printed on stderr.
-npm run test:llm   the same suite, with the real-model tests too.
+npm run test:llm   the llm kind and nothing else. Every other kind is set
+                   aside, carrying `npm test`.
 ```
 
 `MAGENTRA_LLM_TESTS=1` is the contract — CI or a bare `node --test` can set it
@@ -212,6 +222,16 @@ directly. The script ALSO works through `npm_lifecycle_event`, because
 `MAGENTRA_LLM_TESTS=1 node …` is sh syntax and npm runs scripts through
 `cmd.exe` on Windows, where it is not an assignment but a missing command; see
 [`../decisions/0009`](../decisions/0009-real-model-tests-are-opt-in.md).
+
+That command was ADDITIVE — the ordinary suite plus the real-model tests — until
+2026-09-21, when `npm test` and `npm run test:llm` were measured executing an
+identical 558 tests, 499 passing, 59 skipped, the two name lists matching line
+for line. The immediate cause was that nothing extends `LlmTest` yet; the shape
+was wrong regardless, for the reasons in
+[`../decisions/0013`](../decisions/0013-a-test-llm-run-is-the-llm-kind-alone.md).
+**Until the 15 records that declare `llm` have tests, `npm run test:llm` selects
+nothing and reports `pass 0 · skipped 558`** — which is the honest answer to
+"run the real-model tests" while there are none, not a failure.
 
 **Desktop-app tests are opt-in too, and `test:ui` runs them ALONE.** The gate
 is `t.desktop ?? t.kind === "ui"` — "does this launch the app", not "is this the
@@ -230,9 +250,10 @@ npm run test:ui   the ui kind and nothing else, ~123s. Every other kind is
 ```
 
 `MAGENTRA_UI_TESTS=1` is the contract, and the script name is the second signal
-for the same `cmd.exe` reason. Note the asymmetry with `test:llm`, which is
-additive: this one SUBTRACTS, because an additive `test:ui` would be the 206s
-run the split exists to avoid. Neither prints a banner for `ui` — 20 files hold
+for the same `cmd.exe` reason. This one SUBTRACTS, because an additive `test:ui`
+would be the 206s run the split exists to avoid — and since 2026-09-21
+`test:llm` subtracts with it, so asking for both in one run is an error rather
+than a silent `pass 0`. Neither prints a banner for `ui` — 20 files hold
 ui tests and each is its own process, so the banner became 20 copies on
 `npm test` and 109 on `test:ui`; the per-test skip reason says the same thing in
 the right place. See

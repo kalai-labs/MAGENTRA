@@ -44,6 +44,12 @@
  * they cost tokens and can fail for a provider's reasons rather than this
  * repository's. They are withheld unless {@link realModelTestsEnabled}, and
  * WITHHELD IS NOT SKIPPED — see {@link registerFeatureTests}.
+ *
+ * AND ASKING FOR THEM RUNS THEM ALONE (decisions/0013). `test:llm` subtracts,
+ * exactly as `test:ui` does: the run is the `llm` kind and nothing else. It was
+ * additive until 2026-09-21, when a measurement showed `npm test` and
+ * `npm run test:llm` executing an identical 558 tests — see
+ * {@link kindScopeRequested}.
  */
 
 import { test } from "node:test";
@@ -305,11 +311,16 @@ const TRUTHY = new Set(["1", "true", "yes", "on"]);
 const OPT_IN_SCRIPT = "test:llm";
 
 /**
- * Whether the user asked for the real-model tests in THIS run.
+ * Whether this run is the real-model run.
  *
  * `npm test` does not ask, so the default stays: every kind that can prove
  * itself locally runs, and the one that needs a real endpoint waits to be
  * asked.
+ *
+ * True means "run the `llm` kind and ONLY the `llm` kind" — see
+ * {@link kindScopeRequested}. It meant "run the ordinary suite and the `llm`
+ * tests on top" until 2026-09-21; decisions/0013 has the measurement that
+ * changed it and what stayed the same.
  *
  * TWO SIGNALS, ONE QUESTION. The variable is the contract — anything can set
  * it, including CI and a single `node --test` invocation with no npm in front
@@ -365,12 +376,15 @@ export function realArtifactTestsEnabled(env: NodeJS.ProcessEnv = process.env): 
  * WHOLE suite because Electron fights for the display, so the other 508 tests
  * were paying for that serialisation without needing it.
  *
- * ONE DIFFERENCE FROM THE OTHER TWO, AND IT IS DELIBERATE. `test:llm` and
- * `test:artifacts` are ADDITIVE: they run the ordinary suite and their own kind
- * on top, because each adds a handful of tests. This one SUBTRACTS — a
- * `test:ui` run is the `ui` kind and nothing else. Additive would have made the
- * expensive half of the suite impossible to run on its own, which is the only
- * thing anybody wants it for.
+ * ONE DIFFERENCE FROM `test:artifacts`, AND IT IS DELIBERATE. That one is
+ * ADDITIVE: it runs the ordinary suite and its own tests on top. This one
+ * SUBTRACTS — a `test:ui` run is the `ui` kind and nothing else. Additive would
+ * have made the expensive half of the suite impossible to run on its own, which
+ * is the only thing anybody wants it for.
+ *
+ * `test:llm` was additive too until 2026-09-21 and now subtracts for the same
+ * reason (decisions/0013), which is why both go through
+ * {@link kindScopeRequested} rather than being read independently.
  */
 export const UI_OPT_IN_VAR = "MAGENTRA_UI_TESTS";
 
@@ -391,6 +405,45 @@ const UI_OPT_IN_SCRIPT = "test:ui";
 export function realUiTestsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   if (TRUTHY.has((env[UI_OPT_IN_VAR] ?? "").trim().toLowerCase())) return true;
   return env["npm_lifecycle_event"] === UI_OPT_IN_SCRIPT;
+}
+
+/**
+ * Which KIND this run is scoped to, if any — the one axis `test:ui` and
+ * `test:llm` both subtract on.
+ *
+ * ONE KIND SCOPE PER RUN, AND TWO IS AN ERROR (decisions/0013). Both commands
+ * run their kind ALONE, and the two selections intersect at nothing: a `ui`
+ * test is not `llm`, and an `llm` test does not open the app. A run that was
+ * asked for both would therefore set aside all 558 tests and report `pass 0`,
+ * exit 0 — the manufactured green this suite was reset to remove. npm exports
+ * one `npm_lifecycle_event`, so this is reachable only by setting both
+ * variables, and the honest answer to an incoherent question is an error rather
+ * than a winner picked in silence.
+ *
+ * The OS scope is a DIFFERENT axis and composes with this one:
+ * {@link osScopeRequested} selects by the SUBJECT a test belongs to, this
+ * selects by what proving it requires. An OS-scoped run is that OS's WHOLE
+ * slice, so a kind scope does not subtract inside it — it unlocks. That is why
+ * `MAGENTRA_MAC_TESTS=1 MAGENTRA_LLM_TESTS=1` is every mac-subject test with
+ * the real-model ones included, rather than the real-model ones alone, and it
+ * is the same rule that lets an OS-scoped run carry `ui` tests and imply
+ * `artifactsEnabled`.
+ *
+ * @throws when both kind scopes are asked for in the same run.
+ */
+export function kindScopeRequested(env: NodeJS.ProcessEnv = process.env): "ui" | "llm" | undefined {
+  const ui = realUiTestsEnabled(env);
+  const llm = realModelTestsEnabled(env);
+  if (ui && llm) {
+    throw new Error(
+      `${UI_OPT_IN_VAR} and ${LLM_OPT_IN_VAR} are both set, and each one runs its kind ALONE — ` +
+        `together they select no test at all, which would report "pass 0" and exit 0. ` +
+        `Ask for one: npm run test:ui, or npm run test:llm. See decisions/0013.`,
+    );
+  }
+  if (ui) return "ui";
+  if (llm) return "llm";
+  return undefined;
 }
 
 /** The environment variables that scope a run to one operating system's tests. */
@@ -466,13 +519,16 @@ export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
   const seen = new Map<string, string>();
   const withheld: FeatureTest[] = [];
   const withheldArtifacts: FeatureTest[] = [];
-  const enabled = realModelTestsEnabled();
   const osScope = osScopeRequested();
   // An OS-scoped run IS the ask for the expensive half: `test:mac` exists to
   // build and launch the mac artifact, so requiring `test:artifacts` on top of
   // it would make the command do nothing on its own.
   const artifactsEnabled = realArtifactTestsEnabled() || osScope !== undefined;
-  const uiOnly = realUiTestsEnabled();
+  // Throws if both kind scopes were asked for — before any test is registered,
+  // so an incoherent run cannot report a count at all.
+  const kindScope = kindScopeRequested();
+  const uiOnly = kindScope === "ui";
+  const llmOnly = kindScope === "llm";
 
   for (const t of tests) {
     const key = `${t.featureId}/${t.id}`;
@@ -517,7 +573,21 @@ export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
       continue;
     }
 
-    if (t.kind === "llm" && !enabled) {
+    // The `llm` gate swings both ways too, and for the reasons decisions/0013
+    // measured. The subtracting half is bounded by `osScope === undefined`,
+    // exactly as the ui one above is: an OS-scoped run is that OS's WHOLE
+    // slice, so a kind scope does not subtract inside it — it only unlocks the
+    // kind that would otherwise be withheld, the way `artifactsEnabled` is
+    // implied by `osScope`. `MAGENTRA_MAC_TESTS=1 MAGENTRA_LLM_TESTS=1` is
+    // therefore every mac-subject test, real-model ones included.
+    if (osScope === undefined && llmOnly && t.kind !== "llm") {
+      registerOne(t, "not a real-model test — this run is `npm run test:llm`, which runs the llm kind alone. Run: npm test");
+      continue;
+    }
+    // Not bounded by `osScope`: an OS-scoped run must never bill the endpoint
+    // on its own, so `npm run test:mac` withholds `llm` tests exactly as
+    // `npm test` does. This is the half decisions/0009 decided and 0013 kept.
+    if (!llmOnly && t.kind === "llm") {
       withheld.push(t);
       registerOne(t, `needs a real model — not run without ${LLM_OPT_IN_VAR}. Run: npm run test:llm`);
       continue;
@@ -540,16 +610,22 @@ export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
 }
 
 /**
- * WHY THE `ui` GATE PRINTS NO BANNER, where `llm` and `artifact` both do.
+ * WHY THE SUBTRACTING DIRECTION PRINTS NO BANNER.
  *
  * {@link announceWithheld} writes to stderr from inside the test file's own
- * process, and `node --test` runs every FILE in a separate process. For `llm`
- * and `artifact` that is invisible: a handful of tests in a handful of files,
- * so a handful of banners. The `ui` counts are a different order of magnitude
- * and the same code produced a different result — measured on 2026-09-20, not
+ * process, and `node --test` runs every FILE in a separate process. Withholding
+ * a handful of tests from a handful of files is invisible — which is why the
+ * `llm` and `artifact` banners below still fire on an ordinary `npm test`, and
+ * why the `llm` one is worth having: a real-model test nobody ran is an absence
+ * worth naming.
+ *
+ * Setting aside the OTHER five hundred is a different order of magnitude, and
+ * the same code produced a different result — measured on 2026-09-20, not
  * reasoned about: 20 banners on an ordinary `npm test` (one per file holding a
  * ui test) and 109 on a `test:ui` run (one per file whose tests were set
- * aside). A notice repeated 109 times is not a notice.
+ * aside). A notice repeated 109 times is not a notice. So neither `uiOnly` nor
+ * `llmOnly` pushes to `withheld` when it sets a test aside; only the two
+ * "you have not asked for this" branches do.
  *
  * The honest channel was already there and is strictly more precise: each
  * withheld test is registered with `{ skip: <reason> }`, and the reason names

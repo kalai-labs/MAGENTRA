@@ -41,10 +41,17 @@ dist/ is gitignored.
   D5  mid-run-steering-both-stances, tool-agent, create-addon-wizard
 
 Connection: repo .env + .magentra/settings.json, copied into each temp
-workspace by LlmTest. Currently Fireworks,
-accounts/fireworks/models/deepseek-v4p1-flash, contextWindow 1000000.
+workspace by LlmTest. Verified 2026-09-21 by booting bootstrapEngine through
+LlmTest's own seeding path: Fireworks, openai-compatible,
+accounts/fireworks/models/glm-5p3-flash, contextWindow 1024000, key from
+MAGENTRA_API_KEY in .env, no boot warnings. (This note said
+deepseek-v4p1-flash / 1000000 until then; the settings file had moved on.)
+
 Run with `npm run test:llm` (or MAGENTRA_LLM_TESTS=1). Under plain `npm test`
-they are withheld and named, never passed.
+they are withheld and named, never passed. Since 2026-09-21 that command runs
+the llm kind ALONE (decisions/0013) — it was additive before, and with zero
+LlmTest subclasses written it was an exact 85-second synonym for `npm test`.
+Until the 15 below exist it selects nothing and reports pass 0 / skipped 558.
 
 ** THE THING TO KNOW BEFORE WRITING ANY OF THEM **
 Every one of these checklists is written in terms of FakeProvider - "with a
@@ -190,7 +197,7 @@ windows-artifact items 1-4 will correctly refuse on the Mac with the named
   npm run build            required first, dist/ is gitignored
   npm run typecheck:tests
   npm test                 every kind except llm and artifact
-  npm run test:llm         adds the real-model tests (bills the endpoint)
+  npm run test:llm         the llm kind ALONE (bills the endpoint) - 0013
   npm run test:artifacts   adds the packaged-artifact tests (builds installers,
                            deletes app/dist first, holds the exclusive lock)
   node --test --test-concurrency=1 tests/features/<id>.test.ts   one file
