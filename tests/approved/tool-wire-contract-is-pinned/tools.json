@@ -1,0 +1,923 @@
+[
+  {
+    "name": "Addon",
+    "permissionClass": "read",
+    "description": "Loads an addon's instructions into the conversation and follows them for the current task. Copy the addon name exactly as it appears in the \"Available addons\" list. Optional args are substituted into the addon or appended as ARGUMENTS.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "addon": {
+          "description": "The exact name of an addon from the Available addons list.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "args": {
+          "description": "Optional arguments for the addon; substituted for $ARGUMENTS in the addon body when present.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "addon"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "Agent",
+    "permissionClass": "read",
+    "description": "Delegates a task to a fresh subagent with its own context window and a restricted tool set, then returns the subagent's final report as the tool result.\n\nUse it to fan out independent work (parallel Agent calls in one turn run concurrently), or to run a large search whose intermediate file contents you do not want in your own context. The subagent shares your working directory but starts with no memory of this conversation, so its prompt must be self-contained.\n\nOnce you delegate a search, do not also run it yourself — wait for the result. For a single-fact lookup where you already know the file or symbol, search directly instead.\n\nThe subagent's report is never shown to the user, so relay what matters. Subagents cannot spawn further subagents and cannot ask the user questions.\n\nAvailable subagent types:\n{{agentTypes}}",
+    "descriptionVars": [
+      "agentTypes"
+    ],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "description": "A short (3-5 word) description of the task",
+          "type": "string"
+        },
+        "prompt": {
+          "description": "The full task for the subagent. It runs autonomously and cannot ask you questions, so include every detail it needs and state exactly what to return.",
+          "type": "string"
+        },
+        "run_in_background": {
+          "description": "Run the subagent in the background and return a task id immediately; its result lands in the task output file. Use TaskOutput to collect it.",
+          "type": "boolean"
+        },
+        "subagent_type": {
+          "description": "The type of subagent to use, named exactly as listed in this tool's description (default general-purpose).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "description",
+        "prompt"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "AskUserQuestion",
+    "permissionClass": "interact",
+    "description": "Asks the user up to 5 multiple-choice questions and blocks until they answer.\n\nUse it only when you are stuck on a decision that genuinely belongs to the user — one the request, the code, and sensible defaults cannot settle. For choices with a conventional default, pick it, mention it, and move on. If you recommend an option, put it first and append \"(Recommended)\" to its label. The UI always adds an \"Other\" free-text option. Also use it for a dependent follow up question.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "questions": {
+          "description": "Questions to ask the user (1-5)",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "header": {
+                "description": "Very short chip label (max 12 chars), e.g. \"Approach\"",
+                "maxLength": 12,
+                "type": "string"
+              },
+              "multiSelect": {
+                "default": false,
+                "description": "true allows selecting multiple options",
+                "type": "boolean"
+              },
+              "options": {
+                "description": "2-4 distinct choices. Do not add an 'Other' option — the UI adds one automatically.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "description": {
+                      "description": "What choosing this option means, including trade-offs",
+                      "type": "string"
+                    },
+                    "label": {
+                      "description": "Concise display text for this option (1-5 words)",
+                      "type": "string"
+                    },
+                    "preview": {
+                      "description": "Optional preview content (mockup, code snippet) rendered when focused",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "label",
+                    "description"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 4,
+                "minItems": 2,
+                "type": "array"
+              },
+              "question": {
+                "description": "The complete question, clear and specific, ending with a question mark",
+                "type": "string"
+              }
+            },
+            "required": [
+              "question",
+              "header",
+              "options",
+              "multiSelect"
+            ],
+            "type": "object"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "questions"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "Bash",
+    "permissionClass": "execute",
+    "description": "Executes a shell command and returns its combined stdout/stderr.\n\n- The working directory persists across calls (a cd in one call carries to the next), but env vars and functions do not. Prefer absolute paths over cd.\n- Do not use this for reading, searching, or editing files — Read/Grep/Glob/Edit are faster and safer than cat/grep/find/sed.\n- timeout is in milliseconds: default {{defaultTimeout}}, max {{maxTimeout}}. On timeout the whole process tree is killed.\n- run_in_background: true detaches the command; you get a task id immediately, output streams to a file, and a task-notification arrives when it exits. Never run bare foreground \"sleep\" commands — background the wait instead.\n- Never use interactive flags (-i) — there is no TTY.\n- Command output is shown to you, not reliably to the user. Restate anything that matters in your final message.\n\nGit:\n- Never commit, push, or create branches unless the user asked for it in this conversation. If it is unclear whether they want a commit, ask.\n- To commit when asked: run git status, git diff, and git log (recent style) in parallel; draft a one-to-two-sentence message explaining why the change exists; stage the specific files by name (never git add -A or .); commit passing the message through\na heredoc so formatting survives; then verify with git status.\n- Never use --force, --no-verify, --no-gpg-sign, git config changes, reset --hard, checkout ., clean -f, or branch -D unless the user explicitly requests that exact operation. Never force-push to main/master — warn instead.\n- If a pre-commit hook fails, the commit did not happen: fix the issue, re-stage, and create a NEW commit. Never amend, since amending after a hook failure rewrites the previous commit and can destroy work.\n- Do not commit files that look like secrets (.env, credentials); warn if asked to. Do not create empty commits.",
+    "descriptionVars": [
+      "defaultTimeout",
+      "maxTimeout"
+    ],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "description": "The command to execute",
+          "type": "string"
+        },
+        "description": {
+          "description": "Clear, concise description of what this command does in active voice, e.g. \"List files in current directory\", \"Install package dependencies\", \"Discard all local changes and match remote main\". Shown to the user in the approval prompt.",
+          "type": "string"
+        },
+        "run_in_background": {
+          "default": false,
+          "description": "Set to true to run this command in the background; you are notified when it exits.",
+          "type": "boolean"
+        },
+        "timeout": {
+          "description": "Optional timeout in milliseconds (max {{maxTimeout}})",
+          "exclusiveMinimum": 0,
+          "maximum": 600000,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "command",
+        "description",
+        "run_in_background"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "CronCreate",
+    "permissionClass": "interact",
+    "description": "Schedules a recurring or one-shot cron job that fires a prompt while the REPL is idle.\n\nJobs fire only when the current minute matches the cron expression AND the session is idle (never mid-turn). Recurring jobs auto-expire 7 days after creation — tell the user this when you schedule one. Jobs are session-only unless durable is set. Use recurring:false for one-time reminders.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cron": {
+          "description": "Standard 5-field cron (minute hour day-of-month month day-of-week), local time. Supports *, */N, N, N-M, and comma lists. For one-shot \"remind me at X\" jobs, pin the exact fields; avoid round times like :00/:30 when the time is only approximate.",
+          "type": "string"
+        },
+        "durable": {
+          "default": false,
+          "description": "If true, the job persists to disk and survives restarts. Otherwise it is session-only.",
+          "type": "boolean"
+        },
+        "prompt": {
+          "description": "The instruction to inject as a user message when the job fires while the REPL is idle.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "recurring": {
+          "default": true,
+          "description": "If false, the job fires once at the next matching minute and is then removed.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "cron",
+        "prompt",
+        "recurring",
+        "durable"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "CronDelete",
+    "permissionClass": "interact",
+    "description": "Deletes a scheduled cron job or wakeup by its id.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "The id of the scheduled job to delete.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "CronList",
+    "permissionClass": "interact",
+    "description": "Lists all scheduled cron jobs and wakeups for this session.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "Edit",
+    "permissionClass": "mutate",
+    "description": "Performs exact string replacement in a file.\n\n- You must Read the file in this session before editing; the call fails otherwise.\n- old_string must match the file contents exactly, including whitespace and indentation, and must be unique in the file — otherwise the edit fails. Never include the Read line-number prefix (number + tab) in old_string.\n- Set replace_all: true to replace every occurrence instead of requiring uniqueness.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "file_path": {
+          "description": "The absolute path to the file to modify",
+          "type": "string"
+        },
+        "new_string": {
+          "description": "The text to replace it with (must be different from old_string)",
+          "type": "string"
+        },
+        "old_string": {
+          "description": "The text to replace",
+          "type": "string"
+        },
+        "replace_all": {
+          "default": false,
+          "description": "Replace all occurrences of old_string (default false)",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "file_path",
+        "old_string",
+        "new_string",
+        "replace_all"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "EnterWorktree",
+    "permissionClass": "execute",
+    "description": "Creates a git worktree under .magentra/worktrees and switches the session into it, so isolated work does not touch the main checkout.\n\nProvide \"name\" to create a new worktree on branch magentra/<name> (or omit for a random name), or \"path\" to switch into an existing worktree. Base ref follows settings.worktree.baseRef: \"fresh\" branches from origin's default branch, \"head\" from the current HEAD. Only works inside a git repository. Use ExitWorktree to leave.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Name for a new worktree (segments of A-Za-z0-9._-, max 64 chars total). Creates .magentra/worktrees/<name> on branch magentra/<name>. Random if omitted.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Path of an EXISTING worktree to switch into (must already appear in `git worktree list`). Mutually exclusive with name.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "ExitWorktree",
+    "permissionClass": "execute",
+    "description": "Leaves the active Magentra worktree and restores the original session cwd.\n\naction \"keep\" preserves the worktree and its branch. action \"remove\" deletes both, but refuses (listing the work) if there are uncommitted changes or commits not in the base ref, unless discard_changes is true. Worktrees entered via an existing path are never removed. No-op if no worktree session is active.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "description": "keep: leave the worktree and branch in place. remove: delete the worktree and its branch.",
+          "enum": [
+            "keep",
+            "remove"
+          ],
+          "type": "string"
+        },
+        "discard_changes": {
+          "default": false,
+          "description": "Required to remove a worktree that has uncommitted changes or unmerged commits; otherwise removal is refused.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action",
+        "discard_changes"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "Glob",
+    "permissionClass": "read",
+    "description": "Fast filename/path matching. Supports glob patterns like \"**/*.js\" or \"src/**/*.{ts,tsx}\".\n\n- Matches file names and paths only; it never looks inside files (use Grep for contents).\n- Results are sorted by modification time, most recently modified first.\n- * matches within one path segment; ** crosses directories; {a,b} alternates; ? matches one character.\n- `node_modules`, `.git`, and MAGENTRA's own `.magentra/` state directory and other directory of files start with `.` are skipped. To search the state directory, name it in the pattern or path (e.g. \".magentra/**/*.json\") — it holds session transcripts and worktree checkouts, so an accidental match is a large waste of context.\n- An empty result is not an error. Prefer this over find/ls via Bash.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dot": {
+          "description": "Set true to also match dotfiles/dot-directories (e.g. .github/**); default false.",
+          "type": "boolean"
+        },
+        "path": {
+          "description": "The directory to search in. Omit it to use the current working directory — never pass \"undefined\" or \"null\".",
+          "type": "string"
+        },
+        "pattern": {
+          "description": "The glob pattern to match files against",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "GraphQuery",
+    "permissionClass": "read",
+    "description": "Query the workspace import graph to LOCATE code and judge IMPACT — a structural alternative to reading files one by one.\n\n- slice: ranked minimal context for a topic. Give files and/or a query; returns the highest-relevance files (personalized PageRank) that fit a token budget, plus the edges among them. Use this instead of guessing which files to open.\n- blast: what breaks if these files change — the transitive set of modules that import them, grouped by hop distance. Run before editing anything widely imported.\n- deps: what a file relies on — its forward dependency closure, with external packages listed separately.\n- structure: the skeleton of the repo — top files by PageRank, articulation points, bridges, component and file/edge counts. Use when you need the big picture before planning a change.\n- rank: the most central files overall, or personalized to given seeds.\n\nSeeds come from files (paths) and/or query (space-separated keywords, ANY substring match against paths). Results are computed from the import graph: they are structural, not semantic — a file the graph never links is invisible here.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "budget_tokens": {
+          "exclusiveMinimum": 0,
+          "maximum": 60000,
+          "type": "integer"
+        },
+        "files": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "op": {
+          "enum": [
+            "slice",
+            "blast",
+            "deps",
+            "structure",
+            "rank"
+          ],
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "Grep",
+    "permissionClass": "read",
+    "description": "Content search built on ripgrep. Always prefer this over grep/rg via Bash.\n\n- Full regex syntax (Rust regex engine); escape literal braces etc. (interface\\{\\}).\n- Filter with glob (e.g. \"**/*.tsx\") or type (e.g. \"js\", \"py\").\n- output_mode: \"files_with_matches\" (default, just paths), \"content\" (matching lines; supports -n/-A/-B/-C), \"count\" (matches per file).\n- Respects .gitignore by default. multiline: true lets patterns span lines.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "-A": {
+          "description": "Lines to show after each match (content mode only)",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "-B": {
+          "description": "Lines to show before each match (content mode only)",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "-C": {
+          "description": "Lines to show before and after each match (content mode only)",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "-i": {
+          "description": "Case insensitive search",
+          "type": "boolean"
+        },
+        "-n": {
+          "default": true,
+          "description": "Show line numbers (content mode only)",
+          "type": "boolean"
+        },
+        "glob": {
+          "description": "Glob pattern to filter files (e.g. \"*.js\", \"*.{ts,tsx}\") - maps to rg --glob",
+          "type": "string"
+        },
+        "head_limit": {
+          "default": 250,
+          "description": "Limit output to the first N lines/entries",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        },
+        "multiline": {
+          "default": false,
+          "description": "Enable multiline mode where . matches newlines and patterns can span lines",
+          "type": "boolean"
+        },
+        "output_mode": {
+          "default": "files_with_matches",
+          "description": "\"content\" shows matching lines, \"files_with_matches\" shows file paths (default), \"count\" shows match counts per file",
+          "enum": [
+            "content",
+            "files_with_matches",
+            "count"
+          ],
+          "type": "string"
+        },
+        "path": {
+          "description": "File or directory to search in. Defaults to the current working directory.",
+          "type": "string"
+        },
+        "pattern": {
+          "description": "The regular expression pattern to search for in file contents",
+          "type": "string"
+        },
+        "type": {
+          "description": "File type to search (rg --type), e.g. js, py, rust. More efficient than glob for standard types.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern",
+        "output_mode",
+        "-n",
+        "multiline",
+        "head_limit"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "Monitor",
+    "permissionClass": "execute",
+    "description": "Runs a long-lived command and turns each stdout line into an event you are notified about, in batches, on your next turn. Use it to watch logs, a dev server, a file tail, or a test watcher for specific output.\n\n- For a SINGLE event (\"tell me when the server is ready\") this is the wrong tool: use Bash with run_in_background and a command that exits once the condition holds — `until grep -q \"Ready in\" dev.log; do sleep 0.5; done`. An unbounded command (`tail\n-f`, `while true`) armed for a one-off event stays armed long after it fired. Monitor is for repeated events, and a command that emits lines and then exits ends its own watch.\n- Every pipe stage must flush per line or matches sit unseen in its buffer: `grep` needs --line-buffered, `awk` needs fflush().\n- Returns a task id immediately; stop it with TaskStop(task_id).\n- Lines arriving close together are batched into one notification. stderr is written to the task output file only (read it with TaskOutput).\n- If the command floods more than {{noiseLimit}} lines within {{noiseWindowSec}}s it is auto-stopped for noise; narrow the command (grep/filter) and try again.\n- Unless persistent, it is killed after timeout_ms.",
+    "descriptionVars": [
+      "noiseLimit",
+      "noiseWindowSec"
+    ],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "description": "The shell command to run and watch; each line it prints to stdout becomes an event.",
+          "type": "string"
+        },
+        "description": {
+          "description": "Clear, concise description of what is being monitored, shown to the user.",
+          "type": "string"
+        },
+        "persistent": {
+          "default": false,
+          "description": "If true, ignore timeout_ms and keep monitoring until stopped with TaskStop.",
+          "type": "boolean"
+        },
+        "timeout_ms": {
+          "default": 300000,
+          "description": "Kill the monitor after this many ms unless persistent (default 300000).",
+          "maximum": 3600000,
+          "minimum": 1000,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "command",
+        "description",
+        "timeout_ms",
+        "persistent"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "PushNotification",
+    "permissionClass": "interact",
+    "description": "Sends a proactive OS notification to get the user's attention (e.g. a long task finished, or input is needed).\n\nUse sparingly for genuinely notification-worthy moments. Delivery is best-effort and platform-dependent; it never interrupts or fails the current work.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "description": "The notification text. Truncated to 200 characters.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "status": {
+          "const": "proactive",
+          "description": "Always \"proactive\" — this signals an unprompted, attention-worthy notification.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message",
+        "status"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "Read",
+    "permissionClass": "read",
+    "description": "Reads a file from the local filesystem.\n\n- file_path must be an absolute path.\n- Reads up to {{maxLines}} lines by default; use offset/limit for larger files, and read only the part you need when you already know where it is.\n- Output uses cat -n format: line number, a tab, then the line content, starting at line 1.\n- Image files (png/jpg/gif/webp) come back as a written description produced by a separate vision model — you never see the image itself, so treat that text as your only account of it. When no vision model is configured, reading an image is refused rather than returning content you cannot see.\n- Document files (PDF, DOCX, PPTX, XLSX, RTF, ODT, EPUB) are text-extracted (best-effort, for text-based documents); the output is line-numbered and prefixed with an extraction header. Scanned or encrypted documents are not supported and return an error.\n- Reading a directory, a missing file, or an empty file returns an explanatory error instead of content.\n- Do not re-read a file you just edited to verify the change — Edit/Write fail loudly when they cannot apply.",
+    "descriptionVars": [
+      "maxLines"
+    ],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "file_path": {
+          "description": "The absolute path to the file to read",
+          "type": "string"
+        },
+        "limit": {
+          "description": "The number of lines to read. Only provide if the file is too large to read at once.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        },
+        "offset": {
+          "description": "The line number to start reading from. Only provide if the file is too large to read at once",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "file_path"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "ScheduleWakeup",
+    "permissionClass": "interact",
+    "description": "Schedules a single delayed wakeup (60s–1h) that injects a prompt once the REPL is next idle.\n\nUse this to revisit something after a short wait (e.g. \"check the build in 5 minutes\"). The delay is clamped to [60, 3600] seconds. It fires once and is then removed; it never interrupts a running turn.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "delaySeconds": {
+          "description": "Delay before the wakeup fires, in seconds. Clamped to [60, 3600].",
+          "type": "number"
+        },
+        "prompt": {
+          "description": "The instruction injected when the wakeup fires (only while idle).",
+          "minLength": 1,
+          "type": "string"
+        },
+        "reason": {
+          "description": "Short human-readable reason for the wakeup.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "delaySeconds",
+        "reason",
+        "prompt"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "TaskCreate",
+    "permissionClass": "interact",
+    "description": "Adds a task to the session task list so the user can follow progress.\n\n## When To Use:\n- Use it for multi-step work (3+ distinct steps), when the user lists several things to do, or when new requirements arrive mid-task.\n- TaskCreate must build tasks in logically feasible order, i.e. what must be done in which order has to be carefully decided.\n- Skip it for a single trivial action — just do the work.\n- After completing a task, add any follow-up work you found while doing it.\n\n## Note that:\n- Tasks start as pending; use TaskUpdate to move them through in_progress to completed, and check TaskList first to avoid duplicates.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "activeForm": {
+          "description": "Present continuous form shown in the spinner when in_progress (e.g. \"Running tests\")",
+          "type": "string"
+        },
+        "description": {
+          "description": "What needs to be done",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {},
+          "description": "Arbitrary metadata to attach to the task",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "subject": {
+          "description": "A brief, actionable title in imperative form",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject",
+        "description"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "TaskGet",
+    "permissionClass": "read",
+    "description": "Retrieves one task with its full description, status, owner, and dependency lists (blocks / blockedBy). Check that blockedBy is empty before starting the task.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "taskId": {
+          "description": "The task id as reported by TaskCreate/TaskList — a number string like \"3\" (\"#3\" is also accepted)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "taskId"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "TaskList",
+    "permissionClass": "read",
+    "description": "Lists all tasks in the session task list with id, subject, status, owner, and blockedBy. Pending tasks are tagged [pending READY] or [pending BLOCKED by #ids] based on whether their blockers are done. Use it to find available work, check progress, or spot blocked tasks. Prefer working on tasks in id order.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "TaskOutput",
+    "permissionClass": "read",
+    "description": "Reads the accumulated output of a background task (backgrounded Bash, Monitor, or Agent). With block:true (the default) it waits until the task finishes or the timeout elapses, then returns the output; with block:false it returns whatever output exists right now. Use it to collect a background Agent's report or check on a long-running command.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "block": {
+          "default": true,
+          "description": "If true, wait for the task to finish (up to timeout) before returning its output.",
+          "type": "boolean"
+        },
+        "task_id": {
+          "description": "The id of the background task to read output from",
+          "type": "string"
+        },
+        "timeout": {
+          "default": 30000,
+          "description": "Max milliseconds to block waiting for the task to finish (default 30000).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "task_id",
+        "block",
+        "timeout"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "TaskStop",
+    "permissionClass": "execute",
+    "description": "Stops a running background task (a backgrounded Bash command, a Monitor, or a background Agent) by its task id. Returns whether it was running. Already-finished or unknown ids are reported, not an error you need to retry.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "description": "The id of the background task (bash, monitor, or agent) to stop",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "TaskUpdate",
+    "permissionClass": "interact",
+    "description": "Updates a task in the session task list.\n\nMark a task in_progress before starting it and completed the moment it is fully done. Never mark completed while tests fail, the implementation is partial, or errors are unresolved — keep it in_progress and create a new task for the blocker. Read the task's current state (TaskGet) before updating it.\n\n## Note that:\n- After resolving a task, call TaskList and pick up the next one.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "activeForm": {
+          "description": "Present continuous form shown in spinner when in_progress",
+          "type": "string"
+        },
+        "addBlockedBy": {
+          "description": "Task IDs that block this task",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "addBlocks": {
+          "description": "Task IDs that this task blocks",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "description": {
+          "description": "New description for the task",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {},
+          "description": "Metadata keys to merge into the task. Set a key to null to delete it.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "owner": {
+          "description": "New owner for the task",
+          "type": "string"
+        },
+        "status": {
+          "description": "New status. Workflow: pending -> in_progress -> completed; deleted removes the task permanently.",
+          "enum": [
+            "pending",
+            "in_progress",
+            "completed",
+            "deleted"
+          ],
+          "type": "string"
+        },
+        "subject": {
+          "description": "New subject for the task",
+          "type": "string"
+        },
+        "taskId": {
+          "description": "The task id as reported by TaskCreate/TaskList — a number string like \"3\" (\"#3\" is also accepted)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "taskId"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "WebFetch",
+    "permissionClass": "network",
+    "description": "Fetches a URL, converts the page to readable text, and answers your prompt about it using a separate digest model (settings.smallModel when set, else the session model).\n\n- http:// URLs are upgraded to https:// before fetching.\n- Same-host redirects are followed automatically; a redirect to a DIFFERENT host is NOT followed — the tool returns the redirect target so you can decide whether to re-call WebFetch with it.\n- Page content is cached for 15 minutes, so repeated fetches of the same URL are cheap.\n- The answer is produced by a separate digest-model call over the page text; for the raw page, ask for a verbatim excerpt.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "prompt": {
+          "description": "What to extract from or answer about the page content.",
+          "type": "string"
+        },
+        "url": {
+          "description": "The URL to fetch (http/https; http is upgraded to https).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "prompt"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "WebSearch",
+    "permissionClass": "network",
+    "description": "Searches the web and returns titles, URLs, and snippets. Use it to find current information, docs, or pages to follow up on with WebFetch. Restrict or exclude sources with allowed_domains / blocked_domains. Works out of the box via DuckDuckGo.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowed_domains": {
+          "description": "If set, only results whose hostname matches one of these domains are kept.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "blocked_domains": {
+          "description": "Results whose hostname matches one of these domains are dropped.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "query": {
+          "description": "The search query.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "Workflow",
+    "permissionClass": "execute",
+    "description": "Run a workflow script that orchestrates multiple subagents deterministically. Use it only when the user has explicitly asked for multi-agent orchestration (\"use a workflow\", \"fan out agents\") — a task that would merely benefit from parallelism does NOT qualify; use the Agent tool for one-off subagents.\n\nThe script is plain JavaScript (NOT TypeScript — no type annotations). It MUST begin with a pure object literal:\n  export const meta = { name: 'my-flow', description: 'one-liner', phases: [{ title: 'Scan' }] }\nRequired meta fields: name, description. Optional: whenToUse, phases. The rest of the file is the async body (use await directly) and its `return` value is the workflow result.\n\nBody hooks:\n- agent(prompt, opts?): Promise — spawn a subagent, returns its final text. opts: { label, phase, agentType, model, schema }. With schema (a JSON Schema object) the reply is parsed into a validated object (markdown fences stripped, one retry on failure); returns null if it still can't parse or the agent errors. Filter with .filter(Boolean).\n- pipeline(items, stage1, stage2, ...): Promise<any[]> — run each item through all stages independently, NO barrier between stages. Each stage callback gets (prevResult, originalItem, index). A throwing stage drops that item to null. This is the DEFAULT for multi-stage work.\n- parallel(thunks): Promise<any[]> — run thunks concurrently and await all (a BARRIER). A thunk that throws resolves to null. Use ONLY when you need every result together (dedup/merge across the full set).\n- phase(title) / log(msg): emit progress lines to the user.\n- args: the tool's `args` input, verbatim.\n- budget: { total, spent(), remaining() } — output tokens, ENFORCED: total is the turn's token ceiling; agent() throws once remaining() hits 0. Guard long loops with e.g. `while (budget.remaining() > 20000) { ... }`.\n\nDEFAULT TO pipeline; reach for a barrier only when a stage genuinely needs all prior-stage results at once. Concurrent agents are capped at 4; total agent calls per run are capped at 100. Date/Math.random are available but discouraged (no resume in this build).",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Provide at least one of `script` or `scriptPath`.",
+      "properties": {
+        "args": {
+          "description": "Value exposed to the script as the global `args`, verbatim."
+        },
+        "script": {
+          "description": "Self-contained JS workflow script. Must begin with `export const meta = { name, description }` (a pure literal) followed by a body that uses agent/parallel/pipeline/phase/log.",
+          "type": "string"
+        },
+        "scriptPath": {
+          "description": "Path to a workflow script file (relative to cwd or absolute). Takes precedence over `script`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "Write",
+    "permissionClass": "mutate",
+    "description": "Writes a file to the local filesystem, overwriting if one exists.\n## When To Use:\n- Create a new files or fully replace one you have already Read this session.\n## When Not To Use:\n- Prefer Edit for partial changes. Parent directories are created automatically.\n## Note that:\n- Overwriting an existing file you have not Read (or that changed on disk since) fails.",
+    "descriptionVars": [],
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "description": "The content to write to the file",
+          "type": "string"
+        },
+        "file_path": {
+          "description": "The absolute path to the file to write (must be absolute, not relative)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_path",
+        "content"
+      ],
+      "type": "object"
+    }
+  }
+]

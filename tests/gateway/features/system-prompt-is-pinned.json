@@ -1,0 +1,30 @@
+{
+  "id": "system-prompt-is-pinned",
+  "name": "The assembled system prompt is pinned",
+  "area": "engine",
+  "section": "Agent",
+  "prose": "the exact text `buildSystemPrompt` produces for a canonical environment is committed as an approved artifact, so any change to what the model is told arrives as a reviewable diff instead of a silent behaviour change.",
+  "kinds": [
+    "pure",
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/agent/prompts.ts"
+  ],
+  "invariant": "buildSystemPrompt's output for the canonical environment is byte-identical to the approved artifact, and no prompt override is in effect when it is taken.",
+  "deferred": false,
+  "tests": [
+    "the-canonical-render-is-byte-identical-to-the-approved-artifact",
+    "the-artifact-carries-the-whole-prompt-and-every-environment-value",
+    "an-override-in-effect-is-detected-and-named-rather-than-frozen",
+    "two-renders-in-one-process-produce-identical-text",
+    "neither-the-test-nor-the-printer-can-write-the-artifact"
+  ],
+  "freshness": {
+    "hash": "c9b93e743f4cabbf",
+    "fileHashes": {
+      "engine/core/src/agent/prompts.ts": "c9b93e743f4cabbf"
+    },
+    "recordedAt": "2026-09-21"
+  }
+}

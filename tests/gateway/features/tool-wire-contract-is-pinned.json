@@ -1,0 +1,30 @@
+{
+  "id": "tool-wire-contract-is-pinned",
+  "name": "The tool wire contract is pinned",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "every registered tool's name, permission class, description template and JSON Schema is committed as an approved artifact, so a change to what the model can call arrives as a reviewable diff.",
+  "kinds": [
+    "pure"
+  ],
+  "entryFiles": [
+    "engine/tools/src/index.ts",
+    "engine/core/src/agent/tool.ts"
+  ],
+  "invariant": "Every registered tool's name, permission class, description template and JSON Schema is byte-identical to the approved artifact.",
+  "deferred": false,
+  "tests": [
+    "the-rendered-contract-is-byte-identical-to-the-approved-artifact",
+    "every-tool-the-registry-returns-has-an-entry-and-the-counts-agree",
+    "descriptions-are-frozen-as-templates-with-their-slots-unfilled",
+    "two-renders-and-two-registries-produce-identical-bytes"
+  ],
+  "freshness": {
+    "hash": "5ba26cf8988a447b",
+    "fileHashes": {
+      "engine/tools/src/index.ts": "014afda5d9dbf689",
+      "engine/core/src/agent/tool.ts": "789027d09aaa17fd"
+    },
+    "recordedAt": "2026-09-21"
+  }
+}

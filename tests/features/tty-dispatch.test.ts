@@ -80,6 +80,7 @@ const MARKER_SOURCE = [
   "    execPath: process.execPath,",
   "    argv: process.argv,",
   "    electron: process.env.ELECTRON_RUN_AS_NODE ?? null,",
+  "    pid: process.pid,",
   "  }) + '\\n');",
   "  process.exit(0);",
   "}",
@@ -89,6 +90,8 @@ interface MarkerEntry {
   readonly execPath: string;
   readonly argv: readonly string[];
   readonly electron: string | null;
+  /** The handed-off process's own pid, so teardown can wait for it. See {@link PackagedCliTest.tearDown}. */
+  readonly pid: number;
 }
 
 interface Sandbox {
@@ -103,7 +106,26 @@ abstract class PackagedCliTest extends ProcTest {
   readonly invariant = INVARIANT;
 
   #dirs: string[] = [];
+  #markers: string[] = [];
 
+  /**
+   * THE HANDED-OFF PROCESS IS NOT ONE OF `this.children`, AND THAT IS THE WHOLE
+   * POINT OF THE FEATURE. The CLI spawns the GUI *detached* and exits, so the
+   * grandchild outlives its parent by design and escapes the kill-the-tree
+   * guarantee `lib/childProcesses.ts` gives for the tree we own.
+   *
+   * `readMarker` returns the instant the marker LINE appears, and the stub
+   * writes that line and only then calls `process.exit(0)` — so a test can
+   * finish while the grandchild is still being torn down by the OS. Its
+   * `execPath` is `<sandbox>/node.exe`, which Windows holds open until it is
+   * really gone, and the rm below then gets EPERM. That failed about one run in
+   * two under full-suite load on 2026-09-21. `maxRetries: 12` was already here
+   * and is not the answer: retrying guesses at a wait that can simply be
+   * awaited.
+   *
+   * So the marker carries the grandchild's pid and teardown waits for it.
+   * Signal 0 sends nothing — it only asks whether the pid is still there.
+   */
   override async tearDown(): Promise<void> {
     for (const child of this.children) {
       if (!child.hasExited()) {
@@ -111,8 +133,34 @@ abstract class PackagedCliTest extends ProcTest {
         await child.exited();
       }
     }
+    await this.#awaitHandedOffProcesses();
     for (const dir of this.#dirs) rmSync(dir, { recursive: true, force: true, maxRetries: 12, retryDelay: 100 });
     this.#dirs = [];
+    this.#markers = [];
+  }
+
+  async #awaitHandedOffProcesses(timeoutMs = 15_000): Promise<void> {
+    const pids = new Set<number>();
+    for (const marker of this.#markers) {
+      if (!existsSync(marker)) continue;
+      for (const line of readFileSync(marker, "utf8").split("\n")) {
+        if (line.trim() === "") continue;
+        const { pid } = JSON.parse(line) as MarkerEntry;
+        if (typeof pid === "number" && pid > 0) pids.add(pid);
+      }
+    }
+
+    const deadline = Date.now() + timeoutMs;
+    for (const pid of pids) {
+      while (Date.now() < deadline) {
+        try {
+          process.kill(pid, 0);
+        } catch {
+          break; // ESRCH — gone, which is exactly what we are waiting for.
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    }
   }
 
   /** A fresh directory this test owns — a workspace to open, not part of the sandbox itself. */
@@ -140,6 +188,7 @@ abstract class PackagedCliTest extends ProcTest {
     if (withMagentraExe) copyFileSync(process.execPath, join(dir, "MAGENTRA.exe"));
 
     const markerPath = join(dir, "gui-marker.ndjson");
+    this.#markers.push(markerPath);
     writeFileSync(join(dir, "marker.cjs"), MARKER_SOURCE);
 
     return { dir, cliPath: join(dir, "cli.js"), nodePath, markerPath };

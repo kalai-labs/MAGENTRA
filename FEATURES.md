@@ -76,6 +76,7 @@ on a clean turn.
 ## Agent
 
 - [ ] **System prompt assembly** — env, addons, standards sections compose in the right order. `pure`
+- [ ] **The assembled system prompt is pinned** — the exact text `buildSystemPrompt` produces for a canonical environment is committed as an approved artifact, so any change to what the model is told arrives as a reviewable diff. `pure`
 - [ ] **Subagent types** — each type gets its declared toolset and role. `pure`
 - [ ] **Subagent spawn** — a child runs, streams tagged events, and returns its final text to the parent. `llm`
 - [ ] **Hooks** — `SessionStart` / `PreToolUse` / `PostToolUse` / `Stop` fire, and a blocking hook actually blocks. `proc`
@@ -95,6 +96,7 @@ on a clean turn.
 - [ ] **Cron / ScheduleWakeup** — a scheduled job actually fires later, with no user message to trigger it. `llm` (it re-enters the turn loop)
 - [ ] **MCP client** — an external MCP server's tools appear namespaced (`mcp__<server>__<tool>`) and are callable. `proc`
 - [ ] **AskUserQuestion** — blocks for an answer; refuses in unattended runs. `pure`
+- [ ] **The tool wire contract is pinned** — every registered tool's name, permission class, description template and JSON Schema is committed as an approved artifact, so a change to what the model can call arrives as a reviewable diff. `pure`
 
 ## Knowledge
 
