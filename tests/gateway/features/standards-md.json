@@ -13,7 +13,11 @@
   ],
   "invariant": "STANDARDS.md is loaded into the system prompt when present.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-standards-file-in-the-workspace-reaches-the-model-in-the-system-prompt",
+    "standards-are-found-at-the-magentra-path-as-well-as-the-repo-root",
+    "a-workspace-with-no-standards-file-runs-normally-and-carries-no-token"
+  ],
   "freshness": {
     "hash": "06529298c7f7a14a",
     "fileHashes": {

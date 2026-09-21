@@ -12,7 +12,11 @@
   ],
   "invariant": "A user message drives streamed thinking/text, tool calls, and one turn end.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "one-message-runs-a-real-tool-and-ends-the-turn-exactly-once",
+    "a-tool-result-is-appended-before-the-model-is-called-again",
+    "a-second-message-while-a-turn-runs-is-refused-not-interleaved"
+  ],
   "freshness": {
     "hash": "7c7930bc5724d79f",
     "fileHashes": {

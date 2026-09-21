@@ -13,7 +13,11 @@
   ],
   "invariant": "The first clean end-attempt injects the self-check once per turn; a silent DONE ends the turn with one visible reply.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "in-overdrive-a-turn-with-tool-calls-is-self-checked-once-and-never-shows-the-done",
+    "with-overdrive-off-a-turn-with-tool-calls-is-never-self-checked",
+    "in-overdrive-a-turn-that-called-no-tool-is-never-self-checked"
+  ],
   "freshness": {
     "hash": "25c574d3b9195553",
     "fileHashes": {

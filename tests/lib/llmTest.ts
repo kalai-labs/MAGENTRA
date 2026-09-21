@@ -77,13 +77,13 @@
  * package's gitignored `dist/`.
  */
 
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { Engine } from "@magentra/core";
 import { bootstrapEngine, loadDotEnv } from "@magentra/host";
-import type { CoreEvent } from "@magentra/protocol";
+import type { CoreEvent, FrontendRequest, PermissionDecision } from "@magentra/protocol";
 
 import { FeatureTest, realModelTestsEnabled, LLM_OPT_IN_VAR } from "./featureTest.ts";
 import { repoRoot } from "./inventory.ts";
@@ -105,6 +105,7 @@ export abstract class LlmTest extends FeatureTest {
   override readonly timeoutMs: number = 180_000;
 
   #dirs: string[] = [];
+  #workspace: string | undefined;
   #booted: BootedEngine | undefined;
   #events: CoreEvent[] = [];
   #draining: Promise<void> | undefined;
@@ -123,6 +124,23 @@ export abstract class LlmTest extends FeatureTest {
   /** Non-fatal settings problems `bootstrapEngine` reported. Empty on a clean boot. */
   protected get bootWarnings(): readonly string[] {
     return this.#booted?.warnings ?? [];
+  }
+
+  /**
+   * Write whatever this test's workspace must already contain when the engine
+   * boots into it. Called with the workspace directory, after the connection is
+   * seeded and before `bootstrapEngine`. Does nothing by default.
+   */
+  protected seedWorkspace(_dir: string): void {}
+
+  /**
+   * The directory the engine is running in — a temp directory, not this
+   * repository, so a turn that decides to write something cannot land it in the
+   * working tree. Assert against files here; it is removed at teardown.
+   */
+  protected get workspace(): string {
+    if (this.#workspace === undefined) throw new Error("workspace before engine() — boot the engine first");
+    return this.#workspace;
   }
 
   /** A fresh empty directory this test owns. Removed at teardown. */
@@ -144,7 +162,12 @@ export abstract class LlmTest extends FeatureTest {
     if (this.#booted !== undefined) return this.#booted.engine;
 
     const workspace = this.tempDir();
+    this.#workspace = workspace;
     seedConnectionFrom(repoRoot(), workspace);
+    // After the connection, before the engine: `standards-md` needs its
+    // STANDARDS.md on disk when `buildSystemPrompt` first reads the folder, and
+    // `reuse-check` needs the existing code its gate is supposed to notice.
+    this.seedWorkspace(workspace);
 
     let booted: BootedEngine;
     try {
@@ -165,16 +188,229 @@ export abstract class LlmTest extends FeatureTest {
     this.#booted = booted;
     // Point 3: ONE consumer, opened here and nowhere else.
     this.#draining = (async () => {
-      for await (const event of booted.engine.events) this.#events.push(event);
+      for await (const event of booted.engine.events) {
+        this.#events.push(event);
+        if (event.type === "permission_request") this.#onPermissionRequest(booted.engine, event);
+        if (event.type === "question_request") this.#onQuestionRequest(booted.engine, event);
+      }
     })();
     booted.engine.start();
     return booted.engine;
   }
 
-  /** Resolves when every turn and slash command in flight has finished. */
+  /**
+   * Answer permission prompts with `handler` for the rest of this test.
+   *
+   * WHY THIS IS NOT A DEFAULT. A prompt is a fact about what the model asked
+   * for, and auto-approving one everywhere would hide the difference between
+   * "the turn ran" and "the turn ran because the harness said yes to something
+   * the test never anticipated". So a test that expects a prompt installs a
+   * handler and OWNS the decision; a test that expects none installs nothing
+   * and {@link settle} fails the moment one arrives, naming the tool — see
+   * {@link unexpectedPrompt}.
+   *
+   * `approval-note` is the reason this takes a `message`: the note a user types
+   * on the card travels with the decision, and proving it reaches the model is
+   * the whole feature.
+   */
+  protected answerPermissions(
+    handler: (req: Extract<CoreEvent, { type: "permission_request" }>) => {
+      decision: PermissionDecision;
+      message?: string;
+    },
+  ): void {
+    this.#permissionHandler = handler;
+  }
+
+  /**
+   * Answer question cards with `handler` for the rest of this test — the
+   * same bargain as {@link answerPermissions}, and needed for the same reason.
+   *
+   * `settings.clarify` defaults to TRUE, so an open-ended request raises a
+   * question round BEFORE any work and the turn then waits for cards nobody is
+   * going to fill in. A test whose subject is that round installs a handler; a
+   * test that merely phrased its prompt loosely gets told so by {@link settle}
+   * instead of dying at its 180s timeout. Most tests here want neither and turn
+   * the pre-layer off in {@link seedWorkspace} via {@link patchSettings}.
+   *
+   * RETURNING `undefined` LEAVES THE ROUND OPEN, deliberately. `interrupt`'s
+   * fourth checklist item is that an interrupt settles a round still waiting
+   * for cards, so that test needs a question that stays pending — and needs to
+   * say so, rather than reaching that state by installing no handler and
+   * tripping {@link settle}'s "you forgot" guard.
+   */
+  protected answerQuestions(
+    handler: (req: Extract<CoreEvent, { type: "question_request" }>) => Record<string, string[]> | undefined,
+  ): void {
+    this.#questionHandler = handler;
+  }
+
+  /**
+   * Merge `patch` into the workspace's `.magentra/settings.json`.
+   *
+   * Called from {@link seedWorkspace}, so it lands before `bootstrapEngine`
+   * reads the folder. It merges rather than replaces because the file it is
+   * editing is the CONNECTION this test runs on — provider, baseUrl, model,
+   * contextWindow — and overwriting that would leave the test with no endpoint.
+   */
+  protected patchSettings(dir: string, patch: Record<string, unknown>): void {
+    const file = join(dir, ".magentra", "settings.json");
+    const current = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>) : {};
+    mkdirSync(join(dir, ".magentra"), { recursive: true });
+    writeFileSync(file, `${JSON.stringify({ ...current, ...patch }, null, 2)}\n`);
+  }
+
+  /** Send a frame to the booted engine. `engine()` must have been awaited first. */
+  protected send(request: FrontendRequest): void {
+    if (this.#booted === undefined) throw new Error("send() before engine() — boot the engine first");
+    this.#booted.engine.send(request);
+  }
+
+  /**
+   * Resolves when every turn and slash command in flight has finished.
+   *
+   * REJECTS INSTEAD OF WAITING on a permission prompt nobody installed a
+   * handler for. `Engine.idle()` would otherwise wait for a card that is never
+   * going to be filled in, and the test would die at its 180s timeout saying
+   * only "timed out" — for a run that costs money and is hard to reproduce,
+   * that is the least useful failure available. The tool and its input are
+   * named instead, because the interesting fact is WHICH call the model made
+   * that the test did not expect.
+   */
   protected async settle(): Promise<void> {
     if (this.#booted === undefined) return;
-    await this.#booted.engine.idle();
+    const idle = this.#booted.engine.idle();
+    let done = false;
+    void idle.then(
+      () => (done = true),
+      () => (done = true),
+    );
+    for (;;) {
+      if (this.#unexpectedPrompt !== undefined) {
+        const prompt = this.#unexpectedPrompt;
+        throw new Error(
+          `${this.featureId} · ${this.id}: the model asked permission for "${prompt.tool}" and this test installed no ` +
+            `handler, so the turn can never finish. Either the prompt is part of what you are proving — call ` +
+            `answerPermissions() and decide it — or the model did something the prompt did not intend.\n` +
+            `  input: ${JSON.stringify(prompt.input)?.slice(0, 400)}`,
+        );
+      }
+      if (this.#unexpectedQuestion !== undefined) {
+        const asked = this.#unexpectedQuestion;
+        throw new Error(
+          `${this.featureId} · ${this.id}: a question round opened and this test installed no handler, so the turn can ` +
+            `never finish. Either the round is what you are proving — call answerQuestions() — or the prompt read as ` +
+            `open-ended and the clarify pre-layer fired; turn it off with patchSettings(dir, { clarify: false }).\n` +
+            `  asked: ${JSON.stringify(asked.questions.map((q) => q.question)).slice(0, 400)}`,
+        );
+      }
+      if (done) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    await idle;
+  }
+
+  /**
+   * Wait until an event this test is looking for has been emitted, and return it.
+   *
+   * For the things that happen DURING a turn rather than at the end of one: the
+   * question card the clarify pre-layer raises, the permission card whose note
+   * is the subject, the first tool call a steering test wants to land behind.
+   * `signal` is the runner's — a wait that outlives the test aborts with the
+   * name of what it was waiting for, never with a bare timeout.
+   */
+  protected async waitForEvent<T extends CoreEvent["type"]>(
+    signal: AbortSignal,
+    type: T,
+    what: string,
+    match: (event: Extract<CoreEvent, { type: T }>) => boolean = () => true,
+  ): Promise<Extract<CoreEvent, { type: T }>> {
+    let seen = 0;
+    for (;;) {
+      for (; seen < this.#events.length; seen++) {
+        const event = this.#events[seen]!;
+        if (event.type === type && match(event as Extract<CoreEvent, { type: T }>)) {
+          return event as Extract<CoreEvent, { type: T }>;
+        }
+      }
+      if (signal.aborted) throw new Error(`timed out waiting for ${what} (${type})`);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+
+  /** Every event of one type, in order — the usual shape of an assertion here. */
+  protected eventsOfType<T extends CoreEvent["type"]>(type: T): Extract<CoreEvent, { type: T }>[] {
+    return this.#events.filter((e): e is Extract<CoreEvent, { type: T }> => e.type === type);
+  }
+
+  /**
+   * The current session's transcript file, as raw text.
+   *
+   * THE DETERMINISTIC WITNESS for everything the engine puts into the
+   * conversation that the user never sees: the self-check rung, the approval
+   * note travelling with a tool result, the compaction summary that replaced a
+   * span, the steering text that joined a running turn. None of those is an
+   * event, and none can be read off what the model said — but all of them are
+   * written down, by the engine, as they happen.
+   *
+   * The id comes from the latest `session_started`, so this follows a `/clear`
+   * or a resume to whichever session is live now.
+   */
+  protected transcriptRaw(): string {
+    const started = this.eventsOfType("session_started");
+    const id = started[started.length - 1]?.sessionId;
+    if (id === undefined) throw new Error("no session_started seen yet — the engine has not announced a session");
+    return readFileSync(join(this.workspace, ".magentra", "sessions", `${id}.jsonl`), "utf8");
+  }
+
+  /** The transcript's records, parsed, in the order they were appended. */
+  protected transcriptRecords(): Record<string, unknown>[] {
+    return this.transcriptRaw()
+      .split("\n")
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+  }
+
+  /** Everything the model said out loud this test, concatenated. */
+  protected visibleText(): string {
+    return this.eventsOfType("text_delta")
+      .map((e) => e.text)
+      .join("");
+  }
+
+  #permissionHandler:
+    | ((req: Extract<CoreEvent, { type: "permission_request" }>) => { decision: PermissionDecision; message?: string })
+    | undefined;
+  #unexpectedPrompt: Extract<CoreEvent, { type: "permission_request" }> | undefined;
+  #questionHandler:
+    | ((req: Extract<CoreEvent, { type: "question_request" }>) => Record<string, string[]> | undefined)
+    | undefined;
+  #unexpectedQuestion: Extract<CoreEvent, { type: "question_request" }> | undefined;
+
+  #onQuestionRequest(engine: Engine, event: Extract<CoreEvent, { type: "question_request" }>): void {
+    const handler = this.#questionHandler;
+    if (handler === undefined) {
+      this.#unexpectedQuestion ??= event;
+      return;
+    }
+    const answers = handler(event);
+    if (answers === undefined) return; // left open on purpose — see answerQuestions()
+    engine.send({ type: "question_response", id: event.id, answers });
+  }
+
+  #onPermissionRequest(engine: Engine, event: Extract<CoreEvent, { type: "permission_request" }>): void {
+    const handler = this.#permissionHandler;
+    if (handler === undefined) {
+      this.#unexpectedPrompt ??= event;
+      return;
+    }
+    const answer = handler(event);
+    engine.send({
+      type: "permission_response",
+      id: event.id,
+      decision: answer.decision,
+      ...(answer.message !== undefined ? { message: answer.message } : {}),
+    });
   }
 
   /**

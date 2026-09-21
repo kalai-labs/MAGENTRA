@@ -13,7 +13,10 @@
   ],
   "invariant": "steer_message joins a running turn at its next message boundary, re-arms self-verify and refunds pivots; when idle it becomes a normal user turn.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "text-sent-while-a-turn-runs-joins-that-turn-instead-of-starting-a-second",
+    "text-sent-when-the-turn-has-already-ended-becomes-a-normal-user-turn"
+  ],
   "freshness": {
     "hash": "7a03a650a32863ed",
     "fileHashes": {

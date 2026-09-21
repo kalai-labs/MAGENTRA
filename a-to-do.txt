@@ -25,20 +25,59 @@ Phase 4 PARTLY DONE.
             test:artifacts npm script, and decisions/0010. Mirrors
             decisions/0009 exactly.
   DONE      mac-artifact and windows-artifact tests.
-  NOT DONE  the whole llm track - 15 features, listed below.
+  DONE      9 of the llm track's 15 features - 26 real-model tests, written
+            2026-09-21 and all passing against Fireworks glm-5p3-flash. The
+            LlmTest harness grew what they needed: seedWorkspace(),
+            patchSettings(), workspace, send(), waitForEvent(),
+            answerPermissions(), answerQuestions(), transcriptRaw/Records(),
+            visibleText(), and a settle() that FAILS on an unhandled
+            permission card or question round instead of hanging to the 180s
+            timeout.
+  NOT DONE  6 of them, each for a stated reason - see section 1.
 
 Gate at handover: fresh, 0 discovery problems, 0 drift.
 Run `npm run build` before anything - the suite runs the built engine and
 dist/ is gitignored.
 
 ===============================================================================
-1. THE LLM TRACK - 15 FEATURES, NOT STARTED
+1. THE LLM TRACK - 9 OF 15 WRITTEN (2026-09-21)
 ===============================================================================
-  D1  turn-loop, clarify-pre-layer, interrupt
-  D2  compaction, resume, self-verify-rung
-  D3  approval-note, bounded-runs-stay-bounded, stall-detector
-  D4  reuse-check, standards-md, circular-check-floor
-  D5  mid-run-steering-both-stances, tool-agent, create-addon-wizard
+WRITTEN, PASSING (26 tests, tests/features/<id>.test.ts):
+  turn-loop 3    clarify-pre-layer 3   interrupt 3    compaction 3
+  resume 3       self-verify-rung 3    approval-note 3
+  standards-md 3 mid-run-steering-both-stances 2
+
+NOT WRITTEN - SUBAGENT WORK, DEFERRED BY DECISION:
+  subagent-spawn, tool-agent, bounded-runs-stay-bounded
+    Subagents are not mature enough to pin yet and will be written and tested
+    in a future version. bounded-runs-stay-bounded belongs here rather than
+    with the rest because its subject is "an explicitly capped CHILD" -
+    maxIterationsPerTurn/maxTokensPerTurn on a spawned agent, not on the root
+    turn.
+  create-addon-wizard
+    Its record is `ui` + `llm`: the round trip it describes is a desktop
+    wizard, and this pass is deliberately UI-free.
+
+NOT WRITTEN - THE KIND ON THE RECORD LOOKS WRONG, AND THAT IS A JUDGEMENT
+ABOUT THE FEATURE, NOT A STRING MATCH (same standing as circular-check-floor
+in decisions/0009):
+  reuse-check
+    `evaluateReuseGate()` says of itself "Pure and side-effect-free", and its
+    12-branch decision table is a function of (path, content, config, search
+    log, index). That is a `pure` test costing milliseconds. Worse, the branch
+    worth proving - the REMIND - is unreachable through a real model in
+    practice: branch 8 passes the gate when a related term was searched this
+    session, and a competent model searches before it writes. A real-model
+    test here would be a coin flip dressed as a proof.
+  stall-detector
+    Needs three CONSECUTIVE IDENTICAL rounds - same calls, same results - to
+    force the pivot, and then two more to reach the ask-the-user rung. A model
+    varying its approach after a failure is the model working correctly, so
+    the precondition cannot be arranged from the outside. Inducing it would
+    mean scripting the provider, which is the scaffold this kind exists to
+    avoid.
+  Both need re-declaring (or a note saying why they stay `llm`) before anyone
+  counts them as gaps in the llm track specifically.
 
 Connection: repo .env + .magentra/settings.json, copied into each temp
 workspace by LlmTest. Verified 2026-09-21 by booting bootstrapEngine through
@@ -51,7 +90,8 @@ Run with `npm run test:llm` (or MAGENTRA_LLM_TESTS=1). Under plain `npm test`
 they are withheld and named, never passed. Since 2026-09-21 that command runs
 the llm kind ALONE (decisions/0013) — it was additive before, and with zero
 LlmTest subclasses written it was an exact 85-second synonym for `npm test`.
-Until the 15 below exist it selects nothing and reports pass 0 / skipped 558.
+It now selects the 26 tests below and nothing else; a full run is ~5 minutes
+and bills the endpoint for every turn.
 
 ** THE THING TO KNOW BEFORE WRITING ANY OF THEM **
 Every one of these checklists is written in terms of FakeProvider - "with a

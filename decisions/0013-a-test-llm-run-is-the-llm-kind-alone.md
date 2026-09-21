@@ -125,7 +125,10 @@ banner was for.
 - **A `test:llm` run with no `llm` tests reports `pass 0 · skipped 558`**, which
   is the honest answer to "run the real-model tests" while there are none. It
   exits 0, because nothing failed; the gap is `FEATURES.md`'s and the gateway's
-  to report, and neither has ever claimed a test nobody wrote.
+  to report, and neither has ever claimed a test nobody wrote. That was the
+  state for the few hours this record describes: 26 real-model tests landed the
+  same day, across 9 of the 15 records, and the command now runs those and
+  nothing else in about five minutes.
 - **`test:artifacts` stays additive, and is deliberately not changed here.** Its
   8 tests build a real installer and it holds the exclusive lock while doing so;
   whether the local suite should ride along is a question with its own

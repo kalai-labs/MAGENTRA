@@ -13,7 +13,11 @@
   ],
   "invariant": "/resume rebuilds a render-ready paint list with tool calls already paired and harness scaffolding stripped.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "resuming-emits-a-paint-list-holding-the-earlier-exchange-with-its-tool-calls-paired",
+    "the-repaint-strips-the-harness-messages-the-user-never-sent",
+    "after-a-resume-the-model-still-knows-what-the-earlier-turn-established"
+  ],
   "freshness": {
     "hash": "8de05e470def2c08",
     "fileHashes": {

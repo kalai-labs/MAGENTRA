@@ -13,7 +13,11 @@
   ],
   "invariant": "A note the user attaches while APPROVING must reach the model.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-note-attached-to-an-approval-is-put-into-the-conversation-with-that-rounds-results",
+    "a-note-attached-to-a-denial-becomes-the-reason-the-model-reads",
+    "an-approval-with-no-note-puts-no-note-message-into-the-conversation"
+  ],
   "freshness": {
     "hash": "5e675cbefa29932b",
     "fileHashes": {

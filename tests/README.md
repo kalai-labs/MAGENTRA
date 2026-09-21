@@ -53,8 +53,9 @@ at all.
 `engine/*/dist/`, not `src/`, and `npm test` does not build — on 2026-09-20 a
 10-day-old `dist/` failed five tests that the source had already fixed.
 
-Measured on 2026-09-21, engine freshly built: `npm test` 93s / 499 run of 558
-registered, `npm run test:ui` 51 tests. Why `test:ui` subtracts is
+Measured on 2026-09-21, engine freshly built: `npm test` 86s / 499 run of 584
+registered (85 withheld: 51 ui, 26 llm, 8 artifact), `npm run test:ui` 51
+tests, `npm run test:llm` 26 tests in ~5 minutes. Why `test:ui` subtracts is
 [`../decisions/0011`](../decisions/0011-ui-tests-are-opt-in.md); why `test:llm`
 now does too, having been additive until that date, is
 [`../decisions/0013`](../decisions/0013-a-test-llm-run-is-the-llm-kind-alone.md).
@@ -226,12 +227,25 @@ directly. The script ALSO works through `npm_lifecycle_event`, because
 That command was ADDITIVE — the ordinary suite plus the real-model tests — until
 2026-09-21, when `npm test` and `npm run test:llm` were measured executing an
 identical 558 tests, 499 passing, 59 skipped, the two name lists matching line
-for line. The immediate cause was that nothing extends `LlmTest` yet; the shape
-was wrong regardless, for the reasons in
+for line. The immediate cause was that nothing extended `LlmTest` at all; the
+shape was wrong regardless, for the reasons in
 [`../decisions/0013`](../decisions/0013-a-test-llm-run-is-the-llm-kind-alone.md).
-**Until the 15 records that declare `llm` have tests, `npm run test:llm` selects
-nothing and reports `pass 0 · skipped 558`** — which is the honest answer to
-"run the real-model tests" while there are none, not a failure.
+
+**26 real-model tests now exist**, written the same day, covering 9 of the 15
+records that declare the kind: `turn-loop`, `clarify-pre-layer`, `interrupt`,
+`compaction`, `resume`, `self-verify-rung`, `approval-note`, `standards-md`,
+`mid-run-steering-both-stances`. The other six are named, with reasons, in
+`a-to-do.txt` §1 — three are subagent work deferred to a later version, one is
+a desktop wizard, and two (`reuse-check`, `stall-detector`) look mis-declared:
+their subjects are reachable without a model, and the branch worth proving
+cannot be induced from one. Naming them beats a flaky green.
+
+Writing one: extend `LlmTest`, give the class the record's `invariant` verbatim,
+add its id to the record's `tests` array, and assert the ENGINE's observable
+reaction — events, files on disk, the transcript — never the model's wording.
+`tests/lib/llmTest.ts` documents the harness; `settle()` fails loudly on a
+permission card or question round the test did not install a handler for,
+rather than hanging to the 180s timeout.
 
 **Desktop-app tests are opt-in too, and `test:ui` runs them ALONE.** The gate
 is `t.desktop ?? t.kind === "ui"` — "does this launch the app", not "is this the

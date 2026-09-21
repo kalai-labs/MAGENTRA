@@ -12,7 +12,11 @@
   ],
   "invariant": "Crossing the threshold summarizes the oldest span, replaces it, and resets the context.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "crossing-the-lowered-limit-replaces-the-oldest-span-with-a-summary-and-says-so",
+    "compaction-re-estimates-the-window-and-leaves-a-history-the-provider-still-accepts",
+    "after-compaction-the-session-still-knows-what-the-compacted-span-established"
+  ],
   "freshness": {
     "hash": "7c7930bc5724d79f",
     "fileHashes": {
