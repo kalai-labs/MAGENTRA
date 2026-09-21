@@ -241,6 +241,24 @@ export abstract class FeatureTest {
   async invokeKindTearDown(): Promise<void> {
     await this.tearDownKind();
   }
+
+  /**
+   * Lines the KIND wants in the report, one diagnostic each, emitted after
+   * teardown — so a test that FAILED still reports them. That is the point for
+   * `llm`, where what the run cost is exactly as interesting on a red test as
+   * on a green one.
+   *
+   * Empty for every other kind. A test never calls this; `run()` already has
+   * `t.diagnostic` for anything it wants to say about itself.
+   */
+  protected kindDiagnostics(): readonly string[] {
+    return [];
+  }
+
+  /** @internal — the registrar reaches the kind's report through this. */
+  collectKindDiagnostics(): readonly string[] {
+    return this.kindDiagnostics();
+  }
 }
 
 /** Placeholders that pass a non-empty check while saying nothing. */
@@ -710,6 +728,10 @@ function registerOne(t: FeatureTest, skip?: string): void {
       }
     } finally {
       await t.invokeKindTearDown();
+      // After teardown, and inside the `finally`, so a failing test still
+      // reports what it spent. `llm-usage` lines are also read by
+      // `lib/llmUsageReporter.mjs` to total the run.
+      for (const line of t.collectKindDiagnostics()) ctx.diagnostic(line);
     }
 
     if (count.n === 0) {

@@ -240,6 +240,31 @@ a desktop wizard, and two (`reuse-check`, `stall-detector`) look mis-declared:
 their subjects are reachable without a model, and the branch worth proving
 cannot be induced from one. Naming them beats a flaky green.
 
+**A `test:llm` run ends with what it cost**, per feature and in total:
+
+```
+  feature                          tests  turns          in       out    cache rd   cache wr
+  approval-note                        3      3      13,012     3,769     102,400          0
+  compaction                           3     14     109,998       988     169,984          0
+  ...
+  TOTAL                               26     38     215,011     9,386     528,384          0
+
+  752,781 tokens billed across 38 turns on accounts/fireworks/models/glm-5p3-flash
+```
+
+Nothing there is counted twice or re-derived: each test emits one `llm-usage`
+diagnostic summing its own `turn_finished.usage`, which is the engine's own
+per-turn billed figure, and `lib/llmUsageReporter.mjs` totals them. It is a
+REPORTER rather than something a test prints because `node --test` gives every
+FILE its own process, so the parent is the only place a run-wide figure exists —
+the same constraint that turned the withheld-test banner into 109 copies of
+itself in [`../decisions/0011`](../decisions/0011-ui-tests-are-opt-in.md). It is
+added alongside `spec`, never in place of it, and is why `test:llm` is the one
+test script whose command line differs at all. A cost estimate appears only when
+the model is in the engine's rate card, which is `config/pricing.ts`'s own rule:
+*a model absent from this table simply has no cost estimate — counts are still
+reported*.
+
 Writing one: extend `LlmTest`, give the class the record's `invariant` verbatim,
 add its id to the record's `tests` array, and assert the ENGINE's observable
 reaction — events, files on disk, the transcript — never the model's wording.

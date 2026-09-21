@@ -371,6 +371,62 @@ export abstract class LlmTest extends FeatureTest {
       .map((line) => JSON.parse(line) as Record<string, unknown>);
   }
 
+  /**
+   * What this test billed, summed from the engine's own per-turn figures.
+   *
+   * `turn_finished.usage` is T_turn — "tokens BILLED for this turn: the sum
+   * over every model call it made, including the auxiliary prompts
+   * (clarification, summarization) and every subagent". So summing it over the
+   * test's turns is the whole spend, not a re-derivation: nothing here counts
+   * tokens itself, and there is no second accounting to drift from the
+   * engine's.
+   *
+   * ONE THING IT CANNOT SEE: a model call made outside any turn — a manual
+   * `/compact`, for instance — has no `turn_finished` to ride on. No test here
+   * makes one, and the reporter says "per-turn" rather than "total" for that
+   * reason.
+   */
+  protected usage(): { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; turns: number } {
+    const total = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 0 };
+    for (const turn of this.eventsOfType("turn_finished")) {
+      total.inputTokens += turn.usage.inputTokens;
+      total.outputTokens += turn.usage.outputTokens;
+      total.cacheReadTokens += turn.usage.cacheReadTokens;
+      total.cacheWriteTokens += turn.usage.cacheWriteTokens;
+      total.turns += 1;
+    }
+    return total;
+  }
+
+  /**
+   * The one report line this kind adds to every test, green or red.
+   *
+   * A STRICT `key=value` SHAPE, not prose, because two audiences read it: a
+   * person scanning the spec output, and `lib/llmUsageReporter.mjs`, which
+   * totals these across the run's processes. `node --test` runs every FILE in
+   * its own process, so a diagnostic the reporter can parse is the only place
+   * a run-wide total can come from.
+   */
+  protected override kindDiagnostics(): readonly string[] {
+    // Reported whenever a session was started, INCLUDING a test that ran no
+    // turn — `interrupt · interrupting-an-idle-session…` is one, by design. A
+    // zero row keeps the report's test count equal to the run's, which a
+    // silently omitted row does not: the first version of this printed TOTAL 25
+    // under a summary saying 26 passed.
+    const started = this.eventsOfType("session_started")[0];
+    if (started === undefined) return [];
+    const u = this.usage();
+    const model = started.model;
+    // `feature=` rather than letting the reporter read the diagnostic's file:
+    // `test:diagnostic` reports the file the diagnostic was EMITTED from, which
+    // is `featureTest.ts` for every one of these, so every feature landed in
+    // one row labelled with the registrar. The test knows its own id; say it.
+    return [
+      `llm-usage feature=${this.featureId} in=${u.inputTokens} out=${u.outputTokens} ` +
+        `cacheRead=${u.cacheReadTokens} cacheWrite=${u.cacheWriteTokens} turns=${u.turns} model=${model}`,
+    ];
+  }
+
   /** Everything the model said out loud this test, concatenated. */
   protected visibleText(): string {
     return this.eventsOfType("text_delta")
