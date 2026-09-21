@@ -42,7 +42,11 @@ jobs:
   # renderer crashes). xvfb provides the display GitHub runners lack.
   engine-and-app:
     name: Engine build + app smoke
-    runs-on: ubuntu-latest
+    # Windows, because that is what MAGENTRA ships. This job used to run on
+    # ubuntu with xvfb, which was the right choice while a Linux AppImage was
+    # published; since decisions/0014 it would have been the only thing in the
+    # repository still booting the app on a platform nobody receives.
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -56,22 +60,108 @@ jobs:
       - name: Build the engine
         run: npm run build
 
+      # No xvfb: a Windows runner has a desktop session of its own.
       - name: Boot the app (smoke)
-        run: xvfb-run --auto-servernum npm run smoke --workspace app
+        run: npm run smoke --workspace app
 
-      # `npm run test:ui` NO LONGER MEANS WHAT THIS STEP MEANT. It used to run
-      # the deleted app/tests/ Electron suite; since the ui/llm split it runs
-      # the `ui` kind of tests/features/ — 50 tests that drive the real app
-      # through lib/appHarness.cjs. That is the successor to what was commented
-      # out here, so this can simply be restored:
+      # The desktop UI tests that used to be commented out here now live in the
+      # `tests` job below, beside `npm test`. They were restored as a pair, on
+      # the reasoning recorded here at the time: turning the ui half on alone
+      # would have gated every push on the slowest tests while the fast ones
+      # stayed ungated. This job keeps the smoke only — it boots the app from
+      # source, which is a cheaper question than driving it.
+
+  # The feature suite: tests/features/, one file per feature record. Until this
+  # job existed it ran only on a maintainer's machine, so a push could break any
+  # of them and CI would still be green.
+  #
+  # Node 20 is absent from this matrix on purpose, unlike every other job in
+  # this file. The tests are TypeScript executed by Node's own type stripping —
+  # no build step and no tsx, so a broken `npm run build` still leaves a
+  # runnable suite — and that needs >= 22.18. On Node 20 they do not fail, they
+  # do not parse.
+  #
+  # WINDOWS, not ubuntu, and that is a deliberate limit rather than a
+  # preference. The suite is developed and proven on Windows — 584 registered,
+  # 499 passing there — and has never once been run on Linux: 16 of its files
+  # branch on `process.platform` and 43 assertions name win32. Gating every
+  # push on a platform nobody has ever seen it pass on would make the first red
+  # build a fact about the runner instead of a fact about the code.
+  #
+  # Nothing in this repository runs on Linux any more: MAGENTRA does not ship
+  # Linux binaries either — see decisions/0014-magentra-does-not-ship-linux.md,
+  # which records what to put back. The way back here is to run the suite on
+  # Linux once by hand and then add `ubuntu-latest` to a matrix.
+  tests:
+    name: Feature suite (Node ${{ matrix.node }})
+    runs-on: windows-latest
+    # Every `run:` below is bash. The default shell on a Windows runner is
+    # PowerShell, where `set -o pipefail` is a parse error and `2>&1` on a
+    # native command wraps stderr in an ErrorRecord and reports failure on a
+    # clean exit — which would make the suite look broken whenever it was not.
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      # The tests import `engine/*/dist/`, never `src/`, and `dist/` is
+      # gitignored. Without this step every run would test a build that is not
+      # there. `npm test` does not build on purpose, so the build is named here.
+      - name: Build the engine
+        run: npm run build
+
+      - name: Feature suite
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/suite.log"
+
+      # `node --test` exits 0 when it discovers nothing at all: with
+      # `tests/features/` empty the run reports `tests 0` and passes, and the
+      # runner has no flag that says otherwise. The registered count is the only
+      # thing that separates "everything passed" from "nothing ran".
       #
-      # - name: Exercise desktop UI interactions
-      #   run: xvfb-run --auto-servernum npm run test:ui
+      # It is asserted here, in CI, and not inside `npm test`, because
+      # tests/README keeps that command a bare `node --test`: a wrapper that
+      # interprets the result is the runner decisions/0006 removed, and
+      # decisions/0001 requires the suite to stand up without any tool of ours.
+      # Reading the summary afterwards adds no tool to the run itself.
       #
-      # It is left commented for one reason only: nothing else in CI runs
-      # `npm test` yet either, so turning the ui half on first would gate every
-      # push on the slowest tests while the fast ones stay ungated. Restore the
-      # pair together.
+      # The floor catches collapse, not drift. It sits well under the 581
+      # registered on 2026-09-21, so deleting a test does not fail the build,
+      # while an empty or unregistered suite cannot pass. Registration happens
+      # on every platform — only withholding varies — so one number serves all.
+      - name: The suite is not empty
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const log = fs.readFileSync(process.env.RUNNER_TEMP + "/suite.log", "utf8");
+            const hit = [...log.matchAll(/^\W*tests\s+(\d+)\s*$/gm)].pop();
+            if (!hit) throw new Error("no summary line in the log: the reporter changed shape");
+            const n = Number(hit[1]);
+            console.log("registered tests: " + n);
+            if (n < 550) throw new Error("the suite collapsed: " + n + " registered, the floor is 550");
+          '
+
+      # The `ui` kind: the tests that drive the real desktop app through
+      # lib/appHarness.cjs. `test:ui` SUBTRACTS — it runs that kind alone and
+      # shares no test with the step above, which is why both are named here
+      # and why turning on only one of them would have gated nothing useful.
+      # No xvfb: a Windows runner has a desktop session, so Electron opens a
+      # real window without one.
+      - name: Desktop UI slice
+        run: npm run test:ui
 
   types:
     name: Types
