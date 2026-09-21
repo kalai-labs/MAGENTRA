@@ -112,7 +112,6 @@ npm run app          # launch the desktop app against the built engine
 ## Package
 
 ```sh
-npm run dist:linux   # AppImage + tar.gz
 npm run dist:win     # portable .exe
 npm run dist:mac     # arm64 .dmg
 ```

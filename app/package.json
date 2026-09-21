@@ -10,9 +10,7 @@
     "start": "node scripts/launch.js",
     "bundle:engine": "node scripts/bundle-engine.js",
     "dist": "node scripts/bundle-engine.js --target win && node scripts/dist.js --win",
-    "dist:linux": "node scripts/bundle-engine.js --target linux && node scripts/dist.js --linux",
     "dist:mac": "node scripts/bundle-engine.js --target mac && node scripts/dist.js --mac",
-    "dist:all": "node scripts/bundle-engine.js --target win --target linux && node scripts/dist.js --win --linux",
     "smoke": "node scripts/launch.js --smoke"
   },
   "devDependencies": {
@@ -69,44 +67,6 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "include": "build/installer.nsh"
-    },
-    "linux": {
-      "executableName": "magentra",
-      "syncDesktopName": true,
-      "target": [
-        {
-          "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "tar.gz",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "deb",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "artifactName": "MAGENTRA-${version}-linux-${arch}.${ext}",
-      "category": "Development",
-      "extraResources": [
-        {
-          "from": "build-resources/engine",
-          "to": "engine",
-          "filter": [
-            "engine.cjs",
-            "doc-extract.mjs",
-            "tui.mjs",
-            "rg"
-          ]
-        }
-      ]
     },
     "mac": {
       "target": [

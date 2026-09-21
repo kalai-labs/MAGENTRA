@@ -24,9 +24,9 @@
  *
  * WHY A BUILD RUNS `bundle-engine.js` UNDER ITS OWN LOCK, THEN `dist.js` UNDER
  * A SECOND ONE: `bundle-engine.js` rewrites `app/build-resources/engine/*`,
- * a directory three OTHER artifact features (linux, mac, and
- * `no-node-modules-at-runtime`) also rewrite — `"bundle-engine"` is their
- * existing lock name (see `linux-artifact.test.ts`). `dist.js` then writes
+ * a directory three OTHER artifact features (mac, `no-node-modules-at-runtime`
+ * and `fully-local-assets`) also rewrite — `"bundle-engine"` is their
+ * existing lock name (see `mac-artifact.test.ts`). `dist.js` then writes
  * `app/dist`, which only a Windows build touches on this platform, under its
  * own `"dist"` lock so a second concurrent Windows run cannot see it half
  * written.

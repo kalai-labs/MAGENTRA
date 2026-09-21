@@ -196,15 +196,18 @@ class ThePackageShipsNoNodeModules extends BundleTest {
 
   override run(t: TestRun): void {
     const pkg = JSON.parse(readFileSync(join(repoRoot(), "app", "package.json"), "utf8")) as {
-      build: { files: unknown[]; linux?: { extraResources?: { filter?: string[] }[] }; win?: { extraResources?: { filter?: string[] }[] }; mac?: { extraResources?: { filter?: string[] }[] } };
+      build: { files: unknown[]; win?: { extraResources?: { filter?: string[] }[] }; mac?: { extraResources?: { filter?: string[] }[] } };
     };
 
     const files = JSON.stringify(pkg.build.files);
     t.assert.doesNotMatch(files, /node_modules/, "the package must not list node_modules");
     t.assert.match(files, /build-resources\/app/, "it ships the bundled app instead");
 
-    // Every platform copies exactly the four runtime artifacts and nothing else.
-    for (const platform of ["linux", "win", "mac"] as const) {
+    // Every platform copies exactly the four runtime artifacts and nothing
+    // else. Two platforms, not three: MAGENTRA stopped shipping Linux
+    // binaries (decisions/0014), so `build.linux` is gone and asserting over
+    // it would assert over a target that no longer exists.
+    for (const platform of ["win", "mac"] as const) {
       const extra = pkg.build[platform]?.extraResources ?? [];
       t.assert.equal(extra.length, 1, `${platform} must copy exactly one resource directory`);
       const filter = [...(extra[0]?.filter ?? [])].sort();

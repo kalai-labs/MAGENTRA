@@ -89,10 +89,15 @@ jobs:
   # bundles the ripgrep binary npm installed natively for that platform, and
   # bundle-engine.js --target fails the build if it is missing.
   #
-  # latest.yml and latest-linux.yml are the channel files electron-updater reads
-  # for the self-updating formats (Windows NSIS, Linux AppImage). macOS ships
-  # unsigned, so it can never replace itself and needs no channel file — see
+  # latest.yml is the channel file electron-updater reads for the one
+  # self-updating format left, Windows NSIS. macOS ships unsigned, so it can
+  # never replace itself and needs no channel file — see
   # docs/adr/0009-updates-have-two-tiers.md.
+  #
+  # There is no Linux leg: MAGENTRA does not ship Linux binaries — see
+  # decisions/0014-magentra-does-not-ship-linux.md, which also records what to
+  # put back. `app/main/updates.js` still KNOWS the Linux formats (AppImage,
+  # deb, tar.gz) on purpose, so a self-built copy still resolves its own tier.
   binaries:
     name: Binaries (${{ matrix.name }})
     needs: release
@@ -103,10 +108,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: linux
-            os: ubuntu-latest
-            dist: dist:linux
-            upload: app/dist/*.AppImage app/dist/*.tar.gz app/dist/*.deb app/dist/latest-linux.yml
           - name: windows
             os: windows-latest
             dist: dist:win

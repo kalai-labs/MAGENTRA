@@ -184,7 +184,6 @@ cwd.
 
 ## Packaging
 
-- [ ] **Linux artifact** — AppImage/tar.gz launches on a clean machine, with a working Grep (the bundled `rg`). `ui`
 - [ ] **Windows artifact** — the portable `.exe` launches, with a working Grep (the bundled `rg.exe`). `ui`
 - [ ] **No `node_modules` at runtime** — the packaged engine is one self-contained file. `proc`
 - [ ] **Update tier per format** — an NSIS install and a writable AppImage self-update; the portable `.exe`, the `.dmg`, the `.deb` and the `.tar.gz` open their own asset in the browser. A read-only AppImage moves to the assisted tier instead of failing. `ui`

@@ -40,17 +40,18 @@ const TUI_ENTRY = path.join(REPO_ROOT, "tui", "src", "cli.tsx");
 const TUI_OUT = path.join(OUT_DIR, "tui.mjs");
 
 // The binaries come from the @vscode/ripgrep platform packages in node_modules.
-// Packaging filters (build.win / build.linux / build.mac) pick rg.exe vs rg per
-// artifact. `--target win|linux|mac` (repeatable) names the OS(es) this run is
-// packaging for: a missing rg for a *target* OS fails the build — shipping an
-// artifact whose Grep tool is broken must never happen silently — while other
-// OSes' binaries stay optional so one machine can stage several.
+// Packaging filters (build.win / build.mac) pick rg.exe vs rg per artifact.
+// `--target win|mac` (repeatable) names the OS(es) this run is packaging for:
+// a missing rg for a *target* OS fails the build — shipping an artifact whose
+// Grep tool is broken must never happen silently — while the other OS's binary
+// stays optional so one machine can stage both.
+//
+// There is no linux target: MAGENTRA does not ship Linux binaries, see
+// decisions/0014-magentra-does-not-ship-linux.md.
 const RIPGREP = [
   { target: "win", src: path.join(REPO_ROOT, "node_modules", "@vscode", "ripgrep-win32-x64", "bin", "rg.exe"), dest: "rg.exe" },
-  { target: "linux", src: path.join(REPO_ROOT, "node_modules", "@vscode", "ripgrep-linux-x64", "bin", "rg"), dest: "rg" },
   // Mac artifacts are built per-arch on a matching runner; the darwin package
-  // npm installed there matches process.arch. Same "rg" dest as linux — the
-  // two are never staged on the same machine for the same artifact.
+  // npm installed there matches process.arch.
   { target: "mac", src: path.join(REPO_ROOT, "node_modules", "@vscode", `ripgrep-darwin-${process.arch}`, "bin", "rg"), dest: "rg" },
 ];
 
@@ -59,8 +60,8 @@ function parseTargets(argv) {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--target") {
       const value = argv[++i];
-      if (!["win", "linux", "mac"].includes(value)) {
-        throw new Error(`--target expects win|linux|mac, got "${value}"`);
+      if (!["win", "mac"].includes(value)) {
+        throw new Error(`--target expects win|mac, got "${value}"`);
       }
       targets.add(value);
     }

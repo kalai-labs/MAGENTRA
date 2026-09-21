@@ -30,7 +30,6 @@
     "app": "npm start --workspace app",
     "prompt-lab": "node tools/prompt-lab/server.mjs",
     "gateway": "tsx tools/magentra-gateway/src/cli.ts",
-    "dist:linux": "npm run dist:linux --workspace app",
     "dist:win": "npm run dist --workspace app",
     "dist:mac": "npm run dist:mac --workspace app",
     "prepare": "git config core.hooksPath .githooks || true",
