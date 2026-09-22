@@ -37,8 +37,11 @@
  * `path.join` produce backslashes — so EnterWorktree's `path` variant hands
  * `setCwd` a forward-slash path and ExitWorktree hands it back a backslash one.
  * Every path comparison below therefore runs through {@link samePath}, which is
- * the tool's own `normalizePath` rule: resolve, forward slashes, and case-fold
- * on win32.
+ * the tool's own `normalizePath` rule: canonicalise (native realpath), forward
+ * slashes, and case-fold on win32. The fixture deliberately keeps tmpdir's own
+ * spelling — on a host whose TEMP is an 8.3 short name, as the GitHub runner's
+ * is, the path-entered test then proves EnterWorktree recognises a short-name
+ * spelling of a worktree git lists by its long one.
  */
 
 import { execFileSync } from "node:child_process";
@@ -68,10 +71,20 @@ const INVARIANT =
  */
 const GIT_ID = ["-c", "user.name=MAGENTRA Test", "-c", "user.email=test@magentra.invalid", "-c", "commit.gpgsign=false"];
 
-/** The tool's own `normalizePath`: resolve, forward slashes, no trailing slash, case-folded on win32. */
+/**
+ * The tool's own `normalizePath`: canonical when the path exists (native
+ * realpath — the only one that expands an 8.3 name like `RUNNER~1`), else
+ * resolved; forward slashes, no trailing slash, case-folded on win32.
+ */
 function samePath(a: string, b: string): boolean {
   const norm = (p: string): string => {
-    const abs = resolvePath(p).replace(/\\/g, "/").replace(/\/+$/, "");
+    let real = resolvePath(p);
+    try {
+      real = realpathSync.native(real);
+    } catch {
+      /* does not exist — the resolved spelling is all there is */
+    }
+    const abs = real.replace(/\\/g, "/").replace(/\/+$/, "");
     return process.platform === "win32" ? abs.toLowerCase() : abs;
   };
   return norm(a) === norm(b);

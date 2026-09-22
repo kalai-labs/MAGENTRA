@@ -14,7 +14,7 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { watch, type FSWatcher } from "node:fs";
+import { realpathSync, watch, type FSWatcher } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -208,7 +208,10 @@ export function createGateway(options: GatewayOptions = {}): Gateway {
 
     for (const dir of dirs) {
       try {
-        watchers.push(watch(dir, settle));
+        // Canonical path: Node 24.20's libuv aborts the process on the first
+        // event for a directory named through an 8.3 short name. A missing
+        // directory throws here as well, into the same catch.
+        watchers.push(watch(realpathSync.native(dir), settle));
       } catch {
         // A directory that cannot be watched degrades to "no live invalidation
         // for these files"; the gate still re-checks on every /api/state.

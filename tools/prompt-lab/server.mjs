@@ -13,7 +13,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { watch, readFileSync } from "node:fs";
+import { watch, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -580,7 +580,11 @@ function isSelfWrite(id) {
 function startWatching() {
   try {
     watcher?.close();
-    watcher = watch(promptsDir(), (_type, file) => {
+    // Watched by its canonical path: on Node 24.20 (libuv 1.52.1) watching a
+    // directory named through an 8.3 short name (C:\Users\RUNNER~1\…) aborts
+    // the whole process on the first event, and only the native realpath
+    // expands 8.3 names. Inside the try: a missing directory throws here too.
+    watcher = watch(realpathSync.native(promptsDir()), (_type, file) => {
       if (typeof file === "string" && file.endsWith(".txt")) {
         const id = file.slice(0, -4);
         if (!isSelfWrite(id)) broadcast({ type: "changed", id });

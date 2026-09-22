@@ -849,11 +849,20 @@ const themeChrome = (name) => THEME_CHROME[name] || THEME_CHROME[DEFAULT_THEME];
  * the saved bounds — which is how a launch ended up as a small window in a
  * corner. So re-assert once the window is on screen, and if full screen is still
  * refused a moment later, maximize instead. Filling the work area is the point;
- * full screen is only the preferred way to get there. */
+ * full screen is only the preferred way to get there.
+ *
+ * TWO TRIGGERS, ONE RUN. `ready-to-show` is only emitted for a window that has
+ * not been shown yet, and this one is shown at construction: on Windows
+ * (Electron 33) it never fires at all — measured, for a plain window and a
+ * full-screen one alike — so this whole function was a silent no-op there.
+ * `did-finish-load` is the first paint for a window that is already visible.
+ * Whichever comes first runs the posture; the other is ignored. */
 function applyOpeningPosture(win) {
   if (!shouldStartFullScreen()) return;
-  win.once("ready-to-show", () => {
-    if (win.isDestroyed()) return;
+  let applied = false;
+  const apply = () => {
+    if (applied || win.isDestroyed()) return;
+    applied = true;
     if (!win.isFullScreen()) win.setFullScreen(true);
     setTimeout(() => {
       if (win.isDestroyed()) return;
@@ -862,7 +871,9 @@ function applyOpeningPosture(win) {
       // "the WM refused full screen" from "the app never asked".
       logEvent("sys", { ev: "window-posture", fullScreen: win.isFullScreen(), maximized: win.isMaximized() });
     }, 400);
-  });
+  };
+  win.once("ready-to-show", apply);
+  win.webContents.once("did-finish-load", apply);
 }
 
 /** Full screen hides the native title bar on every platform — and on Windows

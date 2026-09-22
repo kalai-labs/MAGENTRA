@@ -19,7 +19,8 @@
  * first on Windows, where they do not. See the note at that assertion.
  */
 
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { logLines, openWorkspace, waitForSpawn } from "../lib/appDriver.ts";
@@ -35,6 +36,9 @@ const INVARIANT = "The engine child is spawned, restarted and reaped per tab, an
 
 /** Keyless and local: enough for the app to consider a workspace configured. */
 const LOCAL_ENDPOINT = "http://127.0.0.1:11434/v1";
+
+/** Cleared in the child, so a key on this machine cannot decide how the engine boots. */
+const KEY_VARS = ["MAGENTRA_API_KEY", "OPENAI_API_KEY", "DEEPINFRA_API_KEY", "ANTHROPIC_API_KEY"] as const;
 
 /** Whether a pid is still alive, without signalling it. */
 function alive(pid: number): boolean {
@@ -55,13 +59,42 @@ class TheEngineGoesOnSigterm extends ProcTest {
   readonly whyItExists =
     "the three-second SIGKILL is a backstop; if the engine did not answer SIGTERM, every workspace close would wait three seconds and every quit would look like a hang";
 
+  #dirs: string[] = [];
+
+  /** A throwaway directory this test owns. Removed in `tearDown`, after the engine is gone. */
+  #makeDir(prefix: string): string {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    this.#dirs.push(dir);
+    return dir;
+  }
+
   override async run(t: TestRun): Promise<void> {
     const built = join(repoRoot(), "engine", "host", "dist", "main.js");
     t.assert.equal(existsSync(built), true, "the app spawns the built engine — run `npm run build`");
 
-    const engine = this.spawn(process.execPath, [built, "--serve", "--cwd", repoRoot()], { label: "engine (serve)" });
-    // It has to be up before its shutdown means anything.
-    await engine.nextLine((line) => line.includes("\"type\""), 20_000);
+    // A WORKSPACE OF ITS OWN, keyless and local, with a home of its own and no
+    // inherited key. It used to boot on the repository root, which only
+    // worked where the developer's `.env` holds a key: on a clean CI runner
+    // the engine refused to boot, wrote its fatal "No API key found" frame and
+    // exited 1 — and that frame satisfied the "it is up" wait below, so the
+    // failure was reported as a bad shutdown. `contextWindow` keeps the first
+    // frame from being the non-fatal "no context window" error.
+    const workspace = this.#makeDir("magentra-lifecycle-ws-");
+    mkdirSync(join(workspace, ".magentra"), { recursive: true });
+    writeFileSync(
+      join(workspace, ".magentra", "settings.json"),
+      `${JSON.stringify({ provider: "openai-compatible", baseUrl: LOCAL_ENDPOINT, model: "model-one", contextWindow: 200_000 }, null, 2)}\n`,
+      "utf8",
+    );
+    const home = this.#makeDir("magentra-lifecycle-home-");
+    const env: Record<string, string | undefined> = { HOME: home, USERPROFILE: home };
+    for (const name of KEY_VARS) env[name] = undefined;
+
+    const engine = this.spawn(process.execPath, [built, "--serve", "--cwd", workspace], { label: "engine (serve)", env });
+    // It has to be up before its shutdown means anything — and a fatal boot
+    // frame is the engine refusing to start, not the engine being up.
+    const first = await engine.nextLine((line) => line.includes("\"type\""), 20_000);
+    t.assert.equal(first.includes("\"fatal\":true"), false, `the engine must boot before its shutdown is measured; it refused: ${first}`);
 
     // ASKED TO STOP IN THE TERMS THE PLATFORM HAS. `stopEngine` (app/main.js:235)
     // makes two requests, in this order: it ends the child's stdin, then it
@@ -89,6 +122,22 @@ class TheEngineGoesOnSigterm extends ProcTest {
     } else {
       t.assert.ok(exit.code === 0 || exit.signal === "SIGTERM", `it must terminate cleanly, got code=${String(exit.code)} signal=${String(exit.signal)}`);
     }
+  }
+
+  /**
+   * The engine is stopped HERE, before its workspace goes: Windows will not
+   * remove a directory from under a running process. The retries forgive the
+   * moment it keeps a handle after the process is already reaped.
+   */
+  override async tearDown(): Promise<void> {
+    for (const child of this.children) {
+      if (!child.hasExited()) {
+        child.kill();
+        await child.exited();
+      }
+    }
+    for (const dir of this.#dirs) rmSync(dir, { recursive: true, force: true, maxRetries: 12, retryDelay: 100 });
+    this.#dirs = [];
   }
 }
 

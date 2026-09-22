@@ -79,9 +79,16 @@ abstract class BashCwdTest extends ProcTest {
     mkdirSync(join(this.dir, "a"));
   }
 
-  /** `realpath`, because macOS's tmpdir is a symlink (/var → /private/var) and a shell reports the resolved path. */
+  /**
+   * The resolved path, because a shell reports the resolved one: macOS's tmpdir
+   * is a symlink (/var → /private/var), and on a Windows host whose TEMP is an
+   * 8.3 short name (`C:\Users\RUNNER~1\…`, the GitHub runner's) the marker's
+   * `pwd -W` expands it, so the first call and every tracked one would spell the
+   * same directory two ways. `.native`, because only it expands 8.3 names — the
+   * JS `realpathSync` walks symlinks and leaves `RUNNER~1` as it found it.
+   */
   protected makeDir(): string {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), "magentra-bashcwd-")));
+    const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "magentra-bashcwd-")));
     this.#dirs.push(dir);
     return dir;
   }

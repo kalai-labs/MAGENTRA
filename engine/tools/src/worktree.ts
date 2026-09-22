@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import type { SessionServices, ToolDefinition, ToolResult } from "@magentra/core";
@@ -53,8 +54,22 @@ function randomName(): string {
   return `wt-${randomBytes(4).toString("hex")}`;
 }
 
+// Canonical when the path exists: `git worktree list` prints resolved long
+// paths, so an 8.3 short name (C:\Users\RUNNER~1\…) or a symlinked spelling of
+// a registered worktree would otherwise be refused as unregistered. Only the
+// native realpath expands 8.3 names. A path that does not exist keeps the plain
+// resolve() rule — it cannot match a live worktree either way.
+function canonical(p: string): string {
+  const abs = resolve(p);
+  try {
+    return realpathSync.native(abs);
+  } catch {
+    return abs;
+  }
+}
+
 function normalizePath(p: string): string {
-  const abs = resolve(p).replace(/\\/g, "/").replace(/\/+$/, "");
+  const abs = canonical(p).replace(/\\/g, "/").replace(/\/+$/, "");
   return process.platform === "win32" ? abs.toLowerCase() : abs;
 }
 
