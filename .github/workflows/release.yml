@@ -150,14 +150,23 @@ jobs:
       # the renderer crashed (app/main.js). A non-zero exit fails the leg, and a
       # failed leg leaves the release a draft that no client can resolve — the
       # safe direction the `publish` job below already relies on.
+      #
+      # `Start-Process -Wait`, NOT `& $exe`. The portable exe is a GUI-subsystem
+      # program, and PowerShell's call operator neither waits for one nor sets
+      # $LASTEXITCODE: `&` returned in 0.1s, $LASTEXITCODE stayed $null, and
+      # `$null -ne 0` failed the leg as "the packaged app exited " — with no
+      # number, because nothing had exited yet. The portable wrapper itself
+      # waits for the app and passes its exit code on (ExecWait + SetErrorLevel
+      # in app-builder-lib's portable.nsi), so waiting on the wrapper is enough.
       - name: Smoke the packaged app (windows)
         if: matrix.name == 'windows'
         shell: pwsh
+        timeout-minutes: 5
         run: |
           $exe = Get-ChildItem app/dist/*-win-portable.exe | Select-Object -First 1
           if (-not $exe) { throw "no portable exe was packaged" }
-          & $exe.FullName --smoke
-          if ($LASTEXITCODE -ne 0) { throw "the packaged app exited $LASTEXITCODE" }
+          $proc = Start-Process -FilePath $exe.FullName -ArgumentList '--smoke' -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "the packaged app exited $($proc.ExitCode)" }
 
       # The dmg is what gets uploaded, so the dmg is what gets launched: mounting
       # it proves the shipped image carries an app that runs, which running the
