@@ -10,6 +10,14 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.19.3 — 2026-09-22
+
+### Continuous integration
+
+- wait for the packaged Windows smoke run ([91b8c11](https://github.com/kalai-labs/MAGENTRA/commit/91b8c112f6d2f7b154079eeb8b4911d2d9dad078))
+
+[Compare with v0.19.2](https://github.com/kalai-labs/MAGENTRA/compare/v0.19.2...v0.19.3)
+
 ## 0.19.2 — 2026-09-22
 
 ### Bug fixes
