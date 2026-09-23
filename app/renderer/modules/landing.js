@@ -182,15 +182,9 @@ function onSessionRestored(event) {
       continue;
     }
     if (m.thinking) {
-      const details = document.createElement("details");
-      details.className = "msg-thinking done";
-      const summary = document.createElement("summary");
-      summary.textContent = "reasoning";
-      const body = document.createElement("div");
-      body.className = "thinking-body";
-      body.textContent = m.thinking;
-      details.appendChild(summary);
-      details.appendChild(body);
+      // Replay shows the whole reasoning; only a LIVE block shows its tail.
+      const details = createReasoningEl(true);
+      details.querySelector(".thinking-body").textContent = m.thinking;
       streamEl.appendChild(details);
     }
     if (m.text) {
@@ -457,7 +451,7 @@ function onTurnFinished(event) {
 }
 
 function onTextDelta(text) {
-  if (busy) setNowActivity("responding", "");
+  if (busy && nowVerb !== "responding") setNowActivity("responding", "");
   if (!streamEl) return;
   // The model has moved from reasoning to answering — close the reasoning
   // block and stamp the finished "Agent working" group.
@@ -481,39 +475,35 @@ function onTextDelta(text) {
     message.body.appendChild(done);
     message.body.appendChild(live);
     message.body.appendChild(caret);
+    currentAssistantEl._mdDone = done;
+    currentAssistantEl._mdLive = live;
     withAutoScroll(() => streamEl.appendChild(currentAssistantEl));
   }
   currentAssistantEl._raw += text;
-  withAutoScroll(() => {
+  // Written on every delta, so what has arrived is readable at once; the live
+  // edge is followed once per frame, so no delta forces a layout (stream.js).
+  followLiveEdge(() => {
     // Render whatever just became complete; a half-streamed fence, table or
     // formula stays plain until its closing delimiter arrives.
-    commitStreamedMarkdown(currentAssistantEl);
+    commitStreamedMarkdown(currentAssistantEl, text);
   });
 }
 
 // Extended-thinking tokens (reasoning models). Rendered as a dim, collapsed
-// "reasoning" block so it's available without dominating the transcript, and
-// the last line feeds the now-line so "thinking · 45s" shows real movement.
+// "reasoning" block so it's available without dominating the transcript. They
+// come by the tens of thousands, so a delta only joins its block's queue and
+// the page is written once per frame (stream.js). The now-line says
+// "thinking · 45s" from the start of the stretch: a token there was noise, and
+// restarting the timer on every one kept it at 0s.
 function onThinkingDelta(text) {
-  if (busy) {
-    const lastLine = text.split("\n").filter(Boolean).pop();
-    setNowActivity("thinking", lastLine ? lastLine.slice(0, 80) : "");
-  }
+  if (busy && nowVerb !== "thinking") setNowActivity("thinking", "");
   if (!streamEl) return;
   if (!currentThinkingEl) {
     finalizeAssistantEl();
-    currentThinkingEl = document.createElement("details");
-    currentThinkingEl.className = "msg-thinking";
-    const summary = document.createElement("summary");
-    summary.textContent = "reasoning";
-    const body = document.createElement("div");
-    body.className = "thinking-body";
-    currentThinkingEl.appendChild(summary);
-    currentThinkingEl.appendChild(body);
+    currentThinkingEl = createReasoningEl(false);
     withAutoScroll(() => streamEl.appendChild(currentThinkingEl));
   }
-  const body = currentThinkingEl.querySelector(".thinking-body");
-  withAutoScroll(() => body.appendChild(document.createTextNode(text)));
+  appendReasoning(currentThinkingEl, text);
 }
 
 function onToolCallStarted(event) {

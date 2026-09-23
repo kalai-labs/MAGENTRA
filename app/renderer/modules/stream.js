@@ -23,15 +23,57 @@
  * when the fences and `$$` delimiters before it are balanced.
  */
 function markdownCommitPoint(raw) {
-  let cut = raw.lastIndexOf("\n\n");
-  while (cut > 0) {
-    const head = raw.slice(0, cut + 1);
-    const fences = (head.match(/^[ \t]*(?:```|~~~)/gm) || []).length;
-    const display = (head.match(/\$\$/g) || []).length;
-    if (fences % 2 === 0 && display % 2 === 0) return head;
-    cut = raw.lastIndexOf("\n\n", cut - 1);
+  const scan = newCommitScan();
+  feedCommitScan(scan, raw);
+  return scan.cut > 0 ? raw.slice(0, scan.cut + 1) : "";
+}
+
+/*
+ * The scan behind markdownCommitPoint, kept on the streaming message and fed
+ * each delta as it arrives, so a delta costs what it adds rather than what came
+ * before it. Asked afresh on every delta, a long code block re-counted its
+ * fences from the top once for every blank line inside it, and the answer got
+ * slower to stream the longer it ran.
+ *
+ * A cut is the first newline of a "\n\n" (never at 0), and it is safe when the
+ * text up to and including it holds an even number of fence lines and of `$$`.
+ * Neither can span a newline, so both counts are sums over complete lines, and
+ * a cut's verdict never changes once its line is complete — which is what lets
+ * the scan only move forward. `cut` is the last safe cut, or -1; `line` is the
+ * incomplete last line, which starts at index `at`.
+ */
+function newCommitScan() {
+  return { line: "", at: 0, fences: 0, display: 0, cut: -1 };
+}
+
+/** Read `text`, the next piece of the message, into `scan`. */
+function feedCommitScan(scan, text) {
+  if (text.indexOf("\n") === -1) {
+    // No line was completed, so no cut can have become safe.
+    scan.line += text;
+    return;
   }
-  return "";
+  const buf = scan.line + text;
+  let start = 0;
+  let nl = buf.indexOf("\n");
+  while (nl !== -1) {
+    const line = buf.slice(start, nl);
+    const end = scan.at + nl; // this newline's index in the whole message
+    if (line === "") {
+      // An empty line: the newline before it is a candidate cut, and an empty
+      // line adds nothing to either count.
+      if (end - 1 > 0 && scan.fences % 2 === 0 && scan.display % 2 === 0) scan.cut = end - 1;
+    } else {
+      // The same patterns the whole-text count used, applied per line — so a
+      // `^` after a lone \r inside a line still counts exactly as it did.
+      scan.fences += (line.match(/^[ \t]*(?:```|~~~)/gm) || []).length;
+      scan.display += (line.match(/\$\$/g) || []).length;
+    }
+    start = nl + 1;
+    nl = buf.indexOf("\n", start);
+  }
+  scan.line = buf.slice(start);
+  scan.at += start;
 }
 
 /**
@@ -40,23 +82,31 @@ function markdownCommitPoint(raw) {
  * message costs linear work overall rather than re-rendering itself on every
  * delta. finalizeAssistantEl re-renders the whole message at the end, which
  * corrects anything the segment-by-segment view split awkwardly.
+ *
+ * `text` is the delta just added to `el._raw`. When it completes nothing, the
+ * live tail only grows by it, so it is appended rather than rewritten.
  */
-function commitStreamedMarkdown(el) {
-  const raw = el._raw || "";
-  const done = el.querySelector(".md-done");
-  const live = el.querySelector(".md-live");
+function commitStreamedMarkdown(el, text) {
+  const done = el._mdDone || el.querySelector(".md-done");
+  const live = el._mdLive || el.querySelector(".md-live");
   if (!done || !live) return;
+  const scan = el._commitScan || (el._commitScan = newCommitScan());
+  feedCommitScan(scan, text);
   const committed = el._committedLen || 0;
-  const prefix = markdownCommitPoint(raw);
-  if (prefix.length > committed) {
+  const cutLen = scan.cut > 0 ? scan.cut + 1 : 0;
+  if (cutLen > committed) {
+    const raw = el._raw || "";
     try {
-      done.appendChild(renderMarkdown(raw.slice(committed, prefix.length)));
-      el._committedLen = prefix.length;
+      done.appendChild(renderMarkdown(raw.slice(committed, cutLen)));
+      el._committedLen = cutLen;
     } catch {
       /* keep the plain live text; the final render will fix it */
     }
+    live.textContent = raw.slice(el._committedLen || 0);
+    return;
   }
-  live.textContent = raw.slice(el._committedLen || 0);
+  if (live.firstChild) live.firstChild.appendData(text);
+  else if (text) live.appendChild(document.createTextNode(text));
 }
 
 /* Close the streaming assistant paragraph so the NEXT text delta starts a
@@ -84,11 +134,150 @@ function finalizeAssistantEl() {
 }
 
 /* Close the live reasoning block so the next segment's thinking starts a fresh
- * one. Leaves it in the transcript, collapsed. */
+ * one. Leaves it in the transcript, collapsed, now holding all of its text —
+ * written before whatever ended it is appended below it. */
 function finalizeThinkingEl() {
   if (!currentThinkingEl) return;
-  currentThinkingEl.classList.add("done");
+  const el = currentThinkingEl;
+  followLiveEdge(() => finishReasoning(el), scrollerOf(el.closest(".stream")));
+  el.classList.add("done");
   currentThinkingEl = null;
+}
+
+// ---------------------------------------------------------------------------
+// Streaming, once per frame
+//
+// A reasoning model sends its thoughts as tens of thousands of deltas of a few
+// characters each (127,802 in the 2026-09-23 field run). Writing each one into
+// the page and then reading scrollHeight made the renderer lay the transcript
+// out once per token; with the reasoning block open that cost grew with the
+// block, and the window fell 25 minutes behind the engine (FIX-PLAN T01). So:
+//   - the live edge is measured once per frame, before that frame's first
+//     write, and followed once, just before the frame is drawn;
+//   - reasoning text waits on its own block and is written once per frame;
+//   - a live reasoning block shows only the end of its text.
+// Everything pending lives on the element it belongs to, never in the
+// per-tab globals, so it lands in its own tab's transcript whichever tab is
+// focused when the frame runs.
+// ---------------------------------------------------------------------------
+
+const pendingReasoningEls = new Set(); // reasoning blocks holding text not yet on the page
+const pendingFollows = new Map(); // scroller -> whether it was at the live edge before this frame's first write
+let streamFrameId = null;
+let streamFrameTimer = null;
+
+// A hidden or covered window draws no frames, so a timer stands behind the
+// frame request: text still lands, just less often.
+const STREAM_FRAME_FALLBACK_MS = 250;
+
+function requestStreamFrame() {
+  if (streamFrameId !== null) return;
+  streamFrameId = requestAnimationFrame(runStreamFrame);
+  streamFrameTimer = setTimeout(runStreamFrame, STREAM_FRAME_FALLBACK_MS);
+}
+
+function runStreamFrame() {
+  cancelAnimationFrame(streamFrameId);
+  clearTimeout(streamFrameTimer);
+  streamFrameId = null;
+  streamFrameTimer = null;
+  // Measure every live edge first, then write, then scroll: reads between
+  // writes would each force a layout.
+  const els = [...pendingReasoningEls];
+  pendingReasoningEls.clear();
+  for (const el of els) {
+    const c = scrollerOf(el.closest(".stream"));
+    if (c && !pendingFollows.has(c)) pendingFollows.set(c, isNearBottom(c));
+  }
+  for (const el of els) writeReasoning(el);
+  for (const [c, wasNear] of pendingFollows) {
+    if (wasNear && c.isConnected) c.scrollTop = c.scrollHeight;
+  }
+  pendingFollows.clear();
+  syncScrollPill();
+}
+
+/** withAutoScroll for a stream's per-delta writes: the same "stay at the live
+ * edge if the user was there" rule, asked once per frame instead of once per
+ * delta. `scroller` defaults to the stream of the tab being handled. */
+function followLiveEdge(mutate, scroller = scrollContainer()) {
+  if (scroller && !pendingFollows.has(scroller)) pendingFollows.set(scroller, isNearBottom(scroller));
+  mutate();
+  if (scroller) requestStreamFrame();
+}
+
+// While a block streams it shows the last REASONING_TAIL_KEEP characters, cut
+// back once they pass REASONING_TAIL_MAX, after one line saying how much is
+// held back. The whole text stays on the element and is written into the
+// block when it ends, so a finished block — and a restored one — holds all of it.
+const REASONING_TAIL_KEEP = 8000;
+const REASONING_TAIL_MAX = 10000;
+
+/** A reasoning block: a dim, collapsed <details> whose body is the reasoning. */
+function createReasoningEl(done) {
+  const el = document.createElement("details");
+  el.className = done ? "msg-thinking done" : "msg-thinking";
+  const summary = document.createElement("summary");
+  summary.textContent = "reasoning";
+  const body = document.createElement("div");
+  body.className = "thinking-body";
+  el.appendChild(summary);
+  el.appendChild(body);
+  if (!done) {
+    const held = document.createElement("div");
+    held.className = "thinking-held hidden";
+    const tail = document.createTextNode("");
+    body.appendChild(held);
+    body.appendChild(tail);
+    el._reasoning = { full: "", pending: "", tail: "", heldEl: held, tailNode: tail };
+  }
+  return el;
+}
+
+/** Queue a reasoning delta on its block; the page gets it on the next frame. */
+function appendReasoning(el, text) {
+  const r = el._reasoning;
+  if (!r || !text) return;
+  r.full += text;
+  r.pending += text;
+  pendingReasoningEls.add(el);
+  requestStreamFrame();
+}
+
+/** Put a live block's queued text on the page, keeping only its tail there. */
+function writeReasoning(el) {
+  const r = el._reasoning;
+  if (!r || !r.pending) return;
+  let tail = r.tail + r.pending;
+  r.pending = "";
+  if (tail.length > REASONING_TAIL_MAX) {
+    let cut = tail.length - REASONING_TAIL_KEEP;
+    // Start the visible part at a line when one is near, not mid-word.
+    const nl = tail.indexOf("\n", cut);
+    if (nl !== -1 && nl - cut < 400) cut = nl + 1;
+    tail = tail.slice(cut);
+  }
+  r.tail = tail;
+  r.tailNode.data = tail;
+  const held = r.full.length - tail.length;
+  if (held > 0) {
+    r.heldEl.classList.remove("hidden");
+    r.heldEl.textContent = `… ${held.toLocaleString()} earlier characters are held back while the reasoning streams — all of it appears here when it ends`;
+  }
+}
+
+/** A block has ended: write all of its text, in order. What was held back goes
+ * where the "held back" line was, above the tail, so a reader of an open block
+ * keeps their place. */
+function finishReasoning(el) {
+  const r = el._reasoning;
+  if (!r) return;
+  el._reasoning = null;
+  pendingReasoningEls.delete(el);
+  if (r.pending) r.tailNode.appendData(r.pending);
+  const before = r.full.slice(0, r.full.length - r.tail.length - r.pending.length);
+  if (before) r.heldEl.replaceWith(document.createTextNode(before));
+  else r.heldEl.remove();
 }
 
 function appendSysNote(text) {

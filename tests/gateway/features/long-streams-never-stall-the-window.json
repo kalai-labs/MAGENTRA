@@ -1,0 +1,36 @@
+{
+  "id": "long-streams-never-stall-the-window",
+  "name": "Long streams never stall the window",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "a streamed delta costs the renderer the same at the hundred-thousandth as at the first. Reasoning is written to the page once per frame into a bounded live tail, and the whole of it lands in its block when the block ends; the live edge is measured once per frame, not once per token; the now-line names the activity with a running timer instead of echoing tokens. So tool rows, tasks and the turn end appear when they happen, not minutes behind a reasoning backlog.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/renderer/modules/landing.js",
+    "app/renderer/modules/stream.js",
+    "app/renderer/modules/util.js",
+    "app/renderer/modules/views.js"
+  ],
+  "invariant": "A streamed delta costs the renderer the same however long the stream has run, so the frames after a long reasoning stream show at once, in order and in their own tab, and the now-line never shows a raw token.",
+  "deferred": true,
+  "tests": [
+    "a-long-reasoning-stream-costs-the-same-per-delta-at-the-end-as-at-the-start",
+    "the-task-rail-keeps-up-with-reasoning-at-the-field-runs-peak-rate",
+    "the-now-line-names-the-activity-and-never-a-streamed-token",
+    "a-long-code-answer-costs-the-same-per-delta-at-the-end-as-at-the-start",
+    "a-background-tabs-reasoning-stays-in-its-own-pane-across-a-focus-change",
+    "a-restored-session-still-shows-the-whole-reasoning"
+  ],
+  "freshness": {
+    "hash": "2e1fc6495263d3d8",
+    "fileHashes": {
+      "app/renderer/modules/landing.js": "4e7fbe06fa9a6471",
+      "app/renderer/modules/stream.js": "deac3e58ece6e0d6",
+      "app/renderer/modules/util.js": "3466935dccd87db0",
+      "app/renderer/modules/views.js": "5b08f42b45600fe7"
+    },
+    "recordedAt": "2026-09-23"
+  }
+}

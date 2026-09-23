@@ -16,8 +16,8 @@ AskUserQuestion tool, and wait for the answer. Never assume it.
 
 | Task | Findings | Title | Status | Session notes |
 |---|---|---|---|---|
-| T00 | — | Preparation: baseline and skill doc | todo | |
-| T01 | U-01, U-09, R-1 | Reasoning stream does not freeze the renderer | todo | |
+| T00 | — | Preparation: baseline and skill doc | done | 2026-09-23. Commit: none — the owner chose not to commit; the changes are in the working tree. Owner decision: leave the 18 stale gateway records alone, only keep the list below (later tasks do not re-record them). Baseline recorded under this table. `bigboycoding` SKILL.md: rewrote the verification section (build first, the kind → command table, count before/after, revert-verify, gateway first + freshness, approved artifacts, smoke and CI). Replaced the deleted `*-check.mjs` "spec for the rebuild" with a coverage map checked against `tests/features/` and a 4-row backlog of what nothing guards yet (TUI cell layout, no-reflow, folder trust, compaction sizing). Also fixed the other false test-setup lines (intro "no test suite", "`dist/` is committed", "no test catches a system-prompt regression"). **Args bug: real.** Claude Code replaced the literal `$ARGUMENTS` in the addon-check row with the caller's args. I removed the token and added a gotcha. Re-invoked with a probe string: it now appears only at the end, as `ARGUMENTS: …`. No product code or tests changed. After the edit, the same commands gave the same counts (`npm test` 505 passed / 0 failed / 85 withheld, `test:ui` 51 / 0, typecheck clean). Left for T14: the "system map" section (`docs/big-picture/` does not exist). The file counts (75/24/34) are still correct. **Files changed:** `.claude/skills/bigboycoding/SKILL.md`, `FIX-PLAN.md`. |
+| T01 | U-01, U-09, R-1 | Reasoning stream does not freeze the renderer | done | 2026-09-23. Commit: none — the owner chose not to commit; the changes are in the working tree. **Gateway:** new record `long-streams-never-stall-the-window` (ui, deferred by rule), 6 tests; description `a62978d8…` approved by the owner in chat, still `draft` on disk (the draft→ready click is the owner's). **Owner decisions:** approve the record/invariant/checklist as written; a LIVE reasoning block shows its tail, all text when it ends; the records this change makes stale go on the stale list, not reconciled. **Cause, measured on the real app through the real IPC:** with the reasoning block OPEN, 2,000 deltas took 6.7 s at the start and 109.9 s after 10,000 (quadratic), and a task update sent after 12,000 reached the rail 301 s late; closed it was linear (~0.25 ms/delta) but grew one DOM node per delta. An answer that is one long block with no committable blank line was quadratic too (3.2 s → 28.7 s per 2,000): a forced layout per delta, plus `markdownCommitPoint` re-counting the whole message once per blank line inside an open fence. **Fix (renderer only):** reasoning deltas queue on their own block and reach the page once per animation frame (a 250 ms timer covers a window that draws no frames); a live block shows its last ~8,000 characters behind a "N earlier characters are held back" line, and all of it is written into the block when it ends; the live edge is measured once per frame, not per delta (`followLiveEdge`); the commit-point scan is fed each delta (incremental, same verdicts); the answer's live tail is appended, not rewritten; the now-line is set once per stretch ("thinking · 45s", "responding · 12s"), never a token, never a per-delta timer reset. **After:** 500 reasoning deltas cost 5–8 ms flat (block open); a task update after 20 s at 250 deltas/s is handled 5–13 ms after it is sent (was 12.8 s); the long code answer's late/early ratio is 0.75 (was 4.9); 36,000 answer deltas in one 171 KB block with no blank line: 119 → 169 ms per 6,000 (was 192 → 1,271 before the append step). **Field log replayed by hand once** (132,035 frames at 20×, all 35 reasoning blocks opened): 335/335 task/tool/turn/question frames handled in order, lag p50 4 ms / p95 28 ms / max 40 ms, live body ≤ 2 DOM nodes. **Not done:** a live run with a real reasoning model, watched on screen (the plan's manual check) — the replay above stands in for it; the owner should try one. **Tests:** `tests/features/long-streams-never-stall-the-window.test.ts` (6, `ui`). Revert-verified: with the fix stashed, tests 1–4 fail with the field symptoms (4.7×, 12.8 s late, "thinking · fjord · 0s", 4.9×); 5–6 are guards and pass on both. Mutation-checked: tail never trimmed → test 1; held-back text lost → tests 1+5; one global buffer → test 5; token on the now-line → test 3; per-delta scroll → test 4 (4.4×); whole-message commit scan → test 4 (3.1×). NOT caught by a test: rewriting the whole live tail per delta (it only shows at ~171 KB; covered by measurement). **Gates:** build exit 0; `npm test` 596 registered, 504 passed, 1 failed, 91 withheld (85 + the 6 new ui) — the red is `import-graph · an-edited-file-is-re-extracted…`, a pre-existing flake (1 of 10 runs with AND without this change: it asserts an mtime moved when two writes can land in one tick); `npm run test:ui` 57 passed, 0 failed; `typecheck:tests` clean; `smoke` exit 0. **System-wide:** engine and protocol unchanged; the TUI needs nothing (it paints at ~30 fps and never draws reasoning, `useEngine.ts:15-22, 462-468`); per-tab: pending text lives on its element, so a background tab's reasoning lands in its own pane (test 5, tiled + a real focus change); session replay still shows the whole reasoning (test 6); a reload drops only what the page held; no IPC batching in main — not needed at the measured cost. **Found, not fixed:** (1) `onToolOutputDelta` still does a forced layout per delta (same class of bug, for noisy commands); (2) the log's redaction depth cap turns every `question_request` option into "[depth capped]" and 107 lines are cut invalid (for T05). **Files changed:** `app/renderer/modules/landing.js`, `app/renderer/modules/stream.js`, `app/renderer/modules/util.js`, `app/renderer/styles.css`, `tests/features/long-streams-never-stall-the-window.test.ts` (new), `tests/gateway/features/long-streams-never-stall-the-window.json` (new), `tests/gateway/descriptions/a62978d8-27b4-42a7-b737-0bbeac0ab5a0.json` (new), `FEATURES.md`, `FIX-PLAN.md`. |
 | T02 | U-02 | Renderer watchdog and recovery | todo | |
 | T03 | S-01, S-02 | Process-kill guard and the guard message | todo | |
 | T04 | M-06, R-3 | Progress comments during long work | todo | |
@@ -31,6 +31,44 @@ AskUserQuestion tool, and wait for the answer. Never assume it.
 | T12 | E-02, E-03 | Tool frame pairing and background-job waits | todo | |
 | T13 | E-05, E-04, E-06 | Edit error hint, shell-edit tracking, stats saved often | todo | |
 | T14 | — | Generate the new big picture (LAST) | todo | |
+
+### Baseline (T00, 2026-09-23)
+
+Compare every later run with these numbers. Branch `fix/general` at `028231a`, Node
+v24.14.0, Windows 11, engine freshly built.
+
+| Command | Registered | Run | Passed | Failed | Withheld | Wall |
+|---|---|---|---|---|---|---|
+| `npm run build` | — | — | exit 0 | — | — | 1 s (all 6 projects up to date) |
+| `npm test` | 590 | 505 | 505 | 0 | 85 (51 ui, 26 llm, 8 artifact) | 124 s |
+| `npm run test:ui` | 590 | 51 | 51 | 0 | 539 (not ui) | 159 s |
+| `npm run typecheck:tests` | — | — | exit 0, no errors | — | — | 3 s |
+
+- **Reds in the test commands before this plan: none.** The known flake
+  (`tty-dispatch · no-tty-hands-off-detached…`) passed in this run.
+- Not run in T00: `test:llm`, `test:windows`, `test:mac`, `test:artifacts`.
+- **Gateway freshness is already red: 18 of 166 records are stale.** `npm test`
+  does not check this, but the gateway gate blocks a whole run on any stale record.
+  Nobody reconciled them, because reconciling is a human review. **Owner decision
+  (T00): leave them alone and keep this list.** The drifted files:
+  - `app/main.js` → 7 records: `a-connection-change-re-points-the-live-session`,
+    `boots`, `engine-lifecycle`, `full-screen-can-always-be-left`,
+    `mirror-image-types`, `permission-prompt`,
+    `saving-a-connection-clears-the-stale-pin-in-both-layers`;
+  - `tools/prompt-lab/server.mjs` → the 5 `promptlab-*` records;
+  - `app/package.json`, `app/scripts/dist.js` → `mac-artifact`, `windows-artifact`;
+  - `app/scripts/bundle-engine.js` → `mac-artifact`, `no-node-modules-at-runtime`;
+  - `.github/workflows/release.yml` → `retraction`;
+  - `engine/tools/src/worktree.ts` → `tool-enterworktree`, `tool-exitworktree`.
+  - **Added by T01 (owner decision: list them, do not reconcile):** `app/renderer/modules/stream.js`
+    → `streaming-markdown`; `stream.js` + `landing.js` → `markdown-before-a-question-card`;
+    `landing.js` + `stream.js` + `util.js` → `long-streams-never-stall-the-window` (new in T01).
+    `permission-prompt` now also drifts in `landing.js`. 21 of 167 records are stale after T01.
+- Inventory: 126 records `covered`, 2 `partial`, 38 `untested`.
+- **Second known flake (found in T01):** `import-graph · an-edited-file-is-re-extracted-while-an-untouched-entry-is-reused`
+  fails about 1 run in 10, with or without any change: it asserts that an mtime moved, and two
+  writes can land in one clock tick. Do not "fix" it inside another task.
+- There is a repo-root `.env` (44 bytes; I did not read it). See rule 1.6.
 
 Status values: `todo` → `in progress` → `done` (or `blocked: <reason>`). In "Session
 notes", write: the commit (if any), the tests added or changed, the owner decisions,
@@ -53,6 +91,8 @@ Read these before you start. They override anything a skill or older document sa
    - **Known staleness in that skill:** its "Verification gates — there is exactly ONE
      left" section is out of date. A real test suite exists now (`tests/`, see 1.3). T00
      fixes the text; until then, ignore that section and follow this plan.
+     **Fixed in T00 (2026-09-23):** the section now describes the real suite. If it
+     ever disagrees with this plan, this plan wins.
 2. **Understand the big picture.** Read `CONTEXT.md` (domain words), `tests/README.md`
    (test rules), `decisions/0001`, `0004`, `0005`, `0007`, `0009`–`0015`, and the report
    sections for your findings. `docs/big-picture/` does not exist now (it was deleted in

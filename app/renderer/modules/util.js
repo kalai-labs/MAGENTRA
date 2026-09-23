@@ -6,18 +6,22 @@
 // Utility
 // ---------------------------------------------------------------------------
 
-// The element that actually scrolls for the tab whose stream is currently live
-// (streamEl): in the tiled multi-pane layout each pane's own .stream scrolls
-// itself, so THAT is the scroller; in the single console view the shared
-// #transcript scrolls its child stream. A detached stream (a background tab in
-// single view) has no visible scroller — return null so we never scroll the
-// focused tab's view on another tab's event.
-function scrollContainer() {
-  if (!streamEl) return null;
-  const parent = streamEl.parentNode;
-  if (parent && parent.classList && parent.classList.contains("console-pane")) return streamEl;
+// The element that actually scrolls for `stream`: in the tiled multi-pane
+// layout each pane's own .stream scrolls itself, so THAT is the scroller; in the
+// single console view the shared #transcript scrolls its child stream. A
+// detached stream (a background tab in single view) has no visible scroller —
+// return null so we never scroll the focused tab's view on another tab's event.
+function scrollerOf(stream) {
+  if (!stream) return null;
+  const parent = stream.parentNode;
+  if (parent && parent.classList && parent.classList.contains("console-pane")) return stream;
   if (parent === transcriptEl) return transcriptEl;
   return null;
+}
+
+// The scroller for the tab whose stream is currently live (streamEl).
+function scrollContainer() {
+  return scrollerOf(streamEl);
 }
 
 function isNearBottom(el) {
