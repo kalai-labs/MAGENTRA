@@ -337,7 +337,9 @@ export class OpenAICompatProvider implements Provider {
           outputTokens: completionTokens,
           cacheReadTokens: cachedTokens,
           cacheWriteTokens: 0,
-          ...(typeof reasoning === "number" ? { reasoningTokens: Math.min(reasoning, completionTokens) } : {}),
+          // A reported 0 is left out: some gateways send 0 while streaming
+          // reasoning, and a 0 taken as the truth would hide the estimate.
+          ...(typeof reasoning === "number" && reasoning > 0 ? { reasoningTokens: Math.max(0, Math.min(reasoning, completionTokens)) } : {}),
         };
       }
       const choice = chunk.choices?.[0];

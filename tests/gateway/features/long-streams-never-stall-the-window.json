@@ -21,7 +21,8 @@
     "the-now-line-names-the-activity-and-never-a-streamed-token",
     "a-long-code-answer-costs-the-same-per-delta-at-the-end-as-at-the-start",
     "a-background-tabs-reasoning-stays-in-its-own-pane-across-a-focus-change",
-    "a-restored-session-still-shows-the-whole-reasoning"
+    "a-restored-session-still-shows-the-whole-reasoning",
+    "a-noisy-commands-live-tail-measures-the-page-once-per-frame-not-once-per-line"
   ],
   "freshness": {
     "hash": "2e1fc6495263d3d8",

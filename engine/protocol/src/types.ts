@@ -282,6 +282,8 @@ export type CoreEvent =
        * this; absent while the context is comfortably small.
        */
       contextWarn?: boolean;
+      /** Epoch ms, engine clock: when the turn ended. Frontends close the turn's timers on this, not on when the frame arrived. */
+      at?: number;
     }
   | { type: "error"; message: string; fatal: boolean }
   /** The generate_addon result: a validated draft to preview/edit, or the failure after retries. */

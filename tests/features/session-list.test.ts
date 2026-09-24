@@ -73,8 +73,8 @@ abstract class SessionListTest extends FsTest {
     return this.#workspace;
   }
 
-  protected async boot(turns: readonly FakeTurn[] = []): Promise<ScriptedEngine> {
-    this.#engine = await startScriptedEngine({ workspace: this.workspace, turns: [...turns] });
+  protected async boot(turns: readonly FakeTurn[] = [], settings?: { clarify: boolean }): Promise<ScriptedEngine> {
+    this.#engine = await startScriptedEngine({ workspace: this.workspace, turns: [...turns], ...(settings ? { settings } : {}) });
     return this.#engine;
   }
 
@@ -135,6 +135,50 @@ class TheLabelIsTheUsersOwnWords extends SessionListTest {
     t.assert.equal(summary!.firstUserMessage?.includes("system-reminder"), false, "no harness text reaches the picker");
     t.assert.equal(summary!.cwd, this.workspace, "and the row says which folder it belongs to");
     t.assert.equal(typeof summary!.updatedAt, "string");
+  }
+}
+
+/* ---- the live session, during its first turn -------------------------- */
+
+class TheLiveSessionIsListedDuringItsFirstTurn extends SessionListTest {
+  readonly id = "the-live-session-is-listed-while-its-first-turn-still-runs-after-a-clarify-round";
+  readonly whyItExists =
+    "the field run's sidebar showed no session for the whole 56-minute first turn: the one refresh came at turn start, and with the clarify round on (the default) the first message reaches disk only after that round's model call — the desktop now asks again at the turn's first model output, which this pins as a moment the session is already listed";
+
+  override async run(t: TestRun): Promise<void> {
+    this.makeWorkspace();
+    // Call 1 is the clarify round (nothing to ask); call 2 is the turn's first
+    // model output, a deletion that stops the turn on its permission card —
+    // a turn still running, held there while the list is asked for.
+    const engine = await this.boot(
+      [
+        { text: '{"clarify": false}' },
+        { toolCalls: [{ name: "Bash", input: { command: "rm -rf scratch", description: "clean up", run_in_background: false } }] },
+        { text: "left it alone" },
+      ],
+      { clarify: true },
+    );
+    const id = await this.activeId(engine);
+    engine.send({ type: "user_message", text: "tidy the scratch folder" });
+    await engine.waitFor((e) => e.type === "turn_started");
+    // The frames the desktop treats as the turn's first model output. A tool
+    // call that asks sends its card before any tool_call_started.
+    const firstOutput = await engine.waitFor(
+      (e) => e.type === "text_delta" || e.type === "thinking_delta" || e.type === "tool_call_started" || e.type === "permission_request",
+    );
+    t.assert.equal(firstOutput.type, "permission_request", "this turn's first model output is its deletion's card");
+    t.assert.equal(engine.provider.requests.length, 2, "and it came from the turn's own call, after the clarify round");
+    const card = firstOutput as Extract<CoreEvent, { type: "permission_request" }>;
+
+    const during = await this.list(engine);
+    t.assert.equal(
+      during.some((s) => s.id === id && s.firstUserMessage === "tidy the scratch folder"),
+      true,
+      "by the turn's first model output its session is on disk and listed, while the turn is still running",
+    );
+
+    engine.send({ type: "permission_response", id: card.id, decision: "deny" });
+    await engine.waitFor((e) => e.type === "turn_finished");
   }
 }
 
@@ -287,6 +331,7 @@ class SubagentsAreHiddenAndACorruptHeadIsSurvivable extends SessionListTest {
 
 registerFeatureTests(
   new TheLabelIsTheUsersOwnWords(),
+  new TheLiveSessionIsListedDuringItsFirstTurn(),
   new RenamingAppendsAMetaThatKeepsTheRest(),
   new ArchivingMovesItOutOfTheListing(),
   new DeletingTakesTheTaskFileWithIt(),

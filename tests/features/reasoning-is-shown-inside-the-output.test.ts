@@ -18,7 +18,7 @@
 import { join } from "node:path";
 
 import { addUsage, emptyUsage, reasoningPart, type CoreEvent, type Usage } from "@magentra/protocol";
-import { OpenAICompatProvider, type ProviderEvent } from "@magentra/providers";
+import { AnthropicProvider, OpenAICompatProvider, type ProviderEvent } from "@magentra/providers";
 
 import { openWorkspace, waitForSpawn } from "../lib/appDriver.ts";
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
@@ -101,6 +101,56 @@ class TheAdapterReadsTheCount extends NetTest {
 
     const none = await this.#usageFor({ prompt_tokens: 100, completion_tokens: 50 });
     t.assert.equal("reasoningTokens" in none, false, "a provider that reports nothing gets no invented key");
+
+    // A 0 (a gateway that always sends the field) or a negative figure is not
+    // a count: left out, so the engine can estimate from what was streamed.
+    for (const bogus of [0, -3]) {
+      const u = await this.#usageFor({ prompt_tokens: 100, completion_tokens: 50, completion_tokens_details: { reasoning_tokens: bogus } });
+      t.assert.equal("reasoningTokens" in u, false, `a reported ${bogus} is not taken as the reasoning part`);
+    }
+  }
+}
+
+/* ---- checklist 2b — net: Anthropic -------------------------------------- */
+
+class TheAnthropicAdapterReadsThinking extends NetTest {
+  readonly featureId = FEATURE;
+  readonly invariant = INVARIANT;
+  readonly id = "the-anthropic-adapter-reads-thinking-tokens-from-the-final-message-delta";
+  readonly whyItExists =
+    "Anthropic reports how many billed output tokens were thinking (usage.output_tokens_details.thinking_tokens on the last message_delta), and the adapter dropped it, so Claude's summarised thinking was always estimated from the few characters it streams";
+
+  async #usageFor(messageDelta: Record<string, unknown>): Promise<Usage> {
+    const events = [
+      { type: "message_start", message: { id: "msg_1", type: "message", role: "assistant", model: "m", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } },
+      { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } },
+      { type: "content_block_stop", index: 0 },
+      { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: messageDelta },
+      { type: "message_stop" },
+    ];
+    const body = events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join("");
+    const server = await this.serve(() => ({ status: 200, text: body, headers: { "content-type": "text/event-stream" } }));
+    const provider = new AnthropicProvider({ apiKey: "k", baseUrl: server.url, maxRetries: 0 });
+    let usage: Usage | undefined;
+    for await (const event of provider.stream({ model: "m", system: "s", messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }], tools: [], maxTokens: 32, signal: new AbortController().signal })) {
+      if (event.type === "message_end") usage = event.usage;
+    }
+    if (usage === undefined) throw new Error("the stream never ended");
+    return usage;
+  }
+
+  override async run(t: TestRun): Promise<void> {
+    const reported = await this.#usageFor({ output_tokens: 400, output_tokens_details: { thinking_tokens: 250 } });
+    t.assert.equal(reported.outputTokens, 400, "the output total is output_tokens");
+    t.assert.equal(reported.reasoningTokens, 250, "and the thinking part of it is read");
+    t.assert.equal(reported.reasoningEstimated, undefined, "a reported count is not an estimate");
+
+    const odd = await this.#usageFor({ output_tokens: 100, output_tokens_details: { thinking_tokens: 180 } });
+    t.assert.equal(odd.reasoningTokens, 100, "a part is never larger than its whole");
+
+    const none = await this.#usageFor({ output_tokens: 40 });
+    t.assert.equal("reasoningTokens" in none, false, "no thinking detail, no invented key");
   }
 }
 
@@ -151,6 +201,11 @@ class TheEngineEstimatesWhatIsNotReported extends FsTest {
     t.assert.equal(reported.finished.usage.reasoningTokens, 1_800, "a count the provider reported is kept exactly");
     t.assert.equal(reported.finished.usage.reasoningEstimated, undefined, "and not marked");
     t.assert.match(reported.report, /output \(reasoning 1\.8k\)/);
+
+    // A reported 0 beside 7,000 streamed reasoning characters is not a count.
+    const zero = await this.#turn({ reasoningTokens: 0 });
+    t.assert.equal(zero.finished.usage.reasoningTokens, 2_000, "a reported 0 with streamed reasoning is estimated from the stream");
+    t.assert.equal(zero.finished.usage.reasoningEstimated, true);
   }
 }
 
@@ -221,6 +276,7 @@ class TheProviderTellsOrNot extends LlmTest {
 registerFeatureTests(
   new TheAlgebraCarriesThePart(),
   new TheAdapterReadsTheCount(),
+  new TheAnthropicAdapterReadsThinking(),
   new TheEngineEstimatesWhatIsNotReported(),
   new TheDesktopShowsThePart(),
   new TheProviderTellsOrNot(),

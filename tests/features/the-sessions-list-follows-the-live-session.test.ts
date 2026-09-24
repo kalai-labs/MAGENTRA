@@ -80,8 +80,27 @@ class ATurnAsksForTheList extends SessionListTest {
     await this.send(app, [{ type: "turn_started", turnId: "t_1", tabId }]);
     t.assert.equal(await this.asksReach(workspace, before + 1), before + 1, "the first message put a session on disk, so the start of the turn asks for the list");
 
-    await this.send(app, [{ type: "turn_finished", turnId: "t_1", stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0 }, contextTokens: 0, tabId }]);
-    t.assert.equal(await this.asksReach(workspace, before + 2), before + 2, "and its end asks again");
+    // With the clarify round on (the default) that message is written only
+    // after a model call, so the turn's first model output asks once more —
+    // once, not per delta.
+    await this.send(app, [
+      { type: "thinking_delta", text: "planning", tabId },
+      { type: "thinking_delta", text: " more", tabId },
+      { type: "tool_call_started", id: "c1", name: "Read", input: { file_path: "a.txt" }, tabId },
+    ]);
+    t.assert.equal(await this.asksReach(workspace, before + 2), before + 2, "the turn's first model output asks again");
+    t.assert.equal(await this.settledAsks(workspace), before + 2, "and only once for all of its output");
+
+    const finished = { type: "turn_finished", turnId: "t_1", stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0 }, contextTokens: 0, tabId };
+    await this.send(app, [finished]);
+    t.assert.equal(await this.asksReach(workspace, before + 3), before + 3, "and its end asks again");
+
+    // A turn whose first model output is a tool's permission card (no
+    // tool_call_started comes before a card) counts that card.
+    await this.send(app, [{ type: "turn_started", turnId: "t_2", tabId }]);
+    await this.asksReach(workspace, before + 4);
+    await this.send(app, [{ type: "permission_request", id: "p1", tool: "Bash", input: { command: "rm -rf x" }, description: "rm -rf x", subject: "rm -rf x", tabId }]);
+    t.assert.equal(await this.asksReach(workspace, before + 5), before + 5, "a permission card as the first model output asks too");
   }
 }
 

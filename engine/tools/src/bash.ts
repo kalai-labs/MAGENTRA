@@ -244,12 +244,18 @@ interface SimpleCommand {
  * (`;` `&` `|` `&&` `||`, newlines) and on grouping (`(` `)` `$(` backticks,
  * and standalone `{` `}`). A substitution still runs inside double quotes, so
  * `$(` and backticks split there too. The `&` of a redirection (`2>&1`, `&>`)
- * is not a separator. Words keep their text with the quotes removed.
+ * is not a separator. Words keep their text with the quotes removed; a
+ * backslash-newline is removed entirely, as the shell does, so a command
+ * continued onto the next line is still one command.
  */
 function simpleCommands(command: string): SimpleCommand[] {
   const out: SimpleCommand[] = [];
   /** Open contexts: double quote, `$(` substitution, backtick substitution. */
   const stack: ('"' | "$(" | "`")[] = [];
+  /** Here-documents opened on the current line; their bodies start at its end. */
+  const pendingHeredocs: { delimiter: string; bodyRuns: boolean }[] = [];
+  /** Bodies of here-documents a shell reads (`bash <<EOF`): those lines run. */
+  const runBodies: string[] = [];
   let words: string[] = [];
   let word = "";
   let inWord = false;
@@ -269,6 +275,11 @@ function simpleCommands(command: string): SimpleCommand[] {
   for (let i = 0; i < command.length; i++) {
     const c = command[i]!;
     const next = command[i + 1];
+    // Line continuation: `\` + newline vanishes, inside double quotes too.
+    if (c === "\\" && (next === "\n" || (next === "\r" && command[i + 2] === "\n"))) {
+      i += next === "\r" ? 2 : 1;
+      continue;
+    }
     if (c === "$" && next === "(") {
       endCommand();
       stack.push("$(");
@@ -296,32 +307,40 @@ function simpleCommands(command: string): SimpleCommand[] {
       i = eol === -1 ? command.length : eol - 1;
       continue;
     }
-    // A here-document's body is data, not commands: `cat <<'EOF'` … `EOF`.
+    // A here-document's body is data, not commands: `cat <<'EOF'` … `EOF`. The
+    // rest of its line still runs (`<<EOF | sh`, `)"`), so the operator is only
+    // noted here and parsing goes on in the SAME quote and substitution context
+    // — `"$(cat <<'EOF' … EOF\n)" && pkill node` closes its `$(` and its quote
+    // before the pkill. The body is skipped at the end of the line.
     if (c === "<" && next === "<" && command[i + 2] !== "<") {
       const heredoc = /^<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/.exec(command.slice(i));
       if (heredoc) {
         endWord();
-        const bodyStart = command.indexOf("\n", i);
-        if (bodyStart === -1) {
-          i += heredoc[0].length - 1;
-          continue;
-        }
-        const end = new RegExp(`\\n\\t*${heredoc[2]}[ \\t]*(?=\\n|\\)|$)`).exec(command.slice(bodyStart));
-        // The rest of the line after the delimiter still runs (`<<EOF | sh`, `)`).
-        const rest = command.slice(i + heredoc[0].length, bodyStart);
-        const after = end ? command.slice(bodyStart + end.index + end[0].length) : "";
+        const eol = command.indexOf("\n", i);
+        const rest = command.slice(i + heredoc[0].length, eol === -1 ? command.length : eol);
         // …unless a shell reads it (`bash <<EOF`, `cat <<EOF | sh`): then the body runs.
-        const body = command.slice(bodyStart + 1, end ? bodyStart + end.index : command.length);
         const bodyRuns = /(^|[\s|/\\])((ba|z|da|k)?sh|pwsh|powershell|cmd)(\.exe)?(\s|$)/i.test(` ${words.join(" ")} ${rest} `);
-        return [
-          ...out,
-          ...(words.length > 0 ? [{ words, piped }] : []),
-          ...simpleCommands(rest),
-          ...(bodyRuns ? simpleCommands(body) : []),
-          ...simpleCommands(after),
-        ];
+        pendingHeredocs.push({ delimiter: heredoc[2]!, bodyRuns });
+        i += heredoc[0].length - 1;
+        continue;
       }
     }
+    if (c === "\n" && pendingHeredocs.length > 0) {
+      endCommand();
+      // Each body runs from the end of its line to a line holding only its
+      // delimiter (a `)` may follow it: `EOF)`); the next body starts after that.
+      let pos = i;
+      for (const { delimiter, bodyRuns } of pendingHeredocs.splice(0)) {
+        const end = new RegExp(`\\n\\t*${delimiter}[ \\t]*(?=\\r?\\n|\\)|$)`).exec(command.slice(pos));
+        const bodyEnd = end ? pos + end.index : command.length;
+        if (bodyRuns) runBodies.push(command.slice(pos + 1, bodyEnd));
+        pos = end ? pos + end.index + end[0].length : command.length;
+      }
+      i = pos - 1;
+      continue;
+    }
+    // ANSI-C quoting: `$'pkill'` is the word pkill.
+    if (c === "$" && next === "'") continue;
     if (c === "'") {
       const close = command.indexOf("'", i + 1);
       word += close === -1 ? command.slice(i + 1) : command.slice(i + 1, close);
@@ -377,7 +396,7 @@ function simpleCommands(command: string): SimpleCommand[] {
     inWord = true;
   }
   endCommand();
-  return out;
+  return [...out, ...runBodies.flatMap(simpleCommands)];
 }
 
 /** A program name as the guard compares it: no directory, no `.exe`, lower case. */
@@ -387,9 +406,32 @@ function programName(word: string): string {
 }
 
 /** Prefixes that run the command after them: `sudo pkill …` is a pkill. */
-const RUNNERS = new Set(["sudo", "doas", "nohup", "time", "exec", "command", "builtin", "nice", "timeout", "env", "stdbuf"]);
+const RUNNERS = new Set([
+  "sudo",
+  "doas",
+  "nohup",
+  "time",
+  "exec",
+  "command",
+  "builtin",
+  "nice",
+  "timeout",
+  "env",
+  "stdbuf",
+  "setsid",
+  "ionice",
+  "chrt",
+  "busybox",
+  "coproc",
+]);
+/** Runner options that take a value (`timeout -s KILL 5 …`, `exec -a name …`). */
+const RUNNER_VALUE_OPTIONS = new Set(["-u", "-g", "-n", "-s", "-k", "-a", "-c", "-p", "-C", "-D", "-U", "-i", "-o", "-e"]);
 /** Shell keywords a command can follow: `then pkill …`, `do kill $pid`, `! pkill …`. */
 const KEYWORDS = new Set(["if", "then", "elif", "else", "do", "while", "until", "!"]);
+/** Shells that run what they are fed on stdin: `echo 'pkill x' | bash`. */
+const STDIN_SHELLS = /^((ba|z|da|k)?sh|pwsh|powershell|cmd|iex|invoke-expression)$/;
+/** PowerShell/WMI heads that can terminate a Win32_Process. */
+const WMI_HEADS = new Set(["get-wmiobject", "gwmi", "get-ciminstance", "gcim", "invoke-cimmethod", "invoke-wmimethod", "remove-ciminstance", "remove-wmiobject", "wmic"]);
 /** xargs options that take a value, so the value is not mistaken for the program. */
 const XARGS_VALUE_OPTIONS = new Set(["-n", "-I", "-P", "-L", "-d", "-s", "-a", "-E"]);
 /** Commands whose job is to find pids by NAME: a kill fed by one is a kill by name. */
@@ -421,14 +463,19 @@ function resolveCommand(cmd: SimpleCommand): ResolvedCommand | undefined {
       words.shift();
       continue;
     }
+    // `function f { pkill x; }` — the body's first command follows the name.
+    if (name === "function") {
+      words.splice(0, 2);
+      continue;
+    }
     // `command -v pkill` asks whether pkill exists; it runs nothing.
     if (name === "command" && (words[1] === "-v" || words[1] === "-V")) return undefined;
     if (RUNNERS.has(name)) {
       words.shift();
-      // Their options (sudo -u bob, nice -n 5, timeout 10s) come before the program.
+      // Their options (sudo -u bob, nice -n 5, timeout -s KILL 10s) come before the program.
       while (words.length > 0 && (words[0]!.startsWith("-") || /^\d/.test(words[0]!) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]!))) {
         const opt = words.shift()!;
-        if ((opt === "-u" || opt === "-g" || opt === "-n") && words.length > 0) words.shift();
+        if (RUNNER_VALUE_OPTIONS.has(opt) && words.length > 0) words.shift();
       }
       continue;
     }
@@ -446,14 +493,23 @@ function resolveCommand(cmd: SimpleCommand): ResolvedCommand | undefined {
   const head = programName(words[0]!);
   const args = words.slice(1);
   const inner: string[] = [];
+  // A here-string feeds a shell its script: `bash <<< 'pkill node'`.
+  const hereString = args.indexOf("<<<");
+  if (STDIN_SHELLS.test(head) && hereString !== -1 && args[hereString + 1] !== undefined) inner.push(args[hereString + 1]!);
   if (/^(ba|z|da|k)?sh$/.test(head)) {
     const flag = args.findIndex((a) => /^-[a-z]*c[a-z]*$/.test(a));
     if (flag !== -1 && args[flag + 1] !== undefined) inner.push(args[flag + 1]!);
   } else if (head === "powershell" || head === "pwsh") {
+    // `-EncodedCommand` is the script as base64 of UTF-16LE.
+    const encoded = args.findIndex((a) => /^-(e|ec|enc|encodedcommand)$/i.test(a));
+    if (encoded !== -1 && args[encoded + 1] !== undefined) {
+      inner.push(Buffer.from(args[encoded + 1]!, "base64").toString("utf16le"));
+    }
     // `-Command` takes the rest of the line; without it, the first word that is
     // not an option (or an option's value) starts the command.
     let start = args.findIndex((a) => /^-c(ommand)?$/i.test(a)) + 1;
-    if (start === 0) {
+    if (encoded !== -1) start = args.length;
+    else if (start === 0) {
       start = args.length;
       for (let j = 0; j < args.length; j++) {
         if (!args[j]!.startsWith("-")) {
@@ -464,10 +520,11 @@ function resolveCommand(cmd: SimpleCommand): ResolvedCommand | undefined {
       }
     }
     if (start < args.length) inner.push(args.slice(start).join(" "));
-  } else if (head === "eval") {
+  } else if (head === "eval" || head === "iex" || head === "invoke-expression") {
     if (args.length > 0) inner.push(args.join(" "));
   } else if (head === "cmd") {
-    const flag = args.findIndex((a) => /^\/[ck]$/i.test(a));
+    // `/c`, and Git Bash's `//c`, which MSYS turns back into `/c`.
+    const flag = args.findIndex((a) => /^\/\/?[ck]$/i.test(a));
     if (flag !== -1 && flag + 1 < args.length) inner.push(args.slice(flag + 1).join(" "));
   }
   return { head, args, piped: cmd.piped, inner };
@@ -497,6 +554,7 @@ function killsByName(cmd: ResolvedCommand): boolean {
   switch (head) {
     case "pkill":
     case "killall":
+    case "killall5":
       return true;
     case "tskill": {
       const target = args.find((a) => !a.startsWith("/") && !a.startsWith("-"));
@@ -542,11 +600,22 @@ function killsLiteralTargets(cmd: ResolvedCommand): boolean {
 /** Every resolved command in `command`, including what shell wrappers run. */
 function resolvedCommands(command: string, depth = 0): ResolvedCommand[] {
   const out: ResolvedCommand[] = [];
+  let prev: ResolvedCommand | undefined;
   for (const simple of simpleCommands(command)) {
     const cmd = resolveCommand(simple);
-    if (!cmd) continue;
+    if (!cmd) {
+      prev = undefined;
+      continue;
+    }
     out.push(cmd);
-    if (depth < 3) for (const inner of cmd.inner) out.push(...resolvedCommands(inner, depth + 1));
+    if (depth < 3) {
+      for (const inner of cmd.inner) out.push(...resolvedCommands(inner, depth + 1));
+      // `echo 'pkill node' | bash`: the text echoed into a shell is its script.
+      if (cmd.piped && cmd.inner.length === 0 && STDIN_SHELLS.test(cmd.head) && (prev?.head === "echo" || prev?.head === "printf")) {
+        out.push(...resolvedCommands(prev.args.filter((a) => !/^-[neE]+$/.test(a)).join(" "), depth + 1));
+      }
+    }
+    prev = cmd;
   }
   return out;
 }
@@ -566,8 +635,13 @@ export function bashProcessKillSubject(command: string): string | undefined {
   const looksUpByName = commands.some((c) => NAME_LOOKUPS.has(c.head));
   if (looksUpByName && commands.some((c) => KILLERS.has(c.head) && !killsLiteralTargets(c))) return command;
   // PowerShell: (Get-Process python).Kill() and … | ForEach-Object { $_.Kill() }.
-  if (looksUpByName && /\.kill\s*\(\s*\)/i.test(command)) return command;
-  if (/win32_process/i.test(command) && /\bterminate\b|remove-(?:cim|wmi)/i.test(command)) return command;
+  // An unquoted `.Kill(` ends a word at the `(`; a quoted '.Kill()' in a grep
+  // pattern keeps its parentheses, so it is not a call.
+  if (looksUpByName && commands.some((c) => [c.head, ...c.args].some((w) => /\.kill$/i.test(w)))) return command;
+  // A Win32_Process terminate needs a WMI/CIM command to do it, so a commit
+  // message or a grep that only mentions one is not a kill.
+  const wmi = commands.some((c) => WMI_HEADS.has(c.head.replace(/^\(/, "")));
+  if (wmi && /win32_process/i.test(command) && /\bterminate\b|remove-(?:cim|wmi)/i.test(command)) return command;
   return undefined;
 }
 

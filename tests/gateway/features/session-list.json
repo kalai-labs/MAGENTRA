@@ -15,6 +15,7 @@
   "deferred": false,
   "tests": [
     "a-listed-session-is-labelled-with-the-first-user-message-reminders-stripped",
+    "the-live-session-is-listed-while-its-first-turn-still-runs-after-a-clarify-round",
     "renaming-appends-a-meta-record-that-keeps-the-previous-stats-and-model",
     "archiving-moves-the-transcript-into-archive-and-refuses-the-active-session",
     "deleting-removes-the-transcript-and-its-task-file-and-refuses-the-active-session",

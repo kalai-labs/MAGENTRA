@@ -26,7 +26,10 @@ import { openWorkspace, waitForSpawn } from "../lib/appDriver.ts";
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
 import { FsTest } from "../lib/fsTest.ts";
 import { startScriptedEngine, type FakeTurn, type ScriptedEngine } from "../lib/scriptedEngine.ts";
+import { PureTest } from "../lib/pureTest.ts";
 import { UiTest, type AppHandle } from "../lib/uiTest.ts";
+
+import { secs } from "../../tui/src/format.ts";
 
 const FEATURE = "long-silent-work-stays-visible";
 
@@ -125,6 +128,42 @@ class TextReArmsIt extends SilentRungTest {
   }
 }
 
+/* ---- a cut-off or a blank answer is still silence ---------------------- */
+
+class CutOffAndBlankStaySilent extends SilentRungTest {
+  readonly id = "a-response-cut-off-mid-reasoning-counts-and-whitespace-is-not-a-word-to-the-user";
+  readonly whyItExists =
+    "a response cut off at the output limit was neither counted nor ended the stretch, so a silent hour that began with a cut-off stayed unreminded; and a response of blank text reset the stretch as if the model had spoken";
+
+  override async run(t: TestRun): Promise<void> {
+    const cutOff = await this.play([{ thinking: "x".repeat(9_000), stopReason: "max_tokens" }, round(100), { text: "done" }]);
+    t.assert.deepEqual(reminded(cutOff), [true], "9,000 characters reasoned before a cut-off are silence: the next results carry the reminder");
+    await this.tearDown();
+
+    const blank = await this.play([round(9_000, "   "), { text: "done" }]);
+    t.assert.deepEqual(reminded(blank), [true], "a response whose text is only whitespace said nothing to the user");
+  }
+}
+
+/* ---- the TUI reads a long stretch in minutes too ------------------------ */
+
+class TheTerminalReadsMinutes extends PureTest {
+  readonly featureId = FEATURE;
+  readonly invariant = INVARIANT;
+  readonly id = "the-terminal-now-line-reads-a-long-stretch-in-minutes-as-the-desktop-does";
+  readonly whyItExists =
+    "the desktop was fixed to read 8m12s, but the TUI's activity line still printed a 24-minute silent stretch as \"1440.0s\" — the same unreadable counter on the other frontend";
+
+  override run(t: TestRun): void {
+    t.assert.equal(secs(4_200), "4.2s", "under a minute it keeps its tenth of a second");
+    t.assert.equal(secs(59_900), "59.9s");
+    t.assert.equal(secs(60_000), "1m00s");
+    t.assert.equal(secs(492_000), "8m12s", "eight minutes read as the desktop reads them");
+    t.assert.equal(secs(1_440_000), "24m00s", "the field run's silent stretch, not 1440.0s");
+    t.assert.equal(secs(-5), "0.0s", "a clock a hair ahead never reads as a negative duration");
+  }
+}
+
 /* ---- checklist 3 ----------------------------------------------------- */
 
 const LOCAL_ENDPOINT = "http://127.0.0.1:11434/v1";
@@ -181,4 +220,4 @@ class TheBlockCountsItsWork extends UiTest {
   }
 }
 
-registerFeatureTests(new TheRungFiresOncePerStretch(), new TextReArmsIt(), new TheBlockCountsItsWork());
+registerFeatureTests(new TheRungFiresOncePerStretch(), new TextReArmsIt(), new CutOffAndBlankStaySilent(), new TheTerminalReadsMinutes(), new TheBlockCountsItsWork());

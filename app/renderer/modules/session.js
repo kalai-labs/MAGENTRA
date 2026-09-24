@@ -228,6 +228,11 @@ function applyModel(model) {
   activeModel = model; // per-tab: keep even for a background tab
   // The shared picker only reflects the focused tab.
   if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
+  // An option added for another tab's model (below) is that tab's, not this
+  // one's: the shared picker must not offer a model from a different endpoint.
+  for (const stale of Array.from(modelSelectEl.options)) {
+    if (stale.dataset.adhoc === "1" && stale.value !== model) stale.remove();
+  }
   const options = Array.from(modelSelectEl.options).map((o) => o.value);
   if (model && !options.includes(model)) {
     // A configured model the list does not know yet (no catalog, or not in
@@ -237,6 +242,7 @@ function applyModel(model) {
     opt.value = model;
     opt.textContent = shortModelLabel(model);
     opt.title = model;
+    opt.dataset.adhoc = "1";
     const customOpt = Array.from(modelSelectEl.options).find((o) => o.value === "__custom__");
     modelSelectEl.insertBefore(opt, customOpt || null);
     options.push(model);

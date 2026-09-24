@@ -884,7 +884,9 @@ export class Engine {
             type: "command_output",
             text: enabled
               ? "⚡ OVERDRIVE engaged — nothing asks (deletions, .magentra and .env edits, writes outside the workspace all run; a kill by process name is refused instead), and the turn self-verifies before it ends."
-              : "OVERDRIVE disengaged — deletions, edits to .magentra/.env and kills by process name ask again; turns end without the self-verify pass.",
+              : this.session.permissions.getDeletionGuard()
+                ? "OVERDRIVE disengaged — deletions, edits to .magentra/.env and kills by process name ask again; turns end without the self-verify pass."
+                : "OVERDRIVE disengaged — edits to .magentra/.env and kills by process name ask again (deletions still run unasked: Allow deletions is on); turns end without the self-verify pass.",
           });
         } else if (!arg) {
           this.emit({

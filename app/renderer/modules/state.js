@@ -56,6 +56,10 @@ let workspaceWorktree = null;
 let currentWorkGroup = null;
 let currentSessionId = null;
 let sessionSummaries = [];
+// Set when a turn starts, cleared by that turn's first model output: the list
+// is asked for again then, because the first message reaches disk only after
+// the clarify round (a full model call) — the ask at turn start comes too early.
+let sessionListOnFirstOutput = false;
 // False while the workspace has no working credentials (setup:required fired
 // and no session_started since): prompts would go into a dead engine, so the
 // composer locks and points at setup instead. An engine CRASH does not clear
@@ -117,7 +121,7 @@ const DEFAULT_UI_SETTINGS = {
   // The deletion guard: outside OVERDRIVE, destructive calls (rm, force-push,
   // drop table, terraform destroy, …) prompt. Setting `deletions` to "allow"
   // removes that prompt; OVERDRIVE turns the guard off too.
-  deletions: "ask", // "ask" (guard always prompts) | "allow" (deletions run freely)
+  deletions: "ask", // "ask" (the guard prompts outside OVERDRIVE) | "allow" (deletions run freely)
   // Optional CAP on auto-compaction: the engine compacts at 80% of the context
   // size entered for the connection; a smaller number here compacts earlier,
   // 0 turns auto-compaction off (manage it yourself with /compact). Rides to

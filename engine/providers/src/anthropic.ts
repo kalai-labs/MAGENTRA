@@ -150,10 +150,19 @@ export class AnthropicProvider implements Provider {
           if (id) yield { type: "tool_use_end", id };
           break;
         }
-        case "message_delta":
+        case "message_delta": {
           stopReason = mapStop(event.delta.stop_reason);
           usage.outputTokens = event.usage.output_tokens;
+          // How many of the billed output tokens were thinking, when the API
+          // reports it (only on the final message_delta). A part of
+          // output_tokens, clamped so it can never exceed the whole.
+          const thinkingTokens = (event.usage as { output_tokens_details?: { thinking_tokens?: unknown } }).output_tokens_details
+            ?.thinking_tokens;
+          if (typeof thinkingTokens === "number" && thinkingTokens > 0) {
+            usage.reasoningTokens = Math.max(0, Math.min(thinkingTokens, usage.outputTokens));
+          }
           break;
+        }
         case "message_stop":
           break;
       }

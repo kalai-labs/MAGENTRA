@@ -3,7 +3,7 @@
   "name": "The sessions list follows the live session",
   "area": "app",
   "section": "Desktop app",
-  "prose": "the Sessions list is asked for again when a turn starts — the first message is what puts a session on disk — and when it ends, by the tab the turn belongs to, so the live session is listed during its first turn and a background tab's list is its own.",
+  "prose": "the Sessions list is asked for again when a turn starts, again at the turn's first model output — the first message is what puts a session on disk, and with the clarify round on it is written only after that round — and when it ends, by the tab the turn belongs to, so the live session is listed during its first turn and a background tab's list is its own.",
   "kinds": [
     "ui"
   ],

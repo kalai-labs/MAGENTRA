@@ -40,6 +40,31 @@ const SECRET_KEY_ENDINGS = ["key", "token", "secret", "password", "passwd", "aut
 const SECRET_KEY_WORDS = ["secret", "password", "passwd", "apikey", "privatekey", "accesskey", "credential"];
 /** A string that looks like a credential, whatever key it sits under. */
 const SECRET_VALUE_RE = /^\s*(?:bearer\s+\S|(?:sk|rk|pk)[-_][A-Za-z0-9_-]{16,}|(?:fw|gsk|hf)_[A-Za-z0-9]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[abpr]-|AIza[0-9A-Za-z_-]{20,})/i;
+/**
+ * The same credential shapes INSIDE a longer string — a Bash command's
+ * `-H "Authorization: Bearer sk-…"`, a Write of a `.env`, a command's output —
+ * each replaced where it sits, so the rest of the line stays readable.
+ */
+const EMBEDDED_SECRET_RES = [
+  [/(\bbearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, "$1[redacted]"],
+  [/\b(?:sk|rk)-[A-Za-z0-9_-]{16,}/g, "[redacted]"],
+  [/\b(?:fw|gsk|hf)_[A-Za-z0-9]{16,}/g, "[redacted]"],
+  [/\bgh[pousr]_[A-Za-z0-9]{20,}|\bgithub_pat_[A-Za-z0-9_]{20,}/g, "[redacted]"],
+  [/\b(?:xai|glpat|nvapi|pplx|csk)-[A-Za-z0-9_-]{20,}|\br8_[A-Za-z0-9]{20,}|\bnpm_[A-Za-z0-9]{36}\b/g, "[redacted]"],
+  [/\bxox[abpr]-[A-Za-z0-9-]{10,}|\bAIza[0-9A-Za-z_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bya29\.[A-Za-z0-9_-]{20,}/g, "[redacted]"],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, "[redacted]"],
+  // An env-style assignment of a secret: OPENAI_API_KEY=…, DB_PASSWORD: "…"
+  [/\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?))(\s*[=:]\s*)(["']?)[^\s"'&;]{4,}\3/g, "$1$2$3[redacted]$3"],
+  // A password in a URL: postgres://user:hunter2@host
+  [/(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:)[^\s@/]+@/gi, "$1[redacted]@"],
+];
+
+/** `text` with every embedded credential replaced. */
+function scrubSecrets(text) {
+  let out = text;
+  for (const [re, replacement] of EMBEDDED_SECRET_RES) out = out.replace(re, replacement);
+  return out;
+}
 
 function isSecretKey(k) {
   const name = k.toLowerCase().replace(/[-_]/g, "");
@@ -62,7 +87,10 @@ const REDACT_MAX_DEPTH = 12;
 function redact(data, depth = 0) {
   if (typeof data === "string") {
     if (SECRET_VALUE_RE.test(data)) return "[redacted]";
-    return data.length > STRING_CAP ? `${data.slice(0, STRING_CAP)}…[+${data.length - STRING_CAP} chars]` : data;
+    if (data.length <= STRING_CAP) return scrubSecrets(data);
+    // Scrub a little past the cut, so a key that straddles it is still whole
+    // when it is matched, and never leaves its head behind.
+    return `${scrubSecrets(data.slice(0, STRING_CAP + 256)).slice(0, STRING_CAP)}…[+${data.length - STRING_CAP} chars]`;
   }
   if (!data || typeof data !== "object") return data;
   if (depth >= REDACT_MAX_DEPTH) return "[depth capped]";
@@ -109,13 +137,14 @@ function activeLogsDir() {
 
 /** This launch's log file in `workspace`, its folder created (and pruned) on first use. */
 function logFileFor(workspace) {
-  const known = workspaceLogFiles.get(workspace);
-  if (known !== undefined) return known;
+  if (workspaceLogFiles.has(workspace)) return workspaceLogFiles.get(workspace);
   const logsDir = path.join(workspace, ".magentra", "logs");
   try {
     fs.mkdirSync(logsDir, { recursive: true });
   } catch (err) {
+    // Remembered, so every later line does not retry (and report) the mkdir.
     console.error("Failed to create session log directory:", err);
+    workspaceLogFiles.set(workspace, null);
     return null;
   }
   pruneOldLogs(logsDir);
@@ -166,14 +195,27 @@ function enqueueLogLine(line, file) {
 }
 
 /**
+ * The file a line for `target` goes to: its workspace's log; the userData log
+ * when that workspace's log folder cannot be made (never another workspace's);
+ * the focused workspace's log for a line with no workspace.
+ */
+function logFileOf(target) {
+  if (target && target.workspace) return logFileFor(target.workspace) ?? fallbackLogFile;
+  return currentLogFile;
+}
+
+/**
  * One line. `target` routes a tab-bound line — `{ workspace, tabId }` — to that
  * tab's own workspace log and names the tab on it; without one the line goes to
  * the focused workspace's log.
  */
 function logEvent(ch, data, target) {
   const tabId = target && target.tabId;
-  // A tab's line lands after the deltas it followed: close that tab's open run.
+  const file = logFileOf(target);
+  // A line lands after the deltas it followed: close that tab's open run — or,
+  // for a line with no tab, every run headed for the same file.
   if (tabId && deltaRuns.has(tabId)) closeDeltaRun(tabId);
+  else if (!tabId) for (const [key, run] of [...deltaRuns]) if (logFileOf(run.target) === file) closeDeltaRun(key);
   const entry = { ts: new Date().toISOString(), ch, ...(tabId ? { tab: tabId } : {}), data: redact(data) };
   let line;
   try {
@@ -181,12 +223,11 @@ function logEvent(ch, data, target) {
   } catch {
     line = JSON.stringify({ ts: entry.ts, ch, data: redact(String(data)) });
   }
-  const file = target && target.workspace ? logFileFor(target.workspace) : currentLogFile;
   enqueueLogLine(line, file);
   // App-level channels also mirror to userData/logs so a crash BEFORE any
   // workspace opens still leaves a findable log. Low-frequency, so a direct
   // append is fine.
-  if (fallbackLogFile && (ch === "sys" || ch === "renderer")) {
+  if (fallbackLogFile && file !== fallbackLogFile && (ch === "sys" || ch === "renderer")) {
     try {
       fs.appendFileSync(fallbackLogFile, line + "\n", "utf8");
     } catch {
@@ -203,6 +244,8 @@ function logEvent(ch, data, target) {
 const DELTA_TYPES = new Set(["thinking_delta", "text_delta", "tool_output_delta"]);
 /** A run is closed and written after this long, so a long stream still leaves a line a second. */
 const DELTA_RUN_MS = 1000;
+/** How much of a run's text is kept: its head, with room for the marker that counts the rest. */
+const RUN_HEAD = STRING_CAP - 40;
 /** Open delta runs, per tab. */
 const deltaRuns = new Map();
 let deltaRunTimer = null;
@@ -213,9 +256,10 @@ function closeDeltaRun(key) {
   const run = deltaRuns.get(key);
   if (!run) return;
   deltaRuns.delete(key);
+  const text = run.chars > run.text.length ? `${run.text}…[+${run.chars - run.text.length} chars]` : run.text;
   logEvent(
     "engine",
-    { type: run.type, ...(run.id !== undefined ? { id: run.id } : {}), deltas: run.count, chars: run.chars, from: run.from, text: run.text },
+    { type: run.type, ...(run.id !== undefined ? { id: run.id } : {}), deltas: run.count, chars: run.chars, from: run.from, text },
     run.target,
   );
 }
@@ -242,12 +286,21 @@ function logEngineFrame(event, target) {
     if (run && run.type === event.type && run.id === event.id && Date.now() - run.started < DELTA_RUN_MS) {
       run.count += 1;
       run.chars += text.length;
-      // Enough to show the head; redact() shortens it and counts the rest via `chars`.
-      if (run.text.length <= STRING_CAP) run.text += text;
+      // The head only; closeDeltaRun says how many characters went unwritten.
+      if (run.text.length < RUN_HEAD) run.text += text.slice(0, RUN_HEAD - run.text.length);
       return;
     }
     closeDeltaRun(key);
-    deltaRuns.set(key, { type: event.type, id: event.id, count: 1, chars: text.length, text, from: new Date().toISOString(), started: Date.now(), target });
+    deltaRuns.set(key, {
+      type: event.type,
+      id: event.id,
+      count: 1,
+      chars: text.length,
+      text: text.slice(0, RUN_HEAD),
+      from: new Date().toISOString(),
+      started: Date.now(),
+      target,
+    });
     if (!deltaRunTimer) {
       deltaRunTimer = setTimeout(() => {
         deltaRunTimer = null;
@@ -261,13 +314,17 @@ function logEngineFrame(event, target) {
   if (event && event.type === "tool_call_started" && event.id !== undefined) {
     // Calls that never finish (an engine that died) must not pile up.
     if (toolStarts.size >= 1000) toolStarts.delete(toolStarts.keys().next().value);
-    toolStarts.set(`${key}\0${event.id}`, Date.now());
+    toolStarts.set(`${key}\0${event.id}`, { seen: Date.now(), at: event.at });
   } else if (event && event.type === "tool_call_finished" && event.id !== undefined) {
     const startKey = `${key}\0${event.id}`;
     const started = toolStarts.get(startKey);
     if (started !== undefined) {
       toolStarts.delete(startKey);
-      frame = { ...event, durationMs: Date.now() - started };
+      // The engine's own clock when both frames carry it (a batch's finished
+      // frames can reach main well after each call ended); else main's.
+      const durationMs =
+        typeof event.at === "number" && typeof started.at === "number" ? event.at - started.at : Date.now() - started.seen;
+      frame = { ...event, durationMs };
     }
   }
   logEvent("engine", frame, target);

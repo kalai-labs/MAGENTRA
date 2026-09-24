@@ -18,7 +18,10 @@
     "the-shipped-reminder-sends-the-agent-to-a-browser-and-keeps-the-honest-ending",
     "a-page-checked-only-with-commands-gets-one-reminder-and-the-next-end-is-allowed",
     "a-browser-run-settles-it-and-a-server-only-change-never-asks",
-    "a-screenshot-read-that-failed-is-not-evidence"
+    "a-screenshot-read-that-failed-is-not-evidence",
+    "a-mention-an-install-a-version-check-or-a-failed-browser-run-is-not-evidence",
+    "a-ui-turn-reminded-to-run-something-is-still-sent-to-a-browser-when-it-then-checks-with-curl",
+    "htm-sass-and-less-are-pages-and-code-and-a-test-spec-or-story-file-is-not-the-page"
   ],
   "freshness": {
     "hash": "db0692b7d7546a76",

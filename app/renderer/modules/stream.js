@@ -429,7 +429,9 @@ const WORK_GLYPH_SVG =
   '<path d="M6.6 16.6 L6.6 7.8 L12 12.9 L17.4 7.8 L17.4 16.6" stroke-width="2"/>' +
   "</svg>";
 
-function workStream() {
+/** The open work group's body, opened if needed. `at` is the engine's time of
+ * the call that opens it (the group is timed on the engine clock when it can be). */
+function workStream(at) {
   if (!streamEl) return streamEl;
   if (!currentWorkGroup || !currentWorkGroup.el.isConnected) {
     const el = document.createElement("details");
@@ -451,19 +453,23 @@ function workStream() {
     body.className = "work-group-body";
     el.append(summary, body);
     withAutoScroll(() => streamEl.appendChild(el));
-    currentWorkGroup = { el, body, labelEl: label, start: Date.now() };
+    currentWorkGroup = { el, body, labelEl: label, start: typeof at === "number" ? at : Date.now(), lastAt: undefined };
   }
   return currentWorkGroup.body;
 }
 
 /** The model moved on (answering, or the turn ended): stamp the group with
- * its op count and elapsed time so the finished block reads as evidence. */
-function closeWorkGroup() {
+ * its op count and elapsed time so the finished block reads as evidence. The
+ * end is the engine's: `endAt` (the turn's end), else the last call's own
+ * finish; the page's clock only when the engine sent neither. A group handled
+ * late after a backlog still says how long the work took. */
+function closeWorkGroup(endAt) {
   if (!currentWorkGroup) return;
-  const { el, body, labelEl, start } = currentWorkGroup;
+  const { el, body, labelEl, start, lastAt } = currentWorkGroup;
   el.classList.add("done");
   const ops = body.querySelectorAll(".tool-row").length;
-  labelEl.textContent = `Agent worked · ${ops} op${ops === 1 ? "" : "s"} · ${formatElapsed(Date.now() - start)}`;
+  const end = typeof endAt === "number" ? endAt : typeof lastAt === "number" ? lastAt : Date.now();
+  labelEl.textContent = `Agent worked · ${ops} op${ops === 1 ? "" : "s"} · ${formatElapsed(end - start)}`;
   currentWorkGroup = null;
 }
 
@@ -672,9 +678,11 @@ function onToolOutputDelta(event) {
   const combined = (row.tailText || "") + event.text;
   row.tailText = combined.length > 4000 ? combined.slice(-4000) : combined;
   const lines = row.tailText.split("\n").filter((l) => l.trim() !== "");
-  withAutoScroll(() => {
+  // The live edge is measured once per frame, not per delta: a noisy command
+  // (a Workflow log, which is not throttled) forced a layout on every line.
+  followLiveEdge(() => {
     row.tailEl.textContent = lines.slice(-3).join("\n");
-  });
+  }, scrollerOf(row.rowEl.closest(".stream")));
 }
 
 /** `finishedAt` is the engine's tool_call_finished.at, when it sent one. */

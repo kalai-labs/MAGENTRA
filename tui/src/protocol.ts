@@ -146,6 +146,8 @@ export type CoreEvent =
       usage: Usage;
       contextTokens: number;
       contextWarn?: boolean;
+      /** Epoch ms, engine clock. */
+      at?: number;
     }
   | { type: "error"; message: string; fatal: boolean }
   | { type: "session_restored"; sessionId: string; messages: RestoredMessage[] }

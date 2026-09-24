@@ -68,6 +68,14 @@ class TheCommandSaysWhatItChanged extends ProcTest {
 
     const quiet = resultText(await bash("echo nothing to see"));
     t.assert.equal(quiet.includes("you had Read"), false, `a command that changes nothing adds no note: ${quiet}`);
+
+    // A Read file the command DELETES is gone, not changed: "Read it again
+    // before you Edit" would send the model to a file that no longer exists.
+    const doomed = join(this.#dir, "d.txt");
+    writeFileSync(doomed, "one\n");
+    state.recordRead(doomed);
+    const removing = resultText(await bash("rm d.txt"));
+    t.assert.equal(removing.includes(doomed), false, `a deleted file is not named as changed: ${removing}`);
   }
 }
 

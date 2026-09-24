@@ -86,6 +86,7 @@ export const editTool: ToolDefinition<z.infer<typeof inputSchema>> = {
  * at the first character that differs.
  */
 function closestMatchHint(content: string, needle: string): string {
+  if (needle === "") return " old_string is empty — give the exact text to replace, copied from your latest Read of the file.";
   let lo = 0;
   let hi = needle.length;
   while (lo < hi) {
@@ -93,11 +94,16 @@ function closestMatchHint(content: string, needle: string): string {
     if (content.includes(needle.slice(0, mid))) lo = mid;
     else hi = mid - 1;
   }
+  // Never split a surrogate pair: the quoted difference starts at the whole character.
+  if (lo > 0 && lo < needle.length && /[\uD800-\uDBFF]/.test(needle[lo - 1]!)) lo -= 1;
   const at = content.indexOf(needle.slice(0, lo)) + lo;
   // A CRLF file quoted with bare \n breaks at its first line end, however short
   // the match before it: that is the one miss worth naming even there.
   const crlf = content[at] === "\r" && needle[lo] === "\n" ? " (the file has Windows CRLF line endings; old_string has bare \\n)" : "";
-  if (!crlf && lo < Math.min(16, needle.length)) {
+  // A matched head shorter than this is likely a coincidence ("    const "),
+  // not where the anchor went wrong. For a short anchor — the kind the Edit
+  // description asks for — half of it matching is already telling.
+  if (!crlf && lo < Math.min(16, Math.ceil(needle.length / 2))) {
     return " Not even its beginning appears in the file — Read the file again and copy a short anchor from it.";
   }
   const quote = (s: string): string => JSON.stringify(s.slice(0, 40));

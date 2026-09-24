@@ -150,6 +150,23 @@ class TheEngineLinesMatchTheGuard extends ProcTest {
     );
     t.assert.match(on.text, /nothing asks/);
     t.assert.match(on.text, /kill by process name is refused/, "the line names the kill-by-name refusal");
+
+    // `/overdrive off` says what asks again — and with "Allow deletions" on,
+    // deletions do NOT ask again, so the line must not promise that they do.
+    for (const guard of [true, false]) {
+      const dir = this.#makeDir("magentra-status-off-");
+      const e = await startScriptedEngine({ workspace: dir, turns: [{ text: "ok" }] });
+      this.#engines.push(e);
+      e.send({ type: "set_deletion_guard", enabled: guard });
+      e.send({ type: "slash_command", command: "overdrive", args: "on" });
+      e.send({ type: "slash_command", command: "overdrive", args: "off" });
+      const off = await e.waitFor(
+        (ev): ev is Extract<CoreEvent, { type: "command_output" }> => ev.type === "command_output" && ev.text.includes("OVERDRIVE disengaged"),
+      );
+      const deletionsAskAgain = /deletions[^;(]*ask again/.test(off.text);
+      t.assert.equal(deletionsAskAgain, guard, `guard ${guard ? "on" : "off"}: "${off.text}" must say deletions ask again only when they do`);
+      t.assert.match(off.text, /kills by process name ask again/);
+    }
   }
 }
 
@@ -195,6 +212,24 @@ class TheDesktopLinesMatchTheGuard extends UiTest {
     const kill = glossary.find((g) => g.term === "process-kill guard");
     t.assert.ok(kill, "the glossary explains the process-kill guard");
     t.assert.match(kill!.text, /refused/);
+
+    // The OVERDRIVE first-enable dialog, the SAFETY note and the tour step say
+    // the same thing: outside OVERDRIVE commands run and only the guards ask;
+    // in OVERDRIVE nothing asks, deletions outside the workspace included.
+    const surfaces = await app.evaluate<{ name: string; text: string }[]>(`[
+      { name: "OVERDRIVE dialog", text: [...document.querySelectorAll("#overdriveDialog li")].map((li) => li.textContent).join(" ") },
+      { name: "SAFETY note", text: document.getElementById("setSafetyNote").textContent },
+      { name: "deletions button", text: document.querySelector('#setDeletions [data-deletions="ask"]').textContent },
+      { name: "tour step", text: TOUR_STEPS.find((s) => s.target === "#overdriveBtn").copy },
+    ]`);
+    for (const { name, text } of surfaces) {
+      t.assert.doesNotMatch(text, /still prompts|always|asks? before (running )?(consequential )?commands|Consequential commands ask/i, `${name}: "${text}"`);
+    }
+    const dialog = surfaces.find((s) => s.name === "OVERDRIVE dialog")!.text;
+    t.assert.match(dialog, /outside it/, "the dialog says deletions outside the workspace run unasked in OVERDRIVE too");
+    t.assert.match(dialog, /refused/, "and names the kill-by-name refusal");
+    const note = surfaces.find((s) => s.name === "SAFETY note")!.text;
+    t.assert.match(note, /stop processes by name/, "the SAFETY note names the kill guard among what asks");
   }
 }
 

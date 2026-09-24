@@ -533,6 +533,48 @@ class ARestoredSessionShowsTheWholeReasoning extends StreamTest {
   }
 }
 
+/* ---- a noisy command's live tail ---------------------------------------- */
+
+class ANoisyCommandMeasuresOncePerFrame extends StreamTest {
+  readonly id = "a-noisy-commands-live-tail-measures-the-page-once-per-frame-not-once-per-line";
+  readonly whyItExists =
+    "the tool row's live tail asked 'is the view at the live edge?' on every output delta — a forced layout of the whole transcript per line, the same bug class as the reasoning stream's, left behind after T01 for noisy commands and unthrottled Workflow logs";
+
+  override async run(t: TestRun): Promise<void> {
+    const { app, tabId } = await this.console();
+    await this.sendFrames(app, [
+      { type: "turn_started", tabId },
+      { type: "tool_call_started", id: "c_noisy", tool: "Bash", input: { command: "npm run build" }, tabId },
+    ]);
+    await this.waitFor(app, `toolRows.has("c_noisy") ? true : null`, "the tool row");
+
+    // A pass-through counter on the layout read the live-edge check makes:
+    // every value is the browser's own, only the reads are counted.
+    await app.evaluate(`(() => {
+      const d = Object.getOwnPropertyDescriptor(Element.prototype, "scrollHeight");
+      window.__scrollHeightReads = 0;
+      window.__restoreScrollHeight = () => Object.defineProperty(Element.prototype, "scrollHeight", d);
+      Object.defineProperty(Element.prototype, "scrollHeight", { configurable: true, get() { window.__scrollHeightReads++; return d.get.call(this); } });
+      return true;
+    })()`);
+    const TOTAL = 2_000;
+    const lines = deltas(TOTAL, 41).map((text, i) => `${text} line ${i}\n`);
+    await this.installProbe(app, "tool_output_delta");
+    await app.evaluateInMain(`
+      for (const text of ${JSON.stringify(lines)}) win.webContents.send("engine:event", { type: "tool_output_delta", id: "c_noisy", text, tabId: ${JSON.stringify(tabId)} });
+      return true;
+    `);
+    await this.probeAfter(app, TOTAL);
+    await new Promise((resolve) => setTimeout(resolve, 400)); // the last frame's write
+    const reads = await app.evaluate<number>(`(() => { const n = window.__scrollHeightReads; window.__restoreScrollHeight(); return n; })()`);
+    const tail = await app.evaluate<string>(`toolRows.get("c_noisy").tailEl.textContent`);
+
+    t.diagnostic(`${reads} scrollHeight reads for ${TOTAL} output deltas`);
+    t.assert.ok(reads * 5 <= TOTAL, `the live edge is measured per frame, not per delta: ${reads} layout reads for ${TOTAL} deltas (at most one per five)`);
+    t.assert.match(tail, new RegExp(`line ${TOTAL - 1}$`), "and the tail still ends at the last line sent");
+  }
+}
+
 registerFeatureTests(
   new ReasoningCostsTheSameAtTheEnd(),
   new TheRailKeepsUpWithReasoning(),
@@ -540,4 +582,5 @@ registerFeatureTests(
   new ALongCodeAnswerCostsTheSame(),
   new ABackgroundTabsReasoningStaysInItsPane(),
   new ARestoredSessionShowsTheWholeReasoning(),
+  new ANoisyCommandMeasuresOncePerFrame(),
 );

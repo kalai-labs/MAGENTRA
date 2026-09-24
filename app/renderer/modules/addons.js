@@ -177,12 +177,14 @@ function populateAddonModelSelect() {
     const o = document.createElement("option");
     o.value = opt.value;
     o.textContent = opt.textContent;
+    o.title = opt.value;
     modelGroup.appendChild(o);
   }
   if (current && !seen.has(current)) {
     const o = document.createElement("option");
     o.value = current;
     o.textContent = shortModelLabel(current);
+    o.title = current;
     modelGroup.appendChild(o);
     seen.add(current);
   }

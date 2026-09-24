@@ -192,6 +192,18 @@ class NoFinishingTextDemandsAPass extends ShippedTextTest {
     }
     t.assert.deepEqual(seen, [...FINISHING_PROMPTS], "every finishing text was scanned, not just the two the checklist names");
 
+    // Texts added to the finishing rungs later (the browser reminder, the
+    // self-check's symptom and hedge clauses) are held to the same rule: the
+    // scan covers every registered finishing.* prompt, not only the seven named.
+    const later = promptCatalog().filter((p) => p.id.startsWith("finishing.") && !(FINISHING_PROMPTS as readonly string[]).includes(p.id));
+    t.assert.ok(later.length >= 3, `the later finishing texts are registered too (${later.map((p) => p.id).join(", ")})`);
+    for (const entry of later) {
+      const text = entry.defaultText.toLowerCase();
+      for (const demand of DEMANDS_A_PASS) {
+        t.assert.equal(text.includes(demand), false, `${entry.id} must not say "${demand}" — that is a demand for a green result`);
+      }
+    }
+
     // The rung DOES talk about passing — twice, and both times to deny that a
     // pass is proof. That is the distinction the list above cannot express.
     const evidence = shippedPrompt("finishing.runtime-evidence").defaultText;

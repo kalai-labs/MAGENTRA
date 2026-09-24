@@ -169,4 +169,131 @@ class AFailedScreenshotReadIsNotEvidence extends BrowserFloorTest {
   }
 }
 
-registerFeatureTests(new TheShippedText(), new APageCheckedOnlyFromOutside(), new ABrowserRunSettlesIt(), new AFailedScreenshotReadIsNotEvidence());
+/* ---- a mention, an install or a failed run is not a browser run -------- */
+
+class OnlyARealRunCounts extends BrowserFloorTest {
+  readonly id = "a-mention-an-install-a-version-check-or-a-failed-browser-run-is-not-evidence";
+  readonly whyItExists =
+    "the browser check matched the words anywhere in a command, so `npx playwright install`, `cat playwright.config.ts` or a playwright run that crashed each counted as having looked at the page";
+
+  override async run(t: TestRun): Promise<void> {
+    // Each command names a browser tool and drives none (the `||` branch never
+    // runs, so nothing is installed); curl is the field turn's own check.
+    for (const command of [
+      "cat playwright.config.ts 2>/dev/null; true",
+      "true || npx playwright install chromium",
+      "true || npm i -D puppeteer",
+      "true || npx playwright --version",
+      "curl -s http://127.0.0.1:9/ || true",
+    ]) {
+      const { reminders, calls } = await this.turn("index.html", command);
+      t.assert.equal(reminders.length, 1, `"${command}" is not a browser run, so the page still gets its reminder`);
+      t.assert.equal(calls, 4);
+      await this.tearDown();
+    }
+
+    // A browser run that FAILED saw no page either.
+    this.redirectHome();
+    this.workspace = this.tempDir("magentra-browser-fail-");
+    const engine = await startScriptedEngine({
+      workspace: this.workspace,
+      turns: [
+        { toolCalls: [{ id: "w1", name: "Write", input: { file_path: join(this.workspace, "index.html"), content: "<h1>game</h1>\n" } }] },
+        { toolCalls: [{ id: "b1", name: "Bash", input: { command: 'node -e "process.exit(3)" -- --headless --screenshot=shot.png', description: "screenshot it", run_in_background: false } }] },
+        // The failed command made the last batch an error: the recovery rung takes this round.
+        { text: "done", stopReason: "end_turn" },
+        { text: "done", stopReason: "end_turn" },
+        { text: "The page stays unverified.", stopReason: "end_turn" },
+      ],
+    });
+    try {
+      const outcome = await engine.runTurn("build the game");
+      t.assert.deepEqual([...outcome.errors], []);
+      t.assert.equal(outcome.toolResults.find((r) => r.id === "b1")?.isError, true, "the headless run failed");
+      t.assert.equal(outcome.notes.includes(NOTE), true, "so the page was never seen, and the rung still fires");
+    } finally {
+      await engine.close();
+    }
+  }
+}
+
+/* ---- the browser shape keeps its own fuse ------------------------------ */
+
+class ItsOwnFuse extends BrowserFloorTest {
+  readonly id = "a-ui-turn-reminded-to-run-something-is-still-sent-to-a-browser-when-it-then-checks-with-curl";
+  readonly whyItExists =
+    "the browser reminder shared the runtime-evidence fuse, so a page turn that first ran nothing got the run-something reminder, answered it with one curl, and ended with the page never opened";
+
+  override async run(t: TestRun): Promise<void> {
+    this.redirectHome();
+    this.workspace = this.tempDir("magentra-browser-fuse-");
+    const engine = await startScriptedEngine({
+      workspace: this.workspace,
+      turns: [
+        { toolCalls: [{ id: "w1", name: "Write", input: { file_path: join(this.workspace, "index.html"), content: "<h1>game</h1>\n" } }] },
+        { text: "done", stopReason: "end_turn" },
+        { toolCalls: [{ id: "b1", name: "Bash", input: { command: "curl -s http://127.0.0.1:9/ || true", description: "check it", run_in_background: false } }] },
+        { text: "done", stopReason: "end_turn" },
+        { text: "No browser here — the page stays unverified.", stopReason: "end_turn" },
+      ],
+    });
+    try {
+      const outcome = await engine.runTurn("build the game");
+      t.assert.deepEqual([...outcome.errors], []);
+      t.assert.equal(outcome.notes.includes("↻ nothing was run — verifying the change for real"), true, "first the page turn is told to run something");
+      t.assert.equal(outcome.notes.filter((n) => n === NOTE).length, 1, "and after a curl-only check it is still sent to a browser, once");
+      t.assert.equal(engine.provider.requests.length, 5, "each reminder buys one round; the last end is allowed");
+    } finally {
+      await engine.close();
+    }
+  }
+}
+
+/* ---- which files are the page ------------------------------------------- */
+
+class WhichFilesArePages extends BrowserFloorTest {
+  readonly id = "htm-sass-and-less-are-pages-and-code-and-a-test-spec-or-story-file-is-not-the-page";
+  readonly whyItExists =
+    "`.htm`, `.sass` and `.less` pages were missing from both the code set and the page set, and a changed `App.test.tsx` asked for a browser as if it were the page";
+
+  override async run(t: TestRun): Promise<void> {
+    for (const file of ["page.htm", join("styles", "main.sass"), join("styles", "theme.less")]) {
+      this.redirectHome();
+      this.workspace = this.tempDir("magentra-browser-ext-");
+      const engine = await startScriptedEngine({
+        workspace: this.workspace,
+        turns: [
+          { toolCalls: [{ id: "w1", name: "Write", input: { file_path: join(this.workspace, file), content: "x\n" } }] },
+          { text: "done", stopReason: "end_turn" },
+          { text: "done", stopReason: "end_turn" },
+          { text: "It stays unverified.", stopReason: "end_turn" },
+        ],
+      });
+      try {
+        const outcome = await engine.runTurn("style the page");
+        t.assert.deepEqual([...outcome.errors], []);
+        t.assert.equal(outcome.notes.includes("↻ nothing was run — verifying the change for real"), true, `${file} is code: an unrun change to it is reminded`);
+        t.assert.equal(outcome.notes.includes(NOTE), true, `${file} is part of the page: it is sent to a browser too`);
+      } finally {
+        await engine.close();
+      }
+    }
+
+    for (const file of [join("src", "App.test.tsx"), join("src", "Button.spec.jsx"), join("src", "Card.stories.tsx")]) {
+      const { reminders, calls } = await this.turn(file, "echo ran");
+      t.assert.equal(reminders.length, 0, `${file} is a test of the page, not the page`);
+      t.assert.equal(calls, 3);
+      await this.tearDown();
+    }
+  }
+}
+
+registerFeatureTests(
+  new TheShippedText(),
+  new APageCheckedOnlyFromOutside(),
+  new ABrowserRunSettlesIt(),
+  new AFailedScreenshotReadIsNotEvidence(),
+  new OnlyARealRunCounts(),
+  new ItsOwnFuse(),
+  new WhichFilesArePages(),
+);

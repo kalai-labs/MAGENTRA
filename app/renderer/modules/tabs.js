@@ -44,6 +44,7 @@ const TAB_ACCESSORS = [
   ["workspaceWorktree", () => workspaceWorktree, (v) => { workspaceWorktree = v; }, () => null],
   ["currentSessionId", () => currentSessionId, (v) => { currentSessionId = v; }, () => null],
   ["sessionSummaries", () => sessionSummaries, (v) => { sessionSummaries = v; }, () => []],
+  ["sessionListOnFirstOutput", () => sessionListOnFirstOutput, (v) => { sessionListOnFirstOutput = v; }, () => false],
   // background (non-turn) work
   ["backgroundJobs", () => backgroundJobs, (v) => { backgroundJobs = v; }, () => new Set()],
   ["backgroundJobMeta", () => backgroundJobMeta, (v) => { backgroundJobMeta = v; }, () => new Map()],

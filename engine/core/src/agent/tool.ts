@@ -119,8 +119,8 @@ export interface ToolDefinition<I = unknown> {
    * "workspace" when every deletion target provably resolves inside the
    * session workspace — such calls skip the deletion guard while OVERDRIVE is
    * active. "protected" when a target is a `.magentra` state directory —
-   * such calls ALWAYS ask, in every mode, beating the "allow deletions"
-   * setting, explicit allow rules, and OVERDRIVE. Anything unprovable is
+   * such calls ask in every mode but OVERDRIVE, beating the "allow deletions"
+   * setting and explicit allow rules. Anything unprovable is
    * "unknown" and keeps the ordinary guard. Receives the tool context because
    * only the tool knows its own effective cwd (Bash tracks `cd` across
    * calls). Absent = always "unknown".

@@ -63,21 +63,70 @@ class TheEngineStampsItsFrames extends FsTest {
     t.assert.deepEqual([...turn.errors], []);
 
     const stamped = turn.events.filter(
-      (e): e is Extract<CoreEvent, { type: "turn_started" | "tool_call_started" | "tool_call_finished" }> =>
-        e.type === "turn_started" || e.type === "tool_call_started" || e.type === "tool_call_finished",
+      (e): e is Extract<CoreEvent, { type: "turn_started" | "tool_call_started" | "tool_call_finished" | "turn_finished" }> =>
+        e.type === "turn_started" || e.type === "tool_call_started" || e.type === "tool_call_finished" || e.type === "turn_finished",
     );
-    t.assert.equal(stamped.length, 5, "one turn start, two starts and two finishes");
+    t.assert.equal(stamped.length, 6, "one turn start, two starts, two finishes and one turn end");
     for (const e of stamped) {
       t.assert.equal(typeof e.at, "number", `${e.type} carries the engine's time`);
       t.assert.ok(e.at! >= before && e.at! <= after, `${e.type}.at lies inside the turn's own span`);
     }
-    const times = stamped.map((e) => e.at!);
-    t.assert.deepEqual(times, [...times].sort((a, b) => a - b), "and the stamps run forward in the order the frames were sent");
+    // The turn's start comes first and its end last. Between them each call's
+    // finish is its OWN time, so two parallel calls may finish in either order
+    // — only start ≤ finish holds per call.
+    const turnStart = stamped.find((e) => e.type === "turn_started")!.at!;
+    const turnEnd = stamped.find((e) => e.type === "turn_finished")!.at!;
+    for (const e of stamped) {
+      t.assert.ok(e.at! >= turnStart, `${e.type} is not stamped before the turn started`);
+      t.assert.ok(e.at! <= turnEnd, `${e.type} is not stamped after the turn ended`);
+    }
     for (const id of ["c1", "c2"]) {
       const start = stamped.find((e) => e.type === "tool_call_started" && e.id === id)!;
       const end = stamped.find((e) => e.type === "tool_call_finished" && e.id === id)!;
       t.assert.ok(end.at! >= start.at!, `call ${id} finishes after it starts`);
     }
+  }
+}
+
+/* ---- a call's end is sent when the call ends ------------------------- */
+
+class EachCallFinishesOnItsOwn extends FsTest {
+  readonly featureId = FEATURE;
+  readonly invariant = INVARIANT;
+  readonly id = "a-calls-finished-frame-goes-out-when-it-finishes-not-when-its-batch-does";
+  readonly whyItExists =
+    "every tool_call_finished of a batch was held until the whole batch ended, so a fast Read beside a long Bash showed 'running' on screen, and its logged duration stretched to the batch's end";
+  override readonly timeoutMs: number = 60_000;
+
+  #engine: ScriptedEngine | undefined;
+
+  override async tearDown(): Promise<void> {
+    await this.#engine?.close();
+  }
+
+  override async run(t: TestRun): Promise<void> {
+    this.redirectHome();
+    // The slow call comes FIRST in the batch: a batch-end flush would send the
+    // frames in call order, the slow one's end ahead of the fast one's.
+    this.#engine = await startScriptedEngine({
+      workspace: this.tempDir("magentra-clock-batch-"),
+      turns: [
+        {
+          toolCalls: [
+            { id: "slow", name: "Bash", input: { command: "sleep 0.5 && echo slept", description: "wait a moment", run_in_background: false } },
+            { id: "fast", name: "Glob", input: { pattern: "*.nothing" } },
+          ],
+        },
+        { text: "done" },
+      ],
+    });
+    const turn = await this.#engine.runTurn("wait and look");
+    t.assert.deepEqual([...turn.errors], []);
+    const ends = turn.events.filter((e): e is Extract<CoreEvent, { type: "tool_call_finished" }> => e.type === "tool_call_finished");
+    t.assert.deepEqual(ends.map((e) => e.id), ["fast", "slow"], "the fast call's end goes out first, while the slow call is still running");
+    const fast = ends.find((e) => e.id === "fast")!;
+    const slow = ends.find((e) => e.id === "slow")!;
+    t.assert.ok(slow.at! - fast.at! >= 300, `the fast call's stamp is its own finish, not the batch's (${fast.at} vs ${slow.at})`);
   }
 }
 
@@ -178,7 +227,40 @@ class LateFramesShowTheRealDurations extends UiTest {
     t.assert.equal(shown.task, "1m55s", "the task ran from 120 s ago to 5 s ago — its duration, not the delivery gap");
     t.assert.equal(shown.tool, "30s", "the call started 40 s ago and finished 10 s ago");
     t.assert.match(shown.timer, /^26:[23]\d$/, `the turn began 26½ minutes ago, so the timer reads 26:3x, not 0:00 — it read "${shown.timer}"`);
+
+    // The turn ended 5 s ago on the engine's clock, and its end is handled now.
+    // The work group spans its first call's start to the turn's end: 35 s.
+    await app.evaluateInMain(`win.webContents.send("engine:event", ${JSON.stringify({
+      type: "turn_finished",
+      turnId: "t_1",
+      stopReason: "end_turn",
+      usage: { inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      at: now - 5_000,
+      tabId,
+    })}); return true;`);
+    const group = await this.waitFor<string>(
+      app,
+      `(() => { const g = [...document.querySelectorAll(".work-group.done .work-group-label")].pop(); return g ? g.textContent : null; })()`,
+      "the closed work group",
+    );
+    t.assert.equal(group, "Agent worked · 1 op · 35s", "the group's time is the engine's span, not the moment its end was handled");
+
+    // Another session in this tab reuses task id 1, and its task went from
+    // pending straight to completed: the engine gives it no start, so it shows
+    // no duration — never its end minus the earlier session's start.
+    await app.evaluateInMain(`win.webContents.send("engine:event", ${JSON.stringify({
+      type: "task_list_updated",
+      tasks: [{ id: "1", subject: "Tidy up", description: "d", status: "completed", blocks: [], blockedBy: [], completedAt: now - 1_000 }],
+      tabId,
+    })}); return true;`);
+    const reused = await this.waitFor<string>(
+      app,
+      `(() => { const item = document.querySelector("#taskList .task-item"); return item && item.textContent.includes("Tidy up") ? item.querySelector(".t-time").textContent : null; })()`,
+      "the reused task id on the rail",
+    );
+    t.assert.equal(reused, "", "a task the engine never saw start carries no borrowed start");
   }
 }
 
-registerFeatureTests(new TheEngineStampsItsFrames(), new TheTaskStoreKeepsTheTimes(), new LateFramesShowTheRealDurations());
+registerFeatureTests(new TheEngineStampsItsFrames(), new EachCallFinishesOnItsOwn(), new TheTaskStoreKeepsTheTimes(), new LateFramesShowTheRealDurations());

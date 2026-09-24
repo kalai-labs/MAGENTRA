@@ -274,6 +274,25 @@ class ANearMissNamesWhereItDiffers extends EditTest {
 
     const nothing = await runTool(editTool, { file_path: path, old_string: "completely different text that is nowhere", new_string: "x" }, this.ctx());
     t.assert.match(resultText(nothing), /Not even its beginning appears in the file/, "and a snippet that shares nothing is told to re-read");
+
+    // A SHORT anchor — what the Edit description now asks for — with one slip
+    // near its end is quoted at the slip, never told that nothing matched.
+    const short = await runTool(editTool, { file_path: path, old_string: "json.laod(f)", new_string: "x" }, this.ctx());
+    t.assert.match(resultText(short), /matches the file for its first 6 of 12 characters/, `a short anchor's slip is located: ${resultText(short)}`);
+    t.assert.match(resultText(short), /then old_string has "aod\(f\)" where the file \(line 4\) has "oad\(f\)/);
+
+    // An empty old_string is named as empty, not as a zero-length match.
+    const empty = await runTool(editTool, { file_path: path, old_string: "", new_string: "x" }, this.ctx());
+    t.assert.equal(empty.isError, true);
+    t.assert.match(resultText(empty), /old_string is empty/, resultText(empty));
+    t.assert.doesNotMatch(resultText(empty), /first 0 of 0/);
+
+    // A difference inside an emoji is quoted as the whole character, never half a surrogate pair.
+    const emojiFile = this.file("emoji.md", "status: \u{1F600} ready\n");
+    this.state.recordRead(emojiFile);
+    const emoji = await runTool(editTool, { file_path: emojiFile, old_string: "status: \u{1F601} ready", new_string: "x" }, this.ctx());
+    t.assert.doesNotMatch(resultText(emoji), /\\ud83[de]/i, `no lone surrogate escape in the hint: ${resultText(emoji)}`);
+    t.assert.match(resultText(emoji), /then old_string has "\u{1F601} ready" where the file \(line 1\) has "\u{1F600} ready/u, resultText(emoji));
   }
 }
 

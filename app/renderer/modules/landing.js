@@ -58,6 +58,16 @@ function requestSessionList() {
   window.magentra.send({ type: "list_sessions" }, tabId);
 }
 
+/** The turn's first model output — a delta, a tool call, or a tool's permission
+ *  card, which only the turn's own model call can raise (the clarify round's
+ *  question cards come before the message is written, so they do not count):
+ *  its first message is on disk by now. */
+function listSessionsOnFirstOutput() {
+  if (!sessionListOnFirstOutput) return;
+  sessionListOnFirstOutput = false;
+  requestSessionList();
+}
+
 function formatSessionDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "unknown date";
@@ -319,8 +329,11 @@ function onTurnStarted(event) {
   }
   startNowLine(event && event.at);
   // The first message is what puts a session on disk: list it now, not after
-  // a turn that may run for an hour (the field run's list stayed empty).
+  // a turn that may run for an hour (the field run's list stayed empty). With
+  // the clarify round on (the default) that message is written only after a
+  // model call, so the turn's first output asks once more.
   requestSessionList();
+  sessionListOnFirstOutput = true;
 }
 
 /**
@@ -443,9 +456,10 @@ function onTurnFinished(event) {
 
   finalizeThinkingEl();
   finalizeAssistantEl();
-  closeWorkGroup();
+  closeWorkGroup(event && event.at);
   // The turn changed the session's summary (its message count, its time).
   requestSessionList();
+  sessionListOnFirstOutput = false;
 
   finalizeAllAgentCards();
   // Route through updateAgentMeter (focus-guarded) so a background tab's turn end
@@ -469,6 +483,7 @@ function onTurnFinished(event) {
 }
 
 function onTextDelta(text) {
+  if (text) listSessionsOnFirstOutput();
   if (busy && nowVerb !== "responding") setNowActivity("responding", "");
   if (!streamEl) return;
   // The model has moved from reasoning to answering — close the reasoning
@@ -514,6 +529,7 @@ function onTextDelta(text) {
 // "thinking · 45s" from the start of the stretch: a token there was noise, and
 // restarting the timer on every one kept it at 0s.
 function onThinkingDelta(text) {
+  listSessionsOnFirstOutput();
   if (busy && nowVerb !== "thinking") setNowActivity("thinking", "");
   if (!streamEl) return;
   if (!currentThinkingEl) {
@@ -525,6 +541,7 @@ function onThinkingDelta(text) {
 }
 
 function onToolCallStarted(event) {
+  listSessionsOnFirstOutput();
   toolCountThisTurn++;
   // Reasoning for this segment is done once the model acts or speaks.
   finalizeThinkingEl();
@@ -551,7 +568,7 @@ function onToolCallStarted(event) {
   const row = createToolRow(event.tool, event.description, event.input);
   // The engine's clock, when it sent one: a row handled late still times the call.
   if (typeof event.at === "number") row.startMs = event.at;
-  const target = workStream();
+  const target = workStream(event.at);
   withAutoScroll(() => {
     target.appendChild(row.rowEl);
     target.appendChild(row.detailEl);
@@ -578,6 +595,10 @@ function onToolCallFinished(event) {
 
   const row = toolRows.get(event.id);
   if (row) finishToolRow(row, event.isError, event.resultPreview, event.at);
+  // The work group ends at its last call's own finish (engine clock).
+  if (currentWorkGroup && typeof event.at === "number") {
+    currentWorkGroup.lastAt = Math.max(currentWorkGroup.lastAt || 0, event.at);
+  }
 
   if (event.tool === "Agent" || event.tool === "Workflow") {
     finalizeAllAgentCards();
@@ -674,6 +695,9 @@ if (sessionModalEl) {
 }
 
 function onPermissionRequest(event) {
+  // A tool call that asks sends no tool_call_started before its card: the card
+  // is then the turn's first model output.
+  listSessionsOnFirstOutput();
   permissionQueue.push(event);
   if (!activePermission) showNextPermission();
 }

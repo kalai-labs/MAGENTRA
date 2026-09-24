@@ -110,6 +110,51 @@ class OnlySecretsAreHidden extends LogTest {
     const text = JSON.stringify(hidden);
     t.assert.equal(text.includes("abc"), false, `no secret may survive: ${text}`);
     t.assert.equal(text.includes("sk-proj"), false, "a key-shaped value is hidden whatever its key");
+
+    // Compound and plural names, and the other providers' key shapes. The keys
+    // are assembled here so no credential-shaped literal sits in the source.
+    const fake = (prefix: string, n = 32): string => prefix + "Q7x".repeat(Math.ceil(n / 3)).slice(0, n);
+    const shapes = {
+      apiKeys: ["abc"],
+      secrets: { db: "abc" },
+      privateKeyPem: "abc",
+      fireworks: fake("fw_"),
+      huggingface: fake("hf_"),
+      groq: fake("gsk_"),
+      anthropic: fake("sk-ant-"),
+      openrouter: fake("sk-or-v1-"),
+    };
+    const shapesText = JSON.stringify(logging.redact(shapes));
+    for (const [name, value] of Object.entries(shapes)) {
+      const raw = typeof value === "string" ? value : JSON.stringify(value);
+      t.assert.equal(shapesText.includes(raw.replace(/^\["?|"?\]$/g, "")), false, `${name} must be hidden: ${shapesText}`);
+    }
+
+    // A credential INSIDE a longer string — a Bash command, a .env Write, a
+    // command's output, a user's message — is hidden where it sits; the rest
+    // of the line stays readable.
+    const bearer = fake("sk-ant-");
+    const embedded = logging.redact({
+      type: "tool_call_started",
+      input: {
+        command: `curl -s -H "Authorization: Bearer ${bearer}" https://api.example.test/v1/models`,
+        content: `OPENAI_API_KEY=${fake("sk-proj-")}\nDB_PASSWORD=hunter2hunter2\nDATABASE_URL=postgres://app:${"s3cr3t"}pw@db.local/app\n`,
+      },
+      output: `token: ${fake("gh" + "p_", 36)} aws ${"AKIA" + "IOSFODNN7EXAMPLE"} jwt ${"eyJ" + "hbGciOiJI"}.${"eyJzdWIiOiIx"}.${"SflKxwRJSMeK"}`,
+      text: `my key is ${fake("sk-ant-")}, use it`,
+    });
+    const embeddedText = JSON.stringify(embedded);
+    for (const secret of [bearer, fake("sk-proj-"), "hunter2hunter2", "s3cr3tpw", fake("gh" + "p_", 36), "AKIAIOSFODNN7EXAMPLE", "SflKxwRJSMeK"]) {
+      t.assert.equal(embeddedText.includes(secret), false, `"${secret.slice(0, 12)}…" inside a longer string must be hidden: ${embeddedText}`);
+    }
+    t.assert.match(embeddedText, /curl -s -H \\"Authorization: Bearer \[redacted\]\\" https:\/\/api\.example\.test/, "the command around it stays readable");
+    t.assert.match(embeddedText, /OPENAI_API_KEY=\[redacted\]/);
+    t.assert.match(embeddedText, /my key is \[redacted\], use it/);
+    t.assert.equal(
+      JSON.stringify(logging.redact({ command: "npm test -- --max-tokens=4096 && echo MAX_TOKENS=5" })).includes("[redacted]"),
+      false,
+      "an ordinary command that only mentions tokens keeps every word",
+    );
   }
 }
 
@@ -169,6 +214,32 @@ class DeltasAreFolded extends LogTest {
     t.assert.equal(runs.reduce((n, l) => n + Number(l.data?.["chars"]), 0), chars, "and every character");
     const order = lines.map((l) => l.data?.["type"]);
     t.assert.equal(order.lastIndexOf("thinking_delta") < order.indexOf("tool_call_started"), true, "the run is written before the frame that ended it");
+
+    // A run's head is kept and the marker counts exactly what was left out.
+    const run = runs[0]!;
+    const head = String(run.data?.["text"]);
+    const marker = /…\[\+(\d+) chars\]$/.exec(head);
+    t.assert.ok(marker, `a long run says how much of its text went unwritten: ${head.slice(-40)}`);
+    t.assert.ok(head.length <= 1000, "and stays inside the string cap, so redact() does not cut it again");
+    t.assert.equal(Number(marker![1]) + head.length - marker![0].length, Number(run.data?.["chars"]), "head + counted rest = every character of the run");
+
+    // Two tabs streaming at once: each run is that tab's, in that tab's log.
+    const a = this.tempDir("magentra-log-fold-a-");
+    const b = this.tempDir("magentra-log-fold-b-");
+    for (let i = 0; i < 5; i++) {
+      logging.logEngineFrame({ type: "text_delta", text: "alpha " }, { workspace: a, tabId: "tabA" });
+      logging.logEngineFrame({ type: "text_delta", text: "beta " }, { workspace: b, tabId: "tabB" });
+    }
+    // A tab's own non-engine line ends that tab's run first, so the log keeps the order.
+    logging.logEvent("ui", { type: "interrupt" }, { workspace: a, tabId: "tabA" });
+    logging.flushLog();
+    const inA = parsed(a);
+    const inB = parsed(b);
+    const runA = inA.filter((l) => l.data?.["type"] === "text_delta");
+    const runB = inB.filter((l) => l.data?.["type"] === "text_delta");
+    t.assert.deepEqual(runA.map((l) => [l.data?.["deltas"], l.data?.["text"]]), [[5, "alpha alpha alpha alpha alpha "]], "tab A's deltas only, all five, in A's log");
+    t.assert.deepEqual(runB.map((l) => [l.data?.["deltas"], l.data?.["text"]]), [[5, "beta beta beta beta beta "]], "tab B's deltas only, all five, in B's log");
+    t.assert.equal(inA.findIndex((l) => l.data?.["type"] === "text_delta") < inA.findIndex((l) => l.ch === "ui"), true, "the run is written before the tab's next line");
   }
 }
 
@@ -189,6 +260,23 @@ class ToolsAreTimed extends LogTest {
 
     const finished = parsed(workspace).find((l) => l.data?.["type"] === "tool_call_finished");
     t.assert.ok(Number(finished?.data?.["durationMs"]) >= 50, `the finished line says how long the call ran: ${JSON.stringify(finished)}`);
+
+    // When the frames carry the engine's own times, those are the duration: a
+    // batch's finished frames can reach main long after each call ended.
+    logging.logEngineFrame({ type: "tool_call_started", id: "c10", tool: "Read", input: {}, at: 1_000 }, target);
+    logging.logEngineFrame({ type: "tool_call_finished", id: "c10", isError: false, resultPreview: "ok", at: 1_250 }, target);
+    // The start map is bounded: calls that never finish (a dead engine) do not pile up.
+    for (let i = 0; i < 1_001; i++) logging.logEngineFrame({ type: "tool_call_started", id: `open${i}`, tool: "Bash", input: {} }, target);
+    logging.logEngineFrame({ type: "tool_call_finished", id: "open0", isError: false, resultPreview: "late" }, target);
+    logging.logEngineFrame({ type: "tool_call_finished", id: "open1000", isError: false, resultPreview: "ok" }, target);
+    logging.flushLog();
+    const lines = parsed(workspace);
+    const engineTimed = lines.find((l) => l.data?.["type"] === "tool_call_finished" && l.data?.["id"] === "c10");
+    t.assert.equal(engineTimed?.data?.["durationMs"], 250, "the engine's clock, not the time the frame reached main");
+    const evicted = lines.find((l) => l.data?.["type"] === "tool_call_finished" && l.data?.["id"] === "open0");
+    t.assert.equal(evicted?.data?.["durationMs"], undefined, "the oldest start was dropped once 1,000 were open");
+    const newest = lines.find((l) => l.data?.["type"] === "tool_call_finished" && l.data?.["id"] === "open1000");
+    t.assert.equal(typeof newest?.data?.["durationMs"], "number", "the newest start is still there");
   }
 }
 

@@ -3,7 +3,7 @@
   "name": "Guard status lines tell the truth",
   "area": "engine",
   "section": "OVERDRIVE — fully-autonomous stance",
-  "prose": "every line that tells the user what the deletion guard and OVERDRIVE do — the engine's status line when the guard is switched, the `/overdrive` lines, the desktop footer hint and its glossary — says what the permission engine really does in that stance: OVERDRIVE turns the deletion guard off, and outside it commands run while deletions ask.",
+  "prose": "every line that tells the user what the deletion guard and OVERDRIVE do — the engine's status line when the guard is switched, the `/overdrive` lines, the desktop footer hint and its glossary, the OVERDRIVE dialog, the safety note and the tour — says what the permission engine really does in that stance: OVERDRIVE turns the deletion guard off, and outside it commands run while deletions ask.",
   "kinds": [
     "proc",
     "ui"

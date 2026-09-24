@@ -3,7 +3,7 @@
   "name": "The console reads plainly",
   "area": "app",
   "section": "Desktop app",
-  "prose": "what the console shows can be told apart and read in full: reasoning stays collapsed by default and apart from the tool rows and answers around it; a provider retry is announced on the now-line; one long unbroken line never gives the transcript a sideways scroll bar; and the model picker names a model by its own name, with the full id on hover, never as \"Custom…\" over a truncated path.",
+  "prose": "what the console shows can be told apart and read in full: reasoning stays collapsed by default and apart from the tool rows and answers around it; a provider retry is announced on the now-line of its own console or pane, and clears there; one long unbroken line never gives the transcript a sideways scroll bar; and the model picker names a model by its own name, with the full id on hover, never as \"Custom…\" over a truncated path, and offers only the focused tab's model.",
   "kinds": [
     "ui"
   ],

@@ -3,8 +3,9 @@
   "name": "Long silent work stays visible",
   "area": "engine",
   "section": "Runtime — the turn loop",
-  "prose": "a long stretch of reasoning never looks like a frozen window, and never goes on unannounced. The live reasoning block's summary counts time and size (\"reasoning · 8m12s · ~12k tokens\") and the now-line's timer reads in minutes; and once the model has reasoned at length through tool rounds without a word to the user, its next request asks for one sentence about what it is doing — once per silent stretch.",
+  "prose": "a long stretch of reasoning never looks like a frozen window, and never goes on unannounced. The live reasoning block's summary counts time and size (\"reasoning · 8m12s · ~12k tokens\") and the now-line's timer reads in minutes, on the desktop and in the terminal; and once the model has reasoned at length through tool rounds without a word to the user, its next request asks for one sentence about what it is doing — once per silent stretch.",
   "kinds": [
+    "pure",
     "fs",
     "ui"
   ],
@@ -18,6 +19,8 @@
   "tests": [
     "a-long-silent-stretch-gets-one-reminder-on-the-next-request-and-no-more",
     "text-to-the-user-ends-the-stretch-and-a-round-with-text-never-gets-the-reminder",
+    "a-response-cut-off-mid-reasoning-counts-and-whitespace-is-not-a-word-to-the-user",
+    "the-terminal-now-line-reads-a-long-stretch-in-minutes-as-the-desktop-does",
     "the-reasoning-summary-counts-time-and-size-and-the-now-line-reads-in-minutes"
   ],
   "freshness": {

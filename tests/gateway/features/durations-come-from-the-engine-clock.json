@@ -3,7 +3,7 @@
   "name": "Durations come from the engine's clock",
   "area": "protocol",
   "section": "Protocol & host",
-  "prose": "a duration on screen is measured where the work happened, not where the frame happened to land. The engine stamps `turn_started`, `tool_call_started` and `tool_call_finished` with `at` (epoch ms) and keeps `startedAt`/`completedAt` on each task, so the task rail, the tool rows and the turn timer read the same numbers however late a frame is delivered, and a resumed session's tasks keep theirs. A frame without the stamp (an older engine) falls back to the time it arrived.",
+  "prose": "a duration on screen is measured where the work happened, not where the frame happened to land. The engine stamps `turn_started`, `tool_call_started`, `tool_call_finished` and `turn_finished` with `at` (epoch ms) and keeps `startedAt`/`completedAt` on each task, so the task rail, the tool rows, the work group and the turn timer read the same numbers however late a frame is delivered, and a resumed session's tasks keep theirs. A frame without the stamp (an older engine) falls back to the time it arrived.",
   "kinds": [
     "fs",
     "ui"
@@ -19,6 +19,7 @@
   "deferred": false,
   "tests": [
     "turn-and-tool-frames-carry-the-engines-time-in-order",
+    "a-calls-finished-frame-goes-out-when-it-finishes-not-when-its-batch-does",
     "a-task-keeps-when-it-started-and-finished-and-a-resume-keeps-them-too",
     "frames-delivered-late-show-the-engines-durations-not-the-delivery-gap"
   ],

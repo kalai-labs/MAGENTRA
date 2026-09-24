@@ -37,7 +37,7 @@ const PROCESS_KILL_WARNING =
 
 /**
  * Paths a file-editing tool may never write without an explicit confirmation,
- * in every stance (OVERDRIVE included). Two families:
+ * in every stance except OVERDRIVE, which turns every asking guard off. Two families:
  *   - `.magentra/**` — MAGENTRA's own state (settings, sessions, transcripts,
  *     team files). Corrupting it breaks the workspace, not just the task.
  *   - `.env`, `.env.*` — secrets. An accidental overwrite is unrecoverable and
@@ -191,7 +191,7 @@ export class PermissionEngine {
      *  edit is not auto-safe and must ask (in-workspace edits still auto-run). */
     editOutsideWorkspace?: boolean,
     /** The absolute path when a file-edit call targets a protected file
-     *  (`.magentra/**` or `.env*`) — such an edit always asks, in every stance. */
+     *  (`.magentra/**` or `.env*`) — such an edit asks in every stance but OVERDRIVE. */
     editProtectedPath?: string,
   ): Promise<PermissionOutcome> {
     if (matches(this.deny, tool.name, subject)) {
@@ -204,8 +204,8 @@ export class PermissionEngine {
 
     // A deliberate narrow grant: an EXPLICIT subject-scoped allow rule in the
     // user's settings (e.g. `Bash(rm -rf ./tmp/*)`), or an earlier "always
-    // allow" on this exact subject — the one standing override of the process-
-    // kill and deletion guards. Broad grants (bare tool, `Tool(*)`, session
+    // allow" on this exact subject — the one standing override of the deletion
+    // guard (the process-kill guard's is narrower still, below). Broad grants (bare tool, `Tool(*)`, session
     // allows) never are, nor is a derived command-shape grant ("git push …"):
     // a shape from a benign approval must never let a later destructive
     // variant ("git push --force") skip a guard.
@@ -220,8 +220,13 @@ export class PermissionEngine {
     // "Allow deletions" switch does not touch it: a kill is not a deletion. An
     // approval does not end the check — a command that also deletes still
     // meets the deletion guard below.
+    // Its override is narrower than the deletion guard's: a rule for that EXACT
+    // command. A glob rule written for other work (`Bash(cd *)`, `Bash(npm *)`)
+    // also matches `cd app && taskkill //IM python.exe`, and in OVERDRIVE that
+    // would run the field-test command with nothing asked.
     let killApproval: { note?: string } | undefined;
-    const killSubject = explicitlyAllowed ? undefined : tool.processKillSubject?.(input);
+    const killOverride = matchesLiteral(this.allow, tool.name, subject) || this.matchesExact(tool.name, subject, true);
+    const killSubject = killOverride ? undefined : tool.processKillSubject?.(input);
     if (killSubject !== undefined) {
       if (this.overdrive) {
         return {
@@ -422,9 +427,9 @@ export class PermissionEngine {
   }
 
   /**
-   * Allow-all. Every gate that still exists is target-shaped (deletion guard,
-   * protected-path guard, out-of-workspace edits) or user-authored (deny
-   * rules), and all of them are resolved before this point. Kept as a method
+   * Allow-all. Every gate that still exists is target-shaped (process-kill
+   * guard, deletion guard, protected-path guard, out-of-workspace edits) or
+   * user-authored (deny rules), and all of them are resolved before this point. Kept as a method
    * rather than inlined so the `"ask"` half of the switch below stays live for
    * the out-of-workspace downgrade, and so restoring a class-based stance is a
    * one-line change.
@@ -461,6 +466,17 @@ function matchesExplicit(rules: ParsedRule[], tool: string, subject: string | un
       subject !== undefined &&
       rule.pattern.test(subject),
   );
+}
+
+/**
+ * True only for a subject-scoped rule with no wildcard that names this exact
+ * subject — `Bash(taskkill /F /IM myapp.exe)`. The process-kill guard's override.
+ */
+function matchesLiteral(rules: ParsedRule[], tool: string, subject: string | undefined): boolean {
+  return rules.some((rule) => {
+    const inner = /^[A-Za-z_][\w-]*\((.*)\)$/.exec(rule.raw.trim())?.[1];
+    return rule.tool === tool && inner !== undefined && !inner.includes("*") && inner === subject;
+  });
 }
 
 function globToRegex(glob: string): RegExp {

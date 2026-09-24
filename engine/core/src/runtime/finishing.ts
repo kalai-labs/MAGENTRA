@@ -93,9 +93,20 @@ export function uiFilesAmong(paths: Iterable<string>): string[] {
 /** A command that drives a real or headless browser — evidence of the page as a user meets it. */
 const BROWSER_RUN = /\b(?:playwright|puppeteer|selenium|webdriver|cypress|chromedp|wkhtmltoimage)\b|--headless\b|--screenshot\b/i;
 
-/** Whether a shell command drives a browser. */
+/** Heads that only READ or print a command's words: `cat playwright.config.ts` runs no browser. */
+const NOT_A_RUN = /^(?:cat|less|more|head|tail|grep|egrep|rg|ag|ls|dir|find|echo|printf|which|where|type|code|vi|vim|nano|open|stat|wc|file)$/i;
+/** Installing or updating a browser driver is not driving one. */
+const INSTALL = /^(?:(?:npm|pnpm|yarn|bun)\s+(?:i|install|add|ci|remove|rm|uninstall|update|up)\b|pip3?\s+install\b|python3?\s+-m\s+(?:pip|playwright)\s+install\b|(?:npx|bunx|pnpm\s+dlx|yarn\s+dlx)\s+(?:-y\s+)?playwright\s+install\b|playwright\s+install\b|brew\s+install\b|apt(?:-get)?\s+install\b)/i;
+
+/** Whether a shell command drives a browser — one of its commands, not a mention of one. */
 export function looksLikeBrowserRun(command: string): boolean {
-  return BROWSER_RUN.test(command);
+  return command.split(/&&|\|\||[;|\n]/).some((segment) => {
+    const s = segment.trim().replace(/^(?:sudo|env|time|nohup)\s+/, "");
+    if (!BROWSER_RUN.test(s)) return false;
+    const head = s.split(/\s+/)[0]?.split(/[\\/]/).pop() ?? "";
+    if (NOT_A_RUN.test(head) || INSTALL.test(s)) return false;
+    return !/(?:^|\s)--?(?:version|help|v|h)\b/.test(s);
+  });
 }
 
 /** How many changed files a rung names before it starts counting instead. A
@@ -323,14 +334,16 @@ function sentencesOf(text: string): string[] {
 }
 
 /** A sentence that reports something failing. */
-const SYMPTOM = /\b(?:never|does not|doesn't|do not|don't|is not|isn't|are not|aren't|won't|can't|cannot|fails?|failed|failing|broken|crash(?:es|ed|ing)?|throws?|threw|stuck|no longer)\b/i;
+const SYMPTOM = /\b(?:never|does not|doesn't|do not|don't|did not|didn't|is not|isn't|are not|aren't|was not|wasn't|were not|weren't|won't|can't|cannot|fails?|failed|failing|broken|crash(?:es|ed|ing)?|throws?|threw|stuck|no longer|missing|invisible|wrong|incorrect(?:ly)?)\b|\bno (?:\w+ )?(?:feedback|output|response|effect|damage|sound)\b/i;
+/** Sentences the symptom words match that report no failure: a plan, a success, code. */
+const NOT_A_SYMPTOM = /\b(?:don't|do not|doesn't|does not|didn't|did not|won't|will not) (?:need|have to|want)\b|\bnever mind\b|\bno longer (?:fails?|crash\w*|throws?|breaks?|errors?|hangs?)\b|\bno longer (?:emits?|shows?|prints?|logs?|has) (?:any )?(?:warnings?|errors?)\b|\b(?:doesn't|does not) exist yet\b|\bthrow new\b/i;
 
 /** A sentence that leaves something open. */
-const HEDGE = /\b(?:may|might|could) still\b|\bnot (?:yet )?(?:verified|tested|checked|confirmed)\b|\bun(?:verified|tested|confirmed)\b|\b(?:could not|couldn't) (?:verify|test|run|confirm|check)\b|\bshould (?:now )?work\b|\bprobably (?:works|fine)\b|\bnot sure\b/i;
+const HEDGE = /\b(?:may|might|could) still\b|\b(?:may|might) remain\b|\bnot (?:yet )?(?:been )?(?:verified|tested|checked|confirmed)\b|\bun(?:verified|tested|confirmed)\b|\b(?:could not|couldn't|did not|didn't|have not|haven't|was not able to|wasn't able to|unable to) (?:yet )?(?:verif(?:y|ied)|test(?:ed)?|run|confirm(?:ed)?|check(?:ed)?)\b|\bshould (?:now )?work\b|\bshould be (?:fine|ok|okay|good)\b|\b(?:probably|likely) (?:works|fine|ok)\b|\bnot sure\b/i;
 
 /** The failures a model reported in `text` — what the self-check must see re-tested. */
 export function findSymptoms(text: string): string[] {
-  return sentencesOf(text).filter((s) => SYMPTOM.test(s) && !HEDGE.test(s));
+  return sentencesOf(text).filter((s) => SYMPTOM.test(s) && !NOT_A_SYMPTOM.test(s) && !HEDGE.test(s));
 }
 
 /** The sentences of a final answer that leave something open. At most five. */

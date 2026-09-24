@@ -1244,7 +1244,7 @@ function applyValidatedConnection(workspace, validated, visionSelection) {
 
   currentConfig = { ...currentConfig, model };
   writeConfig(currentConfig);
-  logEvent("sys", { ev: "env-written", provider });
+  logEvent("sys", { ev: "env-written", provider }, { workspace });
 
   // A live engine is re-pointed, not respawned: same session, same conversation,
   // new endpoint from the next request on. The frame carries the key because the
@@ -1286,7 +1286,7 @@ function applyValidatedConnection(workspace, validated, visionSelection) {
       },
       tab.id,
     );
-    logEvent("sys", { ev: "connection-swapped", provider, live: true, vision: vision.connection ? vision.enabled === true : false });
+    logEvent("sys", { ev: "connection-swapped", provider, live: true, vision: vision.connection ? vision.enabled === true : false }, tabLog(tab));
     // The level rides back so the composer's effort control can show it: a live
     // swap emits no session_started, which is where it would otherwise arrive.
     return { ok: true, live: true, model, reasoningEffort: reasoningEffort || "" };
@@ -1506,7 +1506,7 @@ ipcMain.handle("profiles:apply", (_evt, payload) => {
     profileId: typeof profile.visionProfileId === "string" ? profile.visionProfileId : "",
     enabled: true,
   });
-  if (result.ok) logEvent("sys", { ev: "profile-applied", vision: Boolean(profile.visionProfileId) });
+  if (result.ok) logEvent("sys", { ev: "profile-applied", vision: Boolean(profile.visionProfileId) }, tab ? tabLog(tab) : { workspace });
   return result;
 });
 
@@ -1705,7 +1705,7 @@ ipcMain.handle("config:setModel", (evt, model) => {
   currentConfig = { ...currentConfig, model: trimmed };
   writeConfig(currentConfig);
   if (tab) tab.model = trimmed;
-  logEvent("sys", { ev: "model-changed", model: trimmed });
+  logEvent("sys", { ev: "model-changed", model: trimmed }, tabLog(tab));
   // Change the model on the LIVE session (takes effect next turn) rather than
   // respawning the engine — a restart would drop the current conversation. The
   // persisted config still makes it the default a future (re)start uses.
@@ -1772,7 +1772,7 @@ ipcMain.handle("settings:setVision", (_evt, payload) => {
 
   const live = tab ?? tabForWorkspace(workspace);
   if (live && live.child && live.child.stdin.writable) writeToEngine({ type: "set_vision", enabled }, live.id);
-  logEvent("sys", { ev: "vision-changed", enabled });
+  logEvent("sys", { ev: "vision-changed", enabled }, { workspace });
   return { ok: true, enabled, model: vision.connection.model };
 });
 

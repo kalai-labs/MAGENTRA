@@ -109,6 +109,15 @@ class RetriesAreShown extends ConsoleTest {
       "the pane's now-line",
     );
     t.assert.match(pane, /rate limited \(HTTP 429\) — retrying in 3s \(attempt 3\)/, "a tiled pane shows it on its own strip");
+
+    // The notice is a moment, not a state: it clears from THAT pane after its
+    // four seconds, although another tab's state is the live one by then.
+    const cleared = await this.waitFor<boolean>(
+      app,
+      `(() => { const ts = tabs.get(${JSON.stringify(tabId)}); const el = ts && ts.paneEl && ts.paneEl.querySelector(".pane-now-text"); return ts && ts.nowOverrideText === null && el && !el.textContent.includes("retrying") ? true : null; })()`,
+      "the background pane's retry notice to clear",
+    );
+    t.assert.equal(cleared, true, "a background pane's retry notice does not stay for the rest of the turn");
   }
 }
 
@@ -157,6 +166,29 @@ class TheModelByItsName extends ConsoleTest {
     t.assert.equal(picker.label, "glm-5p3", "the model's own name");
     t.assert.equal(picker.title, FIELD_MODEL, "with the full id on hover");
     t.assert.equal(picker.customHidden, true, "and no Custom box standing in for it");
+
+    // A second tab on another endpoint: the shared picker offers ITS model,
+    // not the first tab's — an option added for one tab is that tab's.
+    const firstTab = await app.evaluate<string>(`focusedTabId`);
+    const otherModel = "vendor/models/other-model";
+    const second = this.workspace("b", otherModel);
+    await openWorkspace(app, second);
+    await waitForSpawn(second);
+    const options = (): string => `Array.from(document.getElementById("modelSelect").options).map((o) => o.value)`;
+    const onSecond = await this.waitFor<string[]>(
+      app,
+      `(() => focusedTabId !== ${JSON.stringify(firstTab)} && activeModel === ${JSON.stringify(otherModel)} ? ${options()} : null)()`,
+      "the second tab's model in the picker",
+    );
+    t.assert.equal(onSecond.includes(otherModel), true, "the focused tab's model is offered");
+    t.assert.equal(onSecond.includes(FIELD_MODEL), false, "and the other tab's model is not");
+    await app.evaluate(`window.magentra.focusTab(${JSON.stringify(firstTab)}); true`);
+    const onFirst = await this.waitFor<string[]>(
+      app,
+      `(() => focusedTabId === ${JSON.stringify(firstTab)} && document.getElementById("modelSelect").value === ${JSON.stringify(FIELD_MODEL)} ? ${options()} : null)()`,
+      "the first tab's model back in the picker",
+    );
+    t.assert.equal(onFirst.includes(otherModel), false, "focusing back drops the second tab's model again");
   }
 }
 

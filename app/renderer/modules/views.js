@@ -343,10 +343,19 @@ function showNowOverride(text) {
   nowOverrideText = text;
   renderNowText();
   if (nowOverrideTimeoutId) clearTimeout(nowOverrideTimeoutId);
+  // The notice belongs to the tab it was shown for: four seconds later another
+  // tab's state may be the live one, so clear it inside its own tab (a
+  // background pane's notice otherwise stayed for the rest of the turn, and the
+  // timer blanked the focused tab's instead).
+  const owner = typeof liveTabId === "function" ? liveTabId() : null;
   nowOverrideTimeoutId = setTimeout(() => {
-    nowOverrideText = null;
-    nowOverrideTimeoutId = null;
-    renderNowText();
+    const clear = () => {
+      if (nowOverrideText === text) nowOverrideText = null;
+      nowOverrideTimeoutId = null;
+      renderNowText();
+    };
+    if (typeof runInTab === "function") runInTab(owner, clear);
+    else clear();
   }, 4000);
 }
 

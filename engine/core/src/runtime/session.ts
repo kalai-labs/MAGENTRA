@@ -587,6 +587,10 @@ export class Session {
   private browserEvidenceThisTurn = false;
   /** Finishing rungs fire at most once per turn each (reset at turn start). */
   private evidenceNudgeFired = false;
+  /** The browser shape's own once-per-turn fuse: a runtime-evidence reminder
+   *  earlier in the turn must not use it up (a curl-only check would then end
+   *  a UI turn with the page never opened). */
+  private browserNudgeFired = false;
   private incompleteTasksNudgeFired = false;
   private activeChildren = 0;
   /** Foreground child sessions currently running, so interrupt() can propagate.
@@ -1362,6 +1366,7 @@ export class Session {
     this.ranCommandThisTurn = false;
     this.browserEvidenceThisTurn = false;
     this.evidenceNudgeFired = false;
+    this.browserNudgeFired = false;
     this.incompleteTasksNudgeFired = false;
 
     const turnId = `t_${++this.turnCounter}`;
@@ -1441,6 +1446,21 @@ export class Session {
     // and whether this silent stretch has been reminded already.
     let silentReasoningChars = 0;
     let silentReminded = false;
+    /** One response's share of the silent stretch: words to the user end it
+     *  (whitespace is not a word), reasoning with none adds to it. Root only. */
+    const accountSilence = (assistant: Msg): void => {
+      if (this.opts.child) return;
+      if (assistantText(assistant).trim().length > 0) {
+        silentReasoningChars = 0;
+        silentReminded = false;
+        return;
+      }
+      silentReasoningChars += thinkingLength(assistant);
+      if (!silentReminded && silentReasoningChars >= SILENT_REASONING_LIMIT) {
+        silentReminded = true;
+        this.remind(promptText(SILENT_REASONING_REMINDER));
+      }
+    };
     // Failures the model reported while it worked, quoted back to the
     // self-check so each one is re-tested rather than forgotten.
     const reportedSymptoms: string[] = [];
@@ -1597,6 +1617,8 @@ export class Session {
           // earlier could silently end a turn that only needed resuming.
           if (stopReason === "max_tokens") {
             if (cutoffStreak <= MAX_CUTOFF_STREAK) {
+              // A response cut off mid-reasoning is part of the silent stretch too.
+              accountSilence(assistant);
               this.emit({ type: "command_output", text: "↻ continuing after output-length cutoff" });
               this.pushMessage({ role: "user", content: [{ type: "text", text: promptText(LENGTH_CONTINUATION_TEXT) }] });
               continue;
@@ -1716,12 +1738,16 @@ export class Session {
               });
               continue;
             }
-            // The third shape: things DID run — the server, curl, an API bot —
-            // but a page the user will use was never opened. HTTP 200 proves
-            // the file was served, not that the page works.
+          }
+          // The third shape: things DID run — the server, curl, an API bot —
+          // but a page the user will use was never opened. HTTP 200 proves
+          // the file was served, not that the page works. Its own fuse, so a
+          // UI turn that first ran nothing (and got the reminder above) is
+          // still sent to a browser when it then checks only with curl.
+          if (stopReason === "end_turn" && !this.browserNudgeFired) {
             const changedUi = uiFilesAmong(this.filesChangedThisTurn);
             if (changedUi.length > 0 && !this.browserEvidenceThisTurn) {
-              this.evidenceNudgeFired = true;
+              this.browserNudgeFired = true;
               this.emit({ type: "command_output", text: "↻ the page was never opened in a browser — checking it the way the user will" });
               this.pushMessage({
                 role: "user",
@@ -1816,18 +1842,7 @@ export class Session {
           reportedSymptoms.push(symptom);
           if (reportedSymptoms.length > 6) reportedSymptoms.shift();
         }
-        if (!this.opts.child) {
-          if (assistantTextLength(assistant) > 0) {
-            silentReasoningChars = 0;
-            silentReminded = false;
-          } else {
-            silentReasoningChars += thinkingLength(assistant);
-            if (!silentReminded && silentReasoningChars >= SILENT_REASONING_LIMIT) {
-              silentReminded = true;
-              this.remind(promptText(SILENT_REASONING_REMINDER));
-            }
-          }
-        }
+        accountSilence(assistant);
         totalToolCallsThisTurn += toolCalls.length;
         const results = await this.executeToolCalls(toolCalls, signal);
         lastBatchHadError = results.some((r) => r.type === "tool_result" && r.isError === true);
@@ -1947,6 +1962,7 @@ export class Session {
         type: "turn_finished",
         turnId,
         stopReason,
+        at: Date.now(),
         usage: reportedUsage,
         contextTokens: this.stats.contextTokens,
         // Cost is intentionally not surfaced: our token counting and a
@@ -2089,8 +2105,9 @@ export class Session {
     // the same /session report — but its window is its own conversation's, so a
     // child never writes the root's context figure.
     // The reasoning part of this call's output, when the provider did not say:
-    // counted from the reasoning it streamed, and marked estimated.
-    if (thinking && end.usage.reasoningTokens === undefined && end.usage.outputTokens > 0) {
+    // counted from the reasoning it streamed, and marked estimated. A reported
+    // 0 beside streamed reasoning is not a count (some gateways send one).
+    if (thinking && !((end.usage.reasoningTokens ?? 0) > 0) && end.usage.outputTokens > 0) {
       end.usage = {
         ...end.usage,
         reasoningTokens: Math.min(end.usage.outputTokens, estimateTokens(thinking.length)),
@@ -2308,12 +2325,23 @@ export class Session {
     }
 
     const results = new Map<string, ToolResult>();
-    // When each call really finished: its tool_call_finished is emitted after
-    // the whole batch, and a duration must not stretch to the batch's end.
-    const finishedAt = new Map<string, number>();
+    const nameOf = new Map(calls.map((call) => [call.id, call.name]));
+    const finishFrame = (id: string, result: ToolResult): void => {
+      this.emit({
+        type: "tool_call_finished",
+        id,
+        tool: nameOf.get(id) ?? "",
+        resultPreview: preview(result),
+        isError: result.isError ?? false,
+        at: Date.now(),
+      });
+    };
+    // Each call's tool_call_finished goes out the moment THAT call settles: a
+    // fast Read beside a long Bash is done on screen when it is done, not when
+    // the whole batch is (its row used to read "running" until the Bash ended).
     const settle = (id: string, result: ToolResult): void => {
       results.set(id, result);
-      finishedAt.set(id, Date.now());
+      finishFrame(id, result);
     };
     const parallelBatch = planned.filter((p) => p.parallel);
     const sequential = planned.filter((p) => !p.parallel);
@@ -2331,15 +2359,11 @@ export class Session {
 
     return Promise.all(
       calls.map(async (call) => {
-        const result = results.get(call.id) ?? { content: "Tool did not run.", isError: true };
-        this.emit({
-          type: "tool_call_finished",
-          id: call.id,
-          tool: call.name,
-          resultPreview: preview(result),
-          isError: result.isError ?? false,
-          at: finishedAt.get(call.id) ?? Date.now(),
-        });
+        let result = results.get(call.id);
+        if (result === undefined) {
+          result = { content: "Tool did not run.", isError: true };
+          finishFrame(call.id, result);
+        }
         return {
           type: "tool_result" as const,
           toolUseId: call.id,
@@ -2420,7 +2444,8 @@ export class Session {
     const fields = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
     if (toolName === "Bash") {
       this.ranCommandThisTurn = true;
-      if (typeof fields.command === "string" && looksLikeBrowserRun(fields.command)) this.browserEvidenceThisTurn = true;
+      // A browser run that failed saw no page.
+      if (!isError && typeof fields.command === "string" && looksLikeBrowserRun(fields.command)) this.browserEvidenceThisTurn = true;
       return;
     }
     if (isError) return;

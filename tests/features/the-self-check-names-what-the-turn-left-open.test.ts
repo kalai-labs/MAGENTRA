@@ -147,4 +147,54 @@ class ACleanTurnPaysNothing extends OverdriveTurnTest {
   }
 }
 
-registerFeatureTests(new TheClausesAsShipped(), new TheFieldShapeIsQuotedBack(), new ACleanTurnPaysNothing());
+class HowTheClientDefectsWerePhrased extends OverdriveTurnTest {
+  readonly id = "the-way-defects-and-gaps-are-really-phrased-is-found-and-plans-and-successes-are-not";
+  readonly whyItExists =
+    "the symptom words missed three of the four client defects as a model phrases them (\"the player is invisible\", \"there is no hit feedback\", \"the message was not shown\"), while \"I don't need to change the tests\" was quoted as a failure";
+
+  override async run(t: TestRun): Promise<void> {
+    const text = await this.selfCheck([
+      {
+        text: "The player is invisible. There is no hit feedback. The STAIRS OPEN message was not shown. I don't need to change the tests. The build no longer emits warnings.",
+        toolCalls: [{ id: "b1", name: "Bash", input: { command: "echo look", description: "Look at the client" } }],
+      },
+      { text: "Fixed the client. I haven't tested the mouse aim in a browser. Some lag might remain.", stopReason: "end_turn" },
+      { text: "DONE", stopReason: "end_turn" },
+    ]);
+    for (const symptom of ["The player is invisible.", "There is no hit feedback.", "The STAIRS OPEN message was not shown."]) {
+      t.assert.equal(text.includes(`«${symptom}»`), true, `"${symptom}" is a reported defect and is quoted back`);
+    }
+    t.assert.equal(text.includes("«I don't need to change the tests.»"), false, "a plan is not a symptom");
+    t.assert.equal(text.includes("«The build no longer emits warnings.»"), false, "a success is not a symptom");
+    t.assert.equal(text.includes("«I haven't tested the mouse aim in a browser.»"), true, "an untested part of the answer is a hedge");
+    t.assert.equal(text.includes("«Some lag might remain.»"), true, "and so is what might remain");
+  }
+}
+
+class TheLatestSymptomsAreKept extends OverdriveTurnTest {
+  readonly id = "of-many-reported-symptoms-the-latest-six-are-quoted";
+  readonly whyItExists =
+    "a long turn reports many failures; quoting the first six would keep ones fixed an hour ago and drop the ones still open at the end";
+
+  override async run(t: TestRun): Promise<void> {
+    const rounds: FakeTurn[] = [];
+    for (let i = 1; i <= 8; i++) {
+      rounds.push({
+        text: `Probe ${i} failed on the server.`,
+        toolCalls: [{ id: `b${i}`, name: "Bash", input: { command: `echo probe ${i}`, description: `Probe ${i}` } }],
+      });
+    }
+    const text = await this.selfCheck([...rounds, { text: "Everything is in place.", stopReason: "end_turn" }, { text: "DONE", stopReason: "end_turn" }]);
+    for (let i = 1; i <= 8; i++) {
+      t.assert.equal(text.includes(`«Probe ${i} failed on the server.»`), i >= 3, `probe ${i} is ${i >= 3 ? "one of the latest six" : "older than the latest six"}`);
+    }
+  }
+}
+
+registerFeatureTests(
+  new TheClausesAsShipped(),
+  new TheFieldShapeIsQuotedBack(),
+  new ACleanTurnPaysNothing(),
+  new HowTheClientDefectsWerePhrased(),
+  new TheLatestSymptomsAreKept(),
+);

@@ -3,7 +3,7 @@
   "name": "Allow-all stance",
   "area": "engine",
   "section": "OVERDRIVE — fully-autonomous stance",
-  "prose": "commands, network, everything runs unprompted; only the deletion guard and the `.magentra` protection still ask.",
+  "prose": "commands, network, deletions, protected edits — everything runs unprompted; nothing asks. A deny rule still refuses, and so does a kill by process name.",
   "kinds": [
     "pure",
     "fs"

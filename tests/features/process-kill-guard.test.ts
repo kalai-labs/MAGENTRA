@@ -136,6 +136,25 @@ class TheClassifier extends KillGuardTest {
       "# servers that won't die\npkill -f server",
       "cat <<EOF\ndon't\nEOF\npkill node",
       "bash <<'EOF'\npkill node\nEOF",
+      // continued onto the next line, as a model splits a long command
+      "npm run build && \\\n  pkill node",
+      "cd app && \\\r\n  taskkill //F //IM python.exe",
+      // Git Bash's `//c`, the same `//` habit as the field command
+      'cmd //c "taskkill /F /IM node.exe"',
+      // the commit form Bash's own description asks for, followed by a kill
+      "git commit -m \"$(cat <<'EOF'\nfix: restart\nEOF\n)\" && pkill node",
+      // runners with option values, functions, ANSI-C quoting
+      "timeout -s KILL 5 pkill -f worker",
+      "setsid pkill node",
+      "function stop { pkill node; }",
+      "$'pkill' node",
+      // a script fed to a shell another way
+      "bash <<< 'pkill node'",
+      "echo 'pkill node' | bash",
+      "iex 'Stop-Process -Name node'",
+      `powershell -EncodedCommand ${Buffer.from("Stop-Process -Name node", "utf16le").toString("base64")}`,
+      "killall5 -9",
+      "Get-Process node | ForEach-Object { $_.Kill() }",
     ];
     for (const command of byName) {
       t.assert.equal(bashProcessKillSubject(command), command, `"${command}" stops processes by name and must be flagged`);
@@ -179,6 +198,14 @@ class TheClassifier extends KillGuardTest {
       // a here-document is data: the commit and PR bodies Bash's own description asks for
       "git commit -m \"$(cat <<'EOF'\nfix: stop using pkill\n\n(pkill node was too broad)\n`pkill node`\nEOF\n)\"",
       "cat > README.md <<'EOF'\nNever run taskkill /IM python.exe\nEOF",
+      // quoted text after a here-document in a substitution is still quoted
+      "git commit -m \"$(cat <<'EOF'\nfix\nEOF\n)\" && echo \"done; pkill node\"",
+      // a WMI or .Kill() call only mentioned, never made
+      'git commit -m "guard Win32_Process Terminate calls"',
+      'rg -n "Win32_Process.*terminate" engine/',
+      "grep -rn '.Kill()' src; ps aux",
+      "echo 'pkill node' > notes.txt",
+      "timeout 10s npm test",
     ];
     for (const command of notByName) {
       t.assert.equal(bashProcessKillSubject(command), undefined, `"${command}" does not stop processes by name`);
@@ -267,6 +294,24 @@ class BroadGrantsNeverCoverIt extends KillGuardTest {
       p.engine.setOverdrive(true);
       const out = await check(p, command);
       t.assert.equal(out.allowed, false, `${name} must not let it run in OVERDRIVE either`);
+    }
+
+    // A glob rule written for other work matches a compound command that ends
+    // in a kill: `Bash(cd *)` matches the field command itself. It is not a
+    // rule "for that exact command", so it never lets the kill through.
+    const globs: { rule: string; command: string }[] = [
+      { rule: "Bash(cd *)", command: FIELD_COMMAND },
+      { rule: "Bash(npm *)", command: "npm test; pkill node" },
+      { rule: "Bash(*pkill*)", command: "pkill node" },
+    ];
+    for (const { rule, command: compound } of globs) {
+      const g = probe({ allow: [rule] });
+      await check(g, compound);
+      t.assert.equal(g.asks.length, 1, `${rule} must not cover "${compound}"`);
+      t.assert.equal(g.asks[0]?.source, "process-kill-guard");
+      g.engine.setOverdrive(true);
+      const out = await check(g, compound);
+      t.assert.equal(out.allowed, false, `${rule} must not let "${compound}" run in OVERDRIVE`);
     }
 
     // "Allow deletions" is the deletion guard's switch, not this one's.

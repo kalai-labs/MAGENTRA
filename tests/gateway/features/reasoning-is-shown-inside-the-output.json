@@ -3,7 +3,7 @@
   "name": "Reasoning is shown inside the output",
   "area": "engine",
   "section": "Runtime — the turn loop",
-  "prose": "reasoning stays counted in the output total — it is billed as output — and is now shown as its own part of it: \"out 200k · reasoning 135k\". The OpenAI-compatible provider reads the reasoning count a provider reports (`completion_tokens_details.reasoning_tokens`); where no provider reports it, the live counter's own split of the stream (reasoning characters vs answer characters) stands in, marked as estimated. The desktop meter, the TUI and `/session` show it.",
+  "prose": "reasoning stays counted in the output total — it is billed as output — and is now shown as its own part of it: \"out 200k · reasoning 135k\". The OpenAI-compatible provider reads the reasoning count a provider reports (`completion_tokens_details.reasoning_tokens`), the Anthropic one its thinking count (`output_tokens_details.thinking_tokens`); where no provider reports it, the live counter's own split of the stream (reasoning characters vs answer characters) stands in, marked as estimated. The desktop meter, the TUI and `/session` show it.",
   "kinds": [
     "pure",
     "net",
@@ -24,6 +24,7 @@
   "tests": [
     "the-reasoning-part-adds-up-keeps-its-estimated-mark-and-prints-only-when-there-is-one",
     "the-openai-adapter-reads-reasoning-tokens-clamps-them-and-adds-nothing-when-absent",
+    "the-anthropic-adapter-reads-thinking-tokens-from-the-final-message-delta",
     "an-unreported-reasoning-part-is-counted-from-the-stream-and-marked-and-a-reported-one-is-kept",
     "the-desktop-strip-shows-the-estimated-part-and-the-inspector-the-reported-one",
     "on-the-configured-provider-a-turns-reasoning-stays-inside-its-output"
