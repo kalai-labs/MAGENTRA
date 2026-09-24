@@ -730,11 +730,13 @@ export class Engine {
         break;
       case "set_deletion_guard":
         this.session.setDeletionPolicy(!request.enabled);
+        // True in both stances: on a link the desktop sends this frame BEFORE
+        // set_overdrive, so the line cannot lean on the stance of the moment.
         this.emit({
           type: "command_output",
           text: request.enabled
-            ? "deletion guard on — destructive calls always ask"
-            : "deletion guard off — deletions are allowed",
+            ? "deletion guard on — destructive calls ask; OVERDRIVE turns this off (nothing asks there)"
+            : "deletion guard off — deletions run without asking (deleting a .magentra state folder still asks, outside OVERDRIVE)",
         });
         break;
       case "slash_command":
@@ -881,8 +883,8 @@ export class Engine {
           this.emit({
             type: "command_output",
             text: enabled
-              ? "⚡ OVERDRIVE engaged — nothing asks (deletions, .magentra and .env edits, writes outside the workspace all run), and the turn self-verifies before it ends."
-              : "OVERDRIVE disengaged — deletions and edits to .magentra/.env ask again; turns end without the self-verify pass.",
+              ? "⚡ OVERDRIVE engaged — nothing asks (deletions, .magentra and .env edits, writes outside the workspace all run; a kill by process name is refused instead), and the turn self-verifies before it ends."
+              : "OVERDRIVE disengaged — deletions, edits to .magentra/.env and kills by process name ask again; turns end without the self-verify pass.",
           });
         } else if (!arg) {
           this.emit({

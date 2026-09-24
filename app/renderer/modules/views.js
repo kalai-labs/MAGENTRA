@@ -304,14 +304,19 @@ function renderNowText() {
     nowTextEl.textContent = nowOverrideText;
     return;
   }
-  const elapsedSec = nowActivityStart ? Math.floor((Date.now() - nowActivityStart) / 1000) : 0;
   nowTextEl.textContent = "";
   const verbEl = document.createElement("span");
   verbEl.className = "now-verb";
   verbEl.textContent = nowVerb;
   nowTextEl.appendChild(verbEl);
-  const tail = nowDetail ? ` · ${nowDetail} · ${elapsedSec}s` : ` · ${elapsedSec}s`;
-  nowTextEl.appendChild(document.createTextNode(tail));
+  nowTextEl.appendChild(document.createTextNode(nowActivityTail(nowDetail, nowActivityStart)));
+}
+
+/** What follows the verb on a now-line — " · <detail> · 8m12s" — shared by the
+ * strip and every tiled pane, so eight minutes never read "492s". */
+function nowActivityTail(detail, activityStart) {
+  const elapsed = formatElapsed(activityStart ? Date.now() - activityStart : 0);
+  return detail ? ` · ${detail} · ${elapsed}` : ` · ${elapsed}`;
 }
 
 /**
@@ -324,7 +329,7 @@ function renderNowTokens() {
   if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // the strip shows the focused tab only
   const show = outputTokens > 0;
   nowTokensEl.classList.toggle("hidden", !show);
-  if (show) nowTokensEl.textContent = `↑ ${formatTokens(outputTokens)} out`;
+  if (show) nowTokensEl.textContent = outputTokensText(outputTokens, reasoningTokens, reasoningEstimated);
 }
 
 function setNowActivity(verb, detail) {
@@ -353,11 +358,13 @@ function tickNowLine() {
   renderNowTokens();
 }
 
-function startNowLine() {
+/** `startedAt` is the engine's turn_started.at: the timer counts from when the
+ * turn began, not from when its frame was handled. */
+function startNowLine(startedAt) {
   // State first, for EVERY tab — a background pane reads its own captured now-line
   // state to drive its own liveness strip (renderPaneNowLine). Only the focused,
   // single-console path then drives the shared strip + its animation intervals.
-  nowTurnStart = Date.now();
+  nowTurnStart = typeof startedAt === "number" ? startedAt : Date.now();
   nowOverrideText = null;
   if (nowOverrideTimeoutId) {
     clearTimeout(nowOverrideTimeoutId);
@@ -366,7 +373,7 @@ function startNowLine() {
   setNowActivity("thinking", "");
   if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return; // background tab: don't drive the shared liveness strip
   nowLineEl.classList.remove("hidden");
-  nowTimerEl.textContent = "0:00";
+  nowTimerEl.textContent = formatTurnElapsed(Date.now() - nowTurnStart);
   renderNowTokens(); // the turn's output counter restarts from 0 with the strip
 
   nowSpinnerIdx = 0;

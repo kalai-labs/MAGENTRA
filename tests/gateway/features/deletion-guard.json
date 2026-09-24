@@ -12,7 +12,7 @@
     "engine/core/src/runtime/permissions.ts",
     "engine/tools/src/bash.ts"
   ],
-  "invariant": "Anything that removes a file, folder or worktree always asks, in both stances, overridable only by an explicit literal subject grant.",
+  "invariant": "Anything that removes a file, folder or worktree asks outside OVERDRIVE, overridable only by an explicit literal subject grant.",
   "deferred": false,
   "tests": [
     "the-classifier-flags-what-destroys-and-passes-over-what-does-not",

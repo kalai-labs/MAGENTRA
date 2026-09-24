@@ -28,6 +28,25 @@ export class FileState implements FileStateStore {
     return this.entries.has(resolve(path));
   }
 
+  /**
+   * The files Read this session that have changed on disk since — the same
+   * mtime/size test checkFresh applies, over every recorded file (one stat
+   * each; about 10 ms for 500). A deleted file is left out, as checkFresh
+   * leaves it: there is nothing to Read again.
+   */
+  changedSinceRead(): string[] {
+    const changed: string[] = [];
+    for (const [key, entry] of this.entries) {
+      try {
+        const stat = statSync(key);
+        if (stat.mtimeMs !== entry.mtimeMs || stat.size !== entry.size) changed.push(key);
+      } catch {
+        // deleted since read
+      }
+    }
+    return changed;
+  }
+
   checkFresh(path: string): string | undefined {
     const key = resolve(path);
     const entry = this.entries.get(key);

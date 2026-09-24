@@ -4,7 +4,8 @@
  * OVERDRIVE switches the permission engine off; the prompt has to say so. While
  * it is on, the system prompt carries an extra section — `# OVERDRIVE —
  * fully-autonomous mode` — telling the model the user is not watching, that
- * NOTHING asks, and that only a deny rule the user wrote can still stop a call.
+ * NOTHING asks, and that only a deny rule the user wrote and a kill by process
+ * name can still stop a call.
  * The standing harness section points forward at it ("if an OVERDRIVE section
  * appears, not even on those"), the section is added when the switch goes on
  * and removed when it goes off, and the state change is announced once per real
@@ -142,8 +143,8 @@ class SwitchingItOnAddsTheSection extends PromptContractTest {
     t.assert.equal(countOf(system, "NOTHING asks"), 1, "and says so exactly once — a repeat would mean it was appended twice");
     t.assert.match(
       system,
-      /The only thing that can still stop a call is a deny rule the user wrote themselves\./,
-      "the one remaining refusal is named, so the model does not read a denial as a bug",
+      /Only two things can still stop a call: a deny rule the user wrote themselves, and a command that stops processes by name/,
+      "the remaining refusals are named, so the model does not read a denial as a bug",
     );
     t.assert.equal(
       system.indexOf(FORWARD_REFERENCE) < system.indexOf(HEADING),

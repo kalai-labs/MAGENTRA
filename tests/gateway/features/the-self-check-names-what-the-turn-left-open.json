@@ -1,0 +1,30 @@
+{
+  "id": "the-self-check-names-what-the-turn-left-open",
+  "name": "The self-check names what the turn left open",
+  "area": "engine",
+  "section": "Finishing rungs — what stands between \"stopped talking\" and \"delivered\"",
+  "prose": "the OVERDRIVE self-check does not have to find the loose ends itself. The engine collects the symptoms the model reported while it worked (\"enemies never damage the player\") and the hedges in its final answer (\"may still be registered\", \"unverified\"), and quotes both to the self-check: each symptom must have been re-tested after its fix, and each hedge is either settled now or kept as a plain note to the user. A turn that changed code is also told to search every file for a mistake its fix corrected.",
+  "kinds": [
+    "pure",
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/finishing.ts",
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "The self-check quotes back the symptoms the turn reported and the hedges in its answer, so each is re-tested, settled, or left as a plain note to the user.",
+  "deferred": false,
+  "tests": [
+    "the-two-clauses-are-registered-reminders-and-none-demands-a-pass",
+    "the-field-turns-unchecked-symptom-and-its-may-still-hedge-are-quoted-to-the-self-check",
+    "a-clean-turn-is-self-checked-with-neither-clause"
+  ],
+  "freshness": {
+    "hash": "db0692b7d7546a76",
+    "fileHashes": {
+      "engine/core/src/runtime/finishing.ts": "e802a1b56bce48d5",
+      "engine/core/src/runtime/session.ts": "57ce38507d9c0d5f"
+    },
+    "recordedAt": "2026-09-24"
+  }
+}

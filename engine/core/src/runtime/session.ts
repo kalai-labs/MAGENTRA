@@ -38,10 +38,15 @@ import { FileState } from "./fileState.js";
 import type { HookRunner } from "../agent/hooks.js";
 import { PermissionEngine, type PermissionRequestPayload, protectedEditPath } from "./permissions.js";
 import {
+  browserEvidenceText,
   codeFilesAmong,
+  findHedges,
+  findSymptoms,
+  looksLikeBrowserRun,
   looksLikeTestDouble,
   runtimeEvidenceText,
   selfVerifyText,
+  uiFilesAmong,
 } from "./finishing.js";
 import { addonsBlock, buildSystemPrompt } from "../agent/prompts.js";
 import { SearchLog, evaluateReuseGate, type ReuseGateResult } from "../knowledge/reuseGate.js";
@@ -215,7 +220,7 @@ You are operating autonomously.
 
 - The user is not watching in real time and cannot answer questions mid-task, so asking 'Want me to…?' or 'Shall I…?' will block the work.
 - For reversible actions that follow from the original request, proceed without asking. 
-- NOTHING asks. Every call runs the moment you make it: deletions at any path, edits to \`.magentra\` state and \`.env\` files, writes outside the workspace. There is no confirmation step and no safety net but your own judgement — read a file before you overwrite it, look before you delete, and prefer the reversible move. The only thing that can still stop a call is a deny rule the user wrote themselves.`,
+- NOTHING asks. Every call runs the moment you make it: deletions at any path, edits to \`.magentra\` state and \`.env\` files, writes outside the workspace. There is no confirmation step and no safety net but your own judgement — read a file before you overwrite it, look before you delete, and prefer the reversible move. Only two things can still stop a call: a deny rule the user wrote themselves, and a command that stops processes by name (taskkill /IM, pkill, killall, Stop-Process -Name), which is refused here — use TaskStop or the process's pid.`,
 });
 
 /**
@@ -320,6 +325,22 @@ function graphSkeleton(g: GraphData, project: string): string | undefined {
     ...top.map((id) => `  ${id}`),
   ].join("\n");
 }
+
+/** How often a running turn writes its ledger to the transcript, at most. */
+const META_SAVE_EVERY_MS = 30_000;
+
+/** Reasoning written with no word to the user, in characters, before the silent-reasoning rung asks for one. */
+const SILENT_REASONING_LIMIT = 8_000;
+
+const SILENT_REASONING_REMINDER = definePrompt({
+  id: "reminder.silent-reasoning",
+  group: "3 · In-turn reminders",
+  label: "Long reasoning, nothing said",
+  channel: "reminder",
+  where:
+    "Attached to the tool results once the model has reasoned 8,000+ characters through tool rounds without writing any text for the user. Fires once per silent stretch; a response with text re-arms it.",
+  text: "The user has seen nothing from you for a while: your recent responses reasoned at length and wrote no text. In your next response, first tell the user in one short sentence what you are doing or have found, then continue. Keep planning brief and put the work into files and tool calls rather than long silent reasoning.",
+});
 
 const PLAN_FIRST_REMINDER = definePrompt({
   id: "reminder.plan-first",
@@ -561,6 +582,9 @@ export class Session {
    * agree by construction and a green result proves only self-consistency.
    */
   private readonly doubleFilesThisTurn = new Set<string>();
+  /** Whether this turn looked at a page as the user will: drove a browser, or
+   *  read an image (a screenshot) through the vision model. */
+  private browserEvidenceThisTurn = false;
   /** Finishing rungs fire at most once per turn each (reset at turn start). */
   private evidenceNudgeFired = false;
   private incompleteTasksNudgeFired = false;
@@ -600,7 +624,8 @@ export class Session {
           tool: req.tool,
           ...(subjectOf(req) !== undefined ? { subject: subjectOf(req) } : {}),
           decision: res.decision,
-          source: approvalSource === "deletion-guard" ? "deletion-guard" : "user",
+          source:
+            approvalSource === "deletion-guard" || approvalSource === "process-kill-guard" ? approvalSource : "user",
         });
         return res;
       },
@@ -1335,6 +1360,7 @@ export class Session {
     this.filesChangedThisTurn.clear();
     this.doubleFilesThisTurn.clear();
     this.ranCommandThisTurn = false;
+    this.browserEvidenceThisTurn = false;
     this.evidenceNudgeFired = false;
     this.incompleteTasksNudgeFired = false;
 
@@ -1351,7 +1377,7 @@ export class Session {
     // rather than restart it and zero the meter the user is watching.
     if (!this.opts.child) this.stats.beginPhase();
 
-    this.emit({ type: "turn_started", turnId });
+    this.emit({ type: "turn_started", turnId, at: Date.now() });
 
     // The pre-layers that put questions to the user, in the order they matter.
     //
@@ -1411,6 +1437,13 @@ export class Session {
     let identicalRounds = 0;
     let pivotCount = 0;
     let totalToolCallsThisTurn = 0;
+    // Silent-reasoning rung: reasoning written since the user last saw a word,
+    // and whether this silent stretch has been reminded already.
+    let silentReasoningChars = 0;
+    let silentReminded = false;
+    // Failures the model reported while it worked, quoted back to the
+    // self-check so each one is re-tested rather than forgotten.
+    const reportedSymptoms: string[] = [];
     // Mid-run steering drain: injects queued user guidance at a message
     // boundary. New guidance re-arms the self-verify rung and refunds spent
     // pivots — the user changed the game, so the old stall evidence is void.
@@ -1683,6 +1716,19 @@ export class Session {
               });
               continue;
             }
+            // The third shape: things DID run — the server, curl, an API bot —
+            // but a page the user will use was never opened. HTTP 200 proves
+            // the file was served, not that the page works.
+            const changedUi = uiFilesAmong(this.filesChangedThisTurn);
+            if (changedUi.length > 0 && !this.browserEvidenceThisTurn) {
+              this.evidenceNudgeFired = true;
+              this.emit({ type: "command_output", text: "↻ the page was never opened in a browser — checking it the way the user will" });
+              this.pushMessage({
+                role: "user",
+                content: [{ type: "text", text: browserEvidenceText(changedUi, this.visionUnavailableReason() === undefined) }],
+              });
+              continue;
+            }
           }
 
           // Self-verify rung: the first time the turn tries to end cleanly,
@@ -1705,7 +1751,10 @@ export class Session {
           // the inference round the operator emptied the prompt to avoid.
           const verify =
             stopReason === "end_turn" && !selfVerifyFired && totalToolCallsThisTurn > 0 && this.overdrive
-              ? selfVerifyText(codeFilesAmong(this.filesChangedThisTurn))
+              ? selfVerifyText(codeFilesAmong(this.filesChangedThisTurn), {
+                  symptoms: reportedSymptoms,
+                  hedges: findHedges(assistantText(assistant)),
+                })
               : undefined;
           if (verify !== undefined) {
             selfVerifyFired = true;
@@ -1753,6 +1802,31 @@ export class Session {
         // history never ends on a tool_use without its results.
         if (stopReason === "max_tokens") {
           this.emit({ type: "command_output", text: "↻ continuing after output-length cutoff" });
+        }
+        // SILENT-REASONING RUNG: a model that reasons at length through tool
+        // rounds and says nothing leaves the user staring at "reasoning" (the
+        // field test: 24 minutes without a word). Once the silent stretch
+        // passes the limit, the next request asks for one sentence — once per
+        // stretch, re-armed only when the model speaks again. Root only: a
+        // child's text is not what the user reads.
+        // The latest six: a failure reported late in a long turn must not be
+        // crowded out by early exploration notes.
+        for (const symptom of findSymptoms(assistantText(assistant))) {
+          if (reportedSymptoms.includes(symptom)) continue;
+          reportedSymptoms.push(symptom);
+          if (reportedSymptoms.length > 6) reportedSymptoms.shift();
+        }
+        if (!this.opts.child) {
+          if (assistantTextLength(assistant) > 0) {
+            silentReasoningChars = 0;
+            silentReminded = false;
+          } else {
+            silentReasoningChars += thinkingLength(assistant);
+            if (!silentReminded && silentReasoningChars >= SILENT_REASONING_LIMIT) {
+              silentReminded = true;
+              this.remind(promptText(SILENT_REASONING_REMINDER));
+            }
+          }
         }
         totalToolCallsThisTurn += toolCalls.length;
         const results = await this.executeToolCalls(toolCalls, signal);
@@ -1882,20 +1956,7 @@ export class Session {
           ? { overdriveSnapshot: this.overdriveSnapshotRef }
           : {}),
       });
-      // Snapshot the tree-wide ledger so /resume restores real accounting
-      // instead of a $0.00 session. Children share the root's ledger, so only
-      // the root writes it.
-      if (!this.opts.child) {
-        this.transcript.append({
-          kind: "meta",
-          data: {
-            stats: this.stats.snapshot(),
-            model: this.settings.model,
-            overdrive: this.overdrive,
-            ...(this.label !== undefined ? { label: this.label } : {}),
-          },
-        });
-      }
+      this.saveMeta(true);
     }
 
     await this.maybeCompact();
@@ -1954,10 +2015,14 @@ export class Session {
       if (liveContext === emittedContext && output - emittedOutput < 200) return;
       emittedContext = liveContext;
       emittedOutput = output;
+      // The reasoning part of that figure: banked so far, plus this call's own
+      // reasoning counted from its characters. An estimate while it streams.
+      const reasoning = Math.min(output, this.stats.deliberationReasoningTokens + estimateTokens(thinking.length));
       this.emit({
         type: "context_update",
         contextTokens: liveContext,
         outputTokens: output,
+        ...(reasoning > 0 ? { reasoningTokens: reasoning } : {}),
         ...(this.effectiveCompactLimit() > 0 && liveContext >= Math.floor(this.effectiveCompactLimit() * 0.9)
           ? { contextWarn: true }
           : {}),
@@ -2023,7 +2088,19 @@ export class Session {
     // The ledger is shared with the parent, so a subagent's spend lands in
     // the same /session report — but its window is its own conversation's, so a
     // child never writes the root's context figure.
+    // The reasoning part of this call's output, when the provider did not say:
+    // counted from the reasoning it streamed, and marked estimated.
+    if (thinking && end.usage.reasoningTokens === undefined && end.usage.outputTokens > 0) {
+      end.usage = {
+        ...end.usage,
+        reasoningTokens: Math.min(end.usage.outputTokens, estimateTokens(thinking.length)),
+        reasoningEstimated: true,
+      };
+    }
     this.stats.recordResponse(model, end.usage, Date.now() - apiStartedAt, !this.opts.child);
+    // A long turn banks its spend as it goes: a crash an hour in must not lose
+    // the hour's accounting.
+    this.saveMeta();
     // Provider omitted usage entirely (some do on very large prompts): the
     // recorded size stayed put, but this turn's history may have grown. Fall
     // back to a conservative estimate from the real messages so the compaction
@@ -2048,32 +2125,35 @@ export class Session {
     }
 
     const planned: Planned[] = [];
+    // A call refused before it could run still gets its tool_call_started, so
+    // every tool_call_finished has one and both frontends draw a row for it —
+    // a finished frame for an id they never saw used to draw nothing at all.
+    const refuse = (call: PendingToolCall, input: unknown, content: string): void => {
+      planned.push({
+        call,
+        parallel: true,
+        run: async () => {
+          this.emit({ type: "tool_call_started", id: call.id, tool: call.name, input, at: Date.now() });
+          return { content, isError: true };
+        },
+      });
+    };
     for (const call of calls) {
       // A tool whose description was emptied is withheld from the schema list,
       // but the model can still name one it saw earlier in the transcript. Refuse
       // it here too, or "switched off" would only hold until it was mentioned.
       if (isToolDisabled(call.name)) {
-        planned.push({
+        refuse(
           call,
-          parallel: true,
-          run: async () => ({
-            content: `The ${call.name} tool is switched off in this workspace and cannot be called. Reach the goal another way, and do not retry it this turn.`,
-            isError: true,
-          }),
-        });
+          safeParse(call.json),
+          `The ${call.name} tool is switched off in this workspace and cannot be called. Reach the goal another way, and do not retry it this turn.`,
+        );
         continue;
       }
 
       const tool = this.registry.get(call.name);
       if (!tool) {
-        planned.push({
-          call,
-          parallel: true,
-          run: async () => ({
-            content: `Unknown tool "${call.name}". Available tools: ${this.registry.enabled().map((t) => t.name).join(", ")}`,
-            isError: true,
-          }),
-        });
+        refuse(call, safeParse(call.json), `Unknown tool "${call.name}". Available tools: ${this.registry.enabled().map((t) => t.name).join(", ")}`);
         continue;
       }
 
@@ -2082,11 +2162,7 @@ export class Session {
       // tell the model it was cut off so it reissues (a generic schema error
       // would read as "you sent bad input" and send it debugging a phantom).
       if (isUnparseable(rawInput)) {
-        planned.push({
-          call,
-          parallel: true,
-          run: async () => ({ content: promptText(TOOL_CUTOFF_TEXT), isError: true }),
-        });
+        refuse(call, {}, promptText(TOOL_CUTOFF_TEXT));
         continue;
       }
       let parsed = tool.inputSchema.safeParse(rawInput);
@@ -2101,11 +2177,7 @@ export class Session {
         const issues = parsed.error.issues
           .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
           .join("; ");
-        planned.push({
-          call,
-          parallel: true,
-          run: async () => ({ content: `Invalid input for ${call.name}: ${issues}`, isError: true }),
-        });
+        refuse(call, rawInput, `Invalid input for ${call.name}: ${issues}`);
         continue;
       }
 
@@ -2126,6 +2198,20 @@ export class Session {
         call,
         parallel: tool.permissionClass === "read" || tool.parallelSafe === true,
         run: async () => {
+          // Sent once the call really starts — and also, just before refusing,
+          // for a call the permission engine turns away (a deny rule, a declined
+          // card, the OVERDRIVE kill refusal), so that call too gets its row.
+          // A PreToolUse hook block stays unannounced: `hooks` proves the tool
+          // never ran by the absence of this frame.
+          const announce = (): void =>
+            this.emit({
+              type: "tool_call_started",
+              id: call.id,
+              tool: tool.name,
+              input,
+              ...(description !== undefined ? { description } : {}),
+              at: Date.now(),
+            });
           // Reuse gate: record any search/query evidence this call carries, then
           // (for a Write) decide whether a reuse reminder should ride along.
           if (tool.searchTerms) {
@@ -2179,6 +2265,7 @@ export class Session {
             });
           }
           if (!outcome.allowed) {
+            announce();
             return { content: outcome.message ?? "Permission denied.", isError: true };
           }
           // A note attached to an APPROVAL rides along with this round's
@@ -2188,13 +2275,7 @@ export class Session {
               `The user approved this ${tool.name} call but attached a note — read it and adjust your approach accordingly:\n${outcome.note.trim()}`,
             );
           }
-          this.emit({
-            type: "tool_call_started",
-            id: call.id,
-            tool: tool.name,
-            input,
-            ...(description !== undefined ? { description } : {}),
-          });
+          announce();
           try {
             const result = await tool.execute(input, { ...this.toolContext(), callId: call.id }, signal);
             this.observeTurnWork(tool.name, input, result.isError === true);
@@ -2227,17 +2308,24 @@ export class Session {
     }
 
     const results = new Map<string, ToolResult>();
+    // When each call really finished: its tool_call_finished is emitted after
+    // the whole batch, and a duration must not stretch to the batch's end.
+    const finishedAt = new Map<string, number>();
+    const settle = (id: string, result: ToolResult): void => {
+      results.set(id, result);
+      finishedAt.set(id, Date.now());
+    };
     const parallelBatch = planned.filter((p) => p.parallel);
     const sequential = planned.filter((p) => !p.parallel);
 
     // Permission prompts must not race; sequential (mutating) calls run first-to-last
     // while read-only calls execute concurrently.
     const parallelPromise = Promise.all(
-      parallelBatch.map(async (p) => results.set(p.call.id, await p.run())),
+      parallelBatch.map(async (p) => settle(p.call.id, await p.run())),
     );
     for (const p of sequential) {
       signal.throwIfAborted();
-      results.set(p.call.id, await p.run());
+      settle(p.call.id, await p.run());
     }
     await parallelPromise;
 
@@ -2250,6 +2338,7 @@ export class Session {
           tool: call.name,
           resultPreview: preview(result),
           isError: result.isError ?? false,
+          at: finishedAt.get(call.id) ?? Date.now(),
         });
         return {
           type: "tool_result" as const,
@@ -2328,15 +2417,21 @@ export class Session {
    * bytes, so there is nothing there to verify.
    */
   private observeTurnWork(toolName: string, input: unknown, isError: boolean): void {
+    const fields = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
     if (toolName === "Bash") {
       this.ranCommandThisTurn = true;
+      if (typeof fields.command === "string" && looksLikeBrowserRun(fields.command)) this.browserEvidenceThisTurn = true;
       return;
     }
     if (isError) return;
-    if (toolName !== "Write" && toolName !== "Edit") return;
-    if (typeof input !== "object" || input === null) return;
-    const filePath = (input as Record<string, unknown>).file_path;
+    const filePath = fields.file_path;
     if (typeof filePath !== "string" || filePath === "") return;
+    // A screenshot that was Read reached the vision model: the page was looked at.
+    if (toolName === "Read") {
+      if (/\.(?:png|jpe?g|gif|webp|bmp)$/i.test(filePath)) this.browserEvidenceThisTurn = true;
+      return;
+    }
+    if (toolName !== "Write" && toolName !== "Edit") return;
     const absolute = resolve(this.cwd, filePath);
     const rel = relative(this.cwd, absolute);
     // A path outside the workspace has no useful relative form ("../../etc/..."),
@@ -2423,6 +2518,32 @@ export class Session {
       ? buildSymbolIndex(this.cwd, this.symbolIndexCache)
       : loadOrBuildSymbolIndex(this.cwd);
     return this.symbolIndexCache;
+  }
+
+  /** When the ledger was last written to the transcript (see {@link saveMeta}). */
+  private lastMetaAt = 0;
+
+  /**
+   * Snapshot the tree-wide ledger into the transcript so /resume restores real
+   * accounting instead of a $0.00 session. Children share the root's ledger, so
+   * only the root writes it. At every turn end (`force`), and after model calls
+   * at most once per {@link META_SAVE_EVERY_MS} — the turn's end used to be the
+   * only write, so a crash mid-turn lost that whole turn's spend.
+   */
+  private saveMeta(force = false): void {
+    if (this.opts.child) return;
+    const now = Date.now();
+    if (!force && now - this.lastMetaAt < META_SAVE_EVERY_MS) return;
+    this.lastMetaAt = now;
+    this.transcript.append({
+      kind: "meta",
+      data: {
+        stats: this.stats.snapshot(),
+        model: this.settings.model,
+        overdrive: this.overdrive,
+        ...(this.label !== undefined ? { label: this.label } : {}),
+      },
+    });
   }
 
   private withReminders(blocks: ContentBlock[]): ContentBlock[] {
@@ -2926,6 +3047,11 @@ function assistantText(msg: Msg): string {
 
 function assistantTextLength(msg: Msg): number {
   return assistantText(msg).length;
+}
+
+/** Characters of reasoning in an assistant message. */
+function thinkingLength(msg: Msg): number {
+  return msg.content.reduce((n, b) => n + (b.type === "thinking" ? b.thinking.length : 0), 0);
 }
 
 /** Builds the incomplete-task nudge text listing each pending/in-progress task. */

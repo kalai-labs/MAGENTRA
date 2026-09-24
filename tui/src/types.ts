@@ -41,7 +41,7 @@ export type LineBody =
   /** Vertical breathing room. */
   | { kind: 'blank' }
   /** Turn footer, from turn_finished — engine figures rendered verbatim. */
-  | { kind: 'done'; stopReason: string; outputTokens: number; contextTokens: number }
+  | { kind: 'done'; stopReason: string; outputTokens: number; reasoningTokens?: number; reasoningEstimated?: boolean; contextTokens: number }
   /** Turn was cut short by the user. */
   | { kind: 'interrupted' }
   /** Output of a slash command, or a system notice. */

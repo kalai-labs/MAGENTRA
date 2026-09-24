@@ -1,0 +1,31 @@
+{
+  "id": "web-changes-are-seen-in-a-browser",
+  "name": "Web changes are seen in a browser",
+  "area": "engine",
+  "section": "Finishing rungs — what stands between \"stopped talking\" and \"delivered\"",
+  "prose": "a turn that changed what the user sees in a browser (HTML, CSS, a component) and checked it only with commands — HTTP 200, a syntax check, an API bot — gets one reminder before it may end: drive the page in a real or headless browser, do each main thing the user asked for with the default settings, look at the result (a screenshot through the vision model when it is on), or say plainly that the page stays unverified.",
+  "kinds": [
+    "pure",
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/finishing.ts",
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "A turn that changed a web page and never looked at it in a browser gets one reminder to drive it the way the user will, or to say it stays unverified; it reminds, never blocks.",
+  "deferred": false,
+  "tests": [
+    "the-shipped-reminder-sends-the-agent-to-a-browser-and-keeps-the-honest-ending",
+    "a-page-checked-only-with-commands-gets-one-reminder-and-the-next-end-is-allowed",
+    "a-browser-run-settles-it-and-a-server-only-change-never-asks",
+    "a-screenshot-read-that-failed-is-not-evidence"
+  ],
+  "freshness": {
+    "hash": "db0692b7d7546a76",
+    "fileHashes": {
+      "engine/core/src/runtime/finishing.ts": "e802a1b56bce48d5",
+      "engine/core/src/runtime/session.ts": "57ce38507d9c0d5f"
+    },
+    "recordedAt": "2026-09-24"
+  }
+}

@@ -52,7 +52,10 @@ if (window.magentra.onRecentWorkspaces) {
 // main button resumes; destructive removal is a separate confirmed action.
 function requestSessionList() {
   if (!workspaceOpen) return;
-  window.magentra.send({ type: "list_sessions" });
+  // To the tab whose event is being handled, so a background tab's turn
+  // refreshes its OWN list; otherwise main routes it to the focused tab.
+  const tabId = typeof dispatchTabId !== "undefined" && dispatchTabId !== null ? dispatchTabId : undefined;
+  window.magentra.send({ type: "list_sessions" }, tabId);
 }
 
 function formatSessionDate(value) {
@@ -157,6 +160,10 @@ function renderSessions() {
 
 function onSessionList(event) {
   sessionSummaries = Array.isArray(event.sessions) ? event.sessions : [];
+  // A background tab's list is kept in its own state and painted when it is
+  // focused (repaintChromeFromFocusedTab); painting it now would put that
+  // tab's sessions in the focused tab's sidebar.
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
   renderSessions();
 }
 
@@ -185,6 +192,7 @@ function onSessionRestored(event) {
       // Replay shows the whole reasoning; only a LIVE block shows its tail.
       const details = createReasoningEl(true);
       details.querySelector(".thinking-body").textContent = m.thinking;
+      details.querySelector("summary").textContent = reasoningLabel(m.thinking.length);
       streamEl.appendChild(details);
     }
     if (m.text) {
@@ -288,7 +296,7 @@ function syncActivityUi() {
       : "Ask Magentra anything…";
 }
 
-function onTurnStarted() {
+function onTurnStarted(event) {
   toolCountThisTurn = 0;
   currentAgentsRow = null;
   agentCards.clear();
@@ -300,6 +308,8 @@ function onTurnStarted() {
   // climbs as the engine reports what it has generated. The context counter is
   // deliberately untouched — the window did not empty just because a turn began.
   outputTokens = 0;
+  reasoningTokens = 0;
+  reasoningEstimated = true;
   updateSessionMeter();
 
   busy = true;
@@ -307,7 +317,10 @@ function onTurnStarted() {
   if (typeof syncPaneActivity === "function") {
     syncPaneActivity((typeof dispatchTabId !== "undefined" && dispatchTabId !== null) ? dispatchTabId : focusedTabId, true);
   }
-  startNowLine();
+  startNowLine(event && event.at);
+  // The first message is what puts a session on disk: list it now, not after
+  // a turn that may run for an hour (the field run's list stayed empty).
+  requestSessionList();
 }
 
 /**
@@ -421,6 +434,9 @@ function onTurnFinished(event) {
     // API's own usage records, which supersedes every streamed estimate.
     if (event.usage && typeof event.usage.outputTokens === "number") {
       outputTokens = event.usage.outputTokens;
+      // The final figure: exact when the provider reported it, else estimated.
+      reasoningTokens = event.usage.reasoningTokens || 0;
+      reasoningEstimated = event.usage.reasoningEstimated === true;
     }
     updateSessionMeter();
   }
@@ -428,6 +444,8 @@ function onTurnFinished(event) {
   finalizeThinkingEl();
   finalizeAssistantEl();
   closeWorkGroup();
+  // The turn changed the session's summary (its message count, its time).
+  requestSessionList();
 
   finalizeAllAgentCards();
   // Route through updateAgentMeter (focus-guarded) so a background tab's turn end
@@ -514,6 +532,7 @@ function onToolCallStarted(event) {
   if (event.subagent) {
     const card = getOrCreateAgentCard(event);
     const row = createToolRow(event.tool, event.description, event.input);
+    if (typeof event.at === "number") row.startMs = event.at;
     withAutoScroll(() => {
       card.bodyEl.appendChild(row.rowEl);
       card.bodyEl.appendChild(row.detailEl);
@@ -530,6 +549,8 @@ function onToolCallStarted(event) {
   if (!streamEl) return;
   finalizeAssistantEl();
   const row = createToolRow(event.tool, event.description, event.input);
+  // The engine's clock, when it sent one: a row handled late still times the call.
+  if (typeof event.at === "number") row.startMs = event.at;
   const target = workStream();
   withAutoScroll(() => {
     target.appendChild(row.rowEl);
@@ -548,7 +569,7 @@ function onToolCallFinished(event) {
     if (card) {
       const row = card.toolRows.get(event.id);
       if (row) {
-        finishToolRow(row, event.isError, event.resultPreview);
+        finishToolRow(row, event.isError, event.resultPreview, event.at);
         card.lastRowErr = !!event.isError;
       }
     }
@@ -556,7 +577,7 @@ function onToolCallFinished(event) {
   }
 
   const row = toolRows.get(event.id);
-  if (row) finishToolRow(row, event.isError, event.resultPreview);
+  if (row) finishToolRow(row, event.isError, event.resultPreview, event.at);
 
   if (event.tool === "Agent" || event.tool === "Workflow") {
     finalizeAllAgentCards();
@@ -699,14 +720,30 @@ function renderPermissionUi() {
   }
 }
 
+/**
+ * What an approval card shows, shared by the single-console modal and the
+ * tiled pane: the command (or, for a call with no command, the engine's
+ * description), and `why` — the engine's description when it says something
+ * the command does not, e.g. the process-kill guard's warning that a kill by
+ * name stops every matching process. A deletion prompt's description IS the
+ * command, so it adds no line.
+ */
+function approvalLines(permission) {
+  const input = permission.input;
+  const command = input && typeof input === "object" && input.command;
+  const subject = command || permission.description || safeStringify(input);
+  const why = command && permission.description && permission.description !== command ? permission.description : "";
+  return { subject, why };
+}
+
 /** Fill and open the shared approval modal for a permission (single-console). */
 function fillPermissionModal(permission) {
-  const input = permission.input;
-  const subject =
-    (input && typeof input === "object" && input.command) ||
-    permission.description ||
-    safeStringify(input);
+  const { subject, why } = approvalLines(permission);
   deleteSubjectEl.textContent = subject;
+  if (permissionWhyEl) {
+    permissionWhyEl.textContent = why;
+    permissionWhyEl.classList.toggle("hidden", !why);
+  }
   // "Always allow" is offered only when the engine sent a subject to scope the
   // grant to. Without one there is nothing durable to remember, and the button
   // would silently behave like ALLOW ONCE.
@@ -1007,7 +1044,7 @@ function handleEngineEvent(event) {
       onSessionList(event);
       break;
     case "turn_started":
-      onTurnStarted();
+      onTurnStarted(event);
       break;
     case "tool_output_delta":
       onToolOutputDelta(event);
@@ -1074,6 +1111,11 @@ function handleEngineEvent(event) {
       // a compaction frame with no outputTokens leaves the turn's counter be.
       contextTokens = event.contextTokens ?? contextTokens;
       if (typeof event.outputTokens === "number") outputTokens = event.outputTokens;
+      // Mid-stream the reasoning part is the engine's estimate.
+      if (typeof event.reasoningTokens === "number") {
+        reasoningTokens = event.reasoningTokens;
+        reasoningEstimated = true;
+      }
       contextWarn = event.contextWarn === true;
       updateSessionMeter();
       break;

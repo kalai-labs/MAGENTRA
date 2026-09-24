@@ -35,6 +35,19 @@ function estimateTokens(input) {
   return Math.ceil(Math.max(0, chars) / CHARS_PER_TOKEN);
 }
 
+/** The reasoning part of an output figure — "~8.1k reasoning" while estimated,
+ *  "8.1k reasoning" once the provider reported it. Empty when there is none.
+ *  Reasoning is INSIDE the output figure it follows, never added to it. */
+function reasoningText(reasoning, estimated) {
+  return reasoning > 0 ? `${estimated ? "~" : ""}${formatTokens(reasoning)} reasoning` : "";
+}
+
+/** The live strip's output counter: "↑ 12k out · ~8.1k reasoning". */
+function outputTokensText(output, reasoning, estimated) {
+  const part = reasoningText(reasoning, estimated);
+  return `↑ ${formatTokens(output)} out${part ? ` · ${part}` : ""}`;
+}
+
 /** Display rounding: "12.3k", "210k", "1.5M". The step coarsens as the number
  *  grows — precision we do not have would be a lie. Each threshold is where the
  *  NEXT band's rounding takes over, so the text never reads backwards across one

@@ -1,0 +1,26 @@
+{
+  "id": "the-sessions-list-follows-the-live-session",
+  "name": "The sessions list follows the live session",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "the Sessions list is asked for again when a turn starts — the first message is what puts a session on disk — and when it ends, by the tab the turn belongs to, so the live session is listed during its first turn and a background tab's list is its own.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/renderer/modules/landing.js"
+  ],
+  "invariant": "A session appears in its own tab's Sessions list as soon as its first turn starts, and the list is refreshed when a turn ends.",
+  "deferred": true,
+  "tests": [
+    "a-turn-asks-for-the-list-when-it-starts-and-when-it-ends",
+    "a-background-tabs-turn-asks-its-own-engine-and-not-the-focused-one"
+  ],
+  "freshness": {
+    "hash": "fbe6428a7b549db3",
+    "fileHashes": {
+      "app/renderer/modules/landing.js": "fbe6428a7b549db3"
+    },
+    "recordedAt": "2026-09-24"
+  }
+}

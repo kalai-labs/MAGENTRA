@@ -300,6 +300,7 @@ export class OpenAICompatProvider implements Provider {
           prompt_tokens?: number;
           completion_tokens?: number;
           prompt_tokens_details?: { cached_tokens?: number };
+          completion_tokens_details?: { reasoning_tokens?: number };
         };
         error?: { message?: string; code?: unknown; status?: unknown; type?: string } | string;
       };
@@ -326,11 +327,17 @@ export class OpenAICompatProvider implements Provider {
         // input rate on top of the cache rate. Subtract to get the fresh part.
         const promptTokens = chunk.usage.prompt_tokens ?? 0;
         const cachedTokens = chunk.usage.prompt_tokens_details?.cached_tokens ?? 0;
+        const completionTokens = chunk.usage.completion_tokens ?? 0;
+        // Reasoning is a PART of completion_tokens (OpenAI's contract, and the
+        // one this adapter speaks); clamped to it so a gateway that counts
+        // differently can never make the part larger than the whole.
+        const reasoning = chunk.usage.completion_tokens_details?.reasoning_tokens;
         usage = {
           inputTokens: Math.max(0, promptTokens - cachedTokens),
-          outputTokens: chunk.usage.completion_tokens ?? 0,
+          outputTokens: completionTokens,
           cacheReadTokens: cachedTokens,
           cacheWriteTokens: 0,
+          ...(typeof reasoning === "number" ? { reasoningTokens: Math.min(reasoning, completionTokens) } : {}),
         };
       }
       const choice = chunk.choices?.[0];

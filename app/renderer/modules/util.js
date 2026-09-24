@@ -89,7 +89,9 @@ function timeString() {
 }
 
 function formatElapsed(ms) {
-  const totalSec = Math.floor(ms / 1000);
+  // Clamped like formatTurnElapsed: a start stamped by the engine's clock can
+  // sit a few ms ahead of the page's own, and "-1s" is never a duration.
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   if (m > 0) return `${m}m${String(s).padStart(2, "0")}s`;

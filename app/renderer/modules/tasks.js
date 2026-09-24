@@ -35,13 +35,18 @@ function onTaskListUpdated(event) {
 
   // --- Per-tab state (ALWAYS, whichever tab owns this event) --------------
   // Observe status flips: they feed the now-line and the per-task stopwatch
-  // (start on in_progress, freeze on completed).
+  // (start on in_progress, freeze on completed). The engine's own times win
+  // when it sends them — a frame handled late must not shorten a task — and
+  // the moment the flip was seen is only the fallback for an older engine.
   const now = Date.now();
   for (const task of tasks) {
     const prevStatus = taskStatusById.get(task.id);
     const times = taskTimes.get(task.id) || {};
-    if (task.status === "in_progress" && !times.start) times.start = now;
-    if (task.status === "completed" && times.start && !times.done) times.done = now;
+    if (typeof task.startedAt === "number") times.start = task.startedAt;
+    else if (task.status === "in_progress" && !times.start) times.start = now;
+    if (task.status !== "completed") delete times.done;
+    else if (typeof task.completedAt === "number") times.done = task.completedAt;
+    else if (times.start && !times.done) times.done = now;
     taskTimes.set(task.id, times);
     if (task.status === "in_progress" && prevStatus !== "in_progress" && nowVerb === "thinking") {
       setNowActivity("task", task.subject);

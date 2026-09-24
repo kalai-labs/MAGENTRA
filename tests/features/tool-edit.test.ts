@@ -237,7 +237,48 @@ class ReplaceAllChangesEveryOccurrence extends EditTest {
   }
 }
 
+/* ---- E-05: a near miss names where it differs ---------------------------- */
+
+class ANearMissNamesWhereItDiffers extends EditTest {
+  readonly id = "a-near-miss-names-the-first-character-that-differs-and-both-sides-of-it";
+  readonly whyItExists =
+    "in the field run three Edits failed on one missing '/' in a 1,249-character old_string, and 'not found' gave the model nothing to find it with, so it re-quoted from memory and missed again";
+
+  override async run(t: TestRun): Promise<void> {
+    const original = [
+      "def load_config(root):",
+      '    path = root + "/GameConfig.Overrides.json"',
+      "    with open(path, encoding=\"utf-8\") as f:",
+      "        return json.load(f)",
+      "",
+    ].join("\n");
+    const path = this.file("config.py", original);
+    this.state.recordRead(path);
+
+    // The field case: the whole block quoted from memory, one "/" missing.
+    const slipped = original.replace('"/GameConfig', '"GameConfig');
+    const miss = await runTool(editTool, { file_path: path, old_string: slipped, new_string: "pass\n" }, this.ctx());
+    const text = resultText(miss);
+    t.assert.equal(miss.isError, true);
+    t.assert.match(text, /old_string not found/, "it is still the not-found error");
+    t.assert.match(text, /matches the file for its first 42 of \d+ characters/, `it says how far old_string matched: ${text}`);
+    t.assert.match(text, /then old_string has "GameConfig/, "what old_string has at the first difference");
+    t.assert.match(text, /where the file \(line 2\) has "\/GameConfig/, "and what the file has there, on which line");
+    t.assert.equal(readFileSync(path, "utf8"), original, "and nothing was changed");
+
+    // A CRLF file quoted with bare \n: the hint names the line endings.
+    const crlf = this.file("crlf.txt", "first line\r\nsecond line\r\n");
+    this.state.recordRead(crlf);
+    const ending = await runTool(editTool, { file_path: crlf, old_string: "first line\nsecond line", new_string: "x" }, this.ctx());
+    t.assert.match(resultText(ending), /CRLF line endings/, `a line-ending mismatch is named: ${resultText(ending)}`);
+
+    const nothing = await runTool(editTool, { file_path: path, old_string: "completely different text that is nowhere", new_string: "x" }, this.ctx());
+    t.assert.match(resultText(nothing), /Not even its beginning appears in the file/, "and a snippet that shares nothing is told to re-read");
+  }
+}
+
 registerFeatureTests(
+  new ANearMissNamesWhereItDiffers(),
   new AnUnreadFileCannotBeEdited(),
   new AFileChangedOnDiskCannotBeEdited(),
   new ZeroAndManyMatchesAreDifferentErrors(),

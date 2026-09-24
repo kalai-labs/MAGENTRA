@@ -38,7 +38,7 @@ const CODE_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
   ".c", ".h", ".cc", ".cpp", ".hpp", ".cs", ".m", ".mm", ".swift",
   ".php", ".lua", ".dart", ".ex", ".exs", ".erl", ".hs", ".clj",
   ".sh", ".bash", ".zsh", ".ps1", ".sql",
-  ".vue", ".svelte", ".html", ".css", ".scss",
+  ".vue", ".svelte", ".html", ".htm", ".css", ".scss", ".sass", ".less",
 ]);
 
 /** The subset of `paths` whose suffix marks them as runnable source. */
@@ -71,6 +71,31 @@ const TEST_DOUBLE_MARKERS: readonly string[] = [
 /** Whether written text stands something in for a real dependency. */
 export function looksLikeTestDouble(text: string): boolean {
   return TEST_DOUBLE_MARKERS.some((marker) => text.includes(marker));
+}
+
+/** Suffixes of what the user SEES in a browser. Plain .js is left out on purpose:
+ *  it is as often a server as a page, and a server is proven by running it. */
+const UI_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
+  ".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte", ".jsx", ".tsx",
+]);
+
+/** The subset of `paths` a user looks at in a browser. A test or spec file is
+ *  not the page, however it is spelled. */
+export function uiFilesAmong(paths: Iterable<string>): string[] {
+  const out: string[] = [];
+  for (const path of paths) {
+    if (/\.(?:test|spec|stories)\.[^.\\/]+$/i.test(path)) continue;
+    if (UI_FILE_EXTENSIONS.has(extname(path).toLowerCase())) out.push(path);
+  }
+  return out;
+}
+
+/** A command that drives a real or headless browser — evidence of the page as a user meets it. */
+const BROWSER_RUN = /\b(?:playwright|puppeteer|selenium|webdriver|cypress|chromedp|wkhtmltoimage)\b|--headless\b|--screenshot\b/i;
+
+/** Whether a shell command drives a browser. */
+export function looksLikeBrowserRun(command: string): boolean {
+  return BROWSER_RUN.test(command);
 }
 
 /** How many changed files a rung names before it starts counting instead. A
@@ -181,6 +206,41 @@ export function runtimeEvidenceText(files: string[], vision: boolean, doubleFile
 }
 
 /**
+ * The browser shape of the same floor, for the turn that DID run things — the
+ * server, curl, a bot against the API — and changed a page nobody opened. HTTP
+ * 200 proves the file was served, not that the page works: in the 2026-09-23
+ * field test every client defect the owner hit in minutes (aim, visibility,
+ * feedback, the unshown "STAIRS OPEN") passed that check. Its own prompt rather
+ * than a clause, because the runtime-evidence opening ("did not run a single
+ * command") would be false here; it reuses the vision clauses and the fuse.
+ */
+const BROWSER_EVIDENCE = definePrompt({
+  id: "finishing.browser-evidence",
+  group: GROUP,
+  label: "Browser evidence rung",
+  channel: "reminder",
+  where:
+    "Fires once at the end of a turn that changed a browser-facing file (.html, .css, a component) and never drove a browser or read a screenshot. Shares the runtime-evidence fuse, so at most one of the two fires per turn. Costs at least one extra round trip.",
+  placeholders: ["files", "visionNote"],
+  text: `<system-reminder>You changed what the user sees ({{files}}) and checked it only from the outside — commands, HTTP requests, syntax checks. Nothing has been observed in a browser, where the user will use it, and a page can load with HTTP 200 and still not work.
+
+Before you call it done:
+1. Open it the way the user will: drive the page in a real or headless browser — for example a short Playwright or Puppeteer script in the system temp directory, deleted in this same turn. Load it, do each main thing the user asked for with the default settings, and read what happens: the rendered text, the DOM, the console errors.
+2. {{visionNote}}
+3. Check that the user can tell what happened: every action they take gets visible feedback, and every rule they need is on the screen, not only in your answer.
+4. Say in your wrap-up what you drove in the browser and what you observed.
+
+If no browser can run on this machine, STOP HERE AND SAY SO: name what you checked instead and say plainly that the page itself stays unverified. That is a complete and correct answer.</system-reminder>`,
+});
+
+export function browserEvidenceText(files: string[], vision: boolean): string {
+  return renderPrompt(BROWSER_EVIDENCE, {
+    files: fileList(files),
+    visionNote: promptText(vision ? VISION_ON : VISION_OFF),
+  });
+}
+
+/**
  * The circular-evidence rung — the second shape of the same question, for the
  * turn that DID run something, where what it ran was a stand-in it wrote itself.
  *
@@ -228,8 +288,60 @@ const SELF_VERIFY_CLOSING_CODE = definePrompt({
   channel: "reminder",
   where: "Substituted into `{{closing}}` of the self-verify rung when the turn edited source files.",
   placeholders: ["files"],
-  text: `You changed code this turn ({{files}}). "Fully handled" includes SETTLED: either the change was observed doing what it was supposed to do — executed against the real thing, not merely compiled, re-read, reasoned about, or agreed with by a stand-in you wrote yourself — or you told the user plainly which parts you could not run and what stays unverified. Either of those is done. Reporting a verification you did not actually perform is not.`,
+  text: `You changed code this turn ({{files}}). "Fully handled" includes SETTLED: either the change was observed doing what it was supposed to do — executed against the real thing, not merely compiled, re-read, reasoned about, or agreed with by a stand-in you wrote yourself — or you told the user plainly which parts you could not run and what stays unverified. Either of those is done. Reporting a verification you did not actually perform is not. When a fix corrected a mistake that can be repeated elsewhere (a misspelled or wrongly cased name, a wrong call), search every file for it before you answer.`,
 });
+
+const SELF_VERIFY_SYMPTOMS = definePrompt({
+  id: "finishing.self-verify.symptoms",
+  group: GROUP,
+  label: "Self-verify clause — reported symptoms",
+  channel: "reminder",
+  where:
+    "Appended inside `{{closing}}` of the self-verify rung when the model reported failures while it worked (sentences the engine found in its mid-turn text). Empty otherwise.",
+  placeholders: ["symptoms"],
+  text: "While you worked you reported: {{symptoms}}. Each of these is settled only when it was re-tested after its fix — a passing case for one symptom does not settle another.",
+});
+
+const SELF_VERIFY_HEDGES = definePrompt({
+  id: "finishing.self-verify.hedges",
+  group: GROUP,
+  label: "Self-verify clause — hedges in the answer",
+  channel: "reminder",
+  where:
+    "Appended inside `{{closing}}` of the self-verify rung when the final answer hedges (\"may still\", \"unverified\", \"not tested\"). Empty otherwise.",
+  placeholders: ["hedges"],
+  text: `Your answer hedges: {{hedges}}. Each of these is open work. If you can settle it now — run it, check it, clean it up — do that. If you cannot, keep it in your answer as a plain note to the user; that is fine. "May still" must never stand in for a cleanup you could do yourself.`,
+});
+
+/** Sentences of `text`, trimmed, each at most 200 characters. */
+function sentencesOf(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.trim().replace(/^[-*•]\s*/, ""))
+    .filter((s) => s.length > 0)
+    .map((s) => (s.length > 200 ? `${s.slice(0, 199)}…` : s));
+}
+
+/** A sentence that reports something failing. */
+const SYMPTOM = /\b(?:never|does not|doesn't|do not|don't|is not|isn't|are not|aren't|won't|can't|cannot|fails?|failed|failing|broken|crash(?:es|ed|ing)?|throws?|threw|stuck|no longer)\b/i;
+
+/** A sentence that leaves something open. */
+const HEDGE = /\b(?:may|might|could) still\b|\bnot (?:yet )?(?:verified|tested|checked|confirmed)\b|\bun(?:verified|tested|confirmed)\b|\b(?:could not|couldn't) (?:verify|test|run|confirm|check)\b|\bshould (?:now )?work\b|\bprobably (?:works|fine)\b|\bnot sure\b/i;
+
+/** The failures a model reported in `text` — what the self-check must see re-tested. */
+export function findSymptoms(text: string): string[] {
+  return sentencesOf(text).filter((s) => SYMPTOM.test(s) && !HEDGE.test(s));
+}
+
+/** The sentences of a final answer that leave something open. At most five. */
+export function findHedges(text: string): string[] {
+  return sentencesOf(text).filter((s) => HEDGE.test(s)).slice(0, 5);
+}
+
+/** Quoted, for a clause: «a»; «b». */
+function quoted(items: string[]): string {
+  return items.map((s) => `«${s}»`).join("; ");
+}
 
 const SELF_VERIFY_CLOSING_PLAIN = definePrompt({
   id: "finishing.self-verify.closing-plain",
@@ -247,10 +359,21 @@ const SELF_VERIFY_CLOSING_PLAIN = definePrompt({
  * the caller pays a full inference round either way, and that round is the cost
  * the operator was trying to remove.
  */
-export function selfVerifyText(changedCode: string[]): string | undefined {
-  const closing = changedCode.length > 0
+export function selfVerifyText(
+  changedCode: string[],
+  open: { symptoms?: string[]; hedges?: string[] } = {},
+): string | undefined {
+  const base = changedCode.length > 0
     ? renderPrompt(SELF_VERIFY_CLOSING_CODE, { files: fileList(changedCode) })
     : promptText(SELF_VERIFY_CLOSING_PLAIN);
+  // The turn's own loose ends, quoted so the model does not have to find them.
+  // They ride inside the one closing slot, so the sentinel head never varies.
+  const clauses = [
+    base,
+    open.symptoms && open.symptoms.length > 0 ? renderPrompt(SELF_VERIFY_SYMPTOMS, { symptoms: quoted(open.symptoms) }) : "",
+    open.hedges && open.hedges.length > 0 ? renderPrompt(SELF_VERIFY_HEDGES, { hedges: quoted(open.hedges) }) : "",
+  ];
+  const closing = clauses.filter((c) => c.trim() !== "").join("\n\n");
   const text = renderPrompt(SELF_VERIFY, { closing });
   return text.trim() === "" ? undefined : text;
 }

@@ -44,7 +44,7 @@ import { startScriptedEngine, type ScriptedEngine } from "../lib/scriptedEngine.
 const FEATURE = "permission-stances";
 
 /** Verbatim from the record. */
-const INVARIANT = "Resolution order is deny rules > protected-path guard > deletion guard > allow rules > stance default.";
+const INVARIANT = "Resolution order is deny rules > process-kill guard > protected-path guard > deletion guard > allow rules > stance default.";
 
 /** An absolute path on either platform. Nothing here touches the disk — the
  *  guards under test are path arithmetic over strings. */

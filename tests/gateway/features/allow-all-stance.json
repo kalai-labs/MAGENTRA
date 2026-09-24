@@ -11,7 +11,7 @@
   "entryFiles": [
     "engine/core/src/runtime/permissions.ts"
   ],
-  "invariant": "OVERDRIVE means nothing asks, literally — except a deny rule, which refuses rather than asks.",
+  "invariant": "OVERDRIVE means nothing asks, literally — a deny rule, and a kill by process name, refuse rather than ask.",
   "deferred": false,
   "tests": [
     "a-deletion-runs-unprompted-and-is-answered-by-the-stance",

@@ -100,11 +100,20 @@ export interface ToolDefinition<I = unknown> {
   /**
    * Returns a human-readable description of what would be DELETED (a file,
    * folder, or worktree) when the input is destructive, undefined otherwise.
-   * Deletion calls always require interactive user approval, in every
-   * permission stance (OVERDRIVE included) and regardless of allow/deny rules or
-   * session allows — see PermissionEngine.check.
+   * Outside OVERDRIVE, deletion calls require interactive user approval
+   * regardless of broad allow rules or session allows; OVERDRIVE and the
+   * "Allow deletions" switch turn the guard off — see PermissionEngine.check.
    */
   deletionSubject?: (input: I) => string | undefined;
+  /**
+   * Returns the command when the input stops processes BY NAME (or every
+   * process) — `taskkill /IM`, `pkill`, `killall`, `Stop-Process -Name`,
+   * `kill -1`, a kill fed by `pgrep`/`ps` — undefined otherwise. Such a call
+   * asks outside OVERDRIVE and is refused in OVERDRIVE; only a literal grant or
+   * an explicit rule for that exact subject lets it through — see
+   * PermissionEngine.check.
+   */
+  processKillSubject?: (input: I) => string | undefined;
   /**
    * Scope classifier for a call already flagged by deletionSubject:
    * "workspace" when every deletion target provably resolves inside the
@@ -232,6 +241,8 @@ export interface FileStateStore {
   /** Error text if the file must be re-read first, undefined when fresh. */
   checkFresh(path: string): string | undefined;
   wasRead(path: string): boolean;
+  /** Files Read this session whose contents moved on disk since (one stat each). */
+  changedSinceRead(): string[];
 }
 
 export interface TaskPatch {

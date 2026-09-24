@@ -197,7 +197,7 @@
         </div>
         <div id="hintLine">
           <span id="hintModel">deepseek-ai/DeepSeek-V4-Flash</span>
-          <span id="hintAuto" class="hint-auto">asks before commands · deletions always ask</span>
+          <span id="hintAuto" class="hint-auto">runs commands · deletions ask</span>
         </div>
       </footer>
     </section>
@@ -356,7 +356,8 @@
           <dl class="glossary">
             <dt>task list</dt><dd>the live plan of record in the TASKS rail — the current work items, ending with a verification task.</dd>
             <dt>addons</dt><dd>Markdown procedures under <code>.magentra/addons/</code> that the agent loads on demand. Always available — only the description sits in the prompt until one is invoked, so extra ones cost almost nothing. List them with <code>/addons</code>, run one with <code>/name</code>, or create your own with ＋ BUILD NEW ADDON.</dd>
-            <dt>deletion guard</dt><dd>destructive commands always ask first — even in OVERDRIVE — unless Deletions is set to ALLOW above.</dd>
+            <dt>deletion guard</dt><dd>destructive commands ask first unless Deletions is set to ALLOW above. OVERDRIVE turns it off: nothing asks there.</dd>
+            <dt>process-kill guard</dt><dd>a command that stops processes by name (taskkill /IM, pkill, killall, Stop-Process -Name) asks first; in OVERDRIVE it is refused, because it would stop every matching process on this computer.</dd>
             <dt>session</dt><dd>one conversation with its own transcript, cost ledger, and task list, saved under <code>.magentra/sessions/</code> (SESSIONS in the dock resumes them).</dd>
           </dl>
         </div>
@@ -498,6 +499,7 @@
       <div class="modal-title" id="deleteModalTitle">⚠ APPROVAL REQUIRED</div>
       <p class="modal-sub">The agent wants to run:</p>
       <pre id="deleteSubject"></pre>
+      <p id="permissionWhy" class="approval-why hidden"></p>
       <p id="allowAlwaysHint" class="modal-hint hidden">“Always allow” remembers this exact command for this workspace — anything else still asks.</p>
       <textarea id="permissionNote" class="modal-note" rows="1" spellcheck="false" placeholder="Optional note to the agent…"></textarea>
       <div class="modal-actions">

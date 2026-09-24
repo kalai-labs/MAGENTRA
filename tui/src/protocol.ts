@@ -26,6 +26,9 @@ export interface Usage {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** The reasoning part of outputTokens (inside it, never added). */
+  reasoningTokens?: number;
+  reasoningEstimated?: boolean;
 }
 
 export interface QuestionOption {
@@ -86,7 +89,7 @@ export type CoreEvent =
       overdrive: boolean;
       commands: SlashCommandInfo[];
     }
-  | { type: "turn_started"; turnId: string }
+  | { type: "turn_started"; turnId: string; /** Epoch ms, engine clock. */ at?: number }
   | { type: "tool_output_delta"; id: string; text: string }
   | { type: "retry_status"; attempt: number; delayMs: number; reason: string }
   | { type: "text_delta"; text: string }
@@ -133,7 +136,7 @@ export type CoreEvent =
     }
   | { type: "overdrive_changed"; enabled: boolean }
   | { type: "command_output"; text: string }
-  | { type: "context_update"; contextTokens: number; outputTokens?: number; contextWarn?: boolean }
+  | { type: "context_update"; contextTokens: number; outputTokens?: number; reasoningTokens?: number; contextWarn?: boolean }
   | { type: "session_report"; text: string }
   | { type: "session_list"; sessions: SessionSummary[] }
   | {

@@ -223,6 +223,354 @@ export function bashDeletionScope(
   return "workspace";
 }
 
+// ── Process-kill guard ──────────────────────────────────────────────────────
+// A kill BY NAME stops every matching process on the machine — the user's own
+// editors, servers and notebooks included — not only what this session
+// started. In the 2026-09-23 field test the agent ran
+// `taskkill //F //IM python.exe` in OVERDRIVE with no prompt, and used TaskStop
+// on its own job four seconds later. Unlike the deletion classifier above,
+// this one reads COMMAND POSITIONS rather than words anywhere: in OVERDRIVE a
+// flagged call is refused instead of asked, so a commit message that mentions
+// pkill must not cost the agent its commit.
+
+/** One simple command: its words with quotes removed, and whether a pipe fed it. */
+interface SimpleCommand {
+  words: string[];
+  piped: boolean;
+}
+
+/**
+ * Splits a command line into simple commands on the unquoted shell operators
+ * (`;` `&` `|` `&&` `||`, newlines) and on grouping (`(` `)` `$(` backticks,
+ * and standalone `{` `}`). A substitution still runs inside double quotes, so
+ * `$(` and backticks split there too. The `&` of a redirection (`2>&1`, `&>`)
+ * is not a separator. Words keep their text with the quotes removed.
+ */
+function simpleCommands(command: string): SimpleCommand[] {
+  const out: SimpleCommand[] = [];
+  /** Open contexts: double quote, `$(` substitution, backtick substitution. */
+  const stack: ('"' | "$(" | "`")[] = [];
+  let words: string[] = [];
+  let word = "";
+  let inWord = false;
+  let piped = false;
+  const endWord = (): void => {
+    if (inWord && word !== "{" && word !== "}") words.push(word);
+    word = "";
+    inWord = false;
+  };
+  const endCommand = (nextPiped = false): void => {
+    endWord();
+    if (words.length > 0) out.push({ words, piped });
+    words = [];
+    piped = nextPiped;
+  };
+  const top = (): string | undefined => stack[stack.length - 1];
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i]!;
+    const next = command[i + 1];
+    if (c === "$" && next === "(") {
+      endCommand();
+      stack.push("$(");
+      i++;
+      continue;
+    }
+    if (c === "`") {
+      endCommand();
+      if (top() === "`") stack.pop();
+      else stack.push("`");
+      continue;
+    }
+    if (top() === '"') {
+      // Inside double quotes a backslash escapes only $ ` " \ and a newline;
+      // any other one is kept ("C:\Windows\...\taskkill.exe" names taskkill).
+      if (c === '"') stack.pop();
+      else if (c === "\\" && next !== undefined && '$`"\\\n'.includes(next)) word += command[++i];
+      else word += c;
+      inWord = true;
+      continue;
+    }
+    // A comment runs to the end of its line; an apostrophe in it opens no quote.
+    if (c === "#" && !inWord) {
+      const eol = command.indexOf("\n", i);
+      i = eol === -1 ? command.length : eol - 1;
+      continue;
+    }
+    // A here-document's body is data, not commands: `cat <<'EOF'` … `EOF`.
+    if (c === "<" && next === "<" && command[i + 2] !== "<") {
+      const heredoc = /^<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/.exec(command.slice(i));
+      if (heredoc) {
+        endWord();
+        const bodyStart = command.indexOf("\n", i);
+        if (bodyStart === -1) {
+          i += heredoc[0].length - 1;
+          continue;
+        }
+        const end = new RegExp(`\\n\\t*${heredoc[2]}[ \\t]*(?=\\n|\\)|$)`).exec(command.slice(bodyStart));
+        // The rest of the line after the delimiter still runs (`<<EOF | sh`, `)`).
+        const rest = command.slice(i + heredoc[0].length, bodyStart);
+        const after = end ? command.slice(bodyStart + end.index + end[0].length) : "";
+        // …unless a shell reads it (`bash <<EOF`, `cat <<EOF | sh`): then the body runs.
+        const body = command.slice(bodyStart + 1, end ? bodyStart + end.index : command.length);
+        const bodyRuns = /(^|[\s|/\\])((ba|z|da|k)?sh|pwsh|powershell|cmd)(\.exe)?(\s|$)/i.test(` ${words.join(" ")} ${rest} `);
+        return [
+          ...out,
+          ...(words.length > 0 ? [{ words, piped }] : []),
+          ...simpleCommands(rest),
+          ...(bodyRuns ? simpleCommands(body) : []),
+          ...simpleCommands(after),
+        ];
+      }
+    }
+    if (c === "'") {
+      const close = command.indexOf("'", i + 1);
+      word += close === -1 ? command.slice(i + 1) : command.slice(i + 1, close);
+      inWord = true;
+      i = close === -1 ? command.length : close;
+      continue;
+    }
+    if (c === '"') {
+      stack.push('"');
+      inWord = true;
+      continue;
+    }
+    if (c === "\\" && next !== undefined) {
+      word += next;
+      inWord = true;
+      i++;
+      continue;
+    }
+    if (c === ")") {
+      if (top() === "$(") stack.pop();
+      endCommand();
+      continue;
+    }
+    if (c === "(" || c === ";" || c === "\n" || c === "\r") {
+      endCommand();
+      continue;
+    }
+    if (c === "|") {
+      if (next === "|") {
+        endCommand();
+        i++;
+      } else {
+        endCommand(true);
+      }
+      continue;
+    }
+    if (c === "&") {
+      const prev = command[i - 1];
+      if (prev === ">" || prev === "<" || next === ">") {
+        word += c;
+        inWord = true;
+        continue;
+      }
+      endCommand();
+      if (next === "&") i++;
+      continue;
+    }
+    if (c === " " || c === "\t") {
+      endWord();
+      continue;
+    }
+    word += c;
+    inWord = true;
+  }
+  endCommand();
+  return out;
+}
+
+/** A program name as the guard compares it: no directory, no `.exe`, lower case. */
+function programName(word: string): string {
+  const base = word.split(/[\\/]/).pop() ?? word;
+  return base.toLowerCase().replace(/\.exe$/, "");
+}
+
+/** Prefixes that run the command after them: `sudo pkill …` is a pkill. */
+const RUNNERS = new Set(["sudo", "doas", "nohup", "time", "exec", "command", "builtin", "nice", "timeout", "env", "stdbuf"]);
+/** Shell keywords a command can follow: `then pkill …`, `do kill $pid`, `! pkill …`. */
+const KEYWORDS = new Set(["if", "then", "elif", "else", "do", "while", "until", "!"]);
+/** xargs options that take a value, so the value is not mistaken for the program. */
+const XARGS_VALUE_OPTIONS = new Set(["-n", "-I", "-P", "-L", "-d", "-s", "-a", "-E"]);
+/** Commands whose job is to find pids by NAME: a kill fed by one is a kill by name. */
+const NAME_LOOKUPS = new Set(["pgrep", "pidof", "ps", "get-process", "gps", "tasklist"]);
+/** Commands that stop processes, for the name-lookup rule. */
+const KILLERS = new Set(["kill", "stop-process", "spps", "taskkill", "tskill"]);
+/** powershell options that take a value, so the value is not read as the command. */
+const POWERSHELL_VALUE_OPTIONS = /^-(executionpolicy|ep|windowstyle|w|version|v|outputformat|of|inputformat|if|configurationname|workingdirectory|wd|file|f)$/i;
+
+interface ResolvedCommand {
+  head: string;
+  args: string[];
+  piped: boolean;
+  /** The command strings a shell wrapper (`bash -c`, `cmd /c`, `powershell -Command`) runs. */
+  inner: string[];
+}
+
+/** The program a simple command really runs, past runners, env assignments and xargs. */
+function resolveCommand(cmd: SimpleCommand): ResolvedCommand | undefined {
+  const words = [...cmd.words];
+  while (words.length > 0) {
+    const first = words[0]!;
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(first)) {
+      words.shift();
+      continue;
+    }
+    const name = programName(first);
+    if (KEYWORDS.has(name)) {
+      words.shift();
+      continue;
+    }
+    // `command -v pkill` asks whether pkill exists; it runs nothing.
+    if (name === "command" && (words[1] === "-v" || words[1] === "-V")) return undefined;
+    if (RUNNERS.has(name)) {
+      words.shift();
+      // Their options (sudo -u bob, nice -n 5, timeout 10s) come before the program.
+      while (words.length > 0 && (words[0]!.startsWith("-") || /^\d/.test(words[0]!) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]!))) {
+        const opt = words.shift()!;
+        if ((opt === "-u" || opt === "-g" || opt === "-n") && words.length > 0) words.shift();
+      }
+      continue;
+    }
+    if (name === "xargs") {
+      words.shift();
+      while (words.length > 0 && words[0]!.startsWith("-")) {
+        const opt = words.shift()!;
+        if (XARGS_VALUE_OPTIONS.has(opt) && words.length > 0) words.shift();
+      }
+      continue;
+    }
+    break;
+  }
+  if (words.length === 0) return undefined;
+  const head = programName(words[0]!);
+  const args = words.slice(1);
+  const inner: string[] = [];
+  if (/^(ba|z|da|k)?sh$/.test(head)) {
+    const flag = args.findIndex((a) => /^-[a-z]*c[a-z]*$/.test(a));
+    if (flag !== -1 && args[flag + 1] !== undefined) inner.push(args[flag + 1]!);
+  } else if (head === "powershell" || head === "pwsh") {
+    // `-Command` takes the rest of the line; without it, the first word that is
+    // not an option (or an option's value) starts the command.
+    let start = args.findIndex((a) => /^-c(ommand)?$/i.test(a)) + 1;
+    if (start === 0) {
+      start = args.length;
+      for (let j = 0; j < args.length; j++) {
+        if (!args[j]!.startsWith("-")) {
+          start = j;
+          break;
+        }
+        if (POWERSHELL_VALUE_OPTIONS.test(args[j]!)) j++;
+      }
+    }
+    if (start < args.length) inner.push(args.slice(start).join(" "));
+  } else if (head === "eval") {
+    if (args.length > 0) inner.push(args.join(" "));
+  } else if (head === "cmd") {
+    const flag = args.findIndex((a) => /^\/[ck]$/i.test(a));
+    if (flag !== -1 && flag + 1 < args.length) inner.push(args.slice(flag + 1).join(" "));
+  }
+  return { head, args, piped: cmd.piped, inner };
+}
+
+/** A PowerShell parameter written as any prefix of `full` (PowerShell accepts those). */
+function isParam(arg: string, full: string, minLength = 1): boolean {
+  if (!arg.startsWith("-")) return false;
+  const given = arg.slice(1).replace(/:.*$/, "").toLowerCase();
+  return given.length >= minLength && full.startsWith(given);
+}
+
+/** POSIX kill: true when a target is -1 — every process the user may signal. */
+function killTargetsEveryProcess(args: string[]): boolean {
+  let i = 0;
+  const first = args[0];
+  if (first === "-l" || first === "-L") return false;
+  if (first === "-s" || first === "-n") i = 2;
+  else if (first !== undefined && first !== "--" && first.startsWith("-") && args.length > 1) i = 1;
+  if (args[i] === "--") i++;
+  return args.slice(i).includes("-1");
+}
+
+/** True when one resolved command, on its own, stops processes by name or all of them. */
+function killsByName(cmd: ResolvedCommand): boolean {
+  const { head, args } = cmd;
+  switch (head) {
+    case "pkill":
+    case "killall":
+      return true;
+    case "tskill": {
+      const target = args.find((a) => !a.startsWith("/") && !a.startsWith("-"));
+      return target === undefined || !/^\d+$/.test(target);
+    }
+    case "taskkill": {
+      // `/IM`, `//IM` (Git Bash) and `-IM` are one option; so are the /PID forms.
+      const options = args.filter((a) => /^(\/\/?|-)/.test(a)).map((a) => a.replace(/^(\/\/?|-)/, "").toLowerCase());
+      return options.includes("im") || !options.includes("pid");
+    }
+    case "stop-process":
+    case "spps": {
+      if (cmd.piped) return true;
+      if (args.some((a) => isParam(a, "name") || isParam(a, "processname", 2))) return true;
+      const byId = args.some((a) => isParam(a, "id")) || args.some((a) => /^\d+(,\d+)*$/.test(a));
+      return !byId;
+    }
+    case "kill":
+      // PowerShell's `kill` is Stop-Process; POSIX kill has no -Name. Two
+      // letters at least, so POSIX `kill -n 9 <pid>` stays a kill by pid.
+      if (args.some((a) => isParam(a, "name", 2) || isParam(a, "processname", 2))) return true;
+      return killTargetsEveryProcess(args);
+    case "wmic": {
+      const lower = args.map((a) => a.toLowerCase());
+      const processClass = lower[0] === "process" || (lower[0] === "path" && lower[1] === "win32_process");
+      return processClass && (lower.includes("delete") || (lower.includes("call") && lower.includes("terminate")));
+    }
+    default:
+      return false;
+  }
+}
+
+/**
+ * Whether a kill's targets are all named outright — pids, `%job` specs, `$!` —
+ * so no name lookup elsewhere in the line can be what feeds it. A kill with a
+ * variable or no target at all (`xargs kill`, `kill $(…)`) could be fed one.
+ */
+function killsLiteralTargets(cmd: ResolvedCommand): boolean {
+  const targets = cmd.args.filter((a) => !/^(\/\/?|-)/.test(a));
+  return !cmd.piped && targets.length > 0 && targets.every((a) => /^(\d+(,\d+)*|%\S+|\$!)$/.test(a));
+}
+
+/** Every resolved command in `command`, including what shell wrappers run. */
+function resolvedCommands(command: string, depth = 0): ResolvedCommand[] {
+  const out: ResolvedCommand[] = [];
+  for (const simple of simpleCommands(command)) {
+    const cmd = resolveCommand(simple);
+    if (!cmd) continue;
+    out.push(cmd);
+    if (depth < 3) for (const inner of cmd.inner) out.push(...resolvedCommands(inner, depth + 1));
+  }
+  return out;
+}
+
+/**
+ * Returns the command string when it stops processes BY NAME or every process —
+ * taskkill /IM (or without /PID), pkill, killall, tskill <name>, Stop-Process
+ * -Name or fed by a pipe, POSIX kill -1, wmic process … delete, a Win32_Process
+ * terminate, or any kill whose pids come from a name lookup (pgrep, pidof, ps,
+ * Get-Process, tasklist) in the same command. Undefined for kills by pid or by
+ * port, and for these words anywhere but a command position. Used as
+ * bashTool.processKillSubject and monitorTool.processKillSubject.
+ */
+export function bashProcessKillSubject(command: string): string | undefined {
+  const commands = resolvedCommands(command);
+  if (commands.some(killsByName)) return command;
+  const looksUpByName = commands.some((c) => NAME_LOOKUPS.has(c.head));
+  if (looksUpByName && commands.some((c) => KILLERS.has(c.head) && !killsLiteralTargets(c))) return command;
+  // PowerShell: (Get-Process python).Kill() and … | ForEach-Object { $_.Kill() }.
+  if (looksUpByName && /\.kill\s*\(\s*\)/i.test(command)) return command;
+  if (/win32_process/i.test(command) && /\bterminate\b|remove-(?:cim|wmi)/i.test(command)) return command;
+  return undefined;
+}
+
 // Persistent working directory per session (directory changes survive across
 // calls; env vars and shell functions intentionally do not). Each entry
 // remembers the session cwd it was tracked under (`base`): when the session
@@ -266,6 +614,8 @@ export const bashTool: ToolDefinition<z.infer<typeof inputSchema>> = {
 - Do not use this for reading, searching, or editing files — Read/Grep/Glob/Edit are faster and safer than cat/grep/find/sed.
 - timeout is in milliseconds: default {{defaultTimeout}}, max {{maxTimeout}}. On timeout the whole process tree is killed.
 - run_in_background: true detaches the command; you get a task id immediately, output streams to a file, and a task-notification arrives when it exits. Never run bare foreground "sleep" commands — background the wait instead.
+- To stop a background command, use TaskStop with its task id. Never stop processes by name (taskkill /IM, pkill, killall, Stop-Process -Name): that stops every matching process on the machine, not only yours.
+- To wait for a server you started in the background, keep the wait short and check its job between tries (TaskOutput with block: false shows whether it is still running): a loop that only polls the port keeps spinning after the server has died.
 - Never use interactive flags (-i) — there is no TTY.
 - Command output is shown to you, not reliably to the user. Restate anything that matters in your final message.
 
@@ -282,6 +632,7 @@ a heredoc so formatting survives; then verify with git status.
   describeInput: (input) => input.description,
   deletionSubject: (input) => bashDeletionSubject(input.command),
   deletionScope: (input, ctx) => bashDeletionScope(input.command, effectiveCwd(ctx.session, ctx.cwd), ctx.cwd),
+  processKillSubject: (input) => bashProcessKillSubject(input.command),
   execute: async (input, ctx, signal) => {
     if (/^\s*sleep\s+[\d.]+\s*$/.test(input.command)) {
       return {
@@ -364,6 +715,9 @@ function runForeground(
 ): Promise<ToolResult> {
   return new Promise((resolve) => {
     const timeout = Math.min(input.timeout ?? DEFAULT_TIMEOUT, MAX_TIMEOUT);
+    // Files the model has Read that were already stale before this command are
+    // not this command's doing; only the ones it changes are named after it.
+    const staleBefore = new Set(session.fileState.changedSinceRead());
     const child = spawnShell(input.command, cwd, true);
     let output = "";
     let done = false;
@@ -414,7 +768,14 @@ function runForeground(
       }
       const text =
         clip(visible).trim() || (code !== 0 ? `(no output, exit code ${code})` : "(no output)");
-      finish({ content: text, ...(code !== 0 ? { isError: true } : {}) });
+      // A shell edit (sed -i, a formatter, a generator) leaves every Read of
+      // those files stale, and the next Edit would be refused without saying
+      // why the file moved. Name them here, once, where the change happened.
+      const touched = session.fileState.changedSinceRead().filter((p) => !staleBefore.has(p));
+      const note = touched.length > 0
+        ? `\n\n[This command changed ${touched.length === 1 ? "a file" : `${touched.length} files`} you had Read: ${touched.slice(0, 10).join(", ")}${touched.length > 10 ? ` and ${touched.length - 10} more` : ""}. Read ${touched.length === 1 ? "it" : "them"} again before you Edit.]`
+        : "";
+      finish({ content: text + note, ...(code !== 0 ? { isError: true } : {}) });
     });
   });
 }

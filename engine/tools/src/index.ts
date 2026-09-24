@@ -48,7 +48,7 @@ export {
   workflowTool,
   graphQueryTool,
 };
-export { resolveBashPath, spawnShell, killTree, bashDeletionSubject } from "./bash.js";
+export { resolveBashPath, spawnShell, killTree, bashDeletionSubject, bashProcessKillSubject } from "./bash.js";
 export {
   type SearchBackend,
   type SearchResult,

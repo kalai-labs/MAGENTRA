@@ -59,7 +59,7 @@ export type PendingPrompt =
     }
   | { kind: 'question'; id: string; questions: Question[]; index: number; picked: string[][] };
 
-export type Meters = { context: number; output: number; warn: boolean };
+export type Meters = { context: number; output: number; reasoning: number; reasoningEstimated: boolean; warn: boolean };
 
 /** Something running outside a turn, from background_notification. */
 export type BackgroundJob = { taskId: string; description: string };
@@ -187,7 +187,7 @@ export function useEngine(resume: string | true | undefined, workspace: string):
   const [busy, setBusy] = useState(false);
   const [startedAt, setStartedAt] = useState(0);
   const [activity, setActivityState] = useState<ActivityState>(IDLE_ACTIVITY);
-  const [meters, setMeters] = useState<Meters>({ context: 0, output: 0, warn: false });
+  const [meters, setMeters] = useState<Meters>({ context: 0, output: 0, reasoning: 0, reasoningEstimated: true, warn: false });
   const [model, setModelState] = useState('');
   const [models, setModels] = useState<string[]>([]);
   const [overdrive, setOverdrive] = useState(false);
@@ -444,12 +444,13 @@ export function useEngine(resume: string | true | undefined, workspace: string):
 
         case 'turn_started':
           setBusy(true);
-          setStartedAt(Date.now());
+          // The engine's clock when it sent one: the timer counts the turn, not the frame's arrival.
+          setStartedAt(event.at ?? Date.now());
           setActivity({ label: 'thinking', detail: '' });
           spoke.current = false;
           fence.current = false; // an unclosed fence must not bleed across turns
           setLiveLead(true);
-          setMeters((m) => ({ ...m, output: 0 }));
+          setMeters((m) => ({ ...m, output: 0, reasoning: 0, reasoningEstimated: true }));
           break;
 
         case 'text_delta':
@@ -612,6 +613,8 @@ export function useEngine(resume: string | true | undefined, workspace: string):
           setMeters((m) => ({
             context: event.contextTokens,
             output: event.outputTokens ?? m.output,
+            reasoning: event.reasoningTokens ?? m.reasoning,
+            reasoningEstimated: true,
             warn: event.contextWarn ?? m.warn,
           }));
           break;
@@ -633,6 +636,8 @@ export function useEngine(resume: string | true | undefined, workspace: string):
               kind: 'done',
               stopReason: event.stopReason,
               outputTokens: event.usage.outputTokens,
+              ...(event.usage.reasoningTokens ? { reasoningTokens: event.usage.reasoningTokens } : {}),
+              reasoningEstimated: event.usage.reasoningEstimated === true,
               contextTokens: event.contextTokens,
             });
           }
@@ -640,6 +645,8 @@ export function useEngine(resume: string | true | undefined, workspace: string):
           setMeters((m) => ({
             context: event.contextTokens,
             output: event.usage.outputTokens,
+            reasoning: event.usage.reasoningTokens ?? 0,
+            reasoningEstimated: event.usage.reasoningEstimated === true,
             warn: event.contextWarn ?? m.warn,
           }));
           flushLines();

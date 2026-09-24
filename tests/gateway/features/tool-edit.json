@@ -17,7 +17,8 @@
     "editing-a-file-that-moved-on-disk-since-the-read-fails",
     "no-match-and-several-matches-fail-with-different-messages",
     "identical-strings-and-a-relative-path-are-refused",
-    "replace-all-changes-every-occurrence-announces-the-diff-and-restamps-the-record"
+    "replace-all-changes-every-occurrence-announces-the-diff-and-restamps-the-record",
+    "a-near-miss-names-the-first-character-that-differs-and-both-sides-of-it"
   ],
   "freshness": {
     "hash": "7b8ef13cac18cb18",

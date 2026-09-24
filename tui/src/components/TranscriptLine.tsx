@@ -23,7 +23,7 @@
 
 import { Box, Text } from 'ink';
 import { glyph, layout, SPEAKER_INDENT, SPEAKER_MARKER, theme } from '../theme.js';
-import { secs, tokens } from '../format.js';
+import { reasoning, secs, tokens } from '../format.js';
 import { displayWidth, layoutLine, pad, truncate, truncateStart, type Row } from '../markdown.js';
 import type { Line } from '../types.js';
 
@@ -262,7 +262,7 @@ export function TranscriptLine({ line, width }: { line: Line; width: number }) {
     // Turn footer. A full-width rule with the engine's own figures on it, so
     // one glance separates this turn from the next.
     case 'done': {
-      const right = `out ${tokens(line.outputTokens)} ${glyph.up} · ctx ${tokens(line.contextTokens)}`;
+      const right = `out ${tokens(line.outputTokens)} ${glyph.up}${reasoning(line.reasoningTokens, line.reasoningEstimated === true)} · ctx ${tokens(line.contextTokens)}`;
       // Only a clean end earns the tick: "✓ max_tokens" read as success and
       // hid a turn that had died at the output wall.
       const clean = line.stopReason === 'end_turn';

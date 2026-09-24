@@ -47,6 +47,8 @@ function syncWorkbenchContext() {
     const parts = [];
     if (contextTokens > 0) parts.push(`~${formatTokens(contextTokens)} ctx`);
     if (outputTokens > 0) parts.push(`${formatTokens(outputTokens)} out`);
+    const reasoning = reasoningText(reasoningTokens, reasoningEstimated);
+    if (reasoning) parts.push(reasoning);
     inspectorUsageEl.textContent = parts.join(" · ") || "—";
     inspectorUsageEl.classList.toggle("warn", contextWarn);
   }

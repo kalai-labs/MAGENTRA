@@ -11,7 +11,7 @@
   "entryFiles": [
     "engine/core/src/runtime/permissions.ts"
   ],
-  "invariant": "Resolution order is deny rules > protected-path guard > deletion guard > allow rules > stance default.",
+  "invariant": "Resolution order is deny rules > process-kill guard > protected-path guard > deletion guard > allow rules > stance default.",
   "deferred": false,
   "tests": [
     "a-deny-rule-refuses-before-every-other-branch-including-overdrive",

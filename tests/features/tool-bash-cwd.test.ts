@@ -14,8 +14,9 @@
  * the product spawned through its own `spawnShell`/`resolveBashPath` (Git Bash
  * on Windows, `bash` elsewhere). Nothing is a double. The tool runs through the
  * real validate-then-execute path (`tests/lib/directTool.ts`) against
- * `strictServices({})` — with no `callId` the output streamer is a no-op, so
- * Bash reaches no session service and one appearing later fails by name.
+ * `strictServices` holding only a real `FileState` (Bash names the Read files a
+ * command changed) — with no `callId` the output streamer is a no-op, so Bash
+ * reaches no other session service and one appearing later fails by name.
  *
  * THE SESSION OBJECT IS THE KEY, LITERALLY. `sessionCwd` is a
  * `WeakMap<SessionServices, …>`, so "the same session" means the same object.
@@ -43,7 +44,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 
-import type { SessionServices, ToolContext } from "@magentra/core";
+import { FileState, type SessionServices, type ToolContext } from "@magentra/core";
 import { bashTool, globTool } from "@magentra/tools";
 
 import { resultText, runTool, strictServices } from "../lib/directTool.ts";
@@ -69,7 +70,7 @@ abstract class BashCwdTest extends ProcTest {
   readonly invariant = INVARIANT;
 
   /** One session for the whole test — the WeakMap that remembers `cd` is keyed on this object. */
-  protected readonly session: SessionServices = strictServices({});
+  protected readonly session: SessionServices = strictServices({ fileState: new FileState() });
 
   #dirs: string[] = [];
   protected dir = "";
@@ -112,7 +113,7 @@ abstract class BashCwdTest extends ProcTest {
    * the session cwd itself.
    */
   protected async shellSpelling(dir: string): Promise<string> {
-    return this.bashText("pwd", { cwd: dir, session: strictServices({}) });
+    return this.bashText("pwd", { cwd: dir, session: strictServices({ fileState: new FileState() }) });
   }
 
   /**

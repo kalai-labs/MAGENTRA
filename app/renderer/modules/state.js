@@ -114,10 +114,9 @@ const DEFAULT_UI_SETTINGS = {
   // Default to the transparent view: a coding agent's trust rests on the user
   // being able to see what each tool actually did. "cinematic" is opt-in.
   detail: "engineer",
-  // The deletion guard is the gate that survives everything — it fires even in
-  // OVERDRIVE, so destructive calls (rm, force-push, drop table, terraform
-  // destroy, …) still prompt. Setting `deletions` to "allow" is what removes
-  // that last prompt.
+  // The deletion guard: outside OVERDRIVE, destructive calls (rm, force-push,
+  // drop table, terraform destroy, …) prompt. Setting `deletions` to "allow"
+  // removes that prompt; OVERDRIVE turns the guard off too.
   deletions: "ask", // "ask" (guard always prompts) | "allow" (deletions run freely)
   // Optional CAP on auto-compaction: the engine compacts at 80% of the context
   // size entered for the connection; a smaller number here compacts earlier,
@@ -317,13 +316,15 @@ function applySafetySettings(force) {
   renderSafetyHint();
 }
 
-// Footer hint for the two-state safety model: commands prompt for approval on
-// every consequential tool unless OVERDRIVE is engaged, and the deletion guard
-// prompts on destructive calls unless Deletions is set to allow.
+// Footer hint: what the permission engine does in this stance. Commands run
+// without asking (the stance default is allow); the deletion guard asks on
+// destructive calls unless Deletions is set to allow; OVERDRIVE turns every
+// prompt off, the deletion guard included.
 function renderSafetyHint() {
-  const acting = uiSettings.overdrive ? "autonomous" : "asks before commands";
-  const deleting = uiSettings.deletions === "allow" ? "deletions allowed" : "deletions always ask";
-  if (hintAutoEl) hintAutoEl.textContent = `${acting} · ${deleting}`;
+  const text = uiSettings.overdrive
+    ? "autonomous · nothing asks"
+    : `runs commands · ${uiSettings.deletions === "allow" ? "deletions allowed" : "deletions ask"}`;
+  if (hintAutoEl) hintAutoEl.textContent = text;
 }
 
 function wireSegGroup(containerEl, settingKey) {

@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { z } from "zod";
 import type { ToolDefinition } from "@magentra/core";
-import { killTree, spawnShell } from "./bash.js";
+import { bashProcessKillSubject, killTree, spawnShell } from "./bash.js";
 
 const DEFAULT_TIMEOUT = 300_000;
 const MIN_TIMEOUT = 1_000;
@@ -45,6 +45,9 @@ export const monitorTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   permissionClass: "execute",
   permissionSubject: (input) => input.command,
   describeInput: (input) => input.description,
+  // Monitor runs its command in the same shell Bash does, so a kill by name
+  // must not get past the process-kill guard by switching tools.
+  processKillSubject: (input) => bashProcessKillSubject(input.command),
   execute: async (input, ctx) => {
     const info = ctx.session.background.launch({
       kind: "monitor",

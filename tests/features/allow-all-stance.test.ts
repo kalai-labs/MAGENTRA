@@ -45,7 +45,7 @@ import { startScriptedEngine, type ScriptedEngine } from "../lib/scriptedEngine.
 const FEATURE = "allow-all-stance";
 
 /** Verbatim from the record. */
-const INVARIANT = "OVERDRIVE means nothing asks, literally — except a deny rule, which refuses rather than asks.";
+const INVARIANT = "OVERDRIVE means nothing asks, literally — a deny rule, and a kill by process name, refuse rather than ask.";
 
 /** An absolute path on either platform; nothing here touches the disk. */
 const WS = resolve("/magentra-overdrive-probe");

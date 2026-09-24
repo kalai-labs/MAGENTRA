@@ -13,7 +13,9 @@
   ],
   "invariant": "run_in_background returns a task id immediately, streams output to a file, and fires a notification when the command exits.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "a-background-command-returns-its-id-at-once-writes-its-output-file-and-announces-its-exit"
+  ],
   "freshness": {
     "hash": "3a638df4cae9587d",
     "fileHashes": {

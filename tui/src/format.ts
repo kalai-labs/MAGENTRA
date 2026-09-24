@@ -9,3 +9,9 @@ export function secs(ms: number): string {
 export function tokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
+
+/** The reasoning part of an output figure: " · reasoning ~2.6k" (estimated) or
+ *  " · reasoning 2.6k"; empty when there is none. It is inside the output. */
+export function reasoning(n: number | undefined, estimated: boolean): string {
+  return n ? ` · reasoning ${estimated ? '~' : ''}${tokens(n)}` : '';
+}

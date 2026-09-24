@@ -1,0 +1,25 @@
+{
+  "id": "a-running-turn-keeps-its-spend-on-disk",
+  "name": "A running turn keeps its spend on disk",
+  "area": "engine",
+  "section": "State",
+  "prose": "the session ledger (usage per model, API time, context) is written to the transcript while a turn runs — after model calls, at most every 30 s — not only when the turn ends, so a crash in the middle of an hour-long turn still leaves that hour's accounting for `/resume` and `/session`.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "The spend of the model calls a turn has already made is on disk while the turn is still running.",
+  "deferred": false,
+  "tests": [
+    "a-turn-held-on-a-prompt-already-has-its-first-calls-spend-in-the-transcript"
+  ],
+  "freshness": {
+    "hash": "57ce38507d9c0d5f",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "57ce38507d9c0d5f"
+    },
+    "recordedAt": "2026-09-24"
+  }
+}

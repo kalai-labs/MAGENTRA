@@ -62,7 +62,17 @@ export class TaskStore implements TaskStoreApi {
     if (patch.description !== undefined) task.description = patch.description;
     if (patch.activeForm !== undefined) task.activeForm = patch.activeForm;
     if (patch.owner !== undefined) task.owner = patch.owner;
-    if (patch.status !== undefined) task.status = patch.status;
+    if (patch.status !== undefined && patch.status !== task.status) {
+      // The engine's clock, kept with the task: a duration on screen must not
+      // depend on when a frontend happened to handle the update, and it has to
+      // survive a resume. A task completed straight from pending gets no start —
+      // nobody saw it run, so no duration is invented for it.
+      const now = Date.now();
+      if (patch.status === "in_progress" && task.startedAt === undefined) task.startedAt = now;
+      if (patch.status === "completed") task.completedAt = now;
+      else delete task.completedAt;
+      task.status = patch.status;
+    }
     if (patch.metadata) {
       task.metadata = { ...task.metadata };
       for (const [key, value] of Object.entries(patch.metadata)) {

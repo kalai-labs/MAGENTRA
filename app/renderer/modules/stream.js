@@ -229,9 +229,20 @@ function createReasoningEl(done) {
     const tail = document.createTextNode("");
     body.appendChild(held);
     body.appendChild(tail);
-    el._reasoning = { full: "", pending: "", tail: "", heldEl: held, tailNode: tail };
+    el._reasoning = { full: "", pending: "", tail: "", heldEl: held, tailNode: tail, summaryEl: summary, started: Date.now() };
   }
   return el;
+}
+
+/** A reasoning block's summary: "reasoning · 8m12s · ~12k tokens". The size is
+ * estimated from characters like every live token figure; the time is shown
+ * only for a block watched live — a restored one has none to show. A collapsed
+ * block that says only "reasoning" for minutes reads as a frozen window. */
+function reasoningLabel(chars, ms) {
+  let label = "reasoning";
+  if (ms !== undefined) label += ` · ${formatElapsed(ms)}`;
+  if (chars > 0) label += ` · ~${formatTokens(estimateTokens(chars))} tokens`;
+  return label;
 }
 
 /** Queue a reasoning delta on its block; the page gets it on the next frame. */
@@ -259,6 +270,7 @@ function writeReasoning(el) {
   }
   r.tail = tail;
   r.tailNode.data = tail;
+  r.summaryEl.textContent = reasoningLabel(r.full.length, Date.now() - r.started);
   const held = r.full.length - tail.length;
   if (held > 0) {
     r.heldEl.classList.remove("hidden");
@@ -274,6 +286,7 @@ function finishReasoning(el) {
   if (!r) return;
   el._reasoning = null;
   pendingReasoningEls.delete(el);
+  r.summaryEl.textContent = reasoningLabel(r.full.length, Date.now() - r.started);
   if (r.pending) r.tailNode.appendData(r.pending);
   const before = r.full.slice(0, r.full.length - r.tail.length - r.pending.length);
   if (before) r.heldEl.replaceWith(document.createTextNode(before));
@@ -664,7 +677,8 @@ function onToolOutputDelta(event) {
   });
 }
 
-function finishToolRow(row, isError, resultPreview) {
+/** `finishedAt` is the engine's tool_call_finished.at, when it sent one. */
+function finishToolRow(row, isError, resultPreview, finishedAt) {
   // The live tail's job is done — the detail now holds the full output.
   if (row.tailEl) {
     row.tailEl.remove();
@@ -675,7 +689,7 @@ function finishToolRow(row, isError, resultPreview) {
   row.rowEl.classList.add(isError ? "err" : "ok");
   row.glyphEl.textContent = isError ? "✗" : "✓"; // ✗ / ✓
   runningToolRows.delete(row);
-  if (row.timeEl) row.timeEl.textContent = formatElapsed(Date.now() - row.startMs);
+  if (row.timeEl) row.timeEl.textContent = formatElapsed((typeof finishedAt === "number" ? finishedAt : Date.now()) - row.startMs);
 
   // The result is always available on expand, in both detail modes — hiding it
   // in cinematic left the user unable to inspect what a tool returned.

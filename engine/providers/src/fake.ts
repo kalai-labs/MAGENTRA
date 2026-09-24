@@ -5,6 +5,9 @@ export interface FakeToolCall {
   id?: string;
   name: string;
   input: unknown;
+  /** The arguments exactly as streamed, instead of `JSON.stringify(input)` —
+   *  how a script plays a call that was cut off mid-JSON. */
+  json?: string;
 }
 
 /** One scripted assistant turn. */
@@ -65,7 +68,7 @@ export class FakeProvider implements Provider {
       req.signal.throwIfAborted();
       const id = call.id ?? `fake_tool_${++this.idCounter}`;
       yield { type: "tool_use_start", id, name: call.name };
-      yield { type: "tool_use_delta", id, partialJson: JSON.stringify(call.input) };
+      yield { type: "tool_use_delta", id, partialJson: call.json ?? JSON.stringify(call.input) };
       yield { type: "tool_use_end", id };
     }
     req.signal.throwIfAborted();

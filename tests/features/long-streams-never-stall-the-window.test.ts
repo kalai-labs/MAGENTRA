@@ -161,30 +161,6 @@ abstract class StreamTest extends UiTest {
     `);
   }
 
-  /**
-   * Evaluate in the renderer until `js` yields a non-null value.
-   *
-   * PATIENTLY: a renderer that is behind on its IPC queue answers an
-   * `evaluate` only after it has worked through everything queued before it,
-   * and on the code this test was written against that took minutes. A reply
-   * that times out is not an answer, so it is asked again until `timeoutMs`.
-   */
-  protected async waitFor<T>(app: AppHandle, js: string, what: string, timeoutMs = 150_000): Promise<T> {
-    const deadline = Date.now() + timeoutMs;
-    let last = "no reply yet";
-    for (;;) {
-      try {
-        const value = await app.evaluate<T | null>(js);
-        if (value !== null && value !== undefined) return value;
-        last = "not yet";
-      } catch (err) {
-        last = err instanceof Error ? err.message.split("\n")[0]! : String(err);
-      }
-      if (Date.now() > deadline) throw new Error(`waited ${timeoutMs}ms for ${what}; last: ${last}`);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
-  }
-
   /** The probe, once it has counted `count` frames. */
   protected async probeAfter(app: AppHandle, count: number): Promise<Probe> {
     return this.waitFor<Probe>(app, `window.__streamProbe && window.__streamProbe.counted >= ${count} ? window.__streamProbe : null`, `the renderer to handle ${count} deltas`);

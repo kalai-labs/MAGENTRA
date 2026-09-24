@@ -59,7 +59,7 @@ const FEATURE = "deletion-guard";
 
 /** Verbatim from the record. The base fails the test if these ever differ. */
 const INVARIANT =
-  "Anything that removes a file, folder or worktree always asks, in both stances, overridable only by an explicit literal subject grant.";
+  "Anything that removes a file, folder or worktree asks outside OVERDRIVE, overridable only by an explicit literal subject grant.";
 
 /** A workspace root that exists as a path and not as a directory — the pure half never touches a disk. */
 const WS = join(tmpdir(), "magentra-deletion-probe");

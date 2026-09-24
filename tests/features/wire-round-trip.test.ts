@@ -52,7 +52,7 @@ const EVENTS: EventSamples = {
     rateCard: { "some/model": { input: 0.5, output: 1.5, cacheRead: 0.05, cacheWrite: 0.6, contextWindow: 128000 } },
     addons: [{ name: "magentron", description: "built in", builtin: true }],
   },
-  turn_started: { type: "turn_started", turnId: "t_1" },
+  turn_started: { type: "turn_started", turnId: "t_1", at: 1_758_650_400_000 },
   tool_output_delta: { type: "tool_output_delta", id: "call_1", text: AWKWARD },
   retry_status: { type: "retry_status", attempt: 2, delayMs: 1500, reason: "429 rate limited" },
   text_delta: { type: "text_delta", text: AWKWARD },
@@ -66,8 +66,9 @@ const EVENTS: EventSamples = {
     subagent: true,
     agentId: "ag_1",
     agentDesc: "explore",
+    at: 1_758_650_400_010,
   },
-  tool_call_finished: { type: "tool_call_finished", id: "call_2", tool: "Bash", resultPreview: "hi\n", isError: false, subagent: false },
+  tool_call_finished: { type: "tool_call_finished", id: "call_2", tool: "Bash", resultPreview: "hi\n", isError: false, subagent: false, at: 1_758_650_401_500 },
   agent_spawned: { type: "agent_spawned", agentId: "ag_1", agentDesc: "explore the repo", background: true },
   agent_finished: { type: "agent_finished", agentId: "ag_1", isError: false },
   permission_request: {
@@ -86,7 +87,7 @@ const EVENTS: EventSamples = {
   },
   task_list_updated: {
     type: "task_list_updated",
-    tasks: [{ id: "1", subject: "s", description: "d", activeForm: "doing", status: "in_progress", owner: "me", blocks: ["2"], blockedBy: [], metadata: { k: 1 } }],
+    tasks: [{ id: "1", subject: "s", description: "d", activeForm: "doing", status: "in_progress", owner: "me", blocks: ["2"], blockedBy: [], metadata: { k: 1 }, startedAt: 1_758_650_400_000 }, { id: "2", subject: "t", description: "e", status: "completed", blocks: [], blockedBy: ["1"], startedAt: 1_758_650_400_100, completedAt: 1_758_650_460_000 }],
   },
   file_edited: { type: "file_edited", path: "src/a.ts", diff: "--- a\n+++ b\n@@ -1 +1 @@\n-x\n+y\n" },
   background_notification: { type: "background_notification", taskId: "bash_1", kind: "exit", payload: { exitCode: 0, description: "npm test" } },
