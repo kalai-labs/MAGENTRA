@@ -1,0 +1,42 @@
+{
+  "id": "process-kill-guard",
+  "name": "Process-kill guard",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "a shell command that stops processes by NAME (`taskkill /IM`, `pkill`, `killall`, `Stop-Process -Name`, `kill -1`, a kill fed by `pgrep`/`ps`) never runs unasked: outside OVERDRIVE it asks, in OVERDRIVE it is refused with a pointer to `TaskStop` or a pid. Only a literal grant or an explicit rule for that exact command lets it through. Kills by pid or by port are not covered.",
+  "kinds": [
+    "pure",
+    "proc",
+    "ui"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/permissions.ts",
+    "engine/tools/src/bash.ts",
+    "engine/tools/src/monitor.ts",
+    "app/renderer/modules/landing.js",
+    "app/renderer/modules/tabs.js"
+  ],
+  "invariant": "A command that stops processes by name never runs unasked: outside OVERDRIVE it asks, in OVERDRIVE it is refused, and only a literal grant or an explicit rule for that exact command lets it run without a question.",
+  "deferred": false,
+  "tests": [
+    "the-classifier-flags-kills-by-name-and-passes-over-kills-by-pid-and-look-alikes",
+    "outside-overdrive-a-kill-by-name-asks-as-the-guard-and-a-decline-names-taskstop",
+    "in-overdrive-a-kill-by-name-is-refused-and-nothing-asks",
+    "a-broad-rule-a-session-allow-or-a-command-shape-grant-never-covers-a-kill-by-name",
+    "always-allow-grants-that-literal-command-and-an-explicit-rule-is-the-override-in-both-stances",
+    "a-kill-that-also-deletes-asks-for-both-and-the-kill-approval-note-reaches-the-model",
+    "a-real-session-refuses-it-in-overdrive-and-runs-it-only-on-approval",
+    "the-approval-card-shows-the-guards-line-in-the-single-console-and-in-a-tiled-pane"
+  ],
+  "freshness": {
+    "hash": "54ccf7ead5f51f70",
+    "fileHashes": {
+      "engine/core/src/runtime/permissions.ts": "907d45d5139ae91c",
+      "engine/tools/src/bash.ts": "5ff0ffef766335a1",
+      "engine/tools/src/monitor.ts": "a1c7f58815502515",
+      "app/renderer/modules/landing.js": "fbe6428a7b549db3",
+      "app/renderer/modules/tabs.js": "0bd32a3b28c23d61"
+    },
+    "recordedAt": "2026-09-24"
+  }
+}

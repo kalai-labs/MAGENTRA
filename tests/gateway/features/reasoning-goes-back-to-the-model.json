@@ -1,0 +1,28 @@
+{
+  "id": "reasoning-goes-back-to-the-model",
+  "name": "The model gets its own reasoning back",
+  "area": "providers",
+  "section": "Runtime — the turn loop",
+  "prose": "every request to an OpenAI-compatible endpoint carries each earlier assistant message's reasoning back as `reasoning_content`, beside its text and tool calls, so a model that thinks between tool calls (MiMo, GLM-5, Kimi, DeepSeek) keeps its plan from one step to the next instead of re-deriving it or planning everything up front; an endpoint that rejects the field is sent the history without it, once learned.",
+  "kinds": [
+    "net"
+  ],
+  "entryFiles": [
+    "engine/providers/src/openai-compat.ts"
+  ],
+  "invariant": "Each earlier assistant message's reasoning goes back to an OpenAI-compatible endpoint as reasoning_content on every later request, until that endpoint rejects the field.",
+  "deferred": false,
+  "tests": [
+    "an-assistant-messages-reasoning-goes-back-as-reasoning-content",
+    "an-endpoint-that-refuses-reasoning-content-gets-the-request-without-it",
+    "an-endpoint-that-demands-reasoning-content-is-not-taught-to-drop-it",
+    "the-reasoning-streamed-with-a-tool-call-comes-back-in-the-next-request"
+  ],
+  "freshness": {
+    "hash": "5716b7692ca2d283",
+    "fileHashes": {
+      "engine/providers/src/openai-compat.ts": "5716b7692ca2d283"
+    },
+    "recordedAt": "2026-09-25"
+  }
+}

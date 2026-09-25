@@ -1,0 +1,43 @@
+{
+  "id": "a-tool-call-shows-while-it-is-written",
+  "name": "A tool call shows while the model writes it",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "the engine sends `tool_call_streaming` the moment the model starts writing a tool call (and about once a second while it writes, with the characters so far), keeps the output counter moving while it writes, and puts the writing time on `tool_call_started` as `writingMs`; the desktop draws the call's row at once, marked as being written, and the row's time counts the writing as well as the run — a Write that took two minutes to compose no longer reads 0s. The TUI's activity line says the tool is being written.",
+  "kinds": [
+    "fs",
+    "net",
+    "ui"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts",
+    "engine/protocol/src/types.ts",
+    "app/renderer/modules/landing.js",
+    "app/renderer/modules/stream.js",
+    "tui/src/engine/useEngine.ts",
+    "tui/src/protocol.ts"
+  ],
+  "invariant": "From the moment the model starts writing a tool call the desktop shows its row, and the time the row shows counts the writing as well as the run.",
+  "deferred": false,
+  "tests": [
+    "each-call-is-announced-while-written-before-it-starts",
+    "the-output-counter-moves-while-a-long-call-is-written",
+    "a-subagents-call-being-written-stays-off-the-top-level-stream",
+    "a-call-whose-arguments-stream-slowly-reports-that-writing-time",
+    "a-row-appears-while-written-and-its-time-counts-the-writing",
+    "a-row-whose-call-never-started-stops-running-at-turn-end",
+    "a-call-id-reused-by-a-later-reply-gets-a-row-of-its-own"
+  ],
+  "freshness": {
+    "hash": "fe0a124e7578a44e",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "93334dd384820dd3",
+      "engine/protocol/src/types.ts": "061461fc38ede72e",
+      "app/renderer/modules/landing.js": "1db0235c09b0fab6",
+      "app/renderer/modules/stream.js": "9e4399a34a290958",
+      "tui/src/engine/useEngine.ts": "1f3b6b8365a3b02e",
+      "tui/src/protocol.ts": "67830b00616900b8"
+    },
+    "recordedAt": "2026-09-25"
+  }
+}

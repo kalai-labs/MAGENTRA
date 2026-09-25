@@ -18,7 +18,7 @@
 
 import { Box, Text } from 'ink';
 import { glyph, theme } from '../theme.js';
-import { tokens } from '../format.js';
+import { reasoning, tokens } from '../format.js';
 import { displayWidth } from '../markdown.js';
 import type { Meters } from '../engine/useEngine.js';
 
@@ -136,7 +136,7 @@ export function Composer({ value, cursor, busy, width, model, meters, overdrive 
           {' '}
           · ctx {tokens(meters.context)}
         </Text>
-        <Text color={theme.muted}> · out {tokens(meters.output)}</Text>
+        <Text color={theme.muted}> · out {tokens(meters.output)}{reasoning(meters.reasoning, meters.reasoningEstimated)}</Text>
       </Box>
     </Box>
   );

@@ -47,7 +47,7 @@ import { join } from "node:path";
 
 import { PermissionEngine, type ApprovalSource, type ExactGrant, type PermissionRequestPayload } from "@magentra/core";
 import type { CoreEvent, PermissionDecision } from "@magentra/protocol";
-import { bashDeletionSubject, bashTool } from "@magentra/tools";
+import { bashDeletionSubject, bashTool, monitorTool } from "@magentra/tools";
 
 import { strictServices } from "../lib/directTool.ts";
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
@@ -59,7 +59,7 @@ const FEATURE = "deletion-guard";
 
 /** Verbatim from the record. The base fails the test if these ever differ. */
 const INVARIANT =
-  "Anything that removes a file, folder or worktree always asks, in both stances, overridable only by an explicit literal subject grant.";
+  "Anything that removes a file, folder or worktree asks outside OVERDRIVE, overridable only by an explicit literal subject grant.";
 
 /** A workspace root that exists as a path and not as a directory — the pure half never touches a disk. */
 const WS = join(tmpdir(), "magentra-deletion-probe");
@@ -225,6 +225,17 @@ class ABroadAllowDoesNotGetPast extends DeletionGuardTest {
     t.assert.equal(p.asks.length, 2, "a harmless command must not reach the guard at all");
     t.assert.equal(benign.allowed, true);
     t.assert.equal(benign.source, "rule", "it is the allow rule that lets an ordinary command run");
+
+    // Monitor runs its command in the same shell Bash does. Switching tools
+    // must not be the way past the guard: the same deletion asks here too.
+    const watch = { command: "rm -rf build", description: "watch the cleanup", timeout_ms: 1000, persistent: false };
+    const scope = monitorTool.deletionScope!(watch, { cwd: WS, session: strictServices({}) });
+    const viaMonitor = await p.engine.check(monitorTool, watch, watch.command, watch.description, scope, false, undefined);
+    t.assert.equal(p.asks.length, 3, "a deletion run through Monitor asks exactly as one run through Bash");
+    t.assert.equal(p.asks[2]?.source, "deletion-guard", "and it asks AS the deletion guard");
+    t.assert.equal(p.asks[2]?.payload.description, "rm -rf build");
+    t.assert.equal(viaMonitor.allowed, true);
+    t.assert.equal(monitorTool.deletionSubject?.({ ...watch, command: "tail -f dev.log" }), undefined, "a harmless watch never reaches the guard");
   }
 }
 

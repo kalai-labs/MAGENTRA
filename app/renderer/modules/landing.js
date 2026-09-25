@@ -52,7 +52,20 @@ if (window.magentra.onRecentWorkspaces) {
 // main button resumes; destructive removal is a separate confirmed action.
 function requestSessionList() {
   if (!workspaceOpen) return;
-  window.magentra.send({ type: "list_sessions" });
+  // To the tab whose event is being handled, so a background tab's turn
+  // refreshes its OWN list; otherwise main routes it to the focused tab.
+  const tabId = typeof dispatchTabId !== "undefined" && dispatchTabId !== null ? dispatchTabId : undefined;
+  window.magentra.send({ type: "list_sessions" }, tabId);
+}
+
+/** The turn's first model output — a delta, a tool call, or a tool's permission
+ *  card, which only the turn's own model call can raise (the clarify round's
+ *  question cards come before the message is written, so they do not count):
+ *  its first message is on disk by now. */
+function listSessionsOnFirstOutput() {
+  if (!sessionListOnFirstOutput) return;
+  sessionListOnFirstOutput = false;
+  requestSessionList();
 }
 
 function formatSessionDate(value) {
@@ -157,6 +170,10 @@ function renderSessions() {
 
 function onSessionList(event) {
   sessionSummaries = Array.isArray(event.sessions) ? event.sessions : [];
+  // A background tab's list is kept in its own state and painted when it is
+  // focused (repaintChromeFromFocusedTab); painting it now would put that
+  // tab's sessions in the focused tab's sidebar.
+  if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
   renderSessions();
 }
 
@@ -182,15 +199,10 @@ function onSessionRestored(event) {
       continue;
     }
     if (m.thinking) {
-      const details = document.createElement("details");
-      details.className = "msg-thinking done";
-      const summary = document.createElement("summary");
-      summary.textContent = "reasoning";
-      const body = document.createElement("div");
-      body.className = "thinking-body";
-      body.textContent = m.thinking;
-      details.appendChild(summary);
-      details.appendChild(body);
+      // Replay shows the whole reasoning; only a LIVE block shows its tail.
+      const details = createReasoningEl(true);
+      details.querySelector(".thinking-body").textContent = m.thinking;
+      details.querySelector("summary").textContent = reasoningLabel(m.thinking.length);
       streamEl.appendChild(details);
     }
     if (m.text) {
@@ -294,7 +306,7 @@ function syncActivityUi() {
       : "Ask Magentra anything…";
 }
 
-function onTurnStarted() {
+function onTurnStarted(event) {
   toolCountThisTurn = 0;
   currentAgentsRow = null;
   agentCards.clear();
@@ -306,6 +318,8 @@ function onTurnStarted() {
   // climbs as the engine reports what it has generated. The context counter is
   // deliberately untouched — the window did not empty just because a turn began.
   outputTokens = 0;
+  reasoningTokens = 0;
+  reasoningEstimated = true;
   updateSessionMeter();
 
   busy = true;
@@ -313,7 +327,13 @@ function onTurnStarted() {
   if (typeof syncPaneActivity === "function") {
     syncPaneActivity((typeof dispatchTabId !== "undefined" && dispatchTabId !== null) ? dispatchTabId : focusedTabId, true);
   }
-  startNowLine();
+  startNowLine(event && event.at);
+  // The first message is what puts a session on disk: list it now, not after
+  // a turn that may run for an hour (the field run's list stayed empty). With
+  // the clarify round on (the default) that message is written only after a
+  // model call, so the turn's first output asks once more.
+  requestSessionList();
+  sessionListOnFirstOutput = true;
 }
 
 /**
@@ -427,13 +447,20 @@ function onTurnFinished(event) {
     // API's own usage records, which supersedes every streamed estimate.
     if (event.usage && typeof event.usage.outputTokens === "number") {
       outputTokens = event.usage.outputTokens;
+      // The final figure: exact when the provider reported it, else estimated.
+      reasoningTokens = event.usage.reasoningTokens || 0;
+      reasoningEstimated = event.usage.reasoningEstimated === true;
     }
     updateSessionMeter();
   }
 
   finalizeThinkingEl();
   finalizeAssistantEl();
-  closeWorkGroup();
+  abandonWritingToolRows();
+  closeWorkGroup(event && event.at);
+  // The turn changed the session's summary (its message count, its time).
+  requestSessionList();
+  sessionListOnFirstOutput = false;
 
   finalizeAllAgentCards();
   // Route through updateAgentMeter (focus-guarded) so a background tab's turn end
@@ -457,7 +484,8 @@ function onTurnFinished(event) {
 }
 
 function onTextDelta(text) {
-  if (busy) setNowActivity("responding", "");
+  if (text) listSessionsOnFirstOutput();
+  if (busy && nowVerb !== "responding") setNowActivity("responding", "");
   if (!streamEl) return;
   // The model has moved from reasoning to answering — close the reasoning
   // block and stamp the finished "Agent working" group.
@@ -481,42 +509,73 @@ function onTextDelta(text) {
     message.body.appendChild(done);
     message.body.appendChild(live);
     message.body.appendChild(caret);
+    currentAssistantEl._mdDone = done;
+    currentAssistantEl._mdLive = live;
     withAutoScroll(() => streamEl.appendChild(currentAssistantEl));
   }
   currentAssistantEl._raw += text;
-  withAutoScroll(() => {
+  // Written on every delta, so what has arrived is readable at once; the live
+  // edge is followed once per frame, so no delta forces a layout (stream.js).
+  followLiveEdge(() => {
     // Render whatever just became complete; a half-streamed fence, table or
     // formula stays plain until its closing delimiter arrives.
-    commitStreamedMarkdown(currentAssistantEl);
+    commitStreamedMarkdown(currentAssistantEl, text);
   });
 }
 
 // Extended-thinking tokens (reasoning models). Rendered as a dim, collapsed
-// "reasoning" block so it's available without dominating the transcript, and
-// the last line feeds the now-line so "thinking · 45s" shows real movement.
+// "reasoning" block so it's available without dominating the transcript. They
+// come by the tens of thousands, so a delta only joins its block's queue and
+// the page is written once per frame (stream.js). The now-line says
+// "thinking · 45s" from the start of the stretch: a token there was noise, and
+// restarting the timer on every one kept it at 0s.
 function onThinkingDelta(text) {
-  if (busy) {
-    const lastLine = text.split("\n").filter(Boolean).pop();
-    setNowActivity("thinking", lastLine ? lastLine.slice(0, 80) : "");
-  }
+  listSessionsOnFirstOutput();
+  if (busy && nowVerb !== "thinking") setNowActivity("thinking", "");
   if (!streamEl) return;
   if (!currentThinkingEl) {
     finalizeAssistantEl();
-    currentThinkingEl = document.createElement("details");
-    currentThinkingEl.className = "msg-thinking";
-    const summary = document.createElement("summary");
-    summary.textContent = "reasoning";
-    const body = document.createElement("div");
-    body.className = "thinking-body";
-    currentThinkingEl.appendChild(summary);
-    currentThinkingEl.appendChild(body);
+    currentThinkingEl = createReasoningEl(false);
     withAutoScroll(() => streamEl.appendChild(currentThinkingEl));
   }
-  const body = currentThinkingEl.querySelector(".thinking-body");
-  withAutoScroll(() => body.appendChild(document.createTextNode(text)));
+  appendReasoning(currentThinkingEl, text);
+}
+
+// The model has started writing a tool call, or is still writing it. Nothing
+// runs until the reply is complete, but the minutes a long Write takes to
+// compose belong to that call: its row appears now, marked as being written,
+// instead of the time vanishing into the reasoning block and the call later
+// reading 0s. tool_call_started for the same id turns this row into the call.
+function onToolCallStreaming(event) {
+  if (event.subagent || !streamEl) return;
+  listSessionsOnFirstOutput();
+  const existing = toolRows.get(event.id);
+  if (existing && existing.writing) {
+    markToolRowWriting(existing, event.argChars);
+    return;
+  }
+  // Any other row under this id is an earlier reply's call — some local servers
+  // number every reply's calls from call_0 — so this call starts a row of its own.
+  // Reasoning and prose for this segment are done once the model writes a call.
+  finalizeThinkingEl();
+  finalizeAssistantEl();
+  const at = typeof event.at === "number" ? event.at : Date.now();
+  // The call written before this one is complete: its writing time stops here.
+  for (const row of toolRows.values()) {
+    if (row.writing && !row.writeFrozen) freezeToolRowWriting(row, at);
+  }
+  const row = createWritingToolRow(event.tool, at);
+  const target = workStream(at);
+  withAutoScroll(() => {
+    target.appendChild(row.rowEl);
+    target.appendChild(row.detailEl);
+  });
+  toolRows.set(event.id, row);
+  if (busy) setNowActivity("writing", event.tool);
 }
 
 function onToolCallStarted(event) {
+  listSessionsOnFirstOutput();
   toolCountThisTurn++;
   // Reasoning for this segment is done once the model acts or speaks.
   finalizeThinkingEl();
@@ -524,6 +583,7 @@ function onToolCallStarted(event) {
   if (event.subagent) {
     const card = getOrCreateAgentCard(event);
     const row = createToolRow(event.tool, event.description, event.input);
+    if (typeof event.at === "number") row.startMs = event.at;
     withAutoScroll(() => {
       card.bodyEl.appendChild(row.rowEl);
       card.bodyEl.appendChild(row.detailEl);
@@ -539,8 +599,17 @@ function onToolCallStarted(event) {
 
   if (!streamEl) return;
   finalizeAssistantEl();
+  const written = toolRows.get(event.id);
+  if (written && written.writing) {
+    startWrittenToolRow(written, event);
+    updateAgentMeter();
+    setNowActivity(event.tool, event.description || compactInput(event.input));
+    return;
+  }
   const row = createToolRow(event.tool, event.description, event.input);
-  const target = workStream();
+  // The engine's clock, when it sent one: a row handled late still times the call.
+  if (typeof event.at === "number") row.startMs = event.at;
+  const target = workStream(event.at);
   withAutoScroll(() => {
     target.appendChild(row.rowEl);
     target.appendChild(row.detailEl);
@@ -558,7 +627,7 @@ function onToolCallFinished(event) {
     if (card) {
       const row = card.toolRows.get(event.id);
       if (row) {
-        finishToolRow(row, event.isError, event.resultPreview);
+        finishToolRow(row, event.isError, event.resultPreview, event.at);
         card.lastRowErr = !!event.isError;
       }
     }
@@ -566,7 +635,11 @@ function onToolCallFinished(event) {
   }
 
   const row = toolRows.get(event.id);
-  if (row) finishToolRow(row, event.isError, event.resultPreview);
+  if (row) finishToolRow(row, event.isError, event.resultPreview, event.at);
+  // The work group ends at its last call's own finish (engine clock).
+  if (currentWorkGroup && typeof event.at === "number") {
+    currentWorkGroup.lastAt = Math.max(currentWorkGroup.lastAt || 0, event.at);
+  }
 
   if (event.tool === "Agent" || event.tool === "Workflow") {
     finalizeAllAgentCards();
@@ -663,6 +736,9 @@ if (sessionModalEl) {
 }
 
 function onPermissionRequest(event) {
+  // A tool call that asks sends no tool_call_started before its card: the card
+  // is then the turn's first model output.
+  listSessionsOnFirstOutput();
   permissionQueue.push(event);
   if (!activePermission) showNextPermission();
 }
@@ -709,14 +785,30 @@ function renderPermissionUi() {
   }
 }
 
+/**
+ * What an approval card shows, shared by the single-console modal and the
+ * tiled pane: the command (or, for a call with no command, the engine's
+ * description), and `why` — the engine's description when it says something
+ * the command does not, e.g. the process-kill guard's warning that a kill by
+ * name stops every matching process. A deletion prompt's description IS the
+ * command, so it adds no line.
+ */
+function approvalLines(permission) {
+  const input = permission.input;
+  const command = input && typeof input === "object" && input.command;
+  const subject = command || permission.description || safeStringify(input);
+  const why = command && permission.description && permission.description !== command ? permission.description : "";
+  return { subject, why };
+}
+
 /** Fill and open the shared approval modal for a permission (single-console). */
 function fillPermissionModal(permission) {
-  const input = permission.input;
-  const subject =
-    (input && typeof input === "object" && input.command) ||
-    permission.description ||
-    safeStringify(input);
+  const { subject, why } = approvalLines(permission);
   deleteSubjectEl.textContent = subject;
+  if (permissionWhyEl) {
+    permissionWhyEl.textContent = why;
+    permissionWhyEl.classList.toggle("hidden", !why);
+  }
   // "Always allow" is offered only when the engine sent a subject to scope the
   // grant to. Without one there is nothing durable to remember, and the button
   // would silently behave like ALLOW ONCE.
@@ -1017,7 +1109,7 @@ function handleEngineEvent(event) {
       onSessionList(event);
       break;
     case "turn_started":
-      onTurnStarted();
+      onTurnStarted(event);
       break;
     case "tool_output_delta":
       onToolOutputDelta(event);
@@ -1055,6 +1147,9 @@ function handleEngineEvent(event) {
     case "thinking_delta":
       onThinkingDelta(event.text);
       break;
+    case "tool_call_streaming":
+      onToolCallStreaming(event);
+      break;
     case "tool_call_started":
       onToolCallStarted(event);
       break;
@@ -1084,6 +1179,11 @@ function handleEngineEvent(event) {
       // a compaction frame with no outputTokens leaves the turn's counter be.
       contextTokens = event.contextTokens ?? contextTokens;
       if (typeof event.outputTokens === "number") outputTokens = event.outputTokens;
+      // Mid-stream the reasoning part is the engine's estimate.
+      if (typeof event.reasoningTokens === "number") {
+        reasoningTokens = event.reasoningTokens;
+        reasoningEstimated = true;
+      }
       contextWarn = event.contextWarn === true;
       updateSessionMeter();
       break;

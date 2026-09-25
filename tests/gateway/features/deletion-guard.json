@@ -3,7 +3,7 @@
   "name": "Deletion guard",
   "area": "engine",
   "section": "Runtime — the turn loop",
-  "prose": "destructive Bash always asks, *in both stances*, until explicitly disabled. Covers `rm`, `mv`, force-push, `DROP TABLE`, …",
+  "prose": "destructive Bash — and the same command run through Monitor — asks outside OVERDRIVE until \"Allow deletions\" turns it off. Covers `rm`, `mv`, force-push, `DROP TABLE`, …",
   "kinds": [
     "proc",
     "pure"
@@ -12,7 +12,7 @@
     "engine/core/src/runtime/permissions.ts",
     "engine/tools/src/bash.ts"
   ],
-  "invariant": "Anything that removes a file, folder or worktree always asks, in both stances, overridable only by an explicit literal subject grant.",
+  "invariant": "Anything that removes a file, folder or worktree asks outside OVERDRIVE, overridable only by an explicit literal subject grant.",
   "deferred": false,
   "tests": [
     "the-classifier-flags-what-destroys-and-passes-over-what-does-not",

@@ -1,0 +1,27 @@
+{
+  "id": "a-shell-command-names-the-read-files-it-changed",
+  "name": "A shell command names the Read files it changed",
+  "area": "engine",
+  "section": "Tools",
+  "prose": "a foreground Bash command that changes a file the model has Read this session (`sed -i`, a formatter, a generator) says so in its own result — \"This command changed a file you had Read: … Read it again before you Edit\" — instead of leaving the next Edit to be refused as stale with no reason. A file that was already stale before the command is not blamed on it.",
+  "kinds": [
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/tools/src/bash.ts",
+    "engine/core/src/runtime/fileState.ts"
+  ],
+  "invariant": "A foreground shell command that changes a file Read this session names that file in its result, and never names one it did not change.",
+  "deferred": false,
+  "tests": [
+    "a-command-that-changes-a-read-file-names-it-and-one-that-does-not-names-nothing"
+  ],
+  "freshness": {
+    "hash": "870a67a0f8a3aeac",
+    "fileHashes": {
+      "engine/tools/src/bash.ts": "5ff0ffef766335a1",
+      "engine/core/src/runtime/fileState.ts": "1db005bdf8e66660"
+    },
+    "recordedAt": "2026-09-24"
+  }
+}

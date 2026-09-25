@@ -23,15 +23,57 @@
  * when the fences and `$$` delimiters before it are balanced.
  */
 function markdownCommitPoint(raw) {
-  let cut = raw.lastIndexOf("\n\n");
-  while (cut > 0) {
-    const head = raw.slice(0, cut + 1);
-    const fences = (head.match(/^[ \t]*(?:```|~~~)/gm) || []).length;
-    const display = (head.match(/\$\$/g) || []).length;
-    if (fences % 2 === 0 && display % 2 === 0) return head;
-    cut = raw.lastIndexOf("\n\n", cut - 1);
+  const scan = newCommitScan();
+  feedCommitScan(scan, raw);
+  return scan.cut > 0 ? raw.slice(0, scan.cut + 1) : "";
+}
+
+/*
+ * The scan behind markdownCommitPoint, kept on the streaming message and fed
+ * each delta as it arrives, so a delta costs what it adds rather than what came
+ * before it. Asked afresh on every delta, a long code block re-counted its
+ * fences from the top once for every blank line inside it, and the answer got
+ * slower to stream the longer it ran.
+ *
+ * A cut is the first newline of a "\n\n" (never at 0), and it is safe when the
+ * text up to and including it holds an even number of fence lines and of `$$`.
+ * Neither can span a newline, so both counts are sums over complete lines, and
+ * a cut's verdict never changes once its line is complete — which is what lets
+ * the scan only move forward. `cut` is the last safe cut, or -1; `line` is the
+ * incomplete last line, which starts at index `at`.
+ */
+function newCommitScan() {
+  return { line: "", at: 0, fences: 0, display: 0, cut: -1 };
+}
+
+/** Read `text`, the next piece of the message, into `scan`. */
+function feedCommitScan(scan, text) {
+  if (text.indexOf("\n") === -1) {
+    // No line was completed, so no cut can have become safe.
+    scan.line += text;
+    return;
   }
-  return "";
+  const buf = scan.line + text;
+  let start = 0;
+  let nl = buf.indexOf("\n");
+  while (nl !== -1) {
+    const line = buf.slice(start, nl);
+    const end = scan.at + nl; // this newline's index in the whole message
+    if (line === "") {
+      // An empty line: the newline before it is a candidate cut, and an empty
+      // line adds nothing to either count.
+      if (end - 1 > 0 && scan.fences % 2 === 0 && scan.display % 2 === 0) scan.cut = end - 1;
+    } else {
+      // The same patterns the whole-text count used, applied per line — so a
+      // `^` after a lone \r inside a line still counts exactly as it did.
+      scan.fences += (line.match(/^[ \t]*(?:```|~~~)/gm) || []).length;
+      scan.display += (line.match(/\$\$/g) || []).length;
+    }
+    start = nl + 1;
+    nl = buf.indexOf("\n", start);
+  }
+  scan.line = buf.slice(start);
+  scan.at += start;
 }
 
 /**
@@ -40,23 +82,31 @@ function markdownCommitPoint(raw) {
  * message costs linear work overall rather than re-rendering itself on every
  * delta. finalizeAssistantEl re-renders the whole message at the end, which
  * corrects anything the segment-by-segment view split awkwardly.
+ *
+ * `text` is the delta just added to `el._raw`. When it completes nothing, the
+ * live tail only grows by it, so it is appended rather than rewritten.
  */
-function commitStreamedMarkdown(el) {
-  const raw = el._raw || "";
-  const done = el.querySelector(".md-done");
-  const live = el.querySelector(".md-live");
+function commitStreamedMarkdown(el, text) {
+  const done = el._mdDone || el.querySelector(".md-done");
+  const live = el._mdLive || el.querySelector(".md-live");
   if (!done || !live) return;
+  const scan = el._commitScan || (el._commitScan = newCommitScan());
+  feedCommitScan(scan, text);
   const committed = el._committedLen || 0;
-  const prefix = markdownCommitPoint(raw);
-  if (prefix.length > committed) {
+  const cutLen = scan.cut > 0 ? scan.cut + 1 : 0;
+  if (cutLen > committed) {
+    const raw = el._raw || "";
     try {
-      done.appendChild(renderMarkdown(raw.slice(committed, prefix.length)));
-      el._committedLen = prefix.length;
+      done.appendChild(renderMarkdown(raw.slice(committed, cutLen)));
+      el._committedLen = cutLen;
     } catch {
       /* keep the plain live text; the final render will fix it */
     }
+    live.textContent = raw.slice(el._committedLen || 0);
+    return;
   }
-  live.textContent = raw.slice(el._committedLen || 0);
+  if (live.firstChild) live.firstChild.appendData(text);
+  else if (text) live.appendChild(document.createTextNode(text));
 }
 
 /* Close the streaming assistant paragraph so the NEXT text delta starts a
@@ -84,11 +134,163 @@ function finalizeAssistantEl() {
 }
 
 /* Close the live reasoning block so the next segment's thinking starts a fresh
- * one. Leaves it in the transcript, collapsed. */
+ * one. Leaves it in the transcript, collapsed, now holding all of its text —
+ * written before whatever ended it is appended below it. */
 function finalizeThinkingEl() {
   if (!currentThinkingEl) return;
-  currentThinkingEl.classList.add("done");
+  const el = currentThinkingEl;
+  followLiveEdge(() => finishReasoning(el), scrollerOf(el.closest(".stream")));
+  el.classList.add("done");
   currentThinkingEl = null;
+}
+
+// ---------------------------------------------------------------------------
+// Streaming, once per frame
+//
+// A reasoning model sends its thoughts as tens of thousands of deltas of a few
+// characters each (127,802 in the 2026-09-23 field run). Writing each one into
+// the page and then reading scrollHeight made the renderer lay the transcript
+// out once per token; with the reasoning block open that cost grew with the
+// block, and the window fell 25 minutes behind the engine (FIX-PLAN T01). So:
+//   - the live edge is measured once per frame, before that frame's first
+//     write, and followed once, just before the frame is drawn;
+//   - reasoning text waits on its own block and is written once per frame;
+//   - a live reasoning block shows only the end of its text.
+// Everything pending lives on the element it belongs to, never in the
+// per-tab globals, so it lands in its own tab's transcript whichever tab is
+// focused when the frame runs.
+// ---------------------------------------------------------------------------
+
+const pendingReasoningEls = new Set(); // reasoning blocks holding text not yet on the page
+const pendingFollows = new Map(); // scroller -> whether it was at the live edge before this frame's first write
+let streamFrameId = null;
+let streamFrameTimer = null;
+
+// A hidden or covered window draws no frames, so a timer stands behind the
+// frame request: text still lands, just less often.
+const STREAM_FRAME_FALLBACK_MS = 250;
+
+function requestStreamFrame() {
+  if (streamFrameId !== null) return;
+  streamFrameId = requestAnimationFrame(runStreamFrame);
+  streamFrameTimer = setTimeout(runStreamFrame, STREAM_FRAME_FALLBACK_MS);
+}
+
+function runStreamFrame() {
+  cancelAnimationFrame(streamFrameId);
+  clearTimeout(streamFrameTimer);
+  streamFrameId = null;
+  streamFrameTimer = null;
+  // Measure every live edge first, then write, then scroll: reads between
+  // writes would each force a layout.
+  const els = [...pendingReasoningEls];
+  pendingReasoningEls.clear();
+  for (const el of els) {
+    const c = scrollerOf(el.closest(".stream"));
+    if (c && !pendingFollows.has(c)) pendingFollows.set(c, isNearBottom(c));
+  }
+  for (const el of els) writeReasoning(el);
+  for (const [c, wasNear] of pendingFollows) {
+    if (wasNear && c.isConnected) c.scrollTop = c.scrollHeight;
+  }
+  pendingFollows.clear();
+  syncScrollPill();
+}
+
+/** withAutoScroll for a stream's per-delta writes: the same "stay at the live
+ * edge if the user was there" rule, asked once per frame instead of once per
+ * delta. `scroller` defaults to the stream of the tab being handled. */
+function followLiveEdge(mutate, scroller = scrollContainer()) {
+  if (scroller && !pendingFollows.has(scroller)) pendingFollows.set(scroller, isNearBottom(scroller));
+  mutate();
+  if (scroller) requestStreamFrame();
+}
+
+// While a block streams it shows the last REASONING_TAIL_KEEP characters, cut
+// back once they pass REASONING_TAIL_MAX, after one line saying how much is
+// held back. The whole text stays on the element and is written into the
+// block when it ends, so a finished block — and a restored one — holds all of it.
+const REASONING_TAIL_KEEP = 8000;
+const REASONING_TAIL_MAX = 10000;
+
+/** A reasoning block: a dim, collapsed <details> whose body is the reasoning. */
+function createReasoningEl(done) {
+  const el = document.createElement("details");
+  el.className = done ? "msg-thinking done" : "msg-thinking";
+  const summary = document.createElement("summary");
+  summary.textContent = "reasoning";
+  const body = document.createElement("div");
+  body.className = "thinking-body";
+  el.appendChild(summary);
+  el.appendChild(body);
+  if (!done) {
+    const held = document.createElement("div");
+    held.className = "thinking-held hidden";
+    const tail = document.createTextNode("");
+    body.appendChild(held);
+    body.appendChild(tail);
+    el._reasoning = { full: "", pending: "", tail: "", heldEl: held, tailNode: tail, summaryEl: summary, started: Date.now() };
+  }
+  return el;
+}
+
+/** A reasoning block's summary: "reasoning · 8m12s · ~12k tokens". The size is
+ * estimated from characters like every live token figure; the time is shown
+ * only for a block watched live — a restored one has none to show. A collapsed
+ * block that says only "reasoning" for minutes reads as a frozen window. */
+function reasoningLabel(chars, ms) {
+  let label = "reasoning";
+  if (ms !== undefined) label += ` · ${formatElapsed(ms)}`;
+  if (chars > 0) label += ` · ~${formatTokens(estimateTokens(chars))} tokens`;
+  return label;
+}
+
+/** Queue a reasoning delta on its block; the page gets it on the next frame. */
+function appendReasoning(el, text) {
+  const r = el._reasoning;
+  if (!r || !text) return;
+  r.full += text;
+  r.pending += text;
+  pendingReasoningEls.add(el);
+  requestStreamFrame();
+}
+
+/** Put a live block's queued text on the page, keeping only its tail there. */
+function writeReasoning(el) {
+  const r = el._reasoning;
+  if (!r || !r.pending) return;
+  let tail = r.tail + r.pending;
+  r.pending = "";
+  if (tail.length > REASONING_TAIL_MAX) {
+    let cut = tail.length - REASONING_TAIL_KEEP;
+    // Start the visible part at a line when one is near, not mid-word.
+    const nl = tail.indexOf("\n", cut);
+    if (nl !== -1 && nl - cut < 400) cut = nl + 1;
+    tail = tail.slice(cut);
+  }
+  r.tail = tail;
+  r.tailNode.data = tail;
+  r.summaryEl.textContent = reasoningLabel(r.full.length, Date.now() - r.started);
+  const held = r.full.length - tail.length;
+  if (held > 0) {
+    r.heldEl.classList.remove("hidden");
+    r.heldEl.textContent = `… ${held.toLocaleString()} earlier characters are held back while the reasoning streams — all of it appears here when it ends`;
+  }
+}
+
+/** A block has ended: write all of its text, in order. What was held back goes
+ * where the "held back" line was, above the tail, so a reader of an open block
+ * keeps their place. */
+function finishReasoning(el) {
+  const r = el._reasoning;
+  if (!r) return;
+  el._reasoning = null;
+  pendingReasoningEls.delete(el);
+  r.summaryEl.textContent = reasoningLabel(r.full.length, Date.now() - r.started);
+  if (r.pending) r.tailNode.appendData(r.pending);
+  const before = r.full.slice(0, r.full.length - r.tail.length - r.pending.length);
+  if (before) r.heldEl.replaceWith(document.createTextNode(before));
+  else r.heldEl.remove();
 }
 
 function appendSysNote(text) {
@@ -227,7 +429,9 @@ const WORK_GLYPH_SVG =
   '<path d="M6.6 16.6 L6.6 7.8 L12 12.9 L17.4 7.8 L17.4 16.6" stroke-width="2"/>' +
   "</svg>";
 
-function workStream() {
+/** The open work group's body, opened if needed. `at` is the engine's time of
+ * the call that opens it (the group is timed on the engine clock when it can be). */
+function workStream(at) {
   if (!streamEl) return streamEl;
   if (!currentWorkGroup || !currentWorkGroup.el.isConnected) {
     const el = document.createElement("details");
@@ -249,19 +453,23 @@ function workStream() {
     body.className = "work-group-body";
     el.append(summary, body);
     withAutoScroll(() => streamEl.appendChild(el));
-    currentWorkGroup = { el, body, labelEl: label, start: Date.now() };
+    currentWorkGroup = { el, body, labelEl: label, start: typeof at === "number" ? at : Date.now(), lastAt: undefined };
   }
   return currentWorkGroup.body;
 }
 
 /** The model moved on (answering, or the turn ended): stamp the group with
- * its op count and elapsed time so the finished block reads as evidence. */
-function closeWorkGroup() {
+ * its op count and elapsed time so the finished block reads as evidence. The
+ * end is the engine's: `endAt` (the turn's end), else the last call's own
+ * finish; the page's clock only when the engine sent neither. A group handled
+ * late after a backlog still says how long the work took. */
+function closeWorkGroup(endAt) {
   if (!currentWorkGroup) return;
-  const { el, body, labelEl, start } = currentWorkGroup;
+  const { el, body, labelEl, start, lastAt } = currentWorkGroup;
   el.classList.add("done");
-  const ops = body.querySelectorAll(".tool-row").length;
-  labelEl.textContent = `Agent worked · ${ops} op${ops === 1 ? "" : "s"} · ${formatElapsed(Date.now() - start)}`;
+  const ops = body.querySelectorAll(".tool-row:not(.not-run)").length;
+  const end = typeof endAt === "number" ? endAt : typeof lastAt === "number" ? lastAt : Date.now();
+  labelEl.textContent = `Agent worked · ${ops} op${ops === 1 ? "" : "s"} · ${formatElapsed(end - start)}`;
   currentWorkGroup = null;
 }
 
@@ -358,17 +566,13 @@ function createToolRow(tool, description, input) {
   // Detail mode is read live at row creation: flipping the setting only
   // affects new rows, existing rows keep whatever mode they were born in.
   const cinematic = uiSettings.detail === "cinematic";
-
   if (cinematic) {
     rowEl.classList.add("op-cine");
     glyphEl.textContent = "◆";
-    nameEl.textContent = OP_VERBS[tool] || "processing";
-    descEl.textContent = cinematicHint(input);
   } else {
     glyphEl.textContent = "▸"; // ▸
-    nameEl.textContent = tool;
-    descEl.textContent = " " + (description || compactInput(input));
   }
+  labelToolRow({ nameEl, descEl, cinematic }, tool, description, input);
 
   // Right-aligned duration chip: ticks while the op runs, freezes on finish —
   // the transcript doubles as a flight recorder.
@@ -389,10 +593,90 @@ function createToolRow(tool, description, input) {
   // exact command and result — that is the whole basis of trusting the agent.
   makeRowExpandable(rowEl);
 
-  const row = { rowEl, detailEl, glyphEl, timeEl, startMs: Date.now() };
+  const row = { rowEl, detailEl, glyphEl, nameEl, descEl, timeEl, cinematic, startMs: Date.now() };
   runningToolRows.add(row);
   ensureToolTicker();
   return row;
+}
+
+/** A row's name and one-line summary, in the detail mode it was born in. */
+function labelToolRow(row, tool, description, input) {
+  if (row.cinematic) {
+    row.nameEl.textContent = OP_VERBS[tool] || "processing";
+    row.descEl.textContent = cinematicHint(input);
+  } else {
+    row.nameEl.textContent = tool;
+    row.descEl.textContent = " " + (description || compactInput(input));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// A tool call while the model is still writing it (tool_call_streaming).
+// The row appears when the writing starts, so a Write that takes minutes to
+// compose is visible where the time goes, instead of a silent gap and then a
+// run that reads 0s (field run 2026-09-24/25). tool_call_started turns the
+// same row into the call; its time is then the writing plus the run.
+// ---------------------------------------------------------------------------
+
+function writingNote(argChars) {
+  const n = typeof argChars === "number" ? argChars : 0;
+  if (n <= 0) return " writing…";
+  return ` writing · ${n < 1000 ? `${n} chars` : `${(n / 1000).toFixed(1)}k chars`}`;
+}
+
+/** `at` is the engine's time the writing started. */
+function createWritingToolRow(tool, at) {
+  const row = createToolRow(tool, "", {});
+  row.writing = true;
+  row.startMs = at;
+  row.rowEl.classList.add("writing");
+  row.descEl.textContent = writingNote(0);
+  row.timeEl.textContent = formatElapsed(Date.now() - at);
+  return row;
+}
+
+function markToolRowWriting(row, argChars) {
+  if (!row.writeFrozen) row.descEl.textContent = writingNote(argChars);
+}
+
+/** The model moved on to the next call at `at`: this one is fully written and waits for the reply to end. */
+function freezeToolRowWriting(row, at) {
+  row.writeFrozen = true;
+  row.writeMs = Math.max(0, at - row.startMs);
+  runningToolRows.delete(row);
+  row.timeEl.textContent = formatElapsed(row.writeMs);
+  row.descEl.textContent = " written · waiting for the reply to finish";
+}
+
+/** tool_call_started for a row drawn while it was written: the same row becomes the call. */
+function startWrittenToolRow(row, event) {
+  const at = typeof event.at === "number" ? event.at : Date.now();
+  const writeMs = typeof event.writingMs === "number" ? event.writingMs : (row.writeMs ?? Math.max(0, at - row.startMs));
+  row.writing = false;
+  row.writeFrozen = false;
+  row.writeMs = writeMs;
+  row.runStartMs = at;
+  // The ticker reads now − startMs, so the running time counts the writing too.
+  row.startMs = at - writeMs;
+  row.rowEl.classList.remove("writing");
+  labelToolRow(row, event.tool, event.description, event.input);
+  row.timeEl.textContent = formatElapsed(Date.now() - row.startMs);
+  runningToolRows.add(row);
+  ensureToolTicker();
+}
+
+/** The turn ended with calls that never started (stream dropped, turn stopped, a hook blocked them). */
+function abandonWritingToolRows() {
+  for (const row of toolRows.values()) {
+    if (!row.writing) continue;
+    row.writing = false;
+    runningToolRows.delete(row);
+    row.rowEl.classList.remove("running", "writing");
+    row.rowEl.classList.add("not-run");
+    row.glyphEl.textContent = "–";
+    if (row.writeMs === undefined) row.timeEl.textContent = formatElapsed(Date.now() - row.startMs);
+    row.descEl.textContent = " not run — the reply ended before this call was sent";
+  }
 }
 
 // One shared 1s ticker updates every running row's duration chip; it stops
@@ -470,12 +754,15 @@ function onToolOutputDelta(event) {
   const combined = (row.tailText || "") + event.text;
   row.tailText = combined.length > 4000 ? combined.slice(-4000) : combined;
   const lines = row.tailText.split("\n").filter((l) => l.trim() !== "");
-  withAutoScroll(() => {
+  // The live edge is measured once per frame, not per delta: a noisy command
+  // (a Workflow log, which is not throttled) forced a layout on every line.
+  followLiveEdge(() => {
     row.tailEl.textContent = lines.slice(-3).join("\n");
-  });
+  }, scrollerOf(row.rowEl.closest(".stream")));
 }
 
-function finishToolRow(row, isError, resultPreview) {
+/** `finishedAt` is the engine's tool_call_finished.at, when it sent one. */
+function finishToolRow(row, isError, resultPreview, finishedAt) {
   // The live tail's job is done — the detail now holds the full output.
   if (row.tailEl) {
     row.tailEl.remove();
@@ -486,7 +773,12 @@ function finishToolRow(row, isError, resultPreview) {
   row.rowEl.classList.add(isError ? "err" : "ok");
   row.glyphEl.textContent = isError ? "✗" : "✓"; // ✗ / ✓
   runningToolRows.delete(row);
-  if (row.timeEl) row.timeEl.textContent = formatElapsed(Date.now() - row.startMs);
+  const endMs = typeof finishedAt === "number" ? finishedAt : Date.now();
+  if (row.timeEl) row.timeEl.textContent = formatElapsed(endMs - row.startMs);
+  // A call drawn while it was written shows writing + run; the tooltip splits them.
+  if (row.timeEl && row.writeMs > 0 && typeof row.runStartMs === "number") {
+    row.timeEl.title = `written in ${formatElapsed(row.writeMs)} · ran in ${formatElapsed(Math.max(0, endMs - row.runStartMs))}`;
+  }
 
   // The result is always available on expand, in both detail modes — hiding it
   // in cinematic left the user unable to inspect what a tool returned.

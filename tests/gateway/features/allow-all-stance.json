@@ -3,7 +3,7 @@
   "name": "Allow-all stance",
   "area": "engine",
   "section": "OVERDRIVE — fully-autonomous stance",
-  "prose": "commands, network, everything runs unprompted; only the deletion guard and the `.magentra` protection still ask.",
+  "prose": "commands, network, deletions, protected edits — everything runs unprompted; nothing asks. A deny rule still refuses, and so does a kill by process name.",
   "kinds": [
     "pure",
     "fs"
@@ -11,7 +11,7 @@
   "entryFiles": [
     "engine/core/src/runtime/permissions.ts"
   ],
-  "invariant": "OVERDRIVE means nothing asks, literally — except a deny rule, which refuses rather than asks.",
+  "invariant": "OVERDRIVE means nothing asks, literally — a deny rule, and a kill by process name, refuse rather than ask.",
   "deferred": false,
   "tests": [
     "a-deletion-runs-unprompted-and-is-answered-by-the-stance",

@@ -5,6 +5,7 @@ import {
   formatTokens,
   freeContextOf,
   inputTokensOf,
+  reasoningPart,
   type Usage,
 } from "@magentra/protocol";
 import { formatDuration } from "../config/pricing.js";
@@ -118,6 +119,11 @@ export class SessionStats {
     return this.phase.outputTokens;
   }
 
+  /** The reasoning part of D(t) banked so far by the open phase. */
+  get deliberationReasoningTokens(): number {
+    return this.phase.reasoningTokens ?? 0;
+  }
+
   /**
    * The live D(t) to display: everything the phase has banked exactly, plus
    * `pendingOutput` — the character-based estimate of the reply still streaming
@@ -210,6 +216,8 @@ export class SessionStats {
           outputTokens: typeof u.outputTokens === "number" ? u.outputTokens : 0,
           cacheReadTokens: typeof u.cacheReadTokens === "number" ? u.cacheReadTokens : 0,
           cacheWriteTokens: typeof u.cacheWriteTokens === "number" ? u.cacheWriteTokens : 0,
+          ...(typeof u.reasoningTokens === "number" ? { reasoningTokens: u.reasoningTokens } : {}),
+          ...(u.reasoningEstimated === true ? { reasoningEstimated: true } : {}),
         });
       }
     }
@@ -259,9 +267,10 @@ export class SessionStats {
     }
     lines.push("  Usage by model (cumulative, every call this session):");
     for (const [model, usage] of this.byModel) {
+      const reasoning = reasoningPart(usage);
       lines.push(
         `      ${model}:  ${formatTokens(usage.inputTokens)} input, ` +
-          `${formatTokens(usage.outputTokens)} output, ` +
+          `${formatTokens(usage.outputTokens)} output${reasoning ? ` (${reasoning})` : ""}, ` +
           `${formatTokens(usage.cacheReadTokens)} cache read, ` +
           `${formatTokens(usage.cacheWriteTokens)} cache write`,
       );

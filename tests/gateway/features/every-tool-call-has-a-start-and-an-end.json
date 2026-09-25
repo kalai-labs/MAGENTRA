@@ -1,0 +1,25 @@
+{
+  "id": "every-tool-call-has-a-start-and-an-end",
+  "name": "Every tool call has a start and an end",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "a tool call the engine refuses before it can run — a switched-off tool, an unknown tool, arguments cut off mid-JSON, input that fails the schema, a permission denial — still sends `tool_call_started` before its `tool_call_finished`, so every frontend draws a row for it and pairs the two.",
+  "kinds": [
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts"
+  ],
+  "invariant": "Every tool_call_finished is preceded by a tool_call_started for the same call, including the calls refused before they run.",
+  "deferred": false,
+  "tests": [
+    "a-call-refused-before-it-runs-still-starts-before-it-finishes"
+  ],
+  "freshness": {
+    "hash": "57ce38507d9c0d5f",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "57ce38507d9c0d5f"
+    },
+    "recordedAt": "2026-09-24"
+  }
+}

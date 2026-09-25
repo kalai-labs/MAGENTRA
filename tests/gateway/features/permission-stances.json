@@ -3,7 +3,7 @@
   "name": "Permission stances",
   "area": "engine",
   "section": "Runtime — the turn loop",
-  "prose": "exactly two: normal (reads/interactions/file edits allowed, commands ask with once/session/always grants) and OVERDRIVE (everything allowed); deny-rule beats allow-rule beats stance.",
+  "prose": "exactly two: normal (reads, interactions, in-workspace edits and commands run; the guards ask — a kill by process name, a protected edit, a deletion, an edit outside the workspace) and OVERDRIVE (nothing asks; a kill by process name is refused); resolution order is deny rules > process-kill guard > protected-path guard > deletion guard > allow rules > stance default.",
   "kinds": [
     "pure",
     "fs"
@@ -11,7 +11,7 @@
   "entryFiles": [
     "engine/core/src/runtime/permissions.ts"
   ],
-  "invariant": "Resolution order is deny rules > protected-path guard > deletion guard > allow rules > stance default.",
+  "invariant": "Resolution order is deny rules > process-kill guard > protected-path guard > deletion guard > allow rules > stance default.",
   "deferred": false,
   "tests": [
     "a-deny-rule-refuses-before-every-other-branch-including-overdrive",

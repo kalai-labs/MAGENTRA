@@ -197,7 +197,7 @@
         </div>
         <div id="hintLine">
           <span id="hintModel">deepseek-ai/DeepSeek-V4-Flash</span>
-          <span id="hintAuto" class="hint-auto">asks before commands · deletions always ask</span>
+          <span id="hintAuto" class="hint-auto">runs commands · deletions ask</span>
         </div>
       </footer>
     </section>
@@ -331,11 +331,11 @@
           <div class="set-row">
             <span class="set-label">Deletions</span>
             <div class="seg" id="setDeletions">
-              <button class="seg-btn on" data-deletions="ask">ASK ALWAYS</button>
+              <button class="seg-btn on" data-deletions="ask">ASK</button>
               <button class="seg-btn" data-deletions="allow">ALLOW</button>
             </div>
           </div>
-          <p class="set-note">Consequential commands ask for approval before they run — never for reading or file edits. Engage OVERDRIVE (in the composer) for a fully autonomous run with no prompts. Destructive commands prompt on top of that because of the Deletions guard above; setting Deletions to ALLOW removes that last prompt too.</p>
+          <p class="set-note" id="setSafetyNote">Commands and edits inside the workspace run without asking. What asks: deletions (the Deletions guard above), edits outside the workspace or to .magentra and .env files, and commands that stop processes by name. Setting Deletions to ALLOW removes the deletion prompt (deleting a .magentra folder still asks). OVERDRIVE (in the composer) turns every prompt off; a kill by process name is refused there instead.</p>
           <div class="set-row">
             <span class="set-label">Web search</span>
             <div class="seg" id="setWebSearch">
@@ -356,7 +356,8 @@
           <dl class="glossary">
             <dt>task list</dt><dd>the live plan of record in the TASKS rail — the current work items, ending with a verification task.</dd>
             <dt>addons</dt><dd>Markdown procedures under <code>.magentra/addons/</code> that the agent loads on demand. Always available — only the description sits in the prompt until one is invoked, so extra ones cost almost nothing. List them with <code>/addons</code>, run one with <code>/name</code>, or create your own with ＋ BUILD NEW ADDON.</dd>
-            <dt>deletion guard</dt><dd>destructive commands always ask first — even in OVERDRIVE — unless Deletions is set to ALLOW above.</dd>
+            <dt>deletion guard</dt><dd>destructive commands ask first unless Deletions is set to ALLOW above. OVERDRIVE turns it off: nothing asks there.</dd>
+            <dt>process-kill guard</dt><dd>a command that stops processes by name (taskkill /IM, pkill, killall, Stop-Process -Name) asks first; in OVERDRIVE it is refused, because it would stop every matching process on this computer.</dd>
             <dt>session</dt><dd>one conversation with its own transcript, cost ledger, and task list, saved under <code>.magentra/sessions/</code> (SESSIONS in the dock resumes them).</dd>
           </dl>
         </div>
@@ -498,6 +499,7 @@
       <div class="modal-title" id="deleteModalTitle">⚠ APPROVAL REQUIRED</div>
       <p class="modal-sub">The agent wants to run:</p>
       <pre id="deleteSubject"></pre>
+      <p id="permissionWhy" class="approval-why hidden"></p>
       <p id="allowAlwaysHint" class="modal-hint hidden">“Always allow” remembers this exact command for this workspace — anything else still asks.</p>
       <textarea id="permissionNote" class="modal-note" rows="1" spellcheck="false" placeholder="Optional note to the agent…"></textarea>
       <div class="modal-actions">
@@ -551,7 +553,7 @@
       <ul class="overdrive-points">
         <li>Fully autonomous — nothing asks. Commands run without approval prompts until the job is done.</li>
         <li>Before it ends, it self-verifies its work against your original query.</li>
-        <li>It may delete files inside the workspace without asking. Anything outside the workspace still prompts.</li>
+        <li>Deletions and edits run without asking, inside the workspace or outside it. A command that stops processes by name is refused instead.</li>
         <li>Keep typing while it runs — your messages join the running turn to steer it.</li>
         <li>Stop anytime with Esc.</li>
       </ul>

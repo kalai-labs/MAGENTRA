@@ -22,7 +22,7 @@ const TOUR_STEPS = [
   {
     target: "#overdriveBtn",
     title: "OVERDRIVE",
-    copy: "Normally Magentra asks before running consequential commands. Flip OVERDRIVE for a fully autonomous run — no approval stops at all (deletions still follow the guard). Keep typing to steer it mid-run; Esc stops it.",
+    copy: "Normally Magentra runs commands on its own and asks only before deletions, protected edits and kills by process name. Flip OVERDRIVE for a fully autonomous run — nothing asks at all, and a kill by process name is refused instead. Keep typing to steer it mid-run; Esc stops it.",
   },
   {
     target: "#modelSelect",

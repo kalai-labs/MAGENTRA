@@ -44,6 +44,7 @@ const TAB_ACCESSORS = [
   ["workspaceWorktree", () => workspaceWorktree, (v) => { workspaceWorktree = v; }, () => null],
   ["currentSessionId", () => currentSessionId, (v) => { currentSessionId = v; }, () => null],
   ["sessionSummaries", () => sessionSummaries, (v) => { sessionSummaries = v; }, () => []],
+  ["sessionListOnFirstOutput", () => sessionListOnFirstOutput, (v) => { sessionListOnFirstOutput = v; }, () => false],
   // background (non-turn) work
   ["backgroundJobs", () => backgroundJobs, (v) => { backgroundJobs = v; }, () => new Set()],
   ["backgroundJobMeta", () => backgroundJobMeta, (v) => { backgroundJobMeta = v; }, () => new Map()],
@@ -69,6 +70,8 @@ const TAB_ACCESSORS = [
   ["modelRateCard", () => modelRateCard, (v) => { modelRateCard = v; }, () => ({})],
   ["contextTokens", () => contextTokens, (v) => { contextTokens = v; }, () => 0],
   ["outputTokens", () => outputTokens, (v) => { outputTokens = v; }, () => 0],
+  ["reasoningTokens", () => reasoningTokens, (v) => { reasoningTokens = v; }, () => 0],
+  ["reasoningEstimated", () => reasoningEstimated, (v) => { reasoningEstimated = v; }, () => true],
   ["contextWarn", () => contextWarn, (v) => { contextWarn = v; }, () => false],
   ["sessionModel", () => sessionModel, (v) => { sessionModel = v; }, () => ""],
   ["activeModel", () => activeModel, (v) => { activeModel = v; }, () => null],
@@ -444,9 +447,9 @@ function tabIsBusy(ts) {
  * one currently applied, its captured TabState otherwise. */
 function paneNowState(ts) {
   if (ts.id === liveTabId()) {
-    return { busy, turnStart: nowTurnStart, activityStart: nowActivityStart, verb: nowVerb, detail: nowDetail, override: nowOverrideText, output: outputTokens };
+    return { busy, turnStart: nowTurnStart, activityStart: nowActivityStart, verb: nowVerb, detail: nowDetail, override: nowOverrideText, output: outputTokens, reasoning: reasoningTokens, reasoningEstimated };
   }
-  return { busy: ts.busy, turnStart: ts.nowTurnStart, activityStart: ts.nowActivityStart, verb: ts.nowVerb, detail: ts.nowDetail, override: ts.nowOverrideText, output: ts.outputTokens };
+  return { busy: ts.busy, turnStart: ts.nowTurnStart, activityStart: ts.nowActivityStart, verb: ts.nowVerb, detail: ts.nowDetail, override: ts.nowOverrideText, output: ts.outputTokens, reasoning: ts.reasoningTokens, reasoningEstimated: ts.reasoningEstimated };
 }
 
 /** Paint (or hide) one pane's now-line from its tab's state. */
@@ -467,20 +470,19 @@ function renderPaneNowLine(ts) {
   if (tokensEl) {
     const out = st.output > 0;
     tokensEl.classList.toggle("hidden", !out);
-    if (out) tokensEl.textContent = `↑ ${formatTokens(st.output)} out`;
+    if (out) tokensEl.textContent = outputTokensText(st.output, st.reasoning, st.reasoningEstimated);
   }
   if (timerEl) timerEl.textContent = st.turnStart ? formatTurnElapsed(Date.now() - st.turnStart) : "0:00";
   if (textEl) {
     if (st.override != null) {
       textEl.textContent = st.override;
     } else {
-      const elapsedSec = st.activityStart ? Math.floor((Date.now() - st.activityStart) / 1000) : 0;
       textEl.textContent = "";
       const verbEl = document.createElement("span");
       verbEl.className = "now-verb";
       verbEl.textContent = st.verb || "thinking";
       textEl.appendChild(verbEl);
-      textEl.appendChild(document.createTextNode(st.detail ? ` · ${st.detail} · ${elapsedSec}s` : ` · ${elapsedSec}s`));
+      textEl.appendChild(document.createTextNode(nowActivityTail(st.detail, st.activityStart)));
     }
   }
 }
@@ -713,6 +715,8 @@ function buildPaneApproval(tabId) {
   title.textContent = "⚠ APPROVAL REQUIRED";
   const subject = document.createElement("pre");
   subject.className = "pane-approval-subject";
+  const why = document.createElement("p");
+  why.className = "pane-approval-why approval-why hidden";
   const note = document.createElement("textarea");
   note.className = "pane-approval-note";
   note.rows = 1;
@@ -733,7 +737,7 @@ function buildPaneApproval(tabId) {
   allow.textContent = "ALLOW (Y)";
   allow.addEventListener("click", () => resolvePanePermission(tabId, "allow_once"));
   actions.append(deny, always, allow);
-  box.append(title, subject, note, actions);
+  box.append(title, subject, why, note, actions);
   return box;
 }
 
@@ -747,12 +751,13 @@ function showPaneApproval(tabId, permission) {
     box = buildPaneApproval(tabId);
     ts.paneEl.appendChild(box);
   }
-  const input = permission.input;
-  const subject =
-    (input && typeof input === "object" && input.command) ||
-    permission.description ||
-    (typeof safeStringify === "function" ? safeStringify(input) : String(input));
+  const { subject, why } = approvalLines(permission);
   box.querySelector(".pane-approval-subject").textContent = subject;
+  const whyEl = box.querySelector(".pane-approval-why");
+  if (whyEl) {
+    whyEl.textContent = why;
+    whyEl.classList.toggle("hidden", !why);
+  }
   const grantable = typeof permission.subject === "string" && permission.subject !== "";
   const alwaysBtn = box.querySelector(".pa-always");
   if (alwaysBtn) alwaysBtn.classList.toggle("hidden", !grantable);

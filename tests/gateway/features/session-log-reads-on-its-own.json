@@ -1,0 +1,33 @@
+{
+  "id": "session-log-reads-on-its-own",
+  "name": "The session log reads on its own",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "the black-box log under `<workspace>/.magentra/logs/` can be read without the transcript. Every line is valid JSON (long values are shortened inside the object and say by how much); only secrets are hidden, by their exact names and by the look of a key, so token counts survive; streamed deltas are folded into one line per block or second with their counts; a finished tool call carries its duration; a line names its tab and lands in that tab's own workspace log; the file name says it is UTC; and the renderer's state-sync frames before any engine runs are not reported as drops.",
+  "kinds": [
+    "fs",
+    "ui"
+  ],
+  "entryFiles": [
+    "app/main/logging.js",
+    "app/main.js"
+  ],
+  "invariant": "Every line of the session log is valid JSON that keeps what a reader needs — counts, durations, which tab — hides only secrets, and lands in its own workspace's log.",
+  "deferred": false,
+  "tests": [
+    "token-counts-survive-and-secrets-by-name-or-by-look-do-not",
+    "every-line-parses-and-a-shortened-value-says-by-how-much",
+    "a-thousand-deltas-become-a-few-lines-that-keep-their-count-and-length",
+    "a-finished-tool-call-carries-how-long-it-ran",
+    "a-tabs-line-lands-in-its-own-workspace-log-and-nothing-queued-is-lost",
+    "in-the-app-a-background-tabs-frames-are-in-its-own-workspace-log"
+  ],
+  "freshness": {
+    "hash": "985bab343b5e6f4b",
+    "fileHashes": {
+      "app/main/logging.js": "5861959cd8bc909b",
+      "app/main.js": "f6edde465f137c4d"
+    },
+    "recordedAt": "2026-09-24"
+  }
+}

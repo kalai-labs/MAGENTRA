@@ -6,18 +6,22 @@
 // Utility
 // ---------------------------------------------------------------------------
 
-// The element that actually scrolls for the tab whose stream is currently live
-// (streamEl): in the tiled multi-pane layout each pane's own .stream scrolls
-// itself, so THAT is the scroller; in the single console view the shared
-// #transcript scrolls its child stream. A detached stream (a background tab in
-// single view) has no visible scroller — return null so we never scroll the
-// focused tab's view on another tab's event.
-function scrollContainer() {
-  if (!streamEl) return null;
-  const parent = streamEl.parentNode;
-  if (parent && parent.classList && parent.classList.contains("console-pane")) return streamEl;
+// The element that actually scrolls for `stream`: in the tiled multi-pane
+// layout each pane's own .stream scrolls itself, so THAT is the scroller; in the
+// single console view the shared #transcript scrolls its child stream. A
+// detached stream (a background tab in single view) has no visible scroller —
+// return null so we never scroll the focused tab's view on another tab's event.
+function scrollerOf(stream) {
+  if (!stream) return null;
+  const parent = stream.parentNode;
+  if (parent && parent.classList && parent.classList.contains("console-pane")) return stream;
   if (parent === transcriptEl) return transcriptEl;
   return null;
+}
+
+// The scroller for the tab whose stream is currently live (streamEl).
+function scrollContainer() {
+  return scrollerOf(streamEl);
 }
 
 function isNearBottom(el) {
@@ -85,7 +89,9 @@ function timeString() {
 }
 
 function formatElapsed(ms) {
-  const totalSec = Math.floor(ms / 1000);
+  // Clamped like formatTurnElapsed: a start stamped by the engine's clock can
+  // sit a few ms ahead of the page's own, and "-1s" is never a duration.
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   if (m > 0) return `${m}m${String(s).padStart(2, "0")}s`;

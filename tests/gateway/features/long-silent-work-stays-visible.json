@@ -1,0 +1,35 @@
+{
+  "id": "long-silent-work-stays-visible",
+  "name": "Long silent work stays visible",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "a long stretch of reasoning never looks like a frozen window, and never goes on unannounced. The live reasoning block's summary counts time and size (\"reasoning · 8m12s · ~12k tokens\") and the now-line's timer reads in minutes, on the desktop and in the terminal; and once the model has reasoned at length through tool rounds without a word to the user, its next request asks for one sentence about what it is doing — once per silent stretch.",
+  "kinds": [
+    "pure",
+    "fs",
+    "ui"
+  ],
+  "entryFiles": [
+    "engine/core/src/runtime/session.ts",
+    "app/renderer/modules/stream.js",
+    "app/renderer/modules/views.js"
+  ],
+  "invariant": "Long silent work shows that it is going on: the live reasoning block counts its time and size, and after a long stretch of reasoning with no word to the user the next request asks the model for one sentence, once per stretch.",
+  "deferred": false,
+  "tests": [
+    "a-long-silent-stretch-gets-one-reminder-on-the-next-request-and-no-more",
+    "text-to-the-user-ends-the-stretch-and-a-round-with-text-never-gets-the-reminder",
+    "a-response-cut-off-mid-reasoning-counts-and-whitespace-is-not-a-word-to-the-user",
+    "the-terminal-now-line-reads-a-long-stretch-in-minutes-as-the-desktop-does",
+    "the-reasoning-summary-counts-time-and-size-and-the-now-line-reads-in-minutes"
+  ],
+  "freshness": {
+    "hash": "6c6d27e0e4fe42a9",
+    "fileHashes": {
+      "engine/core/src/runtime/session.ts": "57ce38507d9c0d5f",
+      "app/renderer/modules/stream.js": "05648f59025f3de1",
+      "app/renderer/modules/views.js": "4c962fd95fb289b1"
+    },
+    "recordedAt": "2026-09-24"
+  }
+}

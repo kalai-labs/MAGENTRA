@@ -1,0 +1,10 @@
+{
+  "id": "904c774c-c531-4719-b00c-f85864d20897",
+  "featureIds": [
+    "a-shell-command-names-the-read-files-it-changed"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-24T03:12:27.716Z",
+  "updatedAt": "2026-09-24T03:12:27.716Z",
+  "body": "WHAT\nFileState gains changedSinceRead(): the files Read this session whose mtime or size moved since (checkFresh's own test, over every recorded file; a deleted file is left out — it is gone, not changed, and \"Read it again\" would point at nothing). A foreground Bash call takes that list before it spawns and again when the command closes; the files new to the list are named at the end of its result: \"[This command changed a file you had Read: <path>. Read it again before you Edit.]\" (at most ten named, the rest counted). Files stale before the command are not named. Background commands are not covered: their output arrives later and cannot be attributed to one call. Measured cost: two stat passes over 500 Read files take 8–11 ms, against a shell spawn of ~100 ms.\n\nWHY\nField test 2026-09-23, finding E-04. Bash never touched FileState; checkFresh still caught a file changed by a shell command, but only at the next Edit, which was refused as \"modified on disk since it was last read\" with no word about which command did it — so the model re-read and re-quoted by trial.\n\nWHERE\nengine/core/src/runtime/fileState.ts changedSinceRead(); engine/core/src/agent/tool.ts FileStateStore; engine/tools/src/bash.ts runForeground().\n\nTEST CHECKLIST\n1. (proc) With a.txt Read, a real shell command that appends to it gets a result naming a.txt; a command that touches nothing gets no note; a file changed by someone else before the command is not named by it; a Read file the command deletes is not named."
+}

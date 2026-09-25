@@ -29,11 +29,15 @@ export interface PermissionOutcome {
 }
 
 /** Why requestApproval was invoked, surfaced to the transcript log. */
-export type ApprovalSource = "ask" | "deletion-guard" | "protected-path";
+export type ApprovalSource = "ask" | "deletion-guard" | "protected-path" | "process-kill-guard";
+
+/** The process-kill guard's line on the approval card. */
+const PROCESS_KILL_WARNING =
+  "Stops processes by name — every matching process on this computer, not only the ones this session started.";
 
 /**
  * Paths a file-editing tool may never write without an explicit confirmation,
- * in every stance (OVERDRIVE included). Two families:
+ * in every stance except OVERDRIVE, which turns every asking guard off. Two families:
  *   - `.magentra/**` — MAGENTRA's own state (settings, sessions, transcripts,
  *     team files). Corrupting it breaks the workspace, not just the task.
  *   - `.env`, `.env.*` — secrets. An accidental overwrite is unrecoverable and
@@ -100,25 +104,28 @@ export function deriveAlwaysGrant(subject: string): string | undefined {
 }
 
 /**
- * Resolution order: deny rules > protected-path guard > deletion guard >
- * allow rules > stance default.
+ * Resolution order: deny rules > process-kill guard > protected-path guard >
+ * deletion guard > allow rules > stance default.
  *
  * The stance default is ALLOW for every class (2026-07-26). Commands, network
  * calls and file edits no longer ask — the friction bought little, because the
- * two things worth confirming are not classes of tool at all but classes of
- * TARGET, and both are guarded ahead of the stance:
+ * things worth confirming are not classes of tool at all but classes of
+ * TARGET, and all are guarded ahead of the stance:
+ *   - process-kill guard — a command that stops processes BY NAME, which hits
+ *     every matching process on the machine, not only this session's.
  *   - deletion guard — anything that removes a file, folder or worktree.
  *   - protected-path guard — edits into `.magentra/**` or a `.env*` file.
  *
- * OVERDRIVE turns both off: it means nothing asks, literally. Deny rules are
- * the one thing it does not override — a deny rule refuses rather than asks,
- * and silently ignoring the user's own configuration would be a different
- * feature.
+ * OVERDRIVE turns the last two off: it means nothing asks, literally. Deny
+ * rules still refuse — silently ignoring the user's own configuration would be
+ * a different feature — and so does the process-kill guard, which in OVERDRIVE
+ * refuses instead of asking: nobody is there to ask, and a kill by name must
+ * not run unasked.
  */
 export class PermissionEngine {
-  /** When true (default), destructive calls always ask the user, in both
-   *  stances. The desktop's "Allow deletions" setting turns this off, after
-   *  which deletions resolve through the ordinary rules/stance path. */
+  /** When true (default), destructive calls ask the user outside OVERDRIVE.
+   *  The desktop's "Allow deletions" setting turns this off, after which
+   *  deletions resolve through the ordinary rules/stance path. */
   private deletionGuard = true;
   /** OVERDRIVE: nothing asks. Every call runs unless a deny rule forbids it —
    *  deletions at any scope (the `.magentra` state dir included), edits to
@@ -184,7 +191,7 @@ export class PermissionEngine {
      *  edit is not auto-safe and must ask (in-workspace edits still auto-run). */
     editOutsideWorkspace?: boolean,
     /** The absolute path when a file-edit call targets a protected file
-     *  (`.magentra/**` or `.env*`) — such an edit always asks, in every stance. */
+     *  (`.magentra/**` or `.env*`) — such an edit asks in every stance but OVERDRIVE. */
     editProtectedPath?: string,
   ): Promise<PermissionOutcome> {
     if (matches(this.deny, tool.name, subject)) {
@@ -193,6 +200,61 @@ export class PermissionEngine {
         source: "rule",
         message: `Permission denied by settings rule. The user's configuration forbids this call; do not retry it verbatim.`,
       };
+    }
+
+    // A deliberate narrow grant: an EXPLICIT subject-scoped allow rule in the
+    // user's settings (e.g. `Bash(rm -rf ./tmp/*)`), or an earlier "always
+    // allow" on this exact subject — the one standing override of the deletion
+    // guard (the process-kill guard's is narrower still, below). Broad grants (bare tool, `Tool(*)`, session
+    // allows) never are, nor is a derived command-shape grant ("git push …"):
+    // a shape from a benign approval must never let a later destructive
+    // variant ("git push --force") skip a guard.
+    const explicitlyAllowed =
+      matchesExplicit(this.allow, tool.name, subject) || this.matchesExact(tool.name, subject, true);
+
+    // Process-kill guard: a command that stops processes BY NAME (taskkill /IM,
+    // pkill, killall, Stop-Process -Name, kill -1, a kill fed by pgrep/ps)
+    // stops every matching process on the machine. It asks in the ordinary
+    // stance and is REFUSED in OVERDRIVE, where nothing may ask — so an
+    // unattended run neither stops on a prompt nor runs it silently. The
+    // "Allow deletions" switch does not touch it: a kill is not a deletion. An
+    // approval does not end the check — a command that also deletes still
+    // meets the deletion guard below.
+    // Its override is narrower than the deletion guard's: a rule for that EXACT
+    // command. A glob rule written for other work (`Bash(cd *)`, `Bash(npm *)`)
+    // also matches `cd app && taskkill //IM python.exe`, and in OVERDRIVE that
+    // would run the field-test command with nothing asked.
+    let killApproval: { note?: string } | undefined;
+    const killOverride = matchesLiteral(this.allow, tool.name, subject) || this.matchesExact(tool.name, subject, true);
+    const killSubject = killOverride ? undefined : tool.processKillSubject?.(input);
+    if (killSubject !== undefined) {
+      if (this.overdrive) {
+        return {
+          allowed: false,
+          source: "mode",
+          message:
+            "Refused: this command stops processes by name, which stops every matching process on this computer, not only the ones this session started. In OVERDRIVE nothing asks, so a kill by name never runs. To stop a background command you started, use TaskStop with its task id; to stop one process, kill its pid. If the user wants every matching process stopped, say so in your answer: they can run it themselves or turn OVERDRIVE off.",
+        };
+      }
+      const res = await this.requestApproval(
+        {
+          tool: tool.name,
+          input,
+          description: PROCESS_KILL_WARNING,
+          ...(subject !== undefined ? { subject } : {}),
+        },
+        "process-kill-guard",
+      );
+      if (res.decision === "deny") {
+        return {
+          allowed: false,
+          source: "user",
+          message: `The user declined this process kill${res.message ? `: ${res.message}` : "."} It stops processes by name — every matching process on this computer. To stop a background command you started, use TaskStop with its task id, or kill its pid; do not retry the same call.`,
+        };
+      }
+      // Literal grant only, as for a deletion: one click never widens to a shape.
+      if (res.decision === "allow_always") this.grantExact(tool.name, subject);
+      killApproval = res.message ? { note: res.message } : {};
     }
 
     // Protected-path guard: an edit into MAGENTRA's own state dir or a .env
@@ -228,17 +290,10 @@ export class PermissionEngine {
       }
     }
     // Deletion guard: a tool call that would delete a file/folder requires
-    // interactive approval. OVERDRIVE skips it outright — see below. One other
-    // exception: an EXPLICIT subject-scoped allow rule in the user's settings
-    // (e.g. `Bash(rm -rf ./tmp/*)`) is a deliberate standing decision about
-    // that exact call shape — it beats the guard, so a repeated cleanup can
-    // run without re-prompting forever. Broad grants (bare tool, `Tool(*)`, session allows) never do. The guard
-    // never adds a session-allow, so it re-fires on every other matching call.
-    // Only LITERAL grants may override the guard: a derived command-shape
-    // grant ("git push …") from a benign approval must never let a later
-    // destructive variant ("git push --force") skip the always-ask.
-    const explicitlyAllowed =
-      matchesExplicit(this.allow, tool.name, subject) || this.matchesExact(tool.name, subject, true);
+    // interactive approval. OVERDRIVE skips it outright — see below. The one
+    // other exception is the explicit grant computed above, so a repeated
+    // cleanup can run without re-prompting forever. The guard never adds a
+    // session-allow, so it re-fires on every other matching call.
     // Protected target — a `.magentra` state directory (settings, sessions,
     // transcripts). Deleting it asks in every mode EXCEPT OVERDRIVE: it beats
     // the "allow deletions" off-switch and explicit allow rules, but not a
@@ -275,8 +330,12 @@ export class PermissionEngine {
       // whole tool, which is never what one click on one command should mean.
       // A protected deletion never records a grant at all — it must re-ask.
       if (res.decision === "allow_always" && !protectedTarget) this.grantExact(tool.name, subject);
-      return { allowed: true, source: "user", ...(res.message ? { note: res.message } : {}) };
+      const note = [killApproval?.note, res.message].filter(Boolean).join("\n");
+      return { allowed: true, source: "user", ...(note ? { note } : {}) };
     }
+
+    // An approved kill that is not also a deletion: the user decided it.
+    if (killApproval) return { allowed: true, source: "user", ...killApproval };
 
     if (
       matches(this.allow, tool.name, subject) ||
@@ -368,9 +427,9 @@ export class PermissionEngine {
   }
 
   /**
-   * Allow-all. Every gate that still exists is target-shaped (deletion guard,
-   * protected-path guard, out-of-workspace edits) or user-authored (deny
-   * rules), and all of them are resolved before this point. Kept as a method
+   * Allow-all. Every gate that still exists is target-shaped (process-kill
+   * guard, deletion guard, protected-path guard, out-of-workspace edits) or
+   * user-authored (deny rules), and all of them are resolved before this point. Kept as a method
    * rather than inlined so the `"ask"` half of the switch below stays live for
    * the out-of-workspace downgrade, and so restoring a class-based stance is a
    * one-line change.
@@ -407,6 +466,17 @@ function matchesExplicit(rules: ParsedRule[], tool: string, subject: string | un
       subject !== undefined &&
       rule.pattern.test(subject),
   );
+}
+
+/**
+ * True only for a subject-scoped rule with no wildcard that names this exact
+ * subject — `Bash(taskkill /F /IM myapp.exe)`. The process-kill guard's override.
+ */
+function matchesLiteral(rules: ParsedRule[], tool: string, subject: string | undefined): boolean {
+  return rules.some((rule) => {
+    const inner = /^[A-Za-z_][\w-]*\((.*)\)$/.exec(rule.raw.trim())?.[1];
+    return rule.tool === tool && inner !== undefined && !inner.includes("*") && inner === subject;
+  });
 }
 
 function globToRegex(glob: string): RegExp {

@@ -12,6 +12,10 @@ export interface TaskItem {
   blocks: string[];
   blockedBy: string[];
   metadata?: Record<string, unknown>;
+  /** Epoch ms, engine clock: when the status first became in_progress. */
+  startedAt?: number;
+  /** Epoch ms, engine clock: when the status became completed. Cleared if the task is reopened. */
+  completedAt?: number;
 }
 
 /**
@@ -35,6 +39,15 @@ export interface Usage {
   cacheReadTokens: number;
   /** Prompt tokens written into the cache (billed above the input rate). */
   cacheWriteTokens: number;
+  /**
+   * The part of `outputTokens` that was reasoning. INSIDE the output, never
+   * added to it: reasoning is billed as output. Absent when a response had
+   * none to report.
+   */
+  reasoningTokens?: number;
+  /** True when `reasoningTokens` was counted from the streamed reasoning
+   *  because the provider did not report it. */
+  reasoningEstimated?: boolean;
 }
 
 export interface QuestionOption {
@@ -113,7 +126,12 @@ export type CoreEvent =
       /** Installed addons — built-ins plus anything under .magentra/addons/. Always invocable; there is no enabled state. */
       addons?: { name: string; description: string; builtin: boolean }[];
     }
-  | { type: "turn_started"; turnId: string }
+  | {
+      type: "turn_started";
+      turnId: string;
+      /** Epoch ms, engine clock. Frontends time the turn from this, not from when the frame arrived. */
+      at?: number;
+    }
   | {
       /** Incremental output from a running tool call (throttled) — lets the UI tail e.g. a build log live. */
       type: "tool_output_delta";
@@ -130,17 +148,36 @@ export type CoreEvent =
   | { type: "text_delta"; text: string }
   | { type: "thinking_delta"; text: string }
   | {
+      /** The model has begun writing a tool call's arguments, and again about once
+       *  a second while they stream. Nothing runs yet — `tool_call_started` for the
+       *  same id follows once the whole response is in — so a frontend can show the
+       *  call while it is composed rather than only once it runs. Top-level only: a
+       *  subagent's calls appear at `tool_call_started`, as before. */
+      type: "tool_call_streaming";
+      id: string;
+      tool: string;
+      /** Characters of the arguments received so far. */
+      argChars: number;
+      /** Epoch ms, engine clock: when this frame was sent. */
+      at?: number;
+    }
+  | {
       type: "tool_call_started";
       id: string;
       tool: string;
       input: unknown;
       description?: string;
+      /** Milliseconds the model spent writing this call's arguments, from its first
+       *  `tool_call_streaming` to the next call's or the end of the response. */
+      writingMs?: number;
       /** True when this call belongs to a subagent's nested session, not the top-level turn. */
       subagent?: boolean;
       /** Stable id of the subagent this call belongs to (e.g. "ag_1"). Only set on subagent events. */
       agentId?: string;
       /** The spawning `description` for the subagent this call belongs to. Only set on subagent events. */
       agentDesc?: string;
+      /** Epoch ms, engine clock: when the call started running. */
+      at?: number;
     }
   | {
       type: "tool_call_finished";
@@ -154,6 +191,8 @@ export type CoreEvent =
       agentId?: string;
       /** The spawning `description` for the subagent this call belongs to. Only set on subagent events. */
       agentDesc?: string;
+      /** Epoch ms, engine clock: when the call finished. */
+      at?: number;
     }
   | {
       /** A subagent was just dispatched — emitted before its first model turn so
@@ -213,6 +252,8 @@ export type CoreEvent =
        * call's usage lands. Absent means "unchanged", not zero.
        */
       outputTokens?: number;
+      /** The reasoning part of `outputTokens` so far — an estimate while the turn streams. */
+      reasoningTokens?: number;
       contextWarn?: boolean;
     }
   /** The /session report — the whole formatted summary, shown by frontends in a
@@ -258,6 +299,8 @@ export type CoreEvent =
        * this; absent while the context is comfortably small.
        */
       contextWarn?: boolean;
+      /** Epoch ms, engine clock: when the turn ended. Frontends close the turn's timers on this, not on when the frame arrived. */
+      at?: number;
     }
   | { type: "error"; message: string; fatal: boolean }
   /** The generate_addon result: a validated draft to preview/edit, or the failure after retries. */

@@ -236,8 +236,10 @@ interface OllamaMessage {
  * images are bare base64 strings on the user message, tool arguments are an
  * OBJECT rather than a JSON string, and a tool result names the tool it answers
  * (`tool_name`, looked up from the assistant call it follows) as well as the id.
- * Assistant thinking is NOT replayed, matching the other transport — the
- * templates re-derive it, and a fixed history keeps the prompt cache warm.
+ * Assistant thinking is NOT replayed here: Ollama's own templates decide what
+ * earlier reasoning they render, and a fixed history keeps the prompt cache
+ * warm. (The OpenAI-compatible transport does replay it, as `reasoning_content`
+ * — hosted models that think between tool calls need it.)
  */
 function toOllamaMessages(system: string, messages: Msg[]): OllamaMessage[] {
   const wire: OllamaMessage[] = [];

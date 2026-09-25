@@ -1,0 +1,32 @@
+{
+  "id": "the-console-reads-plainly",
+  "name": "The console reads plainly",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "what the console shows can be told apart and read in full: reasoning stays collapsed by default and apart from the tool rows and answers around it; a provider retry is announced on the now-line of its own console or pane, and clears there; one long unbroken line never gives the transcript a sideways scroll bar; and the model picker names a model by its own name, with the full id on hover, never as \"Custom…\" over a truncated path, and offers only the focused tab's model.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/renderer/modules/stream.js",
+    "app/renderer/modules/session.js",
+    "app/renderer/styles.css"
+  ],
+  "invariant": "The console keeps reasoning collapsed and apart from progress, shows retries, never scrolls sideways, and names the model by its own name.",
+  "deferred": true,
+  "tests": [
+    "live-reasoning-is-collapsed-and-the-tool-row-and-answer-sit-outside-it",
+    "a-provider-retry-is-announced-on-the-now-line-in-one-console-and-in-a-pane",
+    "a-long-unbroken-line-wraps-and-never-widens-the-transcript",
+    "the-picker-names-the-model-by-its-last-segment-with-the-full-id-on-hover"
+  ],
+  "freshness": {
+    "hash": "1dba680d7362e0be",
+    "fileHashes": {
+      "app/renderer/modules/stream.js": "05648f59025f3de1",
+      "app/renderer/modules/session.js": "fee2d91528285304",
+      "app/renderer/styles.css": "f32891a1674f878b"
+    },
+    "recordedAt": "2026-09-24"
+  }
+}

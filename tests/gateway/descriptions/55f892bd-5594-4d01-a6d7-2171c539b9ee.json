@@ -1,0 +1,10 @@
+{
+  "id": "55f892bd-5594-4d01-a6d7-2171c539b9ee",
+  "featureIds": [
+    "every-tool-call-has-a-start-and-an-end"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-24T03:05:30.802Z",
+  "updatedAt": "2026-09-24T03:05:30.802Z",
+  "body": "WHAT\nIn Session.executeToolCalls the four early refusals — a tool switched off in the prompt registry, an unknown tool, arguments cut off mid-JSON (TOOL_CUTOFF_TEXT), input that fails the tool's schema — go through one helper, refuse(), whose run() emits tool_call_started (with the parsed input, or {} for cut-off JSON, and at) before returning the error. The run() of an ordinary call does the same just before it returns a permission denial (a deny rule, a declined card, the OVERDRIVE kill refusal) — through one announce() helper that is also the ordinary start. A PreToolUse hook block stays unannounced, as the `hooks` feature asserts (no start frame is its proof the tool never ran). The tool_call_finished that follows for every call is unchanged. The desktop (onToolCallStarted → a row, onToolCallFinished → it finishes) and the TUI (tool_call_started → toolStarts) therefore draw the refused call as a failed row; before, a finished frame for an id they never saw drew nothing on the desktop.\n\nThe scripted provider gains FakeToolCall.json — the arguments exactly as streamed — so a test can play a cut-off call.\n\nWHY\nField test 2026-09-23, finding E-02: for these four paths a tool_call_finished was sent with no tool_call_started before it, so a refused call vanished from the console while the model read its error.\n\nWHERE\nengine/core/src/runtime/session.ts — executeToolCalls(), refuse(). engine/providers/src/fake.ts — FakeToolCall.json.\n\nTEST CHECKLIST\n1. (fs) One response with four calls — a switched-off tool (an empty tool.Glob override), an unknown tool, cut-off JSON, a Read with no file_path, and a Bash call a deny rule refuses — produces, for each call id, tool_call_started before tool_call_finished, and each finished frame is an error."
+}

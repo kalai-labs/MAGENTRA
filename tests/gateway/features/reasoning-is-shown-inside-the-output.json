@@ -1,0 +1,44 @@
+{
+  "id": "reasoning-is-shown-inside-the-output",
+  "name": "Reasoning is shown inside the output",
+  "area": "engine",
+  "section": "Runtime — the turn loop",
+  "prose": "reasoning stays counted in the output total — it is billed as output — and is now shown as its own part of it: \"out 200k · reasoning 135k\". The OpenAI-compatible provider reads the reasoning count a provider reports (`completion_tokens_details.reasoning_tokens`), the Anthropic one its thinking count (`output_tokens_details.thinking_tokens`); where no provider reports it, the live counter's own split of the stream (reasoning characters vs answer characters) stands in, marked as estimated. The desktop meter, the TUI and `/session` show it.",
+  "kinds": [
+    "pure",
+    "net",
+    "fs",
+    "ui",
+    "llm"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/types.ts",
+    "engine/protocol/src/tokens.ts",
+    "engine/providers/src/openai-compat.ts",
+    "engine/core/src/runtime/sessionStats.ts",
+    "engine/core/src/runtime/session.ts",
+    "app/renderer/modules/tokens.js"
+  ],
+  "invariant": "The output total keeps its reasoning, and every place that shows the total shows how much of it was reasoning — exact when the provider reports it, estimated when it does not.",
+  "deferred": false,
+  "tests": [
+    "the-reasoning-part-adds-up-keeps-its-estimated-mark-and-prints-only-when-there-is-one",
+    "the-openai-adapter-reads-reasoning-tokens-clamps-them-and-adds-nothing-when-absent",
+    "the-anthropic-adapter-reads-thinking-tokens-from-the-final-message-delta",
+    "an-unreported-reasoning-part-is-counted-from-the-stream-and-marked-and-a-reported-one-is-kept",
+    "the-desktop-strip-shows-the-estimated-part-and-the-inspector-the-reported-one",
+    "on-the-configured-provider-a-turns-reasoning-stays-inside-its-output"
+  ],
+  "freshness": {
+    "hash": "cae936ab9dbf0b4a",
+    "fileHashes": {
+      "engine/protocol/src/types.ts": "8654e21472659eb9",
+      "engine/protocol/src/tokens.ts": "b402e08d2f7b0ca4",
+      "engine/providers/src/openai-compat.ts": "e8427236c4044fe6",
+      "engine/core/src/runtime/sessionStats.ts": "c928036101235de4",
+      "engine/core/src/runtime/session.ts": "57ce38507d9c0d5f",
+      "app/renderer/modules/tokens.js": "07a16ec831b69940"
+    },
+    "recordedAt": "2026-09-24"
+  }
+}

@@ -68,6 +68,12 @@
  * endpoint this machine is configured for. This helper does not touch the
  * environment, because putting it back is the kind's teardown, not this file's.
  *
+ * A REAL PROVIDER, WHEN THE SUBJECT IS THE WIRE. {@link startEngineOn} runs the
+ * same Engine on a provider the test builds — a real `OpenAICompatProvider`
+ * pointed at a real 127.0.0.1 server (`localServer.ts`), so a `net` test can read
+ * what the real Session made the real provider send, byte for byte, and stream
+ * back as slowly as a slow model does. Nothing is faked there at all.
+ *
  * REQUIRES `npm run build`: the engine is imported through its package entry
  * points, which resolve to each package's gitignored `dist/`.
  */
@@ -77,7 +83,7 @@ import { join } from "node:path";
 
 import { Engine, loadSettings, type Addon, type Settings } from "@magentra/core";
 import type { CoreEvent, FrontendRequest, PermissionDecision } from "@magentra/protocol";
-import { FakeProvider, type FakeTurn } from "@magentra/providers";
+import { FakeProvider, type FakeTurn, type Provider } from "@magentra/providers";
 import { createDefaultRegistry } from "@magentra/tools";
 
 import { repoRoot } from "./inventory.ts";
@@ -87,11 +93,9 @@ export type { FakeTurn, FakeToolCall } from "@magentra/providers";
 /** Long enough for a tool round that spawns a shell; short enough to fail a hung turn inside the kind's own timeout. */
 const TURN_TIMEOUT_MS = 45_000;
 
-export interface ScriptedEngineOptions {
+export interface EngineOnOptions {
   /** The workspace the engine runs on. A temp directory the test owns. */
   readonly workspace: string;
-  /** The provider's script, one entry per model call, in order. */
-  readonly turns: readonly FakeTurn[];
   /** Overlaid on the settings loaded from the workspace (and the fixture's two pins). */
   readonly settings?: Partial<Settings>;
   /**
@@ -110,6 +114,11 @@ export interface ScriptedEngineOptions {
   readonly permissions?: PermissionDecision;
 }
 
+export interface ScriptedEngineOptions extends EngineOnOptions {
+  /** The provider's script, one entry per model call, in order. */
+  readonly turns: readonly FakeTurn[];
+}
+
 /** What one `runTurn` produced. */
 export interface TurnOutcome {
   /** Every event from this turn's `turn_started` to its `turn_finished`, inclusive. */
@@ -123,10 +132,10 @@ export interface TurnOutcome {
   readonly errors: readonly string[];
 }
 
-export interface ScriptedEngine {
+export interface EngineDriver<P extends Provider = Provider> {
   readonly engine: Engine;
-  /** The scripted provider — `provider.requests` is what the real Session sent the model. */
-  readonly provider: FakeProvider;
+  /** The provider the engine runs on. For a scripted one, `provider.requests` is what the real Session sent the model. */
+  readonly provider: P;
   readonly workspace: string;
   /** Everything emitted so far, in order. Live; copy it across an `await`. */
   readonly events: readonly CoreEvent[];
@@ -142,6 +151,8 @@ export interface ScriptedEngine {
   close(): Promise<void>;
 }
 
+export type ScriptedEngine = EngineDriver<FakeProvider>;
+
 /** Fails loudly when the engine has not been built — the same message the other harnesses give. */
 function requireBuiltEngine(): void {
   const built = join(repoRoot(), "engine", "core", "dist", "index.js");
@@ -155,6 +166,12 @@ function requireBuiltEngine(): void {
 
 export async function startScriptedEngine(opts: ScriptedEngineOptions): Promise<ScriptedEngine> {
   requireBuiltEngine();
+  return startEngineOn(new FakeProvider([...opts.turns]), opts);
+}
+
+/** The same Engine on a provider the test built — see the header's last section. */
+export async function startEngineOn<P extends Provider>(provider: P, opts: EngineOnOptions): Promise<EngineDriver<P>> {
+  requireBuiltEngine();
 
   const loaded = loadSettings(opts.workspace).settings;
   const settings: Settings = {
@@ -164,7 +181,6 @@ export async function startScriptedEngine(opts: ScriptedEngineOptions): Promise<
     ...opts.settings,
   };
 
-  const provider = new FakeProvider([...opts.turns]);
   const engine = new Engine({
     cwd: opts.workspace,
     settings,
@@ -225,7 +241,7 @@ export async function startScriptedEngine(opts: ScriptedEngineOptions): Promise<
     }
   };
 
-  const scripted: ScriptedEngine = {
+  const scripted: EngineDriver<P> = {
     engine,
     provider,
     workspace: opts.workspace,
@@ -247,7 +263,7 @@ export async function startScriptedEngine(opts: ScriptedEngineOptions): Promise<
         errors: slice.filter((e) => e.type === "error").map((e) => (e.type === "error" ? e.message : "")),
       };
     },
-    waitFor: waitFor as ScriptedEngine["waitFor"],
+    waitFor: waitFor as EngineDriver<P>["waitFor"],
     close: async () => {
       if (closed) return;
       closed = true;

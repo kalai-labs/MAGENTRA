@@ -41,7 +41,21 @@ export function addUsage(target: Usage, add: Usage): Usage {
   target.outputTokens += add.outputTokens;
   target.cacheReadTokens += add.cacheReadTokens;
   target.cacheWriteTokens += add.cacheWriteTokens;
+  // The reasoning part rides along only once something reported one, so a
+  // total that never had reasoning keeps exactly the four classes.
+  if (add.reasoningTokens !== undefined) target.reasoningTokens = (target.reasoningTokens ?? 0) + add.reasoningTokens;
+  if (add.reasoningEstimated) target.reasoningEstimated = true;
   return target;
+}
+
+/**
+ * The reasoning part of an output figure, as every surface prints it:
+ * "reasoning 135k", or "reasoning ~135k" when it was estimated. Empty when
+ * there is none — a figure is never invented.
+ */
+export function reasoningPart(usage: Pick<Usage, "reasoningTokens" | "reasoningEstimated">): string {
+  if (!usage.reasoningTokens) return "";
+  return `reasoning ${usage.reasoningEstimated ? "~" : ""}${formatTokens(usage.reasoningTokens)}`;
 }
 
 /**

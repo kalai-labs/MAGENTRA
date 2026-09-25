@@ -89,6 +89,7 @@ function onModelCatalog(event) {
     opt.value = id;
     // Price intentionally omitted — the catalog shows model ids only.
     opt.textContent = shortModelLabel(id);
+    opt.title = id;
     modelSelectEl.appendChild(opt);
   }
   // The active model may be absent from the catalog (typo, gated model):
@@ -98,6 +99,7 @@ function onModelCatalog(event) {
     const opt = document.createElement("option");
     opt.value = active;
     opt.textContent = `${shortModelLabel(active)} (not in catalog)`;
+    opt.title = active;
     modelSelectEl.appendChild(opt);
   }
   const customOpt = document.createElement("option");
@@ -107,9 +109,11 @@ function onModelCatalog(event) {
   modelSelectEl.value = current === "__custom__" ? "__custom__" : active || models[0];
 }
 
+/** The model's own name — the last path segment — so
+ * "accounts/fireworks/models/glm-5p3" reads "glm-5p3" in a 150 px picker. The
+ * full id stays on the option's title. */
 function shortModelLabel(id) {
-  const idx = id.indexOf("/");
-  return idx === -1 ? id : id.slice(idx + 1);
+  return String(id).split("/").filter(Boolean).pop() || String(id);
 }
 
 function modelHintText(model) {
@@ -150,6 +154,9 @@ let contextTokens = 0;
 // D(t) for THIS tab's turn. Per-tab (swapped by tabs.js) so each workspace
 // counts its own work.
 let outputTokens = 0;
+// The reasoning part of outputTokens, and whether it is still an estimate.
+let reasoningTokens = 0;
+let reasoningEstimated = true;
 let sessionModel = ""; // the model this session runs on (from session_started)
 // True once the engine reports the context has grown past the "run /compact"
 // warn threshold (turn_finished.contextWarn). Tints the context counter.
@@ -211,6 +218,8 @@ function updateContextMeter() {
 function resetSessionMeter() {
   contextTokens = 0;
   outputTokens = 0;
+  reasoningTokens = 0;
+  reasoningEstimated = true;
   contextWarn = false;
   updateSessionMeter();
 }
@@ -219,7 +228,26 @@ function applyModel(model) {
   activeModel = model; // per-tab: keep even for a background tab
   // The shared picker only reflects the focused tab.
   if (typeof chromeIsFocused === "function" && !chromeIsFocused()) return;
+  // An option added for another tab's model (below) is that tab's, not this
+  // one's: the shared picker must not offer a model from a different endpoint.
+  for (const stale of Array.from(modelSelectEl.options)) {
+    if (stale.dataset.adhoc === "1" && stale.value !== model) stale.remove();
+  }
   const options = Array.from(modelSelectEl.options).map((o) => o.value);
+  if (model && !options.includes(model)) {
+    // A configured model the list does not know yet (no catalog, or not in
+    // it) is shown as itself — never as "Custom…" over a box that shows only
+    // "accounts/fireworks/models/".
+    const opt = document.createElement("option");
+    opt.value = model;
+    opt.textContent = shortModelLabel(model);
+    opt.title = model;
+    opt.dataset.adhoc = "1";
+    const customOpt = Array.from(modelSelectEl.options).find((o) => o.value === "__custom__");
+    modelSelectEl.insertBefore(opt, customOpt || null);
+    options.push(model);
+  }
+  modelSelectEl.title = model || "";
   if (options.includes(model)) {
     modelSelectEl.value = model;
     customModelEl.classList.add("hidden");

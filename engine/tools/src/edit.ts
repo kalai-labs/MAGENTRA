@@ -23,6 +23,7 @@ export const editTool: ToolDefinition<z.infer<typeof inputSchema>> = {
 
 - You must Read the file in this session before editing; the call fails otherwise.
 - old_string must match the file contents exactly, including whitespace and indentation, and must be unique in the file — otherwise the edit fails. Never include the Read line-number prefix (number + tab) in old_string.
+- Keep old_string short: the smallest unique anchor — a few lines at most — copied from your latest Read of the file, never retyped from memory. A long old_string written from memory fails on one missing character.
 - Set replace_all: true to replace every occurrence instead of requiring uniqueness.`,
   permissionClass: "mutate",
   isFileEdit: true,
@@ -50,7 +51,7 @@ export const editTool: ToolDefinition<z.infer<typeof inputSchema>> = {
     const occurrences = countOccurrences(before, input.old_string);
     if (occurrences === 0) {
       return {
-        content: `old_string not found in ${path}. Check for exact whitespace/indentation; do not include the Read line-number prefix.`,
+        content: `old_string not found in ${path}.${closestMatchHint(before, input.old_string)} Check for exact whitespace/indentation; do not include the Read line-number prefix.`,
         isError: true,
       };
     }
@@ -75,6 +76,43 @@ export const editTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   },
   inputSchema,
 };
+
+/**
+ * Where old_string stops matching the file, so a one-character slip in a long
+ * anchor is found in one retry instead of three (field test 2026-09-23: one
+ * missing "/" in "/GameConfig.Overrides.json"). The longest PREFIX of
+ * old_string the file contains is found by binary search — about log2(length)
+ * substring scans, bounded for a file of any size — and both sides are quoted
+ * at the first character that differs.
+ */
+function closestMatchHint(content: string, needle: string): string {
+  if (needle === "") return " old_string is empty — give the exact text to replace, copied from your latest Read of the file.";
+  let lo = 0;
+  let hi = needle.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (content.includes(needle.slice(0, mid))) lo = mid;
+    else hi = mid - 1;
+  }
+  // Never split a surrogate pair: the quoted difference starts at the whole character.
+  if (lo > 0 && lo < needle.length && /[\uD800-\uDBFF]/.test(needle[lo - 1]!)) lo -= 1;
+  const at = content.indexOf(needle.slice(0, lo)) + lo;
+  // A CRLF file quoted with bare \n breaks at its first line end, however short
+  // the match before it: that is the one miss worth naming even there.
+  const crlf = content[at] === "\r" && needle[lo] === "\n" ? " (the file has Windows CRLF line endings; old_string has bare \\n)" : "";
+  // A matched head shorter than this is likely a coincidence ("    const "),
+  // not where the anchor went wrong. For a short anchor — the kind the Edit
+  // description asks for — half of it matching is already telling.
+  if (!crlf && lo < Math.min(16, Math.ceil(needle.length / 2))) {
+    return " Not even its beginning appears in the file — Read the file again and copy a short anchor from it.";
+  }
+  const quote = (s: string): string => JSON.stringify(s.slice(0, 40));
+  const fileLine = content.slice(0, at).split("\n").length;
+  return (
+    ` It matches the file for its first ${lo} of ${needle.length} characters, up to ${quote(needle.slice(Math.max(0, lo - 30), lo))};` +
+    ` then old_string has ${quote(needle.slice(lo))} where the file (line ${fileLine}) has ${quote(content.slice(at))}${crlf}.`
+  );
+}
 
 function countOccurrences(haystack: string, needle: string): number {
   if (needle === "") return 0;

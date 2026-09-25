@@ -26,7 +26,7 @@ const {
   updateWorkspaceSettings,
   shouldStartFullScreen,
 } = require("./main/config.js");
-const { logEvent, setLogWorkspace, flushLog, initFallbackLog, activeLogsDir } = require("./main/logging.js");
+const { logEvent, logEngineFrame, setLogWorkspace, flushLog, initFallbackLog, activeLogsDir } = require("./main/logging.js");
 const { resolveWorkspaceFile, undoWorkspaceDiffs } = require("./main/changes.js");
 const {
   testEndpoint,
@@ -172,6 +172,12 @@ function focusTab(tabId) {
   sendToRenderer("tab:focused", { tabId }, win);
 }
 
+/** Where a tab's log lines go: its own workspace's log, named with the tab —
+ * never the focused workspace's, which a background tab's engine is not. */
+function tabLog(tab) {
+  return tab ? { workspace: tab.workspace || undefined, tabId: tab.id } : undefined;
+}
+
 /** Close a tab: stop its engine, drop it from the pool, and focus another tab IN
  * THE SAME WINDOW (or none). */
 function closeTab(tabId) {
@@ -236,7 +242,7 @@ function stopEngine(tab) {
   if (!tab) return;
   if (tab.child) {
     const child = tab.child;
-    logEvent("sys", { ev: "kill", pid: child.pid });
+    logEvent("sys", { ev: "kill", pid: child.pid }, tabLog(tab));
     // Mark this exit as ours (restart, quit, model change) so the exit handler
     // can tell a deliberate stop from a crash — only crashes get a banner.
     child.expectedExit = true;
@@ -274,6 +280,10 @@ function stopEngine(tab) {
 function stopAllEngines() {
   for (const tab of engineTabs.values()) stopEngine(tab);
 }
+
+// The safety frames the renderer re-asserts on every session start
+// (applySafetySettings): a copy sent before the engine exists changes nothing.
+const STATE_SYNC_FRAMES = new Set(["set_deletion_guard", "set_overdrive", "set_compact_limit"]);
 
 // Frames that represent an explicit user action: dropping one silently reads
 // as "the app ignored me". State-sync frames (
@@ -333,10 +343,14 @@ function writeToEngine(frame, tabId) {
   const tab = tabId ? engineTabs.get(tabId) ?? null : activeTab();
   if (tab && tab.child && tab.child.stdin.writable) {
     tab.child.stdin.write(JSON.stringify(frame) + "\n");
-    logEvent("ui", redactFrameForLog(frame));
+    logEvent("ui", redactFrameForLog(frame), tabLog(tab));
     return;
   }
-  logEvent("sys", { ev: "engine-write-dropped", type: frame && frame.type });
+  // The renderer's state sync fires before any engine runs and is re-sent on
+  // session start, so its drop is expected; saying "dropped" at every launch
+  // buried the drops that matter.
+  const ev = frame && STATE_SYNC_FRAMES.has(frame.type) ? "state-sync-skipped" : "engine-write-dropped";
+  logEvent("sys", { ev, type: frame && frame.type }, tabLog(tab));
   if (frame && USER_ACTION_FRAMES.has(frame.type)) {
     sendToRenderer("engine:event", {
       type: "error",
@@ -516,7 +530,7 @@ function startEngine(workspace, model, tabId) {
     args,
     cwd: workspace,
     model: model || DEFAULT_MODEL,
-  });
+  }, { workspace, tabId: tab.id });
 
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk) => {
@@ -531,10 +545,10 @@ function startEngine(workspace, model, tabId) {
         event = JSON.parse(line);
       } catch {
         // A corrupt frame means protocol trouble — invisible unless logged.
-        logEvent("sys", { ev: "engine-stdout-unparseable", line: line.slice(0, 400) });
+        logEvent("sys", { ev: "engine-stdout-unparseable", line: line.slice(0, 400) }, tabLog(tab));
         continue;
       }
-      logEvent("engine", event);
+      logEngineFrame(event, tabLog(tab));
       sendToRenderer("engine:event", { ...event, tabId: tab.id }, tab.win);
     }
   });
@@ -549,7 +563,7 @@ function startEngine(workspace, model, tabId) {
       if (line.trim() === "") continue;
       // Everything hits the log file for debugging; the UI gets only what a
       // user can act on — see classifyEngineStderr.
-      logEvent("stderr", line);
+      logEvent("stderr", line, tabLog(tab));
       const notice = classifyEngineStderr(line);
       if (notice) sendToRenderer("engine:event", { type: "engine_notice", text: notice.text, level: notice.level, tabId: tab.id }, tab.win);
     }
@@ -557,7 +571,7 @@ function startEngine(workspace, model, tabId) {
 
   child.on("exit", (code, signal) => {
     const expected = !!child.expectedExit;
-    logEvent("sys", { ev: "exit", pid: child.pid, code, signal, expected });
+    logEvent("sys", { ev: "exit", pid: child.pid, code, signal, expected }, tabLog(tab));
     flushLog();
     // Signal deaths (SIGSEGV, OOM-kill) have code === null — the renderer must
     // treat any unexpected exit as fatal, whatever the exit code says.
@@ -1230,7 +1244,7 @@ function applyValidatedConnection(workspace, validated, visionSelection) {
 
   currentConfig = { ...currentConfig, model };
   writeConfig(currentConfig);
-  logEvent("sys", { ev: "env-written", provider });
+  logEvent("sys", { ev: "env-written", provider }, { workspace });
 
   // A live engine is re-pointed, not respawned: same session, same conversation,
   // new endpoint from the next request on. The frame carries the key because the
@@ -1272,7 +1286,7 @@ function applyValidatedConnection(workspace, validated, visionSelection) {
       },
       tab.id,
     );
-    logEvent("sys", { ev: "connection-swapped", provider, live: true, vision: vision.connection ? vision.enabled === true : false });
+    logEvent("sys", { ev: "connection-swapped", provider, live: true, vision: vision.connection ? vision.enabled === true : false }, tabLog(tab));
     // The level rides back so the composer's effort control can show it: a live
     // swap emits no session_started, which is where it would otherwise arrive.
     return { ok: true, live: true, model, reasoningEffort: reasoningEffort || "" };
@@ -1492,7 +1506,7 @@ ipcMain.handle("profiles:apply", (_evt, payload) => {
     profileId: typeof profile.visionProfileId === "string" ? profile.visionProfileId : "",
     enabled: true,
   });
-  if (result.ok) logEvent("sys", { ev: "profile-applied", vision: Boolean(profile.visionProfileId) });
+  if (result.ok) logEvent("sys", { ev: "profile-applied", vision: Boolean(profile.visionProfileId) }, tab ? tabLog(tab) : { workspace });
   return result;
 });
 
@@ -1691,7 +1705,7 @@ ipcMain.handle("config:setModel", (evt, model) => {
   currentConfig = { ...currentConfig, model: trimmed };
   writeConfig(currentConfig);
   if (tab) tab.model = trimmed;
-  logEvent("sys", { ev: "model-changed", model: trimmed });
+  logEvent("sys", { ev: "model-changed", model: trimmed }, tabLog(tab));
   // Change the model on the LIVE session (takes effect next turn) rather than
   // respawning the engine — a restart would drop the current conversation. The
   // persisted config still makes it the default a future (re)start uses.
@@ -1758,7 +1772,7 @@ ipcMain.handle("settings:setVision", (_evt, payload) => {
 
   const live = tab ?? tabForWorkspace(workspace);
   if (live && live.child && live.child.stdin.writable) writeToEngine({ type: "set_vision", enabled }, live.id);
-  logEvent("sys", { ev: "vision-changed", enabled });
+  logEvent("sys", { ev: "vision-changed", enabled }, { workspace });
   return { ok: true, enabled, model: vision.connection.model };
 });
 

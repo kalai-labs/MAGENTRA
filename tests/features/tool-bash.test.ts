@@ -23,8 +23,9 @@
  * `deletion-scope-split` and `protected-state-dir`, which own it.
  *
  * The `proc` half runs the tool through the real validate-then-execute path
- * (`tests/lib/directTool.ts`) against `strictServices({})`: with no `callId`
- * the output streamer is a no-op, so Bash touches no session service at all and
+ * (`tests/lib/directTool.ts`) against `strictServices` holding only a real
+ * `FileState` (Bash names the Read files a command changed): with no `callId`
+ * the output streamer is a no-op, so Bash touches no other session service and
  * one appearing in a future version fails by name instead of reading
  * `undefined`. The shell it spawns is the product's own (Git Bash on Windows,
  * `bash` elsewhere, via `resolveBashPath`) — nothing here is a double.
@@ -43,7 +44,7 @@ import { existsSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { ToolContext } from "@magentra/core";
+import { FileState, type ToolContext } from "@magentra/core";
 import { bashDeletionSubject, bashTool } from "@magentra/tools";
 
 import { resultText, runTool, strictServices } from "../lib/directTool.ts";
@@ -188,8 +189,9 @@ abstract class BashRunTest extends ProcTest {
   readonly featureId = FEATURE;
   readonly invariant = INVARIANT;
 
-  /** One session for the life of one test: Bash's cwd tracking is keyed on it. */
-  readonly #session = strictServices({});
+  /** One session for the life of one test: Bash's cwd tracking is keyed on it,
+   *  and Bash asks its freshness store which Read files a command changed. */
+  readonly #session = strictServices({ fileState: new FileState() });
   #dirs: string[] = [];
   protected dir = "";
 

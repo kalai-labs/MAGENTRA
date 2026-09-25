@@ -44,7 +44,7 @@ import { startScriptedEngine, type ScriptedEngine } from "../lib/scriptedEngine.
 const FEATURE = "permission-stances";
 
 /** Verbatim from the record. */
-const INVARIANT = "Resolution order is deny rules > protected-path guard > deletion guard > allow rules > stance default.";
+const INVARIANT = "Resolution order is deny rules > process-kill guard > protected-path guard > deletion guard > allow rules > stance default.";
 
 /** An absolute path on either platform. Nothing here touches the disk — the
  *  guards under test are path arithmetic over strings. */
@@ -119,6 +119,17 @@ class ADenyRuleIsDecidedFirst extends StanceTest {
     // blanket refusal of the tool.
     const allowed = await p.engine.check(bashTool, bashInput("ls -la"), "ls -la", "list", undefined, false, undefined);
     t.assert.equal(allowed.allowed, true, "a command the deny pattern does not match is untouched");
+
+    // Deny outranks the process-kill guard too: a denied kill is the rule's
+    // refusal, never the guard's question (outside OVERDRIVE) or its refusal (in it).
+    for (const overdrive of [false, true]) {
+      const k = probe({ deny: ["Bash(pkill *)"] });
+      k.engine.setOverdrive(overdrive);
+      const kill = await k.engine.check(bashTool, bashInput("pkill node"), "pkill node", "stop node", undefined, false, undefined);
+      t.assert.equal(kill.allowed, false);
+      t.assert.equal(kill.source, "rule", `a denied kill is refused by the rule first (overdrive ${overdrive})`);
+      t.assert.deepEqual(k.asks, [], "the kill guard never asks for what a deny rule already refused");
+    }
   }
 }
 

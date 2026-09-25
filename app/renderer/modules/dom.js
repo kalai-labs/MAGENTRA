@@ -57,6 +57,7 @@ const attachChipsEl = document.getElementById("attachChips");
 const hintModelEl = document.getElementById("hintModel");
 const deleteModalEl = document.getElementById("deleteModal");
 const deleteSubjectEl = document.getElementById("deleteSubject");
+const permissionWhyEl = document.getElementById("permissionWhy");
 const allowBtnEl = document.getElementById("allowBtn");
 const allowAlwaysBtnEl = document.getElementById("allowAlwaysBtn");
 const allowAlwaysHintEl = document.getElementById("allowAlwaysHint");

@@ -237,7 +237,67 @@ class ReplaceAllChangesEveryOccurrence extends EditTest {
   }
 }
 
+/* ---- E-05: a near miss names where it differs ---------------------------- */
+
+class ANearMissNamesWhereItDiffers extends EditTest {
+  readonly id = "a-near-miss-names-the-first-character-that-differs-and-both-sides-of-it";
+  readonly whyItExists =
+    "in the field run three Edits failed on one missing '/' in a 1,249-character old_string, and 'not found' gave the model nothing to find it with, so it re-quoted from memory and missed again";
+
+  override async run(t: TestRun): Promise<void> {
+    const original = [
+      "def load_config(root):",
+      '    path = root + "/GameConfig.Overrides.json"',
+      "    with open(path, encoding=\"utf-8\") as f:",
+      "        return json.load(f)",
+      "",
+    ].join("\n");
+    const path = this.file("config.py", original);
+    this.state.recordRead(path);
+
+    // The field case: the whole block quoted from memory, one "/" missing.
+    const slipped = original.replace('"/GameConfig', '"GameConfig');
+    const miss = await runTool(editTool, { file_path: path, old_string: slipped, new_string: "pass\n" }, this.ctx());
+    const text = resultText(miss);
+    t.assert.equal(miss.isError, true);
+    t.assert.match(text, /old_string not found/, "it is still the not-found error");
+    t.assert.match(text, /matches the file for its first 42 of \d+ characters/, `it says how far old_string matched: ${text}`);
+    t.assert.match(text, /then old_string has "GameConfig/, "what old_string has at the first difference");
+    t.assert.match(text, /where the file \(line 2\) has "\/GameConfig/, "and what the file has there, on which line");
+    t.assert.equal(readFileSync(path, "utf8"), original, "and nothing was changed");
+
+    // A CRLF file quoted with bare \n: the hint names the line endings.
+    const crlf = this.file("crlf.txt", "first line\r\nsecond line\r\n");
+    this.state.recordRead(crlf);
+    const ending = await runTool(editTool, { file_path: crlf, old_string: "first line\nsecond line", new_string: "x" }, this.ctx());
+    t.assert.match(resultText(ending), /CRLF line endings/, `a line-ending mismatch is named: ${resultText(ending)}`);
+
+    const nothing = await runTool(editTool, { file_path: path, old_string: "completely different text that is nowhere", new_string: "x" }, this.ctx());
+    t.assert.match(resultText(nothing), /Not even its beginning appears in the file/, "and a snippet that shares nothing is told to re-read");
+
+    // A SHORT anchor — what the Edit description now asks for — with one slip
+    // near its end is quoted at the slip, never told that nothing matched.
+    const short = await runTool(editTool, { file_path: path, old_string: "json.laod(f)", new_string: "x" }, this.ctx());
+    t.assert.match(resultText(short), /matches the file for its first 6 of 12 characters/, `a short anchor's slip is located: ${resultText(short)}`);
+    t.assert.match(resultText(short), /then old_string has "aod\(f\)" where the file \(line 4\) has "oad\(f\)/);
+
+    // An empty old_string is named as empty, not as a zero-length match.
+    const empty = await runTool(editTool, { file_path: path, old_string: "", new_string: "x" }, this.ctx());
+    t.assert.equal(empty.isError, true);
+    t.assert.match(resultText(empty), /old_string is empty/, resultText(empty));
+    t.assert.doesNotMatch(resultText(empty), /first 0 of 0/);
+
+    // A difference inside an emoji is quoted as the whole character, never half a surrogate pair.
+    const emojiFile = this.file("emoji.md", "status: \u{1F600} ready\n");
+    this.state.recordRead(emojiFile);
+    const emoji = await runTool(editTool, { file_path: emojiFile, old_string: "status: \u{1F601} ready", new_string: "x" }, this.ctx());
+    t.assert.doesNotMatch(resultText(emoji), /\\ud83[de]/i, `no lone surrogate escape in the hint: ${resultText(emoji)}`);
+    t.assert.match(resultText(emoji), /then old_string has "\u{1F601} ready" where the file \(line 1\) has "\u{1F600} ready/u, resultText(emoji));
+  }
+}
+
 registerFeatureTests(
+  new ANearMissNamesWhereItDiffers(),
   new AnUnreadFileCannotBeEdited(),
   new AFileChangedOnDiskCannotBeEdited(),
   new ZeroAndManyMatchesAreDifferentErrors(),

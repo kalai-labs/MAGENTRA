@@ -1,0 +1,10 @@
+{
+  "id": "f5a52d14-2e83-40d3-a1ef-690052d300f7",
+  "featureIds": [
+    "a-running-turn-keeps-its-spend-on-disk"
+  ],
+  "status": "draft",
+  "createdAt": "2026-09-24T03:12:27.716Z",
+  "updatedAt": "2026-09-24T03:12:27.716Z",
+  "body": "WHAT\nSession.saveMeta() is the one writer of the transcript's meta record (stats snapshot, model, overdrive, label — the fields resume reads through Transcript.latestMeta / SessionStats.fromSnapshot). It runs, as before, at every turn end (forced), and now also right after each model call is banked (recordResponse), at most once per 30 s (META_SAVE_EVERY_MS). Root sessions only — children share the root's ledger. The engine's rename and auto-name paths still merge over the latest meta, so a label written between saves is kept.\n\nWHY\nField test 2026-09-23, finding E-06: the meta record was appended only in the turn's finally block, so a crash during a long turn (the field turn ran 56 minutes) lost that whole turn's token data.\n\nWHERE\nengine/core/src/runtime/session.ts — saveMeta(), META_SAVE_EVERY_MS, the call after recordResponse in streamAssistantTurn, the forced call at turn end.\n\nTEST CHECKLIST\n1. (fs) A real engine turn whose first model call (usage 1,234 output tokens) asks for a deletion is held on that permission card; while it waits, the transcript on disk already holds a meta record whose stats count those 1,234 output tokens. Answered, the turn ends and the last meta counts both calls."
+}

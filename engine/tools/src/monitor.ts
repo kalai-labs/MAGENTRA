@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { z } from "zod";
 import type { ToolDefinition } from "@magentra/core";
-import { killTree, spawnShell } from "./bash.js";
+import { bashDeletionScope, bashDeletionSubject, bashProcessKillSubject, killTree, spawnShell } from "./bash.js";
 
 const DEFAULT_TIMEOUT = 300_000;
 const MIN_TIMEOUT = 1_000;
@@ -45,6 +45,12 @@ export const monitorTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   permissionClass: "execute",
   permissionSubject: (input) => input.command,
   describeInput: (input) => input.description,
+  // Monitor runs its command in the same shell Bash does, so neither a kill by
+  // name nor a deletion may get past its guard by switching tools. The shell
+  // starts in the session cwd (Bash's tracked `cd` does not apply here).
+  processKillSubject: (input) => bashProcessKillSubject(input.command),
+  deletionSubject: (input) => bashDeletionSubject(input.command),
+  deletionScope: (input, ctx) => bashDeletionScope(input.command, ctx.cwd, ctx.cwd),
   execute: async (input, ctx) => {
     const info = ctx.session.background.launch({
       kind: "monitor",

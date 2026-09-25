@@ -44,7 +44,8 @@ stance at a time.
 
 The fully-autonomous **stance**: nothing asks. Deletions at any path, edits to
 protected files, and writes outside the workspace all run the moment the agent
-decides on them; only a deny rule the user wrote themselves still refuses. In
+decides on them; only a deny rule the user wrote themselves, and a kill by
+process name, still refuse. In
 exchange the turn may not end until it has verified its own work against the
 original request.
 

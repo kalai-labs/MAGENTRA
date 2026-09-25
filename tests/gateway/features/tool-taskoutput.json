@@ -12,7 +12,11 @@
   ],
   "invariant": "block:true waits for finish or timeout; block:false returns whatever output exists right now.",
   "deferred": false,
-  "tests": [],
+  "tests": [
+    "block-false-returns-what-is-there-now-and-block-true-waits-for-the-exit",
+    "a-blocking-read-gives-up-at-its-timeout-or-on-an-abort-and-says-the-job-still-runs",
+    "an-unknown-id-is-a-tool-error-not-an-exception"
+  ],
   "freshness": {
     "hash": "1acc572d32244efb",
     "fileHashes": {

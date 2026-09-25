@@ -35,13 +35,23 @@ function onTaskListUpdated(event) {
 
   // --- Per-tab state (ALWAYS, whichever tab owns this event) --------------
   // Observe status flips: they feed the now-line and the per-task stopwatch
-  // (start on in_progress, freeze on completed).
+  // (start on in_progress, freeze on completed). The engine's own times win
+  // when it sends them — a frame handled late must not shorten a task — and
+  // the moment the flip was seen is only the fallback for an older engine.
   const now = Date.now();
   for (const task of tasks) {
     const prevStatus = taskStatusById.get(task.id);
     const times = taskTimes.get(task.id) || {};
-    if (task.status === "in_progress" && !times.start) times.start = now;
-    if (task.status === "completed" && times.start && !times.done) times.done = now;
+    // A task the engine stamps (it carries either time) is timed by its stamps
+    // alone: no startedAt means it never ran, whatever an earlier session in
+    // this tab left under the same id.
+    const stamped = typeof task.startedAt === "number" || typeof task.completedAt === "number";
+    if (typeof task.startedAt === "number") times.start = task.startedAt;
+    else if (stamped) delete times.start;
+    else if (task.status === "in_progress" && !times.start) times.start = now;
+    if (task.status !== "completed") delete times.done;
+    else if (typeof task.completedAt === "number") times.done = task.completedAt;
+    else if (times.start && !times.done) times.done = now;
     taskTimes.set(task.id, times);
     if (task.status === "in_progress" && prevStatus !== "in_progress" && nowVerb === "thinking") {
       setNowActivity("task", task.subject);
@@ -99,7 +109,8 @@ function renderTaskRail(tasks) {
     subjectEl.textContent = task.subject;
 
     // Duration chip: live stopwatch while in progress, frozen once completed,
-    // absent when the flip was never observed (e.g. a restored session).
+    // absent when no start is known (a task completed straight from pending,
+    // or an older engine's flip that was never observed).
     const timeEl = document.createElement("span");
     timeEl.className = "t-time";
     const times = taskTimes.get(task.id) || {};

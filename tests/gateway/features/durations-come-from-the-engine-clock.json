@@ -1,0 +1,37 @@
+{
+  "id": "durations-come-from-the-engine-clock",
+  "name": "Durations come from the engine's clock",
+  "area": "protocol",
+  "section": "Protocol & host",
+  "prose": "a duration on screen is measured where the work happened, not where the frame happened to land. The engine stamps `turn_started`, `tool_call_started`, `tool_call_finished` and `turn_finished` with `at` (epoch ms) and keeps `startedAt`/`completedAt` on each task, so the task rail, the tool rows, the work group and the turn timer read the same numbers however late a frame is delivered, and a resumed session's tasks keep theirs. A frame without the stamp (an older engine) falls back to the time it arrived.",
+  "kinds": [
+    "fs",
+    "ui"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/types.ts",
+    "engine/core/src/state/taskStore.ts",
+    "engine/core/src/runtime/session.ts",
+    "app/renderer/modules/tasks.js",
+    "app/renderer/modules/views.js"
+  ],
+  "invariant": "A task, tool or turn duration is the engine's own measurement, so a frame delivered late shows the same duration as one delivered at once.",
+  "deferred": false,
+  "tests": [
+    "turn-and-tool-frames-carry-the-engines-time-in-order",
+    "a-calls-finished-frame-goes-out-when-it-finishes-not-when-its-batch-does",
+    "a-task-keeps-when-it-started-and-finished-and-a-resume-keeps-them-too",
+    "frames-delivered-late-show-the-engines-durations-not-the-delivery-gap"
+  ],
+  "freshness": {
+    "hash": "013e966130a06b1b",
+    "fileHashes": {
+      "engine/protocol/src/types.ts": "8654e21472659eb9",
+      "engine/core/src/state/taskStore.ts": "edcf294effa4b50a",
+      "engine/core/src/runtime/session.ts": "57ce38507d9c0d5f",
+      "app/renderer/modules/tasks.js": "3cc91aacd6ca38e0",
+      "app/renderer/modules/views.js": "4c962fd95fb289b1"
+    },
+    "recordedAt": "2026-09-24"
+  }
+}
