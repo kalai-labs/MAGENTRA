@@ -46,7 +46,7 @@ import {
   type TaskItem,
 } from '../protocol.js';
 import type { ActivityState } from '../components/Activity.js';
-import type { Line, LineBody } from '../types.js';
+import type { Line, LineBody, ToolStatus } from '../types.js';
 
 export type PendingPrompt =
   | {
@@ -215,6 +215,15 @@ export function useEngine(resume: string | true | undefined, workspace: string):
   const thinkingSince = useRef<number | null>(null);
   const overdriveRef = useRef(false);
   const toolStarts = useRef(new Map<string, { tool: string; target: string }>());
+  /**
+   * A burst of consecutive same-verb tool lines, held here uncommitted so it
+   * can grow instead of printing one row per call — a dozen Bash calls in a
+   * row read as "bash ×12", not twelve lines. Committed lines are permanent
+   * once painted (Ink's <Static>), so the merge has to happen BEFORE the
+   * first push, not after: this is that holding pen, flushed the moment
+   * anything else needs to commit (see `commit` below).
+   */
+  const pendingToolRun = useRef<{ verb: string; target: string; metric: string; status: ToolStatus; count: number } | null>(null);
   /** Streamed output per in-flight call id, tail-capped at OUTPUT_CAP. */
   const toolOutput = useRef(new Map<string, string>());
   /** The call whose output the live tail is showing. */
@@ -274,20 +283,59 @@ export function useEngine(resume: string | true | undefined, workspace: string):
     setLines((prev) => [...prev, ...batch]);
   }, []);
 
+  /** Actually push the held-open tool run as one line, count folded into the verb. */
+  const flushToolRun = useCallback(() => {
+    const run = pendingToolRun.current;
+    if (!run) return;
+    pendingToolRun.current = null;
+    const verb = run.count > 1 ? `${run.verb} ×${run.count}` : run.verb;
+    lastKind.current = 'tool';
+    pendingLines.current.push({
+      kind: 'tool',
+      verb,
+      target: run.target,
+      metric: run.metric,
+      status: run.status,
+      id: nextId.current++,
+    });
+  }, []);
+
   const commit = useCallback(
     (line: LineBody) => {
+      if (line.kind === 'tool') {
+        const run = pendingToolRun.current;
+        // Same verb (a subagent's '·'-prefixed verb never matches its parent's,
+        // so a burst never absorbs a nested call) right after the last one:
+        // fold it in instead of printing a new row.
+        if (run && run.verb === line.verb) {
+          run.count += 1;
+          run.target = line.target;
+          run.metric = line.metric;
+          if (line.status === 'fail') run.status = 'fail';
+          schedulePaint();
+          return;
+        }
+        flushToolRun();
+        pendingToolRun.current = { verb: line.verb, target: line.target, metric: line.metric, status: line.status, count: 1 };
+        schedulePaint();
+        return;
+      }
+      // Anything else ends the run in progress, if any, so it prints before
+      // whatever comes next in the transcript's actual order.
+      flushToolRun();
       // Never two blanks in a row — same rule the fake scheduler enforced.
       if (line.kind === 'blank' && lastKind.current === 'blank') return;
       lastKind.current = line.kind;
       pendingLines.current.push({ ...line, id: nextId.current++ } as Line);
       schedulePaint();
     },
-    [schedulePaint],
+    [schedulePaint, flushToolRun],
   );
 
   /** A fresh session repaints from zero: nothing queued may survive it. */
   const resetLines = useCallback(() => {
     pendingLines.current = [];
+    pendingToolRun.current = null;
     lastKind.current = null;
     setLines([]);
   }, []);

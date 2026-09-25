@@ -870,7 +870,21 @@ h1.md-h { font-size: 1.3rem; } h2.md-h { font-size: 1.16rem; } h3.md-h { font-si
 .tool-detail, .change-diff { display: none; max-height: 260px; overflow: auto; margin: 3px 0 8px 24px; padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--well); color: var(--text-dim); font-family: var(--mono); font-size: max(10px, 0.73rem); white-space: pre-wrap; word-break: break-word; }
 .tool-row.open + .tool-detail { display: block; }
 .tool-tail { margin: 2px 0 6px 26px; padding-left: 9px; border-left: 2px solid var(--border-hi); color: var(--text-faint); font: 0.72rem/1.45 var(--mono); white-space: pre-wrap; }
-.tool-row.op-cine .tool-name { color: var(--text-dim); font-weight: 500; }
+
+/* A run of consecutive same-tool calls, collapsed to a count so a burst of
+ * (say) a dozen Bash calls reads as one line instead of a dozen. Promoted
+ * lazily — see stream.js — so a lone call never grows this chrome. */
+.tool-run { margin: 2px 0; }
+.tool-run-head { display: flex; align-items: baseline; gap: 7px; margin: 0; padding: 4px 8px; border-radius: var(--radius-sm); color: var(--text-dim); font-family: var(--mono); font-size: max(10px, 0.76rem); cursor: pointer; list-style: none; }
+.tool-run-head::-webkit-details-marker { display: none; }
+.tool-run-head:hover { background: var(--hover); }
+.tool-run-head::before { content: "›"; flex: none; color: var(--text-faint); font-size: max(10px, 0.75rem); }
+.tool-run[open] > .tool-run-head::before { content: "⌄"; }
+.tool-run-count { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tool-run.running .tool-run-count { color: var(--accent-hi); }
+.tool-run.err .tool-run-count { color: var(--red); }
+.tool-run-body { margin-left: 10px; padding-left: 12px; border-left: 1px solid var(--border); }
+.tool-run-body .tool-row { white-space: normal; }
 
 .agents-row { display: flex; flex-wrap: wrap; gap: 9px; margin: 10px 0; }
 .agent-card { min-width: 240px; flex: 1 1 280px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }

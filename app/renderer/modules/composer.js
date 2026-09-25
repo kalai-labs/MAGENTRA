@@ -198,6 +198,7 @@ function resetLocalViewForClear(preserveTasks = false) {
   currentAssistantEl = null;
   currentThinkingEl = null;
   currentWorkGroup = null;
+  currentToolRun = null;
   clearMessageQueue();
   clearAttachments();
   updateAgentMeter();

@@ -144,7 +144,6 @@ const setCompactLimitEl = document.getElementById("setCompactLimit");
 const setRainRowEl = document.getElementById("setRainRow");
 const setRainNoteEl = document.getElementById("setRainNote");
 const setRainOpacityEl = document.getElementById("setRainOpacity");
-const setDetailEl = document.getElementById("setDetail");
 const setDeletionsEl = document.getElementById("setDeletions");
 const setWebSearchEl = document.getElementById("setWebSearch");
 const hintAutoEl = document.getElementById("hintAuto");

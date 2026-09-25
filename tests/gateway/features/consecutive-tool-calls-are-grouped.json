@@ -1,0 +1,35 @@
+{
+  "id": "consecutive-tool-calls-are-grouped",
+  "name": "Consecutive same-tool calls collapse into one count",
+  "area": "app",
+  "section": "Desktop app",
+  "prose": "When the model calls the same tool more than once in a row, the desktop transcript no longer draws one row per call: the second consecutive call promotes the pair into a collapsed \"N × Tool\" group, and every further call of the same tool joins it. A lone call, or a run broken by a different tool, stays a bare row exactly as before. The group is collapsed by default and expands on click to the individual calls, each of which still expands to its own result, so nothing that was visible before is hidden — it just does not spam the screen while collapsed. Session-restore replay goes through the same code path, so a resumed transcript groups the same way.",
+  "kinds": [
+    "ui"
+  ],
+  "entryFiles": [
+    "app/renderer/modules/stream.js",
+    "app/renderer/modules/landing.js",
+    "app/renderer/modules/tabs.js",
+    "app/renderer/modules/composer.js",
+    "app/renderer/styles.css"
+  ],
+  "invariant": "A run of consecutive calls to the same tool collapses into one expandable count instead of one row per call; a lone call stays a bare row.",
+  "deferred": true,
+  "tests": [
+    "a-run-of-the-same-tool-collapses-into-one-count",
+    "a-lone-call-stays-a-bare-row",
+    "a-different-tool-in-between-splits-the-run-in-two"
+  ],
+  "freshness": {
+    "hash": "6f42a911d533508e",
+    "fileHashes": {
+      "app/renderer/modules/stream.js": "f58d58adf3efafe2",
+      "app/renderer/modules/landing.js": "17b84406d9e4300b",
+      "app/renderer/modules/tabs.js": "020759b004ae6913",
+      "app/renderer/modules/composer.js": "cb492b0da4be4dd6",
+      "app/renderer/styles.css": "7d91a40c751ae4e9"
+    },
+    "recordedAt": "2026-09-25"
+  }
+}

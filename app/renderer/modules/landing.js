@@ -212,8 +212,7 @@ function onSessionRestored(event) {
     }
     for (const tc of m.toolCalls || []) {
       const row = createToolRow(tc.tool, "", tc.input);
-      streamEl.appendChild(row.rowEl);
-      streamEl.appendChild(row.detailEl);
+      placeToolRow(row, streamEl);
       finishToolRow(row, tc.isError, tc.result);
       // Restored rows carry no timing — a fake "0s" would be a lie.
       row.timeEl.textContent = "";
@@ -566,10 +565,7 @@ function onToolCallStreaming(event) {
   }
   const row = createWritingToolRow(event.tool, at);
   const target = workStream(at);
-  withAutoScroll(() => {
-    target.appendChild(row.rowEl);
-    target.appendChild(row.detailEl);
-  });
+  withAutoScroll(() => placeToolRow(row, target));
   toolRows.set(event.id, row);
   if (busy) setNowActivity("writing", event.tool);
 }
@@ -610,10 +606,7 @@ function onToolCallStarted(event) {
   // The engine's clock, when it sent one: a row handled late still times the call.
   if (typeof event.at === "number") row.startMs = event.at;
   const target = workStream(event.at);
-  withAutoScroll(() => {
-    target.appendChild(row.rowEl);
-    target.appendChild(row.detailEl);
-  });
+  withAutoScroll(() => placeToolRow(row, target));
   toolRows.set(event.id, row);
   updateAgentMeter();
 

@@ -30,6 +30,7 @@ const TAB_ACCESSORS = [
   ["compactingCardEl", () => compactingCardEl, (v) => { compactingCardEl = v; }, () => null],
   ["currentAgentsRow", () => currentAgentsRow, (v) => { currentAgentsRow = v; }, () => null],
   ["currentWorkGroup", () => currentWorkGroup, (v) => { currentWorkGroup = v; }, () => null],
+  ["currentToolRun", () => currentToolRun, (v) => { currentToolRun = v; }, () => null],
   ["agentCards", () => agentCards, (v) => { agentCards = v; }, () => new Map()],
   ["toolRows", () => toolRows, (v) => { toolRows = v; }, () => new Map()],
   ["runningToolRows", () => runningToolRows, (v) => { runningToolRows = v; }, () => new Set()],

@@ -6,28 +6,6 @@
 // State
 // ---------------------------------------------------------------------------
 
-// cinematic-mode verb glossary: tool name -> present-participle activity
-const OP_VERBS = {
-  Read: "scanning",
-  Grep: "scanning",
-  Glob: "scanning",
-  Write: "forging",
-  Edit: "refining",
-  NotebookEdit: "refining",
-  Bash: "executing",
-  PowerShell: "executing",
-  Agent: "delegating",
-  Workflow: "delegating",
-  TaskCreate: "charting",
-  TaskUpdate: "charting",
-  TaskGet: "charting",
-  TaskList: "charting",
-  GraphQuery: "mapping",
-  WebSearch: "reaching out",
-  WebFetch: "reaching out",
-  AskUserQuestion: "asking",
-};
-
 let streamEl = null;
 let currentAssistantEl = null;
 let currentThinkingEl = null; // live reasoning block for the current turn segment
@@ -54,6 +32,11 @@ let recentWorkspaces = [];
 let workspaceWorktree = null;
 // The open "Agent working" group collecting this turn's tool rows.
 let currentWorkGroup = null;
+// The run of consecutive same-tool calls currently being collected — promoted
+// into a collapsed "N × Tool" group once a 2nd call of the same tool follows
+// the first (stream.js). Reset whenever a different tool runs or the work
+// group closes, so a lone call never grows chrome it doesn't need.
+let currentToolRun = null;
 let currentSessionId = null;
 let sessionSummaries = [];
 // Set when a turn starts, cleared by that turn's first model output: the list
@@ -115,9 +98,6 @@ const DEFAULT_UI_SETTINGS = {
   // toward 1 or drop it to 0. Only has any effect under the matrix theme.
   rainOpacity: 0.35,
   motion: "full",
-  // Default to the transparent view: a coding agent's trust rests on the user
-  // being able to see what each tool actually did. "cinematic" is opt-in.
-  detail: "engineer",
   // The deletion guard: outside OVERDRIVE, destructive calls (rm, force-push,
   // drop table, terraform destroy, …) prompt. Setting `deletions` to "allow"
   // removes that prompt; OVERDRIVE turns the guard off too.
@@ -159,7 +139,9 @@ function loadUiSettings() {
   // localStorage value — collapses to the default rather than leaving the
   // shell on a data-theme with no token block behind it.
   if (!THEMES.includes(settings.theme)) settings.theme = DEFAULT_UI_SETTINGS.theme;
-  if (settings.detail === "technical") settings.detail = "engineer";
+  // Detail mode (compact/detailed) was removed: tool calls now always show
+  // grouped, so any saved value is simply dropped.
+  delete settings.detail;
   // One-time migration off the old Cascadia default: it fell back to a
   // per-distro face on machines without it, while the bundled JetBrains Mono
   // always renders. The flag keeps a later deliberate Cascadia choice intact.
@@ -245,7 +227,6 @@ const THEME_TITLEBAR = {
 function applyUiSettings() {
   document.documentElement.dataset.theme = uiSettings.theme;
   document.documentElement.dataset.motion = uiSettings.motion;
-  document.documentElement.dataset.detail = uiSettings.detail;
   document.documentElement.style.setProperty("--font-user", uiSettings.font);
   document.documentElement.style.setProperty("--fs-base", uiSettings.size + "px");
   // Whole-interface scale. Page zoom changes the layout viewport, so the
@@ -291,7 +272,6 @@ function syncUiControlsFromSettings() {
   syncSegGroup(setThemeEl, "theme");
   syncSegGroup(setSizeEl, "size");
   syncSegGroup(setMotionEl, "motion");
-  syncSegGroup(setDetailEl, "detail");
   syncSegGroup(setDeletionsEl, "deletions");
 }
 
@@ -407,7 +387,6 @@ if (setCompactLimitEl) {
 wireSegGroup(setThemeEl, "theme");
 wireSegGroup(setSizeEl, "size");
 wireSegGroup(setMotionEl, "motion");
-wireSegGroup(setDetailEl, "detail");
 wireSegGroup(setDeletionsEl, "deletions");
 
 syncUiControlsFromSettings();

@@ -464,6 +464,7 @@ function workStream(at) {
  * finish; the page's clock only when the engine sent neither. A group handled
  * late after a backlog still says how long the work took. */
 function closeWorkGroup(endAt) {
+  currentToolRun = null; // the stretch ended; the next call starts a fresh run
   if (!currentWorkGroup) return;
   const { el, body, labelEl, start, lastAt } = currentWorkGroup;
   el.classList.add("done");
@@ -471,6 +472,80 @@ function closeWorkGroup(endAt) {
   const end = typeof endAt === "number" ? endAt : typeof lastAt === "number" ? lastAt : Date.now();
   labelEl.textContent = `Agent worked · ${ops} op${ops === 1 ? "" : "s"} · ${formatElapsed(end - start)}`;
   currentWorkGroup = null;
+}
+
+// ---------------------------------------------------------------------------
+// Tool-call runs: a burst of consecutive calls to the SAME tool collapses into
+// one "N × Tool" line instead of N loose rows — the fix for a session that
+// calls Bash a dozen times in a row and buries everything else under it. A
+// lone call stays bare: the group is promoted only once a 2nd call of the
+// same tool follows the first, so the ordinary case (one Read, one Edit, one
+// Bash) never grows chrome it doesn't need. Reused by the live stream and by
+// session-restore replay, so a resumed transcript reads the same way.
+// ---------------------------------------------------------------------------
+
+function toolRunLabel(tool, count) {
+  return count > 1 ? `${count} × ${tool}` : tool;
+}
+
+/** Turn a still-solo row into an expandable "N × Tool" group, in place. */
+function promoteToolRun(run) {
+  const wrap = document.createElement("details");
+  wrap.className = "tool-run";
+  const head = document.createElement("summary");
+  head.className = "tool-run-head";
+  const countEl = document.createElement("span");
+  countEl.className = "tool-run-count";
+  head.appendChild(countEl);
+  const body = document.createElement("div");
+  body.className = "tool-run-body";
+  wrap.append(head, body);
+
+  const solo = run.solo;
+  solo.rowEl.parentNode.insertBefore(wrap, solo.rowEl);
+  body.appendChild(solo.rowEl);
+  body.appendChild(solo.detailEl);
+
+  run.wrap = wrap;
+  run.body = body;
+  run.countEl = countEl;
+  run.solo = null;
+}
+
+/** Reflect the run's current count and, once any call has run or failed, its
+ * aggregate status — same "running while anything runs" logic a lone row uses. */
+function updateToolRunLabel(run) {
+  if (!run.countEl) return;
+  run.countEl.textContent = toolRunLabel(run.tool, run.count);
+  const anyRunning = run.rows.some((r) => r.rowEl.classList.contains("running"));
+  const anyErr = run.rows.some((r) => r.rowEl.classList.contains("err"));
+  run.wrap.classList.toggle("running", anyRunning);
+  run.wrap.classList.toggle("err", !anyRunning && anyErr);
+}
+
+/**
+ * Append a freshly created tool row to `target`, grouping it with the
+ * previous row when that row called the same tool in the same place. Called
+ * once per row, right after createToolRow — never for a row that already has
+ * a home (subagent cards keep their own flat lists; each agent's card is
+ * already its own visual container, so a burst there reads as one agent's
+ * business rather than loose noise in the shared transcript).
+ */
+function placeToolRow(row, target) {
+  if (currentToolRun && currentToolRun.tool === row.tool && currentToolRun.target === target) {
+    if (!currentToolRun.wrap) promoteToolRun(currentToolRun);
+    currentToolRun.count += 1;
+    currentToolRun.rows.push(row);
+    currentToolRun.body.appendChild(row.rowEl);
+    currentToolRun.body.appendChild(row.detailEl);
+    row.run = currentToolRun;
+    updateToolRunLabel(currentToolRun);
+    return;
+  }
+  target.appendChild(row.rowEl);
+  target.appendChild(row.detailEl);
+  currentToolRun = { tool: row.tool, target, solo: row, wrap: null, body: null, countEl: null, rows: [row], count: 1 };
+  row.run = currentToolRun;
 }
 
 function appendPhaseBanner(text) {
@@ -538,18 +613,6 @@ function appendTurnSeparator(stopReason) {
 // Tool row lifecycle (shared between main stream and agent cards)
 // ---------------------------------------------------------------------------
 
-/* Cinematic mode never shows descriptions, commands, patterns, prompts, or
- * JSON — only a file basename when the input plausibly names one. */
-function cinematicHint(input) {
-  if (!input || typeof input !== "object") return "";
-  let raw = null;
-  if (typeof input.file_path === "string") raw = input.file_path;
-  else if (typeof input.path === "string") raw = input.path;
-  if (!raw) return "";
-  const idx = Math.max(raw.lastIndexOf("/"), raw.lastIndexOf("\\"));
-  return idx === -1 ? raw : raw.slice(idx + 1);
-}
-
 function createToolRow(tool, description, input) {
   const rowEl = document.createElement("div");
   rowEl.className = "tool-row running";
@@ -563,16 +626,8 @@ function createToolRow(tool, description, input) {
   const descEl = document.createElement("span");
   descEl.className = "tool-desc";
 
-  // Detail mode is read live at row creation: flipping the setting only
-  // affects new rows, existing rows keep whatever mode they were born in.
-  const cinematic = uiSettings.detail === "cinematic";
-  if (cinematic) {
-    rowEl.classList.add("op-cine");
-    glyphEl.textContent = "◆";
-  } else {
-    glyphEl.textContent = "▸"; // ▸
-  }
-  labelToolRow({ nameEl, descEl, cinematic }, tool, description, input);
+  glyphEl.textContent = "▸"; // ▸
+  labelToolRow({ nameEl, descEl }, tool, description, input);
 
   // Right-aligned duration chip: ticks while the op runs, freezes on finish —
   // the transcript doubles as a flight recorder.
@@ -588,26 +643,21 @@ function createToolRow(tool, description, input) {
   const detailEl = document.createElement("pre");
   detailEl.className = "tool-detail";
 
-  // Every row is click-to-expand, cinematic included: the choreography is the
-  // default look, but a user must always be able to open a row and see the
-  // exact command and result — that is the whole basis of trusting the agent.
+  // Every row is click-to-expand: a user must always be able to open a row
+  // and see the exact command and result — that is the whole basis of
+  // trusting the agent.
   makeRowExpandable(rowEl);
 
-  const row = { rowEl, detailEl, glyphEl, nameEl, descEl, timeEl, cinematic, startMs: Date.now() };
+  const row = { rowEl, detailEl, glyphEl, nameEl, descEl, timeEl, tool, startMs: Date.now() };
   runningToolRows.add(row);
   ensureToolTicker();
   return row;
 }
 
-/** A row's name and one-line summary, in the detail mode it was born in. */
+/** A row's name and one-line summary. */
 function labelToolRow(row, tool, description, input) {
-  if (row.cinematic) {
-    row.nameEl.textContent = OP_VERBS[tool] || "processing";
-    row.descEl.textContent = cinematicHint(input);
-  } else {
-    row.nameEl.textContent = tool;
-    row.descEl.textContent = " " + (description || compactInput(input));
-  }
+  row.nameEl.textContent = tool;
+  row.descEl.textContent = " " + (description || compactInput(input));
 }
 
 // ---------------------------------------------------------------------------
@@ -780,8 +830,8 @@ function finishToolRow(row, isError, resultPreview, finishedAt) {
     row.timeEl.title = `written in ${formatElapsed(row.writeMs)} · ran in ${formatElapsed(Math.max(0, endMs - row.runStartMs))}`;
   }
 
-  // The result is always available on expand, in both detail modes — hiding it
-  // in cinematic left the user unable to inspect what a tool returned.
+  // The result is always available on expand — a user must be able to see
+  // exactly what a tool returned.
   row.detailEl.textContent = resultPreview;
 
   // Show the real error, never a euphemism: "hit a snag — recovering" told the
@@ -796,6 +846,8 @@ function finishToolRow(row, isError, resultPreview, finishedAt) {
       row.rowEl.insertAdjacentElement("afterend", summaryEl);
     }
   }
+
+  if (row.run) updateToolRunLabel(row.run);
 }
 
 // ---------------------------------------------------------------------------
