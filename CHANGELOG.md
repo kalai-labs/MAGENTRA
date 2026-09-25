@@ -10,6 +10,18 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.19.4 — 2026-09-25
+
+### Bug fixes
+
+- written fix plan ([028231a](https://github.com/kalai-labs/MAGENTRA/commit/028231a4c6a2927382ba0c92e07016388ff9e1ef))
+- t00 and t01 ([a8c9150](https://github.com/kalai-labs/MAGENTRA/commit/a8c9150ecde2b068fbbef7959dd72a7880795855))
+- field-test fixes t02 to t13 ([3592fa8](https://github.com/kalai-labs/MAGENTRA/commit/3592fa8d8dfeaae82ff2d7811b41c9c497d38e6e))
+- fixed overall issues I've seen during a long run ([4fdaee5](https://github.com/kalai-labs/MAGENTRA/commit/4fdaee5659035cbc65c6ea3b81956e9b10a5d5aa))
+- update on how we build things and harness ([96d7af4](https://github.com/kalai-labs/MAGENTRA/commit/96d7af40c33fc991cfa6747d0b8942f991d38e2a))
+
+[Compare with v0.19.3](https://github.com/kalai-labs/MAGENTRA/compare/v0.19.3...v0.19.4)
+
 ## 0.19.3 — 2026-09-22
 
 ### Continuous integration
