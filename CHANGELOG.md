@@ -10,6 +10,14 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.20.2 — 2026-09-25
+
+### Bug fixes
+
+- **app:** group consecutive same-tool calls instead of spamming rows ([edd3ef5](https://github.com/kalai-labs/MAGENTRA/commit/edd3ef5bb25a1eca2143bfca2b90854b917f1466))
+
+[Compare with v0.20.1](https://github.com/kalai-labs/MAGENTRA/compare/v0.20.1...v0.20.2)
+
 ## 0.20.1 — 2026-09-25
 
 ### Documentation
