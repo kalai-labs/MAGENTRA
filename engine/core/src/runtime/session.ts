@@ -500,7 +500,17 @@ interface PendingToolCall {
   id: string;
   name: string;
   json: string;
+  /** How long the model took to write this call's arguments (see streamAssistantTurn). */
+  writingMs?: number;
 }
+
+/**
+ * How often a tool call still being written re-announces itself
+ * (`tool_call_streaming`, with the characters so far). Often enough that a
+ * frontend shows it growing; rare enough that a long Write is a handful of
+ * frames, not one per delta.
+ */
+const TOOL_STREAM_EMIT_MS = 1000;
 
 export class Session {
   readonly id: string;
@@ -960,6 +970,9 @@ export class Session {
       case "turn_finished":
       case "text_delta":
       case "thinking_delta":
+      // A subagent's call shows on its agent card from tool_call_started, as
+      // before; drawn early it would land untagged in the top-level stream.
+      case "tool_call_streaming":
         return;
       case "tool_call_started":
       case "tool_call_finished":
@@ -1987,6 +2000,16 @@ export class Session {
     const toolCalls: PendingToolCall[] = [];
     let text = "";
     let thinking = "";
+    // Tool-call arguments are output too, and a long Write can take minutes to
+    // write: counted, so the live meter keeps moving while it streams.
+    let toolArgChars = 0;
+    // The call whose arguments are streaming now. Its writing ends when the next
+    // call starts or the response does; that span rides on its tool_call_started.
+    let writing: { call: PendingToolCall; since: number; announcedAt: number } | undefined;
+    const stopWriting = (at: number): void => {
+      if (writing) writing.call.writingMs = Math.max(0, at - writing.since);
+      writing = undefined;
+    };
     let end: { stopReason: StopReason; usage: Usage } = {
       stopReason: "end_turn",
       usage: emptyUsage(),
@@ -2025,7 +2048,7 @@ export class Session {
       // Nothing has measured a window yet — say nothing rather than push a 0 a
       // frontend would adopt as "the context is empty".
       if (liveContext <= 0) return;
-      const output = this.stats.liveDeliberationTokens(estimateTokens(text.length + thinking.length));
+      const output = this.stats.liveDeliberationTokens(estimateTokens(text.length + thinking.length + toolArgChars));
       // Step-gate so a fast stream emits a handful of updates, not hundreds —
       // but never swallow a context change, which moves at most once per call.
       if (liveContext === emittedContext && output - emittedOutput < 200) return;
@@ -2082,12 +2105,30 @@ export class Session {
           if (!this.suppressAssistantText) this.emit({ type: "thinking_delta", text: event.text });
           emitLiveTokens();
           break;
-        case "tool_use_start":
-          toolCalls.push({ id: event.id, name: event.name, json: "" });
+        case "tool_use_start": {
+          // Nothing runs until the whole response is in, but the model is at work
+          // on this call from now: announced, so a frontend shows the call while
+          // it is written instead of a silent gap and then a "0s" run.
+          const at = Date.now();
+          stopWriting(at);
+          const call: PendingToolCall = { id: event.id, name: event.name, json: "" };
+          toolCalls.push(call);
+          writing = { call, since: at, announcedAt: at };
+          this.emit({ type: "tool_call_streaming", id: call.id, tool: call.name, argChars: 0, at });
           break;
+        }
         case "tool_use_delta": {
-          const call = toolCalls.find((c) => c.id === event.id);
-          if (call) call.json += event.partialJson;
+          const call = writing?.call.id === event.id ? writing.call : toolCalls.find((c) => c.id === event.id);
+          if (call) {
+            call.json += event.partialJson;
+            toolArgChars += event.partialJson.length;
+            const at = Date.now();
+            if (writing?.call === call && at - writing.announcedAt >= TOOL_STREAM_EMIT_MS) {
+              writing.announcedAt = at;
+              this.emit({ type: "tool_call_streaming", id: call.id, tool: call.name, argChars: call.json.length, at });
+            }
+            emitLiveTokens();
+          }
           break;
         }
         case "tool_use_end":
@@ -2097,6 +2138,8 @@ export class Session {
           break;
       }
     }
+    // The last call's writing ends with the response.
+    stopWriting(Date.now());
 
     // Bank this response against the whole-session ledger: its billed tokens
     // (per model — a subagent may run on a different one), the API time it
@@ -2150,7 +2193,14 @@ export class Session {
         call,
         parallel: true,
         run: async () => {
-          this.emit({ type: "tool_call_started", id: call.id, tool: call.name, input, at: Date.now() });
+          this.emit({
+            type: "tool_call_started",
+            id: call.id,
+            tool: call.name,
+            input,
+            ...(call.writingMs !== undefined ? { writingMs: call.writingMs } : {}),
+            at: Date.now(),
+          });
           return { content, isError: true };
         },
       });
@@ -2227,6 +2277,7 @@ export class Session {
               tool: tool.name,
               input,
               ...(description !== undefined ? { description } : {}),
+              ...(call.writingMs !== undefined ? { writingMs: call.writingMs } : {}),
               at: Date.now(),
             });
           // Reuse gate: record any search/query evidence this call carries, then

@@ -24,6 +24,11 @@ export interface Answer {
   readonly status?: number;
   readonly json?: unknown;
   readonly text?: string;
+  /**
+   * The body written in pieces, each after its own pause — how a slow model
+   * streams. Takes the place of `text`; the response ends after the last piece.
+   */
+  readonly chunks?: readonly { readonly text: string; readonly afterMs?: number }[];
   readonly headers?: Record<string, string>;
 }
 
@@ -73,7 +78,18 @@ export async function startLocalServer(answer: (request: ReceivedRequest) => Ans
         "content-type": reply.json !== undefined ? "application/json" : "text/plain",
         ...reply.headers,
       });
-      res.end(body);
+      if (reply.chunks === undefined) {
+        res.end(body);
+        return;
+      }
+      void (async () => {
+        for (const piece of reply.chunks!) {
+          if (piece.afterMs) await new Promise<void>((resolve) => setTimeout(resolve, piece.afterMs));
+          if (res.destroyed) return;
+          res.write(piece.text);
+        }
+        res.end();
+      })();
     });
   });
   server.on("connection", (socket: Socket) => {

@@ -456,6 +456,7 @@ function onTurnFinished(event) {
 
   finalizeThinkingEl();
   finalizeAssistantEl();
+  abandonWritingToolRows();
   closeWorkGroup(event && event.at);
   // The turn changed the session's summary (its message count, its time).
   requestSessionList();
@@ -540,6 +541,39 @@ function onThinkingDelta(text) {
   appendReasoning(currentThinkingEl, text);
 }
 
+// The model has started writing a tool call, or is still writing it. Nothing
+// runs until the reply is complete, but the minutes a long Write takes to
+// compose belong to that call: its row appears now, marked as being written,
+// instead of the time vanishing into the reasoning block and the call later
+// reading 0s. tool_call_started for the same id turns this row into the call.
+function onToolCallStreaming(event) {
+  if (event.subagent || !streamEl) return;
+  listSessionsOnFirstOutput();
+  const existing = toolRows.get(event.id);
+  if (existing && existing.writing) {
+    markToolRowWriting(existing, event.argChars);
+    return;
+  }
+  // Any other row under this id is an earlier reply's call — some local servers
+  // number every reply's calls from call_0 — so this call starts a row of its own.
+  // Reasoning and prose for this segment are done once the model writes a call.
+  finalizeThinkingEl();
+  finalizeAssistantEl();
+  const at = typeof event.at === "number" ? event.at : Date.now();
+  // The call written before this one is complete: its writing time stops here.
+  for (const row of toolRows.values()) {
+    if (row.writing && !row.writeFrozen) freezeToolRowWriting(row, at);
+  }
+  const row = createWritingToolRow(event.tool, at);
+  const target = workStream(at);
+  withAutoScroll(() => {
+    target.appendChild(row.rowEl);
+    target.appendChild(row.detailEl);
+  });
+  toolRows.set(event.id, row);
+  if (busy) setNowActivity("writing", event.tool);
+}
+
 function onToolCallStarted(event) {
   listSessionsOnFirstOutput();
   toolCountThisTurn++;
@@ -565,6 +599,13 @@ function onToolCallStarted(event) {
 
   if (!streamEl) return;
   finalizeAssistantEl();
+  const written = toolRows.get(event.id);
+  if (written && written.writing) {
+    startWrittenToolRow(written, event);
+    updateAgentMeter();
+    setNowActivity(event.tool, event.description || compactInput(event.input));
+    return;
+  }
   const row = createToolRow(event.tool, event.description, event.input);
   // The engine's clock, when it sent one: a row handled late still times the call.
   if (typeof event.at === "number") row.startMs = event.at;
@@ -1105,6 +1146,9 @@ function handleEngineEvent(event) {
       break;
     case "thinking_delta":
       onThinkingDelta(event.text);
+      break;
+    case "tool_call_streaming":
+      onToolCallStreaming(event);
       break;
     case "tool_call_started":
       onToolCallStarted(event);

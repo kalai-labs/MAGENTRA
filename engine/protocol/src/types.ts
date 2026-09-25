@@ -148,11 +148,28 @@ export type CoreEvent =
   | { type: "text_delta"; text: string }
   | { type: "thinking_delta"; text: string }
   | {
+      /** The model has begun writing a tool call's arguments, and again about once
+       *  a second while they stream. Nothing runs yet — `tool_call_started` for the
+       *  same id follows once the whole response is in — so a frontend can show the
+       *  call while it is composed rather than only once it runs. Top-level only: a
+       *  subagent's calls appear at `tool_call_started`, as before. */
+      type: "tool_call_streaming";
+      id: string;
+      tool: string;
+      /** Characters of the arguments received so far. */
+      argChars: number;
+      /** Epoch ms, engine clock: when this frame was sent. */
+      at?: number;
+    }
+  | {
       type: "tool_call_started";
       id: string;
       tool: string;
       input: unknown;
       description?: string;
+      /** Milliseconds the model spent writing this call's arguments, from its first
+       *  `tool_call_streaming` to the next call's or the end of the response. */
+      writingMs?: number;
       /** True when this call belongs to a subagent's nested session, not the top-level turn. */
       subagent?: boolean;
       /** Stable id of the subagent this call belongs to (e.g. "ag_1"). Only set on subagent events. */

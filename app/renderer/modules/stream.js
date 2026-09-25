@@ -467,7 +467,7 @@ function closeWorkGroup(endAt) {
   if (!currentWorkGroup) return;
   const { el, body, labelEl, start, lastAt } = currentWorkGroup;
   el.classList.add("done");
-  const ops = body.querySelectorAll(".tool-row").length;
+  const ops = body.querySelectorAll(".tool-row:not(.not-run)").length;
   const end = typeof endAt === "number" ? endAt : typeof lastAt === "number" ? lastAt : Date.now();
   labelEl.textContent = `Agent worked · ${ops} op${ops === 1 ? "" : "s"} · ${formatElapsed(end - start)}`;
   currentWorkGroup = null;
@@ -566,17 +566,13 @@ function createToolRow(tool, description, input) {
   // Detail mode is read live at row creation: flipping the setting only
   // affects new rows, existing rows keep whatever mode they were born in.
   const cinematic = uiSettings.detail === "cinematic";
-
   if (cinematic) {
     rowEl.classList.add("op-cine");
     glyphEl.textContent = "◆";
-    nameEl.textContent = OP_VERBS[tool] || "processing";
-    descEl.textContent = cinematicHint(input);
   } else {
     glyphEl.textContent = "▸"; // ▸
-    nameEl.textContent = tool;
-    descEl.textContent = " " + (description || compactInput(input));
   }
+  labelToolRow({ nameEl, descEl, cinematic }, tool, description, input);
 
   // Right-aligned duration chip: ticks while the op runs, freezes on finish —
   // the transcript doubles as a flight recorder.
@@ -597,10 +593,90 @@ function createToolRow(tool, description, input) {
   // exact command and result — that is the whole basis of trusting the agent.
   makeRowExpandable(rowEl);
 
-  const row = { rowEl, detailEl, glyphEl, timeEl, startMs: Date.now() };
+  const row = { rowEl, detailEl, glyphEl, nameEl, descEl, timeEl, cinematic, startMs: Date.now() };
   runningToolRows.add(row);
   ensureToolTicker();
   return row;
+}
+
+/** A row's name and one-line summary, in the detail mode it was born in. */
+function labelToolRow(row, tool, description, input) {
+  if (row.cinematic) {
+    row.nameEl.textContent = OP_VERBS[tool] || "processing";
+    row.descEl.textContent = cinematicHint(input);
+  } else {
+    row.nameEl.textContent = tool;
+    row.descEl.textContent = " " + (description || compactInput(input));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// A tool call while the model is still writing it (tool_call_streaming).
+// The row appears when the writing starts, so a Write that takes minutes to
+// compose is visible where the time goes, instead of a silent gap and then a
+// run that reads 0s (field run 2026-09-24/25). tool_call_started turns the
+// same row into the call; its time is then the writing plus the run.
+// ---------------------------------------------------------------------------
+
+function writingNote(argChars) {
+  const n = typeof argChars === "number" ? argChars : 0;
+  if (n <= 0) return " writing…";
+  return ` writing · ${n < 1000 ? `${n} chars` : `${(n / 1000).toFixed(1)}k chars`}`;
+}
+
+/** `at` is the engine's time the writing started. */
+function createWritingToolRow(tool, at) {
+  const row = createToolRow(tool, "", {});
+  row.writing = true;
+  row.startMs = at;
+  row.rowEl.classList.add("writing");
+  row.descEl.textContent = writingNote(0);
+  row.timeEl.textContent = formatElapsed(Date.now() - at);
+  return row;
+}
+
+function markToolRowWriting(row, argChars) {
+  if (!row.writeFrozen) row.descEl.textContent = writingNote(argChars);
+}
+
+/** The model moved on to the next call at `at`: this one is fully written and waits for the reply to end. */
+function freezeToolRowWriting(row, at) {
+  row.writeFrozen = true;
+  row.writeMs = Math.max(0, at - row.startMs);
+  runningToolRows.delete(row);
+  row.timeEl.textContent = formatElapsed(row.writeMs);
+  row.descEl.textContent = " written · waiting for the reply to finish";
+}
+
+/** tool_call_started for a row drawn while it was written: the same row becomes the call. */
+function startWrittenToolRow(row, event) {
+  const at = typeof event.at === "number" ? event.at : Date.now();
+  const writeMs = typeof event.writingMs === "number" ? event.writingMs : (row.writeMs ?? Math.max(0, at - row.startMs));
+  row.writing = false;
+  row.writeFrozen = false;
+  row.writeMs = writeMs;
+  row.runStartMs = at;
+  // The ticker reads now − startMs, so the running time counts the writing too.
+  row.startMs = at - writeMs;
+  row.rowEl.classList.remove("writing");
+  labelToolRow(row, event.tool, event.description, event.input);
+  row.timeEl.textContent = formatElapsed(Date.now() - row.startMs);
+  runningToolRows.add(row);
+  ensureToolTicker();
+}
+
+/** The turn ended with calls that never started (stream dropped, turn stopped, a hook blocked them). */
+function abandonWritingToolRows() {
+  for (const row of toolRows.values()) {
+    if (!row.writing) continue;
+    row.writing = false;
+    runningToolRows.delete(row);
+    row.rowEl.classList.remove("running", "writing");
+    row.rowEl.classList.add("not-run");
+    row.glyphEl.textContent = "–";
+    if (row.writeMs === undefined) row.timeEl.textContent = formatElapsed(Date.now() - row.startMs);
+    row.descEl.textContent = " not run — the reply ended before this call was sent";
+  }
 }
 
 // One shared 1s ticker updates every running row's duration chip; it stops
@@ -697,7 +773,12 @@ function finishToolRow(row, isError, resultPreview, finishedAt) {
   row.rowEl.classList.add(isError ? "err" : "ok");
   row.glyphEl.textContent = isError ? "✗" : "✓"; // ✗ / ✓
   runningToolRows.delete(row);
-  if (row.timeEl) row.timeEl.textContent = formatElapsed((typeof finishedAt === "number" ? finishedAt : Date.now()) - row.startMs);
+  const endMs = typeof finishedAt === "number" ? finishedAt : Date.now();
+  if (row.timeEl) row.timeEl.textContent = formatElapsed(endMs - row.startMs);
+  // A call drawn while it was written shows writing + run; the tooltip splits them.
+  if (row.timeEl && row.writeMs > 0 && typeof row.runStartMs === "number") {
+    row.timeEl.title = `written in ${formatElapsed(row.writeMs)} · ran in ${formatElapsed(Math.max(0, endMs - row.runStartMs))}`;
+  }
 
   // The result is always available on expand, in both detail modes — hiding it
   // in cinematic left the user unable to inspect what a tool returned.

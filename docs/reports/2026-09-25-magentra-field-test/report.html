@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAGENTRA Field Tests</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --panel: #ffffff; --panel-2: #eef2f7; --fg: #1c2430; --muted: #5d6b7c; --line: #d5dce6;
+    --accent: #1f6fd6; --good: #1a7f45; --good-bg: #e3f4ea; --better: #1d6f86; --better-bg: #e0f1f5;
+    --same: #5d6b7c; --same-bg: #eceff3; --bad: #b3261e; --bad-bg: #fbe6e4; --warn: #9a6400; --warn-bg: #fdf1dc;
+    --code-bg: #eef2f7;
+    --shadow: 0 1px 2px rgba(20,30,50,.06), 0 6px 20px rgba(20,30,50,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1117; --panel: #161c25; --panel-2: #1d2532; --fg: #e6edf3; --muted: #97a3b4; --line: #2b3542;
+      --accent: #58a6ff; --good: #3fb950; --good-bg: #12301d; --better: #4fc1d0; --better-bg: #102b31;
+      --same: #97a3b4; --same-bg: #232b36; --bad: #ff7b72; --bad-bg: #3a1614; --warn: #f0b429; --warn-bg: #362a0f;
+      --code-bg: #1d2532;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1117; --panel: #161c25; --panel-2: #1d2532; --fg: #e6edf3; --muted: #97a3b4; --line: #2b3542;
+    --accent: #58a6ff; --good: #3fb950; --good-bg: #12301d; --better: #4fc1d0; --better-bg: #102b31;
+    --same: #97a3b4; --same-bg: #232b36; --bad: #ff7b72; --bad-bg: #3a1614; --warn: #f0b429; --warn-bg: #362a0f;
+    --code-bg: #1d2532;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body { font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+         padding-block: 28px 72px; padding-inline: clamp(16px, 3vw, 48px); }
+  main { max-width: 1180px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+  h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: .02em; }
+  h1 small { font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: .1em; margin-left: 10px; vertical-align: middle; }
+  .tagline { margin: 0; color: var(--muted); max-width: 82ch; font-size: 16px; }
+  .tagline b { color: var(--fg); }
+  button { font: inherit; font-size: 13px; font-weight: 600; color: var(--fg); background: var(--panel);
+           border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; box-shadow: var(--shadow); }
+  button:hover { border-color: var(--accent); }
+  nav { margin: 22px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+  nav a { color: var(--muted); text-decoration: none; border-bottom: 1px dotted var(--line); }
+  nav a:hover { color: var(--accent); }
+  section { margin-top: 44px; }
+  h2 { font-size: 21px; margin: 0 0 4px; }
+  h3 { font-size: 16px; margin: 22px 0 6px; }
+  .sub { margin: 0 0 16px; color: var(--muted); font-size: 14px; max-width: 92ch; }
+  p { max-width: 92ch; }
+  code { font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code-bg);
+         padding: 1px 5px; border-radius: 5px; word-break: break-word; }
+  a { color: var(--accent); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 16px 18px; }
+  .card h3 { margin: 0 0 6px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .card p { margin: 0; font-size: 14px; color: var(--muted); }
+  .card p b { color: var(--fg); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+  .dot.good { background: var(--good); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); } .dot.better { background: var(--better); }
+  .tbl { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--panel-2); position: sticky; top: 0; }
+  tr:last-child td { border-bottom: 0; }
+  tr.group td { background: var(--panel-2); font-weight: 700; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  td.id { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+  .fixed { color: var(--good); background: var(--good-bg); }
+  .improved { color: var(--better); background: var(--better-bg); }
+  .same { color: var(--same); background: var(--same-bg); }
+  .worse { color: var(--bad); background: var(--bad-bg); }
+  .open { color: var(--warn); background: var(--warn-bg); }
+  .crit { color: var(--bad); background: var(--bad-bg); }
+  .high { color: var(--warn); background: var(--warn-bg); }
+  .med { color: var(--better); background: var(--better-bg); }
+  .low { color: var(--same); background: var(--same-bg); }
+  .star { color: var(--warn); font-weight: 700; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted); margin: 0 0 12px; align-items: center; }
+  .callout { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px;
+             padding: 14px 18px; box-shadow: var(--shadow); max-width: 92ch; }
+  .callout.bad { border-left-color: var(--bad); }
+  .callout p { margin: 6px 0; }
+  .timeline { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--line); }
+  .timeline li { position: relative; padding: 4px 0 12px 20px; }
+  .timeline li::before { content: ""; position: absolute; left: -7px; top: 10px; width: 12px; height: 12px; border-radius: 50%;
+                         background: var(--panel); border: 2px solid var(--muted); }
+  .timeline li.bad::before { border-color: var(--bad); background: var(--bad-bg); }
+  .timeline li.good::before { border-color: var(--good); background: var(--good-bg); }
+  .timeline li.warn::before { border-color: var(--warn); background: var(--warn-bg); }
+  .timeline time { font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 8px; }
+  .steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  .steps li { counter-increment: s; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px 12px 52px; position: relative; box-shadow: var(--shadow); }
+  .steps li::before { content: counter(s); position: absolute; left: 14px; top: 12px; width: 26px; height: 26px; border-radius: 50%;
+                      background: var(--accent); color: #fff; font-weight: 700; font-size: 13px; display: grid; place-items: center; }
+  .steps li b { display: block; margin-bottom: 2px; }
+  .steps li span { color: var(--muted); font-size: 14px; }
+  footer { margin-top: 56px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; }
+  @media (max-width: 640px) { body { padding-inline: 16px; } h1 { font-size: 23px; } th, td { padding: 8px 9px; } }
+  /* one-series bar list: magnitude, a single hue, values in ink */
+  .barfig { margin: 0 0 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 16px 18px; max-width: 760px; }
+  .bars { display: grid; gap: 6px; }
+  .bar-row { display: grid; grid-template-columns: 9.5rem 1fr 3.6rem; align-items: center; gap: 10px; font-size: 13px; border-radius: 6px; padding: 2px 4px; }
+  .bar-row:hover { background: var(--panel-2); }
+  .bar-label { color: var(--fg); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { height: 12px; display: block; }
+  .bar { display: block; height: 12px; background: var(--accent); border-radius: 0 4px 4px 0; min-width: 2px; }
+  .bar-val { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .barfig figcaption { margin-top: 12px; }
+  details.more { margin: 10px 0; max-width: 92ch; }
+  details.more > summary { cursor: pointer; font-weight: 600; padding: 8px 0; color: var(--fg); }
+  details.more > summary:hover { color: var(--accent); }
+  details.more > .callout, details.more > .timeline { margin-top: 8px; }
+  @media (max-width: 640px) { .bar-row { grid-template-columns: 7.5rem 1fr 3.2rem; } }
+</style>
+
+</head>
+<body>
+<main>
+<header>
+  <div>
+    <h1>MAGENTRA Field Tests <small>3 RUNS · 2026-09-23 → 09-25</small></h1>
+    <p class="tagline">Three long build runs, and what the fixes between them changed. <b>Run 1</b>: GLM&nbsp;5.3 on the installed v0.19.3. <b>Run 2</b> (<code>agentics/test7</code>): MiMo&nbsp;2.6&nbsp;Pro on the FIX-PLAN build — it exposed the root cause of the main complaint. <b>Run 3</b> (<code>agentics/t8</code>): Fireworks <code>ember-1</code> on the build with the two root fixes (N1, N7). The main complaint — <b>all the thinking up front, then every step at "0s"</b> — did not come back in run 3.</p>
+  </div>
+  <button id="themeBtn" type="button">Toggle theme</button>
+</header>
+<nav>
+  <a href="#verdict">Verdict</a><a href="#glance">Three runs at a glance</a><a href="#complaint">The main complaint</a>
+  <a href="#glm">GLM findings: status</a><a href="#new">Problems found in run 2</a><a href="#run3">Run 3 timeline</a>
+  <a href="#run2">Run 2 details</a><a href="#next">Next steps</a><a href="#sources">Sources</a>
+</nav>
+
+<section id="verdict">
+  <h2>Verdict</h2>
+  <p class="sub">Run 3 changed two things at once — the fixes <i>and</i> the model — so rows that depend on the model are marked <span class="star">✱</span>. The UI half of the fix (N7) is measured directly; the reasoning half (N1) is proven by tests and a live Fireworks probe, but its effect on behaviour needs the same model run again to isolate.</p>
+  <div class="cards">
+    <div class="card"><h3><span class="dot good"></span>The main complaint is gone in run 3</h3><p>Nothing on screen was silent for more than <b>4 seconds</b> (besides an announced 53 s rate-limit wait). The largest reasoning block was <b>11k characters / 45 s</b>, against 71k / 13 min in run 2. Work came in 30 short replies.</p></div>
+    <div class="card"><h3><span class="dot good"></span>The hidden time is now on screen</h3><p>The model spent <b>188 s writing</b> its tool calls and only <b>26 s running</b> them. Before N7 those 188 s showed as nothing and every row read 0s; now each call has a row from its first character.</p></div>
+    <div class="card"><h3><span class="dot better"></span>Verification was the real thing</h3><p>Headless Chrome through Playwright played the whole loop — accept, load, refuel, launch, deliver — read the on-screen rules and feedback, and found 0 console errors. The model said plainly that vision was off, so it made no visual claim.</p></div>
+    <div class="card"><h3><span class="dot warn"></span>Still open before a long run</h3><p>Context compaction can still write an empty summary (N2) — run 3 never needed it (39k context). A dropped stream is still not retried (N6), runaway replies are not capped (N4), and tool rows are not grouped yet (N8).</p></div>
+  </div>
+</section>
+
+<section id="glance">
+  <h2>Three runs at a glance</h2>
+  <p class="sub">Times in Istanbul time (UTC+3). OVERDRIVE on and the deletion guard on in all three.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Metric</th><th>Run 1 · GLM 5.3</th><th>Run 2 · MiMo 2.6 Pro</th><th>Run 3 · ember-1</th></tr></thead>
+    <tbody>
+      <tr><td>Date · provider · build</td><td>09-23 · Fireworks · installed v0.19.3</td><td>09-24/25 · DeepInfra · repo <code>4fdaee5</code></td><td>09-25 · Fireworks · repo + N1/N7</td></tr>
+      <tr><td>Task</td><td>complex game on localhost</td><td>complex co-op game (Twinflame Crypt)</td><td>~10-module PascalCase app (Cosmic Cargo Tycoon)</td></tr>
+      <tr><td>Working time</td><td class="num">55 min 52 s</td><td class="num">7 h 32 min + 2.5 h idle after a drop</td><td class="num">7 min 01 s after the clarify answers</td></tr>
+      <tr><td>Replies · tool calls · errors</td><td class="num">– · 188 · 8</td><td class="num">85 · 3,116 · 1,697</td><td class="num">30 · 52 · 0</td></tr>
+      <tr><td>First tool call once the task was clear</td><td class="num">8 min</td><td class="num">13 min (71k chars of reasoning)</td><td class="num">12 s</td></tr>
+      <tr><td>Largest single reasoning block</td><td class="num">15 min with no tool call</td><td class="num">88k chars · 46 min</td><td class="num">11k chars · 45 s</td></tr>
+      <tr><td>Reasoning vs visible text</td><td class="num">41 : 1</td><td class="num">45 : 1</td><td class="num">7.4 : 1</td></tr>
+      <tr><td>Longest stretch with nothing on screen</td><td class="num">24 min</td><td class="num">47 min</td><td class="num">4 s (+ a 53 s rate-limit wait, announced)</td></tr>
+      <tr><td>Time spent writing tool calls</td><td>not shown</td><td>not shown (gaps up to 22 min)</td><td>188 s, shown row by row</td></tr>
+      <tr><td>Output tokens · reasoning share</td><td class="num">199,718 · ~⅔</td><td class="num">434k · 58%</td><td class="num">24,332 · 35%</td></tr>
+      <tr><td>Context meter vs measured</td><td class="num">–</td><td class="num">2.14× too high</td><td class="num">1.16×</td></tr>
+      <tr><td>Auto-compactions</td><td class="num">0</td><td class="num">3 — summaries of 1 sentence, 2 sentences, empty</td><td class="num">0 (39k context at the end)</td></tr>
+      <tr><td>Browser check</td><td>none</td><td>Puppeteer / Playwright — found a client that could not start</td><td>Playwright, headless Chrome, full game loop, 0 console errors</td></tr>
+      <tr><td>Result</td><td>44 files; 4 player-facing defects found in play</td><td>28 files, 2,796 lines, 72 tests; the owner liked it</td><td>15 files (11 modules), 1,012 lines, no rewrites; opened right after the turn</td></tr>
+      <tr><td>Session log</td><td class="num">12.8 MB per turn, invalid lines</td><td class="num">7.0 MB for 7.5 h, all valid</td><td class="num">270 KB for 12 min, all valid</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="complaint">
+  <h2>The main complaint: "all thinking up front, then 0s"</h2>
+  <p class="sub">Two causes, both in MAGENTRA, both fixed between run 2 and run 3.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Cause</th><th>What was wrong</th><th>Fix</th><th>Proof</th></tr></thead>
+    <tbody>
+      <tr><td class="id">N1</td><td><b>The model lost its own reasoning after every tool call.</b> The OpenAI-compatible transport sent each earlier reply back without its reasoning. Models built to think between tool calls (MiMo, GLM-5, Kimi, DeepSeek) then plan the whole job in one block and fire the calls in a burst. MiMo's docs require the field; Fireworks: without it "the model will not have access to its previous reasoning process".</td><td>Each earlier reply goes back with its reasoning as <code>reasoning_content</code> (<code>engine/providers/src/openai-compat.ts</code>). An endpoint that refuses the field gets it dropped once; one that <i>demands</i> it is never taught to drop it.</td><td>4 tests over a real socket, incl. the real Engine end to end. Live probe: Fireworks <code>glm-5p3</code> and <code>glm-5p3-flash</code> accept it on the first request. Side effect confirmed in run 3: the context meter is now 1.16× the measured size instead of 2.14× (it had been counting reasoning that was never sent).</td></tr>
+      <tr><td class="id">N7</td><td><b>The time went where nothing was shown.</b> A tool call's row appeared only after the whole reply had streamed, and its timer counted only the run — milliseconds for a Write. The minutes spent writing the file showed as nothing, with a frozen token counter.</td><td>The engine announces a call the moment the model starts writing it (<code>tool_call_streaming</code>, repeated about once a second with the characters so far), keeps the counter moving, and puts the writing time on <code>tool_call_started</code>. The desktop draws the row at once — "writing · 3.2k chars" — and its final time is writing + run.</td><td>7 tests (engine, real slow stream, real app). Run 3: 52 of 52 calls announced while written; 188 s of writing shown; live output counter 24,252 vs 24,332 final.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Where one reply's time went (run 3, 09:51–09:53)</h3>
+  <p class="sub">One reply wrote 11 modules. Before N7 this was 131 seconds of "thinking" followed by 11 rows reading 0s. Now each row appears when its file starts being written.</p>
+  <figure class="barfig" aria-labelledby="barcap">
+    <div class="bars" role="table" aria-label="Seconds the model spent writing each file">
+      <div class="bar-row" role="row" title="GameEngine.py — written in 26.3 s, ran in 0.0 s"><span class="bar-label" role="cell">GameEngine.py</span><span class="bar-track"><span class="bar" style="width:100%"></span></span><span class="bar-val" role="cell">26.3 s</span></div>
+      <div class="bar-row" role="row" title="WebAssets.py — written in 17.3 s, ran in 0.0 s"><span class="bar-label" role="cell">WebAssets.py</span><span class="bar-track"><span class="bar" style="width:65.8%"></span></span><span class="bar-val" role="cell">17.3 s</span></div>
+      <div class="bar-row" role="row" title="GameState.py — written in 10.3 s, ran in 0.0 s"><span class="bar-label" role="cell">GameState.py</span><span class="bar-track"><span class="bar" style="width:39.2%"></span></span><span class="bar-val" role="cell">10.3 s</span></div>
+      <div class="bar-row" role="row" title="Ship.py — written in 10.2 s, ran in 0.0 s"><span class="bar-label" role="cell">Ship.py</span><span class="bar-track"><span class="bar" style="width:38.8%"></span></span><span class="bar-val" role="cell">10.2 s</span></div>
+      <div class="bar-row" role="row" title="WebServer.py — written in 9.2 s, ran in 0.0 s"><span class="bar-label" role="cell">WebServer.py</span><span class="bar-track"><span class="bar" style="width:35%"></span></span><span class="bar-val" role="cell">9.2 s</span></div>
+      <div class="bar-row" role="row" title="Contract.py — written in 8.7 s, ran in 0.0 s"><span class="bar-label" role="cell">Contract.py</span><span class="bar-track"><span class="bar" style="width:33.1%"></span></span><span class="bar-val" role="cell">8.7 s</span></div>
+      <div class="bar-row" role="row" title="Galaxy.py — written in 7.5 s, ran in 0.0 s"><span class="bar-label" role="cell">Galaxy.py</span><span class="bar-track"><span class="bar" style="width:28.5%"></span></span><span class="bar-val" role="cell">7.5 s</span></div>
+      <div class="bar-row" role="row" title="EventDeck.py — written in 6.1 s, ran in 0.0 s"><span class="bar-label" role="cell">EventDeck.py</span><span class="bar-track"><span class="bar" style="width:23.2%"></span></span><span class="bar-val" role="cell">6.1 s</span></div>
+      <div class="bar-row" role="row" title="Planet.py — written in 3.9 s, ran in 0.0 s"><span class="bar-label" role="cell">Planet.py</span><span class="bar-track"><span class="bar" style="width:14.8%"></span></span><span class="bar-val" role="cell">3.9 s</span></div>
+      <div class="bar-row" role="row" title="SaveStore.py — written in 3.4 s, ran in 0.0 s"><span class="bar-label" role="cell">SaveStore.py</span><span class="bar-track"><span class="bar" style="width:12.9%"></span></span><span class="bar-val" role="cell">3.4 s</span></div>
+      <div class="bar-row" role="row" title="Main.py — written in 1.6 s, ran in 0.0 s"><span class="bar-label" role="cell">Main.py</span><span class="bar-track"><span class="bar" style="width:6.1%"></span></span><span class="bar-val" role="cell">1.6 s</span></div>
+    </div>
+    <figcaption id="barcap">Seconds the model spent writing each file, as measured by the engine (<code>writingMs</code>). 104.5 s in total. Running each Write took 0.0 s — the number the old rows showed.</figcaption>
+  </figure>
+  <div class="callout">
+    <p><b>One thing that still looks "instant":</b> the model chose to write all 11 files in one reply, and a reply's calls run only once the whole reply is in — so all 11 files landed on disk in the same second (09:53:26). The rows now show the writing as it happens, so the time is no longer hidden. Running each call as soon as its own arguments are complete would make the files appear one by one too (see N11).</p>
+  </div>
+</section>
+
+<section id="glm">
+  <h2>GLM 5.3 findings: status after three runs</h2>
+  <p class="sub">Every finding from the 2026-09-23 report (<code>docs/reports/2026-09-23-magentra-field-test/report.pdf</code>).</p>
+  <div class="legend">
+    <span class="pill fixed">Fixed</span><span class="pill improved">Improved</span><span class="pill same">Same</span>
+    <span class="pill worse">Worse</span><span class="pill open">Open / not tested</span><span><span class="star">✱</span> depends on the model</span>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>ID</th><th>GLM 5.3 problem</th><th>Run 2 · MiMo</th><th>Run 3 · ember-1</th><th>Now</th></tr></thead>
+    <tbody>
+      <tr class="group"><td colspan="5">Desktop UI</td></tr>
+      <tr><td class="id">U-01</td><td>Renderer fell 25 min behind</td><td>≤ 10 ms at turn ends, lighter stream</td><td>no lag seen; still a light stream</td><td><span class="pill improved">Improved</span></td></tr>
+      <tr><td class="id">U-02</td><td>Black window, nothing noticed</td><td>not seen; no watchdog (T02 skipped)</td><td>not seen</td><td><span class="pill open">Open</span></td></tr>
+      <tr><td class="id">U-03</td><td>Tasks panel stuck at 0/7</td><td>task frames on time</td><td>20 task updates on time</td><td><span class="pill improved">Improved</span></td></tr>
+      <tr><td class="id">U-04 / U-05</td><td>Wrong task durations, stopped timer</td><td>engine times on every frame</td><td>same</td><td><span class="pill fixed">Fixed</span></td></tr>
+      <tr><td class="id">U-06</td><td>Reasoning hides the progress</td><td>feeling remained (N1, N7)</td><td>calls visible while written; 4 s max silence</td><td><span class="pill fixed">Fixed</span> — confirm on screen</td></tr>
+      <tr><td class="id">U-07</td><td>Sessions list empty</td><td>listed 41 s in</td><td>listed during the turn</td><td><span class="pill fixed">Fixed</span></td></tr>
+      <tr><td class="id">U-08</td><td>Retries invisible</td><td>no retry happened</td><td>"rate limited — retry in 52 s" sent to the screen</td><td><span class="pill fixed">Fixed</span></td></tr>
+      <tr><td class="id">U-09</td><td>Small UI defects</td><td colspan="2">screen only — not visible in logs</td><td><span class="pill open">Not checked</span></td></tr>
+      <tr><td class="id">U-10</td><td>Reasoning tokens not shown apart</td><td>reported, 58%</td><td>reported, 35%</td><td><span class="pill fixed">Fixed</span></td></tr>
+      <tr class="group"><td colspan="5">Safety and permissions</td></tr>
+      <tr><td class="id">S-01</td><td>Kill by name without asking</td><td>none tried; 1 false positive</td><td>servers stopped with TaskStop, twice</td><td><span class="pill fixed">Fixed</span></td></tr>
+      <tr><td class="id">S-02</td><td>Deletion message was wrong</td><td>message matches behaviour</td><td>same; deletions announced in the answer</td><td><span class="pill fixed">Fixed</span></td></tr>
+      <tr class="group"><td colspan="5">Engine and tools</td></tr>
+      <tr><td class="id">E-02</td><td>Result without a start frame</td><td>3,116 / 3,116 paired</td><td>52 / 52 paired, each announced first</td><td><span class="pill fixed">Fixed</span></td></tr>
+      <tr><td class="id">E-03</td><td>Dead job did not stop a wait</td><td>no poll loops</td><td>background servers stopped cleanly</td><td><span class="pill improved">Improved</span></td></tr>
+      <tr><td class="id">E-04 / E-05 / E-06</td><td>Shell edits, Edit error, stats saving</td><td>all three seen working</td><td>no Edits or shell edits needed</td><td><span class="pill fixed">Fixed</span></td></tr>
+      <tr class="group"><td colspan="5">Verification</td></tr>
+      <tr><td class="id">V-01 / V-05</td><td>Never checked in a browser</td><td>browser found a dead client; 2 keys tested</td><td>headless Chrome played the full loop; rules and feedback checked; no screenshot (vision off)</td><td><span class="pill fixed">Fixed</span> <span class="star">✱</span></td></tr>
+      <tr><td class="id">V-02</td><td>"Works" claimed too early</td><td>7 claims later contradicted</td><td>every claim matched a check it ran</td><td><span class="pill improved">Improved</span> <span class="star">✱</span></td></tr>
+      <tr><td class="id">V-03</td><td>Shallow self-check</td><td>real checks, lost the request</td><td>real check; open issue stated (vision off)</td><td><span class="pill improved">Improved</span></td></tr>
+      <tr><td class="id">V-04</td><td>Bug class not searched everywhere</td><td><code>"KeyDown"</code> left 4 h</td><td>no bug class came up</td><td><span class="pill same">Same</span> <span class="star">✱</span></td></tr>
+      <tr class="group"><td colspan="5">Model behaviour under the harness</td></tr>
+      <tr><td class="id">M-01</td><td>Very long reasoning, no action</td><td>13 min before the first call; 46 min blocks</td><td>12 s to the first call; 45 s largest block</td><td><span class="pill fixed">Fixed</span> <span class="star">✱</span></td></tr>
+      <tr><td class="id">M-02</td><td>Code written twice</td><td>2% drafted in reasoning</td><td>6.7k reasoning chars before 29k chars of code</td><td><span class="pill fixed">Fixed</span> <span class="star">✱</span></td></tr>
+      <tr><td class="id">M-03</td><td>First drafts had errors</td><td>7 of 32 files rewritten</td><td>15 files, 0 rewrites, 0 tool errors</td><td><span class="pill fixed">Fixed</span> <span class="star">✱</span></td></tr>
+      <tr><td class="id">M-04</td><td>Long Edit anchors from memory</td><td>median 260 chars</td><td>no Edits</td><td><span class="pill open">Not seen</span></td></tr>
+      <tr><td class="id">M-05</td><td>Small process slips</td><td>stray <code>.keep</code>, false "clean" claim</td><td>temp files removed and reported</td><td><span class="pill fixed">Fixed</span> <span class="star">✱</span></td></tr>
+      <tr><td class="id">M-06</td><td>No comments for 24 min</td><td>up to 47 min silent</td><td>4 s longest silence</td><td><span class="pill fixed">Fixed</span></td></tr>
+      <tr class="group"><td colspan="5">Logging</td></tr>
+      <tr><td class="id">L-01 – L-03</td><td>Hidden tokens, broken JSON, huge log</td><td>all fixed</td><td>270 KB, 884 valid lines</td><td><span class="pill fixed">Fixed</span></td></tr>
+      <tr><td class="id">L-04</td><td>Other log defects</td><td>2 "engine-write-dropped" noise lines</td><td>same 2 lines at start-up</td><td><span class="pill improved">Improved</span></td></tr>
+      <tr class="group"><td colspan="5">What the user reported</td></tr>
+      <tr><td class="id">R-1</td><td>"The whole app was written in the reasoning loop"</td><td>came back</td><td>writing visible, row by row</td><td><span class="pill fixed">Fixed</span> — confirm on screen</td></tr>
+      <tr><td class="id">R-2</td><td>"Tasks did not move from 0/7"</td><td>on time</td><td>on time</td><td><span class="pill improved">Improved</span></td></tr>
+      <tr><td class="id">R-3</td><td>"Felt like 20 minutes of thinking"</td><td>47 min silent</td><td>4 s</td><td><span class="pill fixed">Fixed</span> <span class="star">✱</span></td></tr>
+      <tr><td class="id">R-4</td><td>"Bugs that testing did not find"</td><td>browser caught a dead client</td><td>browser played the loop before handover</td><td><span class="pill improved">Improved</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="new">
+  <h2>Problems found in run 2, and run 3's additions</h2>
+  <p class="sub">None of these were in the GLM report. Run 1 was too short to reach compaction.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>#</th><th>Problem</th><th>Cause</th><th>Severity</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="id">N1</td><td>The model's reasoning was never sent back between tool calls</td><td>Harness</td><td><span class="pill crit">Critical</span></td><td><span class="pill fixed">Fixed</span> 4 tests; Fireworks accepts it</td></tr>
+      <tr><td class="id">N2</td><td>Compaction erased the model's memory: summaries of 1 sentence, 2 sentences, empty; the original request lost</td><td>Harness (<code>runSummarizer</code> keeps only answer text)</td><td><span class="pill crit">Critical</span></td><td><span class="pill open">Open</span> — not reached in run 3</td></tr>
+      <tr><td class="id">N3</td><td>Compaction fired about 2× too early (meter 2.14× the measured size)</td><td>Harness</td><td><span class="pill high">High</span></td><td><span class="pill improved">Mostly fixed by N1</span> — 1.16× in run 3</td></tr>
+      <tr><td class="id">N4</td><td>Runaway replies executed in full (345, 1,374 and 1,006 calls in one reply)</td><td>Model (MiMo#98) + harness (no cap)</td><td><span class="pill high">High</span></td><td><span class="pill open">Open</span> — run 3's largest reply had 11 calls</td></tr>
+      <tr><td class="id">N5</td><td>OVERDRIVE deleted a source file with no undo</td><td>Harness (no trash)</td><td><span class="pill high">High</span></td><td><span class="pill open">Open</span></td></tr>
+      <tr><td class="id">N6</td><td>A dropped stream is not retried — run 2's "crash"</td><td>Harness (retry covers the request only until headers)</td><td><span class="pill high">High</span></td><td><span class="pill open">Open</span> — no drop in run 3</td></tr>
+      <tr><td class="id">N7</td><td>Nothing on screen while the model wrote tool calls; rows read 0s</td><td>Harness + UI</td><td><span class="pill high">High</span></td><td><span class="pill fixed">Fixed</span> 7 tests; seen in run 3</td></tr>
+      <tr><td class="id">N8</td><td>One row plus a red line per call — a wall of red with many errors</td><td>UI</td><td><span class="pill med">Medium</span></td><td><span class="pill open">Open</span> — run 3 had 0 errors</td></tr>
+      <tr><td class="id">N9</td><td>The progress reminder misses long single replies and fired inside the self-check</td><td>Harness</td><td><span class="pill med">Medium</span></td><td><span class="pill open">Open</span></td></tr>
+      <tr><td class="id">N10</td><td>Small defects: kill-guard false positive, durations lost above 1,000 calls in flight, a second summary after the verified answer (seen again in run 3), failing engine starts during setup, noise lines at start-up</td><td>Harness</td><td><span class="pill low">Low</span></td><td><span class="pill open">Open</span></td></tr>
+      <tr><td class="id">N11</td><td><i>New in run 3.</i> Files written in one reply all land at the end of the reply (11 files in the same second). Visible now, but still "applied at once"</td><td>Harness design (calls run after the reply) + the model's choice to batch</td><td><span class="pill low">Low</span></td><td><span class="pill open">Option</span> — run a call as soon as its arguments are complete</td></tr>
+      <tr><td class="id">N12</td><td><i>New in run 3.</i> Vision was off in this workspace's profile, so no screenshot could be checked; the model said so</td><td>Configuration</td><td><span class="pill low">Low</span></td><td><span class="pill open">Open</span> — turn vision on for UI work</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="run3">
+  <h2>Run 3 timeline (ember-1, 2026-09-25)</h2>
+  <ul class="timeline">
+    <li><time>09:44</time>App started from the repo. First message on <code>glm-5p3</code>; switched to <code>ember-1</code> and cleared the session.</li>
+    <li><time>09:48:47</time>Request: a complicated ~10-script app, strict OOP, PascalCase everywhere; "offer me what kind of tool we can build".</li>
+    <li><time>09:49–09:50</time>Clarify asks twice (you asked for more fun options); you pick <b>Cosmic Cargo Tycoon</b>, Python, localhost.</li>
+    <li class="good"><time>09:50:24</time>12 s later: 5 tasks on the board, a look at the empty folder and the Python version.</li>
+    <li><time>09:51:15</time>The plan: 11k characters of reasoning in 45 s. You raise the auto-compact limit to 512k.</li>
+    <li class="good"><time>09:51:40–09:53:26</time>11 modules written in one reply — each row shows "writing" as its file is written (104.5 s in total).</li>
+    <li class="good"><time>09:54:04</time>Dashboard HTML, CSS and JS written.</li>
+    <li class="good"><time>09:54:14–09:54:44</time>All modules compile; a scripted accept → load → travel → deliver → save loop passes; the server is started, checked with HTTP, stopped with TaskStop.</li>
+    <li><time>09:54:53</time>The browser rung fires: "the page was never opened in a browser".</li>
+    <li class="warn"><time>09:55:08</time>Rate limited — "retrying in 52 s" sent to the screen.</li>
+    <li class="good"><time>09:56:22–09:56:48</time>Playwright in headless Chrome plays the loop, reads rules and feedback, 0 console or page errors; server stopped, temp files removed.</li>
+    <li class="good"><time>09:56:57–09:57:13</time>Self-check, a short follow-up, and the summary with the run command and one open issue (no screenshot: vision off). Done.</li>
+    <li><time>09:57:48</time>You open the game; the save file is written at 09:58:49.</li>
+  </ul>
+</section>
+
+<section id="run2">
+  <h2>Run 2 details (MiMo 2.6 Pro, 2026-09-24/25)</h2>
+  <p class="sub">The run that exposed N1–N10. Kept here because N2, N4, N5 and N6 are still open.</p>
+  <details class="more"><summary>The crash (N6) — why the turn ended and needed "cont"</summary>
+    <div class="callout">
+      <p>At 03:46:58 the provider closed the connection 16 minutes into a reasoning stream. Node's <code>fetch</code> reports this as <code>TypeError: terminated</code>. <code>withRetry</code> (<code>engine/providers/src/retry.ts</code>) wraps only the request until the headers arrive; the streamed body is read later, so the error reached <code>Session.runTurn</code>, which ended the turn with <code>stopReason: "error"</code>. Longer calls on the same provider had finished normally, so this was not a time limit.</p>
+      <p><b>Fix still to do:</b> when the stream drops mid-reply (<code>terminated</code>, <code>UND_ERR_SOCKET</code>, <code>ECONNRESET</code>) and the user did not stop the turn, show "↻ the provider dropped the stream — retrying (1/3)" and re-send the same call with a backoff, up to 3 in a row. Safe, because a partial reply is never written to history.</p>
+    </div>
+  </details>
+  <details class="more"><summary>The empty compaction summaries (N2) — how the model lost its memory</summary>
+    <div class="callout bad">
+      <p>Compaction 1 (00:30) replaced 93 messages — including the original request — with one line: "No tests collected — likely a syntax error in the test file from overlapping edits. Checking." Compaction 3 was empty. <code>runSummarizer</code> keeps only answer text, and a reasoning model spends its 8,192-token budget thinking. Afterwards the model invented paths and usernames, grepped other projects, ran four runaway replies (all four came after a compaction) and deleted its own test file; the final self-check thought the task was "Reactor 15".</p>
+      <p><b>Fix still to do:</b> run the summarizer with thinking off or low, never accept an empty or tiny summary (retry, else keep the history and say so), and carry the original request and the task board across.</p>
+    </div>
+  </details>
+  <details class="more"><summary>The deleted test (N5)</summary>
+    <div class="callout">
+      <p><code>tests/GameLiveServerTests.py</code> (17,082 bytes) was written by the session and deleted at 01:29:34 by call 277 of a 345-call runaway reply — <code>allow · source: mode</code>, as OVERDRIVE is designed to do. The model rebuilt it from bytecode of an older version: 83% the same, all 72 tests passing. The exact original can be rebuilt from the transcript. <b>Fix still to do:</b> in OVERDRIVE, move workspace files a deletion would remove into <code>.magentra/trash/&lt;session&gt;/</code> with a restore command.</p>
+    </div>
+  </details>
+  <details class="more"><summary>Run 2 timeline</summary>
+    <ul class="timeline">
+      <li><time>21:58</time>Build request; clarify; you pick Python + Flask + JS, local co-op.</li>
+      <li class="warn"><time>22:13</time>First reply: 71k chars of reasoning over 13 min, then 2 Bash calls.</li>
+      <li class="good"><time>22:14–22:33</time>33 build files written in bursts of 5–10 per reply.</li>
+      <li class="good"><time>00:04</time>"Built, tested and verified" → the browser rung fires; the browser shows the client never starts.</li>
+      <li class="bad"><time>00:30</time>Compaction 1: 93 messages become one sentence.</li>
+      <li class="bad"><time>01:28–02:34</time>Runaway replies of 345, 126 and 1,374 calls; the live-server test is deleted.</li>
+      <li class="bad"><time>03:46</time>The provider drops the stream; the turn ends.</li>
+      <li><time>06:17</time>You type "cont". <time>07:05</time>Compaction 3: empty. <time>07:18</time>A 1,006-call runaway reply.</li>
+      <li class="good"><time>07:27</time>72 tests pass; Playwright smoke 6/6. <time>08:01</time>Done.</li>
+    </ul>
+  </details>
+</section>
+
+<section id="next">
+  <h2>Next steps</h2>
+  <ol class="steps">
+    <li><b>Isolate N1 — rerun the same model on this build</b><span>Run 3 changed the model as well as the build. A GLM 5.3 (or MiMo) run on the fixed build, with a similar task, shows how much of the new rhythm is N1 and how much is ember-1. Measure: time to the first tool call, the largest reasoning block, replies with more than 10 calls, the longest silence.</span></li>
+    <li><b>N2 — make compaction trustworthy</b><span>Before any run long enough to reach the compact limit: thinking off or low for the summarizer, no empty or tiny summary, the original request and task board carried across. Until then, keep the auto-compact limit high (512k worked in run 3).</span></li>
+    <li><b>N6 — retry a dropped stream</b><span>As in "The crash" above.</span></li>
+    <li><b>N4 — contain runaway replies</b><span>Cap tool calls per reply (for example 32); above it, run none and ask for fewer. Do not run a cut-off reply full of repeated or no-op calls.</span></li>
+    <li><b>N8 — group tool rows</b><span>"Ran 12 commands · 3 failed", "Read 6 files" — collapsed, click to see each; errors counted in the header.</span></li>
+    <li><b>N5, N9, N10, N11, N12</b><span>OVERDRIVE trash with restore; the progress reminder measured inside a reply; the small defects; optionally run each call as soon as its arguments are complete; vision on for UI work.</span></li>
+    <li><b>Owner: review and commit N1 + N7</b><span>Two new gateway records — <code>reasoning-goes-back-to-the-model</code> and <code>a-tool-call-shows-while-it-is-written</code> — with draft descriptions, waiting for review and reconcile in <code>npm run gateway</code>. Gates at the time of the change: <code>npm test</code> 668 / 557 passed / 3 known snapshot reds; <code>test:ui</code> 73 / 73; smoke passed.</span></li>
+  </ol>
+</section>
+
+<section id="sources">
+  <h2>Evidence and sources</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Source</th><th>Where</th></tr></thead>
+    <tbody>
+      <tr><td>Run 1 report</td><td><code>docs/reports/2026-09-23-magentra-field-test/report.pdf</code></td></tr>
+      <tr><td>Run 2 transcript · log</td><td><code>agentics/test7/.magentra/sessions/s_mufvuiv4_d5da58.jsonl</code> · <code>agentics/test7/.magentra/logs/desktop-20260924-184441Z.log</code></td></tr>
+      <tr><td>Run 3 transcript · log</td><td><code>agentics/t8/.magentra/sessions/s_mugllt0q_53919c.jsonl</code> · <code>agentics/t8/.magentra/logs/desktop-20260925-064449Z.log</code></td></tr>
+      <tr><td>Run 3 result</td><td><code>agentics/t8/CosmicCargoTycoon/</code> — run with <code>python3 CosmicCargoTycoon/Main.py</code>, open <code>http://127.0.0.1:8017</code></td></tr>
+      <tr><td>The fixes</td><td><code>engine/providers/src/openai-compat.ts</code>, <code>engine/core/src/runtime/session.ts</code>, <code>engine/protocol/src/types.ts</code>, <code>app/renderer/modules/landing.js</code>, <code>app/renderer/modules/stream.js</code>, <code>tui/src/…</code>; tests in <code>tests/features/reasoning-goes-back-to-the-model.test.ts</code> and <code>tests/features/a-tool-call-shows-while-it-is-written.test.ts</code></td></tr>
+      <tr><td>MiMo: reasoning must be passed back</td><td><a href="https://mimo.mi.com/docs/en-US/quick-start/usage-guide/text-generation/deep-thinking">mimo.mi.com — deep thinking</a></td></tr>
+      <tr><td>MiMo tool-use meltdown</td><td><a href="https://github.com/XiaomiMiMo/MiMo/issues/98">github.com/XiaomiMiMo/MiMo/issues/98</a></td></tr>
+      <tr><td>Fireworks: reasoning_content</td><td><a href="https://docs.fireworks.ai/guides/reasoning">docs.fireworks.ai/guides/reasoning</a></td></tr>
+      <tr><td>GLM-5: interleaved and preserved thinking</td><td><a href="https://docs.together.ai/docs/glm-5.2-quickstart">docs.together.ai — GLM-5.2 quickstart</a>, <a href="https://github.com/zai-org/GLM-5">github.com/zai-org/GLM-5</a></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<footer>Rewritten 2026-09-25 after run 3, from the three runs' logs, transcripts, task stores and files. Rows marked ✱ depend on the model and are judged against the model that ran.</footer>
+</main>
+<script>
+  (function () {
+    var root = document.documentElement;
+    try { var saved = localStorage.getItem("mg-report-theme"); if (saved) root.setAttribute("data-theme", saved); } catch (e) {}
+    document.getElementById("themeBtn").addEventListener("click", function () {
+      var dark = root.getAttribute("data-theme") ? root.getAttribute("data-theme") === "dark"
+                                                 : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var next = dark ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem("mg-report-theme", next); } catch (e) {}
+    });
+  })();
+</script>
+</body>
+</html>

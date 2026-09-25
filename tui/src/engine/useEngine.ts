@@ -468,6 +468,14 @@ export function useEngine(resume: string | true | undefined, workspace: string):
           setActivity({ label: 'thinking', detail: '' });
           break;
 
+        // The model is writing a tool call; it runs once the response is in. Said
+        // on the activity line, so a long Write is not a silent "thinking".
+        case 'tool_call_streaming':
+          endThinking();
+          drainBuffer(true);
+          setActivity({ label: 'writing', detail: event.tool.toLowerCase() });
+          break;
+
         case 'tool_call_started': {
           endThinking();
           drainBuffer(true);

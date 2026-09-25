@@ -42,6 +42,8 @@ type WireContentPart =
 interface WireMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string | WireContentPart[] | null;
+  /** An assistant message's own reasoning, sent back — see toWireMessages. */
+  reasoning_content?: string;
   tool_call_id?: string;
   tool_calls?: {
     id: string;
@@ -63,6 +65,9 @@ interface WireMessage {
  *   num_ctx         — Ollama's context-window hint; not a standard field.
  *   chat_template_kwargs — the local-server (vLLM, llama.cpp, SGLang) switch that
  *                     turns a hybrid model's thinking off; hosted APIs reject it.
+ *   reasoning_content — an assistant message's own reasoning, sent back (see
+ *                     toWireMessages). A strict endpoint may refuse the unknown
+ *                     message field; without it the model re-derives its plan.
  *
  * `reasoning_effort` is negotiated too, but by VALUE as well as by presence —
  * see {@link EffortClamp}: a level the model lacks is clamped, not dropped.
@@ -71,7 +76,7 @@ interface WireMessage {
  * never dropped, because a silently tool-less agent looks like a broken model
  * rather than an unsupported endpoint.
  */
-type NegotiableField = "stream_options" | "max_tokens" | "num_ctx" | "chat_template_kwargs";
+type NegotiableField = "stream_options" | "max_tokens" | "num_ctx" | "chat_template_kwargs" | "reasoning_content";
 
 /**
  * How many undecodable `data:` lines a stream may contain before we stop
@@ -99,6 +104,16 @@ function rejectedField(errorText: string): NegotiableField | undefined {
   if (text.includes("chat_template_kwargs")) return "chat_template_kwargs";
   if (text.includes("max_tokens") && /unsupported|not supported|unknown|unrecognized|not permitted|invalid/.test(text)) {
     return "max_tokens";
+  }
+  // Only a refusal of the field drops it. An endpoint that DEMANDS it (MiMo
+  // 400s when a tool-call message comes back without its reasoning) names it
+  // too, and dropping it there would make every later request fail the same way.
+  if (
+    text.includes("reasoning_content") &&
+    /unsupported|not supported|unknown|unrecognized|not permitted|not allowed|unexpected|extra/.test(text) &&
+    !/required|missing|must/.test(text)
+  ) {
+    return "reasoning_content";
   }
   return undefined;
 }
@@ -134,7 +149,7 @@ export class OpenAICompatProvider implements Provider {
       [maxTokensKey]: req.maxTokens,
       stream: true,
       ...(this.rejected.has("stream_options") ? {} : { stream_options: { include_usage: true } }),
-      messages: toWireMessages(req.system, req.messages),
+      messages: toWireMessages(req.system, req.messages, !this.rejected.has("reasoning_content")),
       ...(this.opts.numCtx && !this.rejected.has("num_ctx") ? { num_ctx: this.opts.numCtx } : {}),
       // The one field most servers read for reasoning depth (our "off" is its
       // "none"); a rejected level is clamped by EffortClamp on the next pass.
@@ -515,13 +530,24 @@ function toWireTool(tool: ToolSchema) {
   };
 }
 
-function toWireMessages(system: string, messages: Msg[]): WireMessage[] {
+/**
+ * The conversation in chat-completions shape. An assistant message goes back
+ * with its own reasoning as `reasoning_content` (unless the endpoint refused the
+ * field — `withReasoning` false). Models that think between tool calls (MiMo,
+ * GLM-5, Kimi, DeepSeek) are trained to see that reasoning again on the next
+ * request. Without it every call starts blind, and the model plans the whole job
+ * in one long reasoning block before it acts, then fires its calls in a burst
+ * (field run 2026-09-24/25). MiMo's API even refuses a tool-call message that
+ * comes back without its reasoning; endpoints that don't use it ignore it.
+ */
+function toWireMessages(system: string, messages: Msg[], withReasoning = true): WireMessage[] {
   const wire: WireMessage[] = [];
   if (system) wire.push({ role: "system", content: system });
 
   for (const msg of messages) {
     if (msg.role === "assistant") {
       const text = joinText(msg.content);
+      const reasoning = withReasoning ? joinThinking(msg.content) : "";
       const toolCalls = msg.content
         .filter((b): b is Extract<ContentBlock, { type: "tool_use" }> => b.type === "tool_use")
         .map((b) => ({
@@ -532,6 +558,7 @@ function toWireMessages(system: string, messages: Msg[]): WireMessage[] {
       wire.push({
         role: "assistant",
         content: text || null,
+        ...(reasoning ? { reasoning_content: reasoning } : {}),
         ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
       });
     } else {
@@ -574,6 +601,14 @@ function joinText(blocks: ContentBlock[]): string {
     .filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text")
     .map((b) => b.text)
     .join("\n");
+}
+
+/** The message's reasoning exactly as it streamed: nothing added between blocks. */
+function joinThinking(blocks: ContentBlock[]): string {
+  return blocks
+    .filter((b): b is Extract<ContentBlock, { type: "thinking" }> => b.type === "thinking")
+    .map((b) => b.thinking)
+    .join("");
 }
 
 function flattenToolResult(block: Extract<ContentBlock, { type: "tool_result" }>): string {

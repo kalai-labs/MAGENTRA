@@ -94,6 +94,7 @@ export type CoreEvent =
   | { type: "retry_status"; attempt: number; delayMs: number; reason: string }
   | { type: "text_delta"; text: string }
   | { type: "thinking_delta"; text: string }
+  | { type: "tool_call_streaming"; id: string; tool: string; argChars: number; at?: number }
   | {
       type: "tool_call_started";
       id: string;
