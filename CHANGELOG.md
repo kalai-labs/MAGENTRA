@@ -10,6 +10,14 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.20.0 — 2026-09-25
+
+### Features
+
+- agentic harness improvements ([95148d2](https://github.com/kalai-labs/MAGENTRA/commit/95148d27ef1abd39ede7bcb9709ec5355d313867))
+
+[Compare with v0.19.4](https://github.com/kalai-labs/MAGENTRA/compare/v0.19.4...v0.20.0)
+
 ## 0.19.4 — 2026-09-25
 
 ### Bug fixes
