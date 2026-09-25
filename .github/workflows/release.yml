@@ -18,8 +18,9 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    # A fork must not make a release in its own repository.
-    if: github.event.repository.fork == false
+    # A fork must not make a release in its own repository, and a manual run
+    # (workflow_dispatch can target any branch) releases from main only.
+    if: github.event.repository.fork == false && github.ref == 'refs/heads/main'
     # The build matrix below needs to know whether a release happened and
     # which tag to build and upload to.
     outputs:
@@ -171,6 +172,12 @@ jobs:
       # The dmg is what gets uploaded, so the dmg is what gets launched: mounting
       # it proves the shipped image carries an app that runs, which running the
       # unpacked mac-arm64/ tree beside it would not.
+      #
+      # The signature is checked first. A launch from here never meets
+      # Gatekeeper (a CI build carries no quarantine flag), so an app whose seal
+      # is broken still smokes green — and a user who downloads it gets
+      # "MAGENTRA is damaged and can't be opened" (v0.19.4). afterPack.js signs
+      # the bundle ad hoc; this fails the release if that seal is not valid.
       - name: Smoke the packaged app (mac)
         if: matrix.name == 'mac'
         run: |
@@ -179,6 +186,7 @@ jobs:
           mountpoint=$(mktemp -d)
           hdiutil attach "$dmg" -mountpoint "$mountpoint" -nobrowse -quiet
           trap 'hdiutil detach "$mountpoint" -quiet || true' EXIT
+          codesign --verify --deep --strict --verbose=2 "$mountpoint/MAGENTRA.app"
           "$mountpoint/MAGENTRA.app/Contents/MacOS/MAGENTRA" --smoke
 
       - name: Upload the artifacts to the release

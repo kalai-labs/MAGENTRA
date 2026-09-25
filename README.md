@@ -21,9 +21,20 @@ Every release ships prebuilt binaries on the
   checks whether Chromium can sandbox itself on your system, passing
   `--no-sandbox` only when it genuinely cannot (e.g. distros that restrict
   unprivileged user namespaces).
-- **macOS** — `MAGENTRA-<version>-mac-arm64.dmg` (Apple Silicon only). The app
-  is unsigned, so the first launch needs **right-click → Open** instead of a
-  double-click.
+- **macOS** — `MAGENTRA-<version>-mac-arm64.dmg` (Apple Silicon only). Open the
+  dmg and drag **MAGENTRA** into **Applications**. The app is signed ad hoc but
+  not notarized by Apple, so the first launch is blocked once:
+  1. Open MAGENTRA. macOS says *"Apple could not verify 'MAGENTRA' is free of
+     malware…"* — click **Done**.
+  2. Open **System Settings → Privacy & Security**, scroll down to
+     **Security**, and click **Open Anyway** beside the MAGENTRA message.
+  3. Confirm with **Open Anyway** (and your password if asked). From then on it
+     opens with a normal double-click.
+
+  v0.19.4 and earlier were not signed correctly and report *"MAGENTRA is
+  damaged and can't be opened"* instead; install a newer release, or clear the
+  download flag once with
+  `xattr -dr com.apple.quarantine /Applications/MAGENTRA.app`.
 
 ## The `magentra` terminal command
 

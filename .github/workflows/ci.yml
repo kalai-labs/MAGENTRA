@@ -1,7 +1,7 @@
 name: CI
 
+# Main only: pushes to other branches and pull requests start no run.
 on:
-  pull_request:
   push:
     branches: [main]
 
@@ -180,6 +180,8 @@ jobs:
       - name: Check the types of the version tool
         run: npm run typecheck:version
 
+  # Dormant, with next-version below: both run only on pull_request, which is
+  # not a trigger while CI is main-only. Restoring the trigger restores them.
   commits:
     name: Commit messages
     runs-on: ubuntu-latest

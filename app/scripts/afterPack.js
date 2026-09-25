@@ -21,10 +21,12 @@
 // macOS: write the terminal launcher into Contents/Resources/bin/magentra.
 // Users put it on PATH with one documented symlink; writing it here (not via
 // extraResources) is what gives it its exec bit, since this repo is routinely
-// checked out on Windows where git cannot record one.
+// checked out on Windows where git cannot record one. Then sign the whole
+// bundle ad hoc (see the darwin branch below).
 
 const path = require("node:path");
 const fs = require("node:fs");
+const { execFileSync } = require("node:child_process");
 
 // The launcher replaces the binary under its original name so both entry
 // paths run it: AppImage's AppRun execs <executableName>, and a tar.gz user
@@ -146,6 +148,18 @@ module.exports = async function afterPack(context) {
     fs.mkdirSync(binDir, { recursive: true });
     fs.writeFileSync(path.join(binDir, "magentra"), MAC_LAUNCHER, { mode: 0o755 });
     console.log("afterPack: wrote the mac terminal launcher");
+
+    // Sign the finished bundle ad hoc — last, so it seals everything above.
+    // build.mac.identity is null (no Apple certificate), so electron-builder
+    // signs nothing and the .app kept only the stock Electron binary's linker
+    // signature, which seals no resources. A downloaded (quarantined) copy then
+    // failed Gatekeeper as "MAGENTRA is damaged and can't be opened", with no
+    // way past it but Terminal. A valid ad-hoc seal turns that into "Apple
+    // could not verify…", which System Settings → Privacy & Security → Open
+    // Anyway clears. Release smoke checks it with codesign --verify --deep --strict.
+    const appPath = path.join(context.appOutDir, `${appName}.app`);
+    execFileSync("codesign", ["--force", "--deep", "--sign", "-", appPath], { stdio: "inherit" });
+    console.log("afterPack: signed the mac app ad hoc");
     return;
   }
 
