@@ -31,6 +31,15 @@ Every release ships prebuilt binaries on the
   3. Confirm with **Open Anyway** (and your password if asked). From then on it
      opens with a normal double-click.
 
+  **No administrator rights?** Dragging into `/Applications` and *Open Anyway*
+  both ask for an admin password. Instead, drag MAGENTRA into your own
+  **Applications** folder in your home folder (`~/Applications`; create it if it
+  is missing), then clear the download flag once — your own file, so no
+  password:
+  ```sh
+  xattr -dr com.apple.quarantine ~/Applications/MAGENTRA.app
+  ```
+
   v0.19.4 and earlier were not signed correctly and report *"MAGENTRA is
   damaged and can't be opened"* instead; install a newer release, or clear the
   download flag once with
@@ -66,6 +75,11 @@ How it gets on PATH per platform:
 - **macOS**: one symlink:
   ```sh
   sudo ln -s "/Applications/MAGENTRA.app/Contents/Resources/bin/magentra" /usr/local/bin/magentra
+  ```
+  Without admin rights (app in `~/Applications`), link it into a folder you own
+  that is on your PATH, e.g. `~/.local/bin`:
+  ```sh
+  mkdir -p ~/.local/bin && ln -s ~/Applications/MAGENTRA.app/Contents/Resources/bin/magentra ~/.local/bin/magentra
   ```
 
 The terminal UI needs no separate configuration: it boots the same bundled
