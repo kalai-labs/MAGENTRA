@@ -10,6 +10,14 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.20.3 — 2026-09-28
+
+### Documentation
+
+- update ([573bcda](https://github.com/kalai-labs/MAGENTRA/commit/573bcda6136079c94c19ef155834f1cb8c170525))
+
+[Compare with v0.20.2](https://github.com/kalai-labs/MAGENTRA/compare/v0.20.2...v0.20.3)
+
 ## 0.20.2 — 2026-09-25
 
 ### Bug fixes
