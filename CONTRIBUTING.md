@@ -160,9 +160,27 @@ the first things the new suite needs to cover.
 
 MAGENTRA uses the [Apache Licence 2.0](LICENSE).
 
-When you send a pull request, you agree that your work goes into MAGENTRA under
-this licence. Section 5 of the licence says this. You do not need to sign
-another agreement.
+MAGENTRA is owned by Muhammet Ali Öztürk. The owner holds all rights in the
+project, its name and its code, except the copyright in code that others
+contribute. The owner alone decides what is merged, how MAGENTRA is licensed,
+and whether it stays public.
+
+When you send a pull request, you agree to the terms below. You do not need to
+sign another agreement. If you cannot agree to them, do not send the pull
+request.
+
+- You license your contribution under the Apache Licence 2.0. Section 5 of the
+  licence says this. The licence is permanent and cannot be withdrawn, so once
+  your work is merged it stays part of MAGENTRA.
+- You confirm that you have the right to send it: you wrote it yourself, or
+  whoever owns it (your employer, for example) allows it to be released under
+  the Apache Licence 2.0.
+- The owner may change, rewrite or remove your work, and may use it in any
+  future version of MAGENTRA, including a private or commercial one.
+- You keep the copyright in the code you wrote, so you may reuse that code
+  elsewhere. This gives you no rights in the rest of MAGENTRA, in its name, or
+  in decisions about its licence.
+- Your name stays in the project history as the author of your commits.
 
 ## Behaviour
 

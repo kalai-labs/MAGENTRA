@@ -4,7 +4,7 @@
   "private": true,
   "description": "MAGENTRA desktop app — the Electron shell around the agent engine.",
   "homepage": "https://github.com/kalai-labs/MAGENTRA",
-  "author": "Kalai Labs <muhammetaliozturk.ofis@gmail.com>",
+  "author": "Muhammet Ali Öztürk <muhammetaliozturk.official@gmail.com>",
   "main": "main.js",
   "scripts": {
     "start": "node scripts/launch.js",

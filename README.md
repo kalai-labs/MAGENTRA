@@ -166,3 +166,17 @@ install instead. See
 [docs/adr/0009-updates-have-two-tiers.md](docs/adr/0009-updates-have-two-tiers.md).
 
 Set `"updateCheck": false` in the app's `config.json` to turn the check off.
+
+## Licence
+
+MAGENTRA is open source under the [Apache Licence 2.0](LICENSE). You may use it,
+change it and build products on it, commercially too, as long as you keep the
+[NOTICE](NOTICE) and the licence with your copy.
+
+MAGENTRA is owned by Muhammet Ali Öztürk, who holds all rights in the project,
+its name and its code, except the copyright in code that others contribute.
+Contributions come in under the Apache Licence 2.0 and cannot be withdrawn — see
+[CONTRIBUTING.md](CONTRIBUTING.md#licence). The owner may change the licence of
+future versions, or stop publishing them and continue MAGENTRA as a private
+product. A version that is already published stays available under the Apache
+Licence 2.0, and that cannot be taken back.
