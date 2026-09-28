@@ -1,5 +1,5 @@
 /**
- * The abstract base every MAGENTRA test extends — SPEC §3, decisions/0004.
+ * The abstract base every MAGENTRA test extends — SPEC §3, docs/decisions/0004.
  *
  * Tests inherit on KIND (`pure` / `fs` / `proc` / `net` / `llm` / `ui`), because
  * kind decides the two things nothing else decides: what setup and teardown a
@@ -40,12 +40,12 @@
  * constructor here would read `undefined` for every one of them. Registration
  * time is the first moment a test is fully built.
  *
- * THE ONE KIND THAT IS OPT-IN (decisions/0009). `llm` tests call a real model:
+ * THE ONE KIND THAT IS OPT-IN (docs/decisions/0009). `llm` tests call a real model:
  * they cost tokens and can fail for a provider's reasons rather than this
  * repository's. They are withheld unless {@link realModelTestsEnabled}, and
  * WITHHELD IS NOT SKIPPED — see {@link registerFeatureTests}.
  *
- * AND ASKING FOR THEM RUNS THEM ALONE (decisions/0013). `test:llm` subtracts,
+ * AND ASKING FOR THEM RUNS THEM ALONE (docs/decisions/0013). `test:llm` subtracts,
  * exactly as `test:ui` does: the run is the `llm` kind and nothing else. It was
  * additive until 2026-09-21, when a measurement showed `npm test` and
  * `npm run test:llm` executing an identical 558 tests — see
@@ -167,7 +167,7 @@ export abstract class FeatureTest {
   /**
    * True on a test that needs a PACKAGED app — one that runs the real
    * packager and launches, or inspects, what it produced. Withheld unless
-   * {@link realArtifactTestsEnabled}, exactly as `llm` is (decisions/0010).
+   * {@link realArtifactTestsEnabled}, exactly as `llm` is (docs/decisions/0010).
    *
    * A MEMBER AND NOT A SEVENTH KIND. Kind is a claim about what setup and
    * teardown a proof requires, and packaging is not one of those — it is a
@@ -189,7 +189,7 @@ export abstract class FeatureTest {
    * What it DOES is let `npm run test:mac` and `npm run test:windows` select by
    * subject, so the OS-specific half of the suite — the expensive half, which
    * packages and launches a real artifact — can be run on the machine that can
-   * actually prove it, without running everything else too. See decisions/0012.
+   * actually prove it, without running everything else too. See docs/decisions/0012.
    */
   readonly platform?: NodeJS.Platform;
 
@@ -275,7 +275,7 @@ export function inventoryLinkageProblems(t: FeatureTest, record: FeatureRecordSu
   if (!record.kinds.includes(t.kind)) {
     problems.push(
       `this test is a "${t.kind}" test, but ${rel} declares kinds [${record.kinds.join(", ")}]. ` +
-        `Kind decides setup, teardown and whether the test can run at all (decisions/0004), so one of the two is wrong: ` +
+        `Kind decides setup, teardown and whether the test can run at all (docs/decisions/0004), so one of the two is wrong: ` +
         `either extend the class the record names, or change the record because the honest kind changed.`,
     );
   }
@@ -299,7 +299,7 @@ export function inventoryLinkageProblems(t: FeatureTest, record: FeatureRecordSu
   // not say a test is forbidden, and this rule used to read it that way and
   // refuse one. That was an overreach: it made the flag, which is set BY RULE
   // from a record's entry files, into a prohibition nobody had decided on.
-  // decisions/0008 records the correction. A deferred feature may be proven;
+  // docs/decisions/0008 records the correction. A deferred feature may be proven;
   // it is simply never counted as a gap when it is not.
 
   if (t.whyItExists.trim().length < 20 || PLACEHOLDER.test(t.whyItExists.trim())) {
@@ -315,7 +315,7 @@ export function inventoryLinkageProblems(t: FeatureTest, record: FeatureRecordSu
 /**
  * The environment variable that turns the real-model tests on.
  *
- * An ENVIRONMENT VARIABLE and not a file, deliberately (decisions/0009): the
+ * An ENVIRONMENT VARIABLE and not a file, deliberately (docs/decisions/0009): the
  * opt-in belongs to one run, not to the repository. A checked-in flag would
  * turn real API calls on for everyone who pulled it — including CI, which has
  * no connection and would go red for a reason that is nobody's defect.
@@ -337,7 +337,7 @@ const OPT_IN_SCRIPT = "test:llm";
  *
  * True means "run the `llm` kind and ONLY the `llm` kind" — see
  * {@link kindScopeRequested}. It meant "run the ordinary suite and the `llm`
- * tests on top" until 2026-09-21; decisions/0013 has the measurement that
+ * tests on top" until 2026-09-21; docs/decisions/0013 has the measurement that
  * changed it and what stayed the same.
  *
  * TWO SIGNALS, ONE QUESTION. The variable is the contract — anything can set
@@ -360,7 +360,7 @@ export function realModelTestsEnabled(env: NodeJS.ProcessEnv = process.env): boo
  * The environment variable that turns the packaged-artifact tests on.
  *
  * The same shape as {@link LLM_OPT_IN_VAR}, for the same reason and by the
- * same decision extended (decisions/0010): building an installer takes
+ * same decision extended (docs/decisions/0010): building an installer takes
  * minutes, holds `lib/exclusive.ts`'s lock for the whole of it, and writes
  * hundreds of megabytes. That belongs to a run somebody asked for, not to
  * the repository and not to CI.
@@ -387,7 +387,7 @@ export function realArtifactTestsEnabled(env: NodeJS.ProcessEnv = process.env): 
  * The environment variable that turns the desktop-app tests on.
  *
  * The same shape as {@link LLM_OPT_IN_VAR} and {@link ARTIFACT_OPT_IN_VAR},
- * for a third reason (decisions/0011): `ui` tests start a real Electron
+ * for a third reason (docs/decisions/0011): `ui` tests start a real Electron
  * process, and they need a display to do it. Measured on 2026-09-20: the 50
  * `ui` tests are 9% of the suite and were 123s of its 206s — 59% of the wall
  * clock. `tests/lib/uiTest.ts` had already forced `--test-concurrency=1` on the
@@ -401,7 +401,7 @@ export function realArtifactTestsEnabled(env: NodeJS.ProcessEnv = process.env): 
  * is the only thing anybody wants it for.
  *
  * `test:llm` was additive too until 2026-09-21 and now subtracts for the same
- * reason (decisions/0013), which is why both go through
+ * reason (docs/decisions/0013), which is why both go through
  * {@link kindScopeRequested} rather than being read independently.
  */
 export const UI_OPT_IN_VAR = "MAGENTRA_UI_TESTS";
@@ -429,7 +429,7 @@ export function realUiTestsEnabled(env: NodeJS.ProcessEnv = process.env): boolea
  * Which KIND this run is scoped to, if any — the one axis `test:ui` and
  * `test:llm` both subtract on.
  *
- * ONE KIND SCOPE PER RUN, AND TWO IS AN ERROR (decisions/0013). Both commands
+ * ONE KIND SCOPE PER RUN, AND TWO IS AN ERROR (docs/decisions/0013). Both commands
  * run their kind ALONE, and the two selections intersect at nothing: a `ui`
  * test is not `llm`, and an `llm` test does not open the app. A run that was
  * asked for both would therefore set aside all 558 tests and report `pass 0`,
@@ -456,7 +456,7 @@ export function kindScopeRequested(env: NodeJS.ProcessEnv = process.env): "ui" |
     throw new Error(
       `${UI_OPT_IN_VAR} and ${LLM_OPT_IN_VAR} are both set, and each one runs its kind ALONE — ` +
         `together they select no test at all, which would report "pass 0" and exit 0. ` +
-        `Ask for one: npm run test:ui, or npm run test:llm. See decisions/0013.`,
+        `Ask for one: npm run test:ui, or npm run test:llm. See docs/decisions/0013.`,
     );
   }
   if (ui) return "ui";
@@ -591,7 +591,7 @@ export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
       continue;
     }
 
-    // The `llm` gate swings both ways too, and for the reasons decisions/0013
+    // The `llm` gate swings both ways too, and for the reasons docs/decisions/0013
     // measured. The subtracting half is bounded by `osScope === undefined`,
     // exactly as the ui one above is: an OS-scoped run is that OS's WHOLE
     // slice, so a kind scope does not subtract inside it — it only unlocks the
@@ -604,7 +604,7 @@ export function registerFeatureTests(...tests: readonly FeatureTest[]): void {
     }
     // Not bounded by `osScope`: an OS-scoped run must never bill the endpoint
     // on its own, so `npm run test:mac` withholds `llm` tests exactly as
-    // `npm test` does. This is the half decisions/0009 decided and 0013 kept.
+    // `npm test` does. This is the half docs/decisions/0009 decided and 0013 kept.
     if (!llmOnly && t.kind === "llm") {
       withheld.push(t);
       registerOne(t, `needs a real model — not run without ${LLM_OPT_IN_VAR}. Run: npm run test:llm`);

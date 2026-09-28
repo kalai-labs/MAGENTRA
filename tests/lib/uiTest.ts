@@ -1,5 +1,5 @@
 /**
- * `UiTest` — the kind that runs the real desktop app. SPEC §3, decisions/0004.
+ * `UiTest` — the kind that runs the real desktop app. SPEC §3, docs/decisions/0004.
  *
  * WHAT THIS KIND IS FOR. A feature that only exists once Electron is running:
  * the main process's window and tab state, an ipcMain handler reached through

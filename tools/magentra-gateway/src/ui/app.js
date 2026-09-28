@@ -535,7 +535,7 @@ function renderDeps(deps) {
 
 /**
  * What proves this feature — read out of `tests/features/<id>.test.ts` by the
- * server, never from the record's array alone (SPEC §11 step 6, decisions/0007).
+ * server, never from the record's array alone (SPEC §11 step 6, docs/decisions/0007).
  *
  * Every row carries its `whyItExists`, which §9 requires of a test row and
  * which nothing could show before discovery existed. The two disagreements
@@ -709,7 +709,7 @@ function descActions(feature, d, card) {
 /**
  * The description surface — SPEC §2.2. Write what must be tested and save it.
  * The record lands in tests/gateway/descriptions/, which is where a coding
- * agent reads it when the user asks for the test to be written (decisions/0006).
+ * agent reads it when the user asks for the test to be written (docs/decisions/0006).
  *
  * `mark ready` is a separate button from `save`, deliberately: saving an edit
  * can never be the thing that approves a directive, and nothing here approves
@@ -869,7 +869,7 @@ function renderGate() {
         item.append(el("span", "file", p.detail));
         host.append(item);
       }
-      host.append(el("div", "recon-warning", "A test file discovery cannot read is a test the inventory cannot count. This does not block the gate (decisions/0005 defines two stages) — it is a gap to close."));
+      host.append(el("div", "recon-warning", "A test file discovery cannot read is a test the inventory cannot count. This does not block the gate (docs/decisions/0005 defines two stages) — it is a gap to close."));
     }
   }
 

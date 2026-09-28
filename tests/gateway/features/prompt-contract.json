@@ -21,10 +21,10 @@
     "an-extra-section-is-appended-after-the-environment-block-where-the-overdrive-section-lands"
   ],
   "freshness": {
-    "hash": "c9b93e743f4cabbf",
+    "hash": "2a0e6691ac29e865",
     "fileHashes": {
-      "engine/core/src/agent/prompts.ts": "c9b93e743f4cabbf"
+      "engine/core/src/agent/prompts.ts": "2a0e6691ac29e865"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

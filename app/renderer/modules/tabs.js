@@ -1,4 +1,4 @@
-// Per-tab state — the heart of concurrent workspaces (docs/CONCURRENT-WORKSPACES.md).
+// Per-tab state — the heart of concurrent workspaces (docs/big-picture/BIG-PICTURE.md §13).
 //
 // The renderer was built single-tab: ~55 module-level variables across the other
 // modules hold one workspace's live console (its transcript DOM, turn flags,

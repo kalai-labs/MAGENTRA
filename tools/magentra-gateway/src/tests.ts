@@ -16,7 +16,7 @@
  * FEATURES.md's failure moved into the inventory, where the tool built to catch
  * it could not look. Discovery is what makes the answer come from the files.
  *
- * WHY THE FILES ARE PARSED AND NEVER RUN. decisions/0006 took the runner out
+ * WHY THE FILES ARE PARSED AND NEVER RUN. docs/decisions/0006 took the runner out
  * of the gateway: the implementing agent runs tests, this tool does not. So
  * discovery is STATIC. Nothing here imports a test module either — importing
  * one calls `node:test`'s `test()`, which outside the runner executes it, and a
@@ -48,7 +48,7 @@ import ts from "typescript";
 import type { Feature, FeatureProof, Kind } from "./schema.js";
 import { repoRoot } from "./registry.js";
 
-/** One test file per feature id, per decisions/0004's layout. */
+/** One test file per feature id, per docs/decisions/0004's layout. */
 export function testsDir(root = repoRoot()): string {
   return join(root, "tests", "features");
 }
@@ -289,7 +289,7 @@ function scanFile(rel: string, text: string): { tests: DiscoveredTest[]; problem
           line: cls.line,
           detail:
             `class ${cls.name} extends "${cls.extendsName}", which is not one of the kind base classes ` +
-            `(${Object.keys(KIND_BY_BASE_CLASS).join(", ")}). Tests inherit on kind (decisions/0004); a class outside that hierarchy is invisible to the inventory.`,
+            `(${Object.keys(KIND_BY_BASE_CLASS).join(", ")}). Tests inherit on kind (docs/decisions/0004); a class outside that hierarchy is invisible to the inventory.`,
         });
       }
       continue;
@@ -360,7 +360,7 @@ function scanFile(rel: string, text: string): { tests: DiscoveredTest[]; problem
     });
   }
 
-  // decisions/0004's layout: one file per feature id, named for it.
+  // docs/decisions/0004's layout: one file per feature id, named for it.
   const stem = rel.slice(rel.lastIndexOf("/") + 1).replace(/\.test\.ts$/, "");
   for (const t of tests) {
     if (t.featureId !== stem) {
@@ -369,7 +369,7 @@ function scanFile(rel: string, text: string): { tests: DiscoveredTest[]; problem
         line: t.line,
         detail:
           `class ${t.className} proves feature "${t.featureId}" from a file named for "${stem}". ` +
-          `The layout is one file per feature id (decisions/0004) — move it to tests/features/${t.featureId}.test.ts.`,
+          `The layout is one file per feature id (docs/decisions/0004) — move it to tests/features/${t.featureId}.test.ts.`,
       });
     }
   }

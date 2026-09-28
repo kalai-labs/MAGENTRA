@@ -1,8 +1,8 @@
 # MAGENTRA
 
-An autonomous agent harness. One product: a desktop app (Windows `.exe`, Linux
-AppImage/tar.gz, macOS `.dmg`) wrapped around an agent engine that plans, edits
-code, runs commands, and dispatches specialist sub-agents.
+An autonomous agent harness. One product: a desktop app (Windows `.exe`, macOS
+`.dmg`) and a terminal UI, both wrapped around one agent engine that plans,
+edits code, runs commands, and dispatches specialist sub-agents.
 
 ## Install
 
@@ -14,13 +14,6 @@ Every release ships prebuilt binaries on the
   `MAGENTRA-<version>-win-portable.exe`, a portable exe with no installer and
   no terminal command. Both are unsigned, so SmartScreen may object on first
   run: click **More info → Run anyway**.
-- **Linux** — `MAGENTRA-<version>-linux-x64.tar.gz` or
-  `MAGENTRA-<version>-linux-x64.AppImage`. For the tar.gz: extract it and run
-  `./magentra` — that launcher is a small wrapper that opens the terminal UI
-  when you run it from an interactive shell (see below), and for GUI launches
-  checks whether Chromium can sandbox itself on your system, passing
-  `--no-sandbox` only when it genuinely cannot (e.g. distros that restrict
-  unprivileged user namespaces).
 - **macOS** — `MAGENTRA-<version>-mac-arm64.dmg` (Apple Silicon only). Open the
   dmg and drag **MAGENTRA** into **Applications**. The app is signed ad hoc but
   not notarized by Apple, so the first launch is blocked once:
@@ -59,8 +52,8 @@ magentra --gui          open the desktop app instead
 ```
 
 One name, context-aware: run from an **interactive terminal**, `magentra`
-opens the terminal UI right there; launched from the desktop (Start Menu,
-`.desktop` entry, double-click — no TTY), the same name opens the GUI.
+opens the terminal UI right there; launched from the desktop (Start Menu, Dock,
+double-click — no TTY), the same name opens the GUI.
 
 How it gets on PATH per platform:
 
@@ -69,9 +62,6 @@ How it gets on PATH per platform:
   elevated all-users install updates the installing user's PATH only). The
   portable exe does not provide the command. Open a new terminal after
   installing.
-- **Linux**: the deb already links `/usr/bin/magentra`; for the tar.gz add its
-  directory to PATH (or symlink `magentra`); for the AppImage, alias or
-  symlink the AppImage file itself — it dispatches the same way.
 - **macOS**: one symlink:
   ```sh
   sudo ln -s "/Applications/MAGENTRA.app/Contents/Resources/bin/magentra" /usr/local/bin/magentra
@@ -98,8 +88,9 @@ engine/            The agent engine. TypeScript, npm workspaces, no UI.
   host/            Headless process: runs the engine, speaks NDJSON over stdio.
 
 app/               The desktop app (Electron). One of the engine's two frontends.
-  main.js          Main process: window, engine child process, IPC.
-  main/            Pure pieces of the main process (config, logging).
+  main.js          Main process: windows, the engine pool, IPC.
+  main/            Pieces of the main process (config, connection, profiles,
+                   logging, updates, changes).
   preload.js       The contextBridge surface the renderer is allowed to touch.
   renderer/        The UI. modules/ are classic scripts, loaded in order.
   scripts/         Build: bundles the engine + TUI + minifies the app for packaging.
@@ -109,8 +100,20 @@ tui/               The terminal UI (ink). The engine's other frontend — a pure
                    resources/engine/tui.mjs and opened by the `magentra`
                    terminal command.
 
-docs/              Architecture, protocol, tools, and the addon format.
-tools/version/     The version tool (see VERSIONING.md).
+tests/             The feature suite: one file per feature in features/, the
+                   gateway's records in gateway/. See tests/README.md.
+tools/             Dev tooling, never shipped: the feature gateway, the version
+                   tool (see VERSIONING.md), the approved-artifact regenerator.
+benchmarks/        Benchmark prompts and the Terminal-Bench harness.
+
+docs/
+  big-picture/     The system map: BIG-PICTURE.md (how it works and why) and
+                   MAP.md (generated per-file index).
+  adr/             Product architecture decisions.
+  decisions/       Decisions about the feature gateway and the test suite.
+
+AGENTS.md          Orientation and working rules for coding agents.
+CONTEXT.md         The glossary — the words the code assumes you know.
 FEATURES.md        Every feature, and whether it has a real test yet.
 ```
 
@@ -130,14 +133,18 @@ FEATURES.md        Every feature, and whether it has a real test yet.
 
 ```sh
 npm install
-npm run build        # compile the engine (tsc -b)
+npm run build        # compile the engine and the TUI (tsc -b)
 npm run app          # launch the desktop app against the built engine
+npm test             # the feature suite; build first — it runs the built engine
 ```
+
+Before changing anything, read [AGENTS.md](AGENTS.md) and
+[docs/big-picture/BIG-PICTURE.md](docs/big-picture/BIG-PICTURE.md).
 
 ## Package
 
 ```sh
-npm run dist:win     # portable .exe
+npm run dist:win     # installer + portable .exe
 npm run dist:mac     # arm64 .dmg
 ```
 
@@ -159,10 +166,9 @@ npm run commit
 The app checks GitHub for a newer release on launch and every six hours, and puts
 what it finds at the bottom of the inspector. Nothing downloads until you click.
 
-Windows installer and Linux AppImage builds update themselves in one click. The
-macOS `.dmg`, the Windows portable `.exe`, the `.deb` and the `.tar.gz` cannot
-replace a running unsigned app, so one click downloads the right file for your
-install instead. See
+The Windows installer build updates itself in one click. The macOS `.dmg` and
+the Windows portable `.exe` cannot replace a running unsigned app, so one click
+downloads the right file for your install instead. See
 [docs/adr/0009-updates-have-two-tiers.md](docs/adr/0009-updates-have-two-tiers.md).
 
 Set `"updateCheck": false` in the app's `config.json` to turn the check off.

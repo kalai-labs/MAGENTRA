@@ -20,11 +20,11 @@
     "an-unknown-theme-resets-to-the-default-in-main-and-in-the-renderer"
   ],
   "freshness": {
-    "hash": "4be17a7c2f15b47b",
+    "hash": "0bafcae50f917d83",
     "fileHashes": {
       "app/main/config.js": "b023d6d155878fb9",
-      "app/renderer/modules/state.js": "e3fd32bcbee947b7"
+      "app/renderer/modules/state.js": "c81f11b44ae8b496"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

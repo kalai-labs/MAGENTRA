@@ -228,19 +228,6 @@ export function clearPromptOverride(id: string): void {
   cache.delete(id);
 }
 
-/**
- * Replaces a prompt's shipped default in memory.
- *
- * For authoring tools only. Defaults are resolved from source at module load,
- * so a tool that rewrites the source literal would otherwise keep serving the
- * stale text until the process restarts. Nothing in the engine calls this.
- */
-export function setPromptDefault(id: string, text: string): void {
-  const meta = registry.get(id);
-  if (!meta) throw new Error(`unknown prompt id: ${id}`);
-  meta.text = text;
-}
-
 /** Override files present on disk that no longer match a declared prompt. */
 export function orphanedPromptFiles(): string[] {
   const dir = promptsDir();

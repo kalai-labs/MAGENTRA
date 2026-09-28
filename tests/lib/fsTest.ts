@@ -1,5 +1,5 @@
 /**
- * `FsTest` — the kind that touches the filesystem. SPEC §3, decisions/0004.
+ * `FsTest` — the kind that touches the filesystem. SPEC §3, docs/decisions/0004.
  *
  * WHAT THIS KIND IS FOR. A feature whose behaviour IS the file it writes or
  * reads: an atomic write, a settings layer, a key resolved from `.env`, a state

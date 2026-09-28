@@ -2,7 +2,7 @@
  * Child-process lifecycle, owned by whichever kind needs one.
  *
  * WHY THIS IS NOT INSIDE `ProcTest`. Two kinds spawn: `proc` spawns whatever a
- * test names, and `ui` spawns Electron. decisions/0004 makes the six kinds
+ * test names, and `ui` spawns Electron. docs/decisions/0004 makes the six kinds
  * SIBLINGS under `FeatureTest` — `ui` is not a special `proc` — so the choice
  * was a second copy of "kill the tree, escalate, wait, report an orphan" or one
  * copy both kinds hold. A second copy of a teardown guarantee is how one of

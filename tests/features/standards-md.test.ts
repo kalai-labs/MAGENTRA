@@ -16,8 +16,8 @@
  * would follow by chance and that appears in no prompt the test sends. If the
  * reply obeys it, the file reached the system prompt; nothing else in the
  * engine could have carried it there. That is an assertion about ARRIVAL, not
- * about wording — the distinction a-to-do.txt draws when it says to assert the
- * engine's observable reaction rather than the model's phrasing.
+ * about wording: assert the engine's observable reaction, never the model's
+ * phrasing.
  *
  * WHY A SENTINEL AND NOT A STYLE RULE. "Write terse code" cannot be checked
  * without judging prose. A required literal token can be checked exactly, and

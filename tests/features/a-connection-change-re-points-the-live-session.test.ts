@@ -12,7 +12,7 @@
  * stand in for). Only the Provider is a double.
  *
  * TWO KINDS IN ONE FILE, because the feature has two halves and the layout is
- * one file per feature id (decisions/0004). The `proc` tests below drive the
+ * one file per feature id (docs/decisions/0004). The `proc` tests below drive the
  * engine; the `ui` tests at the bottom drive the real desktop app, because
  * `app/main.js` destructures `electron` at line 3 and runs
  * `app.requestSingleInstanceLock()` at line 48 — it cannot be loaded by a plain

@@ -1,6 +1,6 @@
 /**
- * `LlmTest` — the kind that needs a real model. SPEC §3, decisions/0004,
- * decisions/0009.
+ * `LlmTest` — the kind that needs a real model. SPEC §3, docs/decisions/0004,
+ * docs/decisions/0009.
  *
  * WHAT THIS KIND IS FOR. A feature whose behaviour IS the model's behaviour:
  * whether a reminder actually changes what the next turn does, whether a
@@ -16,14 +16,14 @@
  * about what proving a feature requires, and this is the most expensive claim
  * in the vocabulary — it costs money and a network round trip per turn.
  *
- * OPT-IN, AND ONLY OPT-IN (decisions/0009). Every other kind runs on every
+ * OPT-IN, AND ONLY OPT-IN (docs/decisions/0009). Every other kind runs on every
  * `npm test`. This one does not: it calls a real endpoint, it costs real
  * tokens, and it can fail for reasons that belong to a provider rather than to
  * this repository. `registerFeatureTests` withholds an `llm` test unless
  * {@link realModelTestsEnabled} says the user asked for it, and says out loud
  * which tests it withheld — see `featureTest.ts`.
  *
- * ASKING FOR THEM RUNS THEM ALONE (decisions/0013). The command subtracts, as
+ * ASKING FOR THEM RUNS THEM ALONE (docs/decisions/0013). The command subtracts, as
  * `test:ui` does: it was additive until 2026-09-21, when `npm test` and
  * `npm run test:llm` were measured executing an identical 558 tests.
  *
@@ -36,7 +36,7 @@
  * test is not quieted and not passed — it is REGISTERED with `{ skip: reason }`
  * and counted under `skipped`, never under `pass`. Not registering it was the
  * first attempt and was measured wrong: `node:test` reports a file that
- * registers nothing as one PASSING test, the file itself. decisions/0009 has
+ * registers nothing as one PASSING test, the file itself. docs/decisions/0009 has
  * the numbers. Once a test is registered to run, it is an ordinary test with no
  * escape hatch: no skip, no soft assert, and no `signal`-swallowing retry when
  * the model says something unexpected.

@@ -20,10 +20,10 @@
     "package-imports-become-pkg-nodes-that-deps-lists-and-blast-never-returns"
   ],
   "freshness": {
-    "hash": "e0b546c2d5a61fd4",
+    "hash": "d50c8d53146f6f90",
     "fileHashes": {
-      "engine/core/src/knowledge/graph.ts": "e0b546c2d5a61fd4"
+      "engine/core/src/knowledge/graph.ts": "d50c8d53146f6f90"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

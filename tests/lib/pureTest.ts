@@ -1,5 +1,5 @@
 /**
- * `PureTest` — the kind that touches nothing. SPEC §3, decisions/0004.
+ * `PureTest` — the kind that touches nothing. SPEC §3, docs/decisions/0004.
  *
  * WHAT THIS KIND IS FOR. A feature that is a function of its inputs: a parser,
  * a normalizer, a decision table, a walk over candidates — anything provable by

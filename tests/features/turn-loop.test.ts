@@ -21,7 +21,7 @@
  * `FakeTurn.error` — a provider that throws INSTEAD of streaming, so the turn
  * ends with stopReason 'error'. There is no way to ask a real endpoint for
  * that, and scripting one here would be the scaffold this kind exists to avoid.
- * It is named in a-to-do.txt as blocked rather than quietly dropped. The first
+ * It is left blocked rather than quietly dropped. The first
  * half (an unknown tool name yields an isError tool_result and the loop
  * continues) is reachable only by putting a bad call in the model's mouth,
  * which is the same problem.

@@ -1,7 +1,7 @@
 /**
  * Dependency resolution — SPEC §6.
  *
- * This is the file that makes ability 4 real (decisions/0001): a description
+ * This is the file that makes ability 4 real (docs/decisions/0001): a description
  * saying "write an fs test for the profile store" is a wish; the same
  * description delivered with the store's importers, the untyped `app/` files
  * that reach it, and the frame strings it crosses is a brief an agent can
@@ -15,7 +15,7 @@
  * §6 anticipated degrading to a "needs npm run build" notice when
  * `engine/core/dist/` is absent. That case does not arise: blast-radius reads
  * source off disk and needs no compiled index at all, so dependencies resolve
- * with a broken build — which is the same property decisions/0002 wanted from
+ * with a broken build — which is the same property docs/decisions/0002 wanted from
  * the gateway itself. The unavailable path is kept for the script going missing.
  *
  * What is NEVER returned is a silent empty dependency set. "This feature
@@ -138,8 +138,8 @@ export async function resolveDependencies(
     unknown: string[];
   };
   try {
-    // The script's own node, no shell: the lesson tools/prompt-lab/server.mjs
-    // records about `npx` on Windows applies to every child process here.
+    // The script's own node, no shell: on Windows `npx` is `npx.cmd`, which
+    // `execFile` without a shell cannot spawn — true of every child process here.
     const { stdout } = await run(process.execPath, [script, "--json", ...feature.entryFiles], {
       cwd: root,
       maxBuffer: 32 * 1024 * 1024,

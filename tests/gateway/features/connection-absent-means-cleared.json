@@ -20,10 +20,10 @@
     "a-connection-without-a-base-url-clears-the-saved-base-url-the-same-way"
   ],
   "freshness": {
-    "hash": "11d32208f2241da2",
+    "hash": "e36ce0535a1d470f",
     "fileHashes": {
-      "engine/protocol/src/types.ts": "11d32208f2241da2"
+      "engine/protocol/src/types.ts": "e36ce0535a1d470f"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

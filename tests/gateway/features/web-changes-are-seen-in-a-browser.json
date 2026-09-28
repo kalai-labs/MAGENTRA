@@ -24,11 +24,11 @@
     "htm-sass-and-less-are-pages-and-code-and-a-test-spec-or-story-file-is-not-the-page"
   ],
   "freshness": {
-    "hash": "db0692b7d7546a76",
+    "hash": "2f829825a1266667",
     "fileHashes": {
-      "engine/core/src/runtime/finishing.ts": "e802a1b56bce48d5",
-      "engine/core/src/runtime/session.ts": "57ce38507d9c0d5f"
+      "engine/core/src/runtime/finishing.ts": "e0faf82266e78cdb",
+      "engine/core/src/runtime/session.ts": "84a40095d91a590b"
     },
-    "recordedAt": "2026-09-24"
+    "recordedAt": "2026-09-28"
   }
 }

@@ -22,9 +22,8 @@
  * the exact Node binary running this suite (so `process.execPath` and its
  * `dirname()` are OURS to plant a sibling `MAGENTRA.exe` beside), a
  * `node_modules` JUNCTION back to this repo's own (so `ink`/`react` resolve
- * exactly as they do for the real build — the same technique, verified on
- * this machine, that `promptlab-promote.test.ts` uses to run `server.mjs`
- * unedited from a sandbox), and a stand-in `engine.cjs` (existence is the
+ * exactly as they do for the real build — the technique `packaged-boot.test.ts`
+ * relies on too), and a stand-in `engine.cjs` (existence is the
  * only thing `isPackagedRun()` checks).
  *
  * HOW "WHICH BINARY ACTUALLY RAN" IS PROVEN WITHOUT STUBBING `spawn`.

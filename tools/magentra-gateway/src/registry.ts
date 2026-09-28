@@ -2,13 +2,13 @@
  * Load, validate and write the committed records — SPEC §2, §11 step 1.
  *
  * One JSON file per feature under `tests/gateway/features/`, so two branches
- * adding two features never touch the same file (decisions/0003). Loading is
+ * adding two features never touch the same file (docs/decisions/0003). Loading is
  * strict: a malformed record aborts the load and names every file that is
  * wrong, rather than skipping the bad ones. "Never default-and-continue" is
  * §2's rule, and a partially-loaded inventory presented as the inventory is the
  * failure mode the gateway exists to remove.
  *
- * Writes go through `writeFileAtomic` — decisions/0002 and 0003 name it
+ * Writes go through `writeFileAtomic` — docs/decisions/0002 and 0003 name it
  * `writeJsonAtomic`, which is the Electron main process's copy in
  * `app/main/config.js`. That module `require`s `electron` at its top, so it
  * cannot be loaded by a plain Node process; the importable helper with the same
@@ -101,7 +101,7 @@ function parseOne<T>(schema: z.ZodType<T>, file: string, raw: string): { ok: tru
  * All feature records, sorted by id, each with its derived status.
  *
  * `proof` maps a feature id to the tests that exist AND run for it, parsed out
- * of `tests/features/` by `tests.ts` (SPEC §11 step 6, decisions/0007). Pass it
+ * of `tests/features/` by `tests.ts` (SPEC §11 step 6, docs/decisions/0007). Pass it
  * and `status` reflects the repository; omit it and every record falls back to
  * its own `tests` array, which can never read `covered` — see `deriveStatus`.
  * A caller that omits it is saying "I have not looked at the test files", which

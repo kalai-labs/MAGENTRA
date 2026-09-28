@@ -47,7 +47,7 @@ const TUI_OUT = path.join(OUT_DIR, "tui.mjs");
 // stays optional so one machine can stage both.
 //
 // There is no linux target: MAGENTRA does not ship Linux binaries, see
-// decisions/0014-magentra-does-not-ship-linux.md.
+// docs/decisions/0014-magentra-does-not-ship-linux.md.
 const RIPGREP = [
   { target: "win", src: path.join(REPO_ROOT, "node_modules", "@vscode", "ripgrep-win32-x64", "bin", "rg.exe"), dest: "rg.exe" },
   // Mac artifacts are built per-arch on a matching runner; the darwin package

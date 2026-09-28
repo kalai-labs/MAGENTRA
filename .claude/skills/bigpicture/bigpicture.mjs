@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // bigpicture — the repo's structural map, and the freshness contract for
-// BIG-PICTURE.pdf.
+// docs/big-picture/BIG-PICTURE.md.
 //
 //   node .claude/skills/bigpicture/bigpicture.mjs <command>
 //
@@ -8,7 +8,10 @@
 //     check               which BIG-PICTURE sections are stale vs the code
 //     impact <file...>    which sections document these files, + hub warning
 //     sync [--section N]  re-record hashes after updating the doc
-//     render              rebuild BIG-PICTURE.pdf from its HTML source
+//
+// The narrative is Markdown and has no build step. It was HTML printed to a
+// committed PDF until 2026-09-28; agents could not grep an 800 KB binary, and
+// every edit needed Electron to re-render, so the render step is gone.
 //
 // WHY IT IMPORTS FROM engine/core/dist/
 // This repo already carries three file scanners: engine/core/src/knowledge/
@@ -21,10 +24,9 @@
 // documented in BIG-PICTURE §15 (npm run app never builds), so this script
 // checks dist freshness itself and refuses to emit a stale map.
 
-import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "node:fs";
 import { join, dirname, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
@@ -33,6 +35,7 @@ const ROOT = join(HERE, "..", "..", "..");
 const DOCDIR = join(ROOT, "docs", "big-picture");
 const COVERAGE = join(DOCDIR, "coverage.json");
 const MAPFILE = join(DOCDIR, "MAP.md");
+const DOCFILE = join(DOCDIR, "BIG-PICTURE.md");
 
 const rel = (p) => relative(ROOT, p).split(sep).join("/");
 
@@ -249,10 +252,10 @@ async function cmdMap() {
   );
   L.push("");
   L.push("**Read this to find where something already lives before writing a second one.**");
-  L.push("Narrative and rationale are in `BIG-PICTURE.pdf`; this is the index.");
+  L.push("Narrative and rationale are in [`BIG-PICTURE.md`](BIG-PICTURE.md); this is the index.");
   L.push("");
   L.push(`- files scanned **${files.length}** — engine ${engineCount}, app ${appCount}, other ${files.length - engineCount - appCount}`);
-  L.push(`- \`app/\` is typechecked by **nothing**; \`tsc -b\` covers \`engine/*\` only.`);
+  L.push(`- \`app/\` is typechecked by **nothing**; \`tsc -b\` covers \`engine/*\` and \`tui/\` only.`);
   L.push("");
   L.push("---");
   L.push("");
@@ -305,6 +308,7 @@ async function cmdMap() {
   L.push("");
   L.push("*⬢ = hub. Regenerate with `node .claude/skills/bigpicture/bigpicture.mjs map`.*");
 
+  mkdirSync(DOCDIR, { recursive: true });
   writeFileSync(MAPFILE, L.join("\n") + "\n", "utf8");
   console.log(`wrote ${rel(MAPFILE)}`);
   console.log(`  ${files.length} files · ${TIER_A} hubs detailed · ${L.length} lines`);
@@ -352,13 +356,64 @@ function expand(patterns) {
   return [...out].sort();
 }
 
+/**
+ * CRLF is folded to LF before digesting — the same departure, for the same
+ * reason, as tools/magentra-gateway/src/freshness.ts. The repo has
+ * `core.autocrlf=true` and no `.gitattributes`, so a Windows checkout turns
+ * every text file CRLF while a Mac checkout keeps LF. Raw bytes made a doc
+ * recorded on one machine read 14 of 14 sections stale on the other with no
+ * content changed. A line ending is a checkout artifact, not content. Binary
+ * files (anything with a NUL byte) are digested untouched.
+ */
+function normalizeEol(buf) {
+  if (buf.includes(0) || !buf.includes(0x0d)) return buf;
+  const out = Buffer.allocUnsafe(buf.length);
+  let n = 0;
+  for (let i = 0; i < buf.length; i++) {
+    if (buf[i] === 0x0d && buf[i + 1] === 0x0a) continue;
+    out[n++] = buf[i];
+  }
+  return out.subarray(0, n);
+}
+
+/**
+ * A package.json is hashed WITHOUT its top-level "version". Every release
+ * bumps eight of them (version.config.json), and a doc section backed by the
+ * manifests would otherwise go stale on every push to main with nothing it
+ * describes changed — which trains people to `sync` without reading, the one
+ * move this contract exists to prevent. Everything else in the manifest
+ * (workspaces, scripts, dependencies, the electron-builder config) still counts.
+ *
+ * A gateway record (tests/gateway/features/<id>.json) is hashed without its
+ * `freshness` block, for the same reason: the gateway rewrites that stamp on
+ * every reconcile, and it says nothing a doc section could claim. The record's
+ * invariant, kinds, entry files and tests still count.
+ */
+const VOLATILE = [
+  [/(^|\/)package\.json$/, "version"],
+  [/^tests\/gateway\/features\/[^/]+\.json$/, "freshness"],
+];
+
+function contentOf(f) {
+  const buf = normalizeEol(readFileSync(join(ROOT, f)));
+  const rule = VOLATILE.find(([re]) => re.test(f));
+  if (!rule) return buf;
+  try {
+    const json = JSON.parse(buf.toString("utf8"));
+    delete json[rule[1]];
+    return Buffer.from(JSON.stringify(json));
+  } catch {
+    return buf;
+  }
+}
+
 function hashFiles(files) {
   const h = createHash("sha256");
   for (const f of files) {
     h.update(f);
     h.update("\0");
     try {
-      h.update(readFileSync(join(ROOT, f)));
+      h.update(contentOf(f));
     } catch {
       h.update("MISSING");
     }
@@ -366,46 +421,84 @@ function hashFiles(files) {
   return h.digest("hex").slice(0, 16);
 }
 
+/**
+ * The `## §N · Title` headings of the narrative. A section the doc has but
+ * coverage.json does not is silently exempt from the whole contract — the
+ * failure this skill's own SKILL.md warns about — so `check` makes it loud.
+ */
+function docSections() {
+  if (!existsSync(DOCFILE)) return null;
+  const src = readFileSync(DOCFILE, "utf8");
+  return [...src.matchAll(/^## §(\d+) · (.+)$/gm)].map((m) => ({ id: Number(m[1]), title: m[2].trim() }));
+}
+
 function cmdCheck() {
   const cov = loadCoverage();
   const stale = [];
-  const ok = [];
   for (const s of cov.sections) {
     const files = expand(s.paths);
     const now = hashFiles(files);
-    if (now !== s.hash) stale.push({ ...s, files, now });
-    else ok.push(s);
+    // A literal path that no longer exists is dropped by expand(), which
+    // changes the hash — but it should also be NAMED, or the only clue is a
+    // stale section whose remaining files all look unchanged.
+    const missing = s.paths.filter((p) => !p.includes("*") && !existsSync(join(ROOT, p)));
+    if (now !== s.hash || missing.length) stale.push({ ...s, files, now, missing });
   }
+
+  const headings = docSections();
+  const tracked = new Set(cov.sections.map((s) => s.id));
+  const untracked = headings ? headings.filter((h) => !tracked.has(h.id)) : [];
+  const orphaned = headings ? cov.sections.filter((s) => !headings.some((h) => h.id === s.id)) : [];
 
   console.log(`BIG-PICTURE freshness — ${cov.sections.length} sections tracked`);
   console.log(`  recorded against: ${cov.recordedAt}`);
   console.log("");
 
-  if (stale.length === 0) {
+  if (!headings) {
+    console.log(`!! ${rel(DOCFILE)} missing — coverage.json tracks a document that is not there.`);
+    return 2;
+  }
+
+  if (stale.length === 0 && untracked.length === 0 && orphaned.length === 0) {
     console.log("✓ every tracked section matches the code it documents.");
     return 0;
   }
 
-  console.log(`${stale.length} section(s) document code that has changed:`);
-  console.log("");
+  for (const h of untracked) {
+    console.log(`  §${h.id}  ${h.title}`);
+    console.log("      NOT TRACKED — add it to coverage.json with the paths that back it, then sync.");
+    console.log("");
+  }
+  for (const s of orphaned) {
+    console.log(`  §${s.id}  ${s.title}`);
+    console.log(`      in coverage.json but has no "## §${s.id} ·" heading in ${rel(DOCFILE)}.`);
+    console.log("");
+  }
+
+  if (stale.length) {
+    console.log(`${stale.length} section(s) document code that has changed:`);
+    console.log("");
+  }
   for (const s of stale) {
     console.log(`  §${s.id}  ${s.title}`);
     console.log(`      backed by: ${s.paths.join(", ")}`);
+    for (const m of s.missing) console.log(`      missing:   ${m}`);
     const changed = s.files.filter((f) => {
       const one = hashFiles([f]);
       const prev = (s.fileHashes || {})[f];
       return prev === undefined || prev !== one;
     });
+    const gone = Object.keys(s.fileHashes || {}).filter((f) => !s.files.includes(f) && !s.missing.includes(f));
     if (changed.length && changed.length <= 12) {
       for (const c of changed) console.log(`      changed:   ${c}`);
     } else if (changed.length) {
       console.log(`      changed:   ${changed.length} files`);
     }
+    for (const g of gone) console.log(`      removed:   ${g}`);
     console.log("");
   }
-  console.log("Next: re-read those sections in docs/big-picture/big-picture.html,");
-  console.log("update what is now wrong, then:");
-  console.log("  node .claude/skills/bigpicture/bigpicture.mjs render");
+  console.log(`Next: re-read those sections in ${rel(DOCFILE)}, fix what is now wrong`);
+  console.log("(or the paths in coverage.json), then:");
   console.log("  node .claude/skills/bigpicture/bigpicture.mjs sync");
   return 1;
 }
@@ -478,30 +571,6 @@ async function cmdImpact(targets) {
 }
 
 // ---------------------------------------------------------------------------
-// render
-// ---------------------------------------------------------------------------
-
-function cmdRender() {
-  const script = join(ROOT, "docs", "big-picture", "render.mjs");
-  if (!existsSync(script)) {
-    console.error(`!! ${rel(script)} missing`);
-    process.exit(2);
-  }
-  // Resolve electron's real binary rather than shelling out to npx: Node 20+
-  // refuses to spawnSync a Windows `.cmd` without `shell: true`
-  // (CVE-2024-27980), so `npx.cmd` dies with EINVAL. The electron package
-  // exports its executable path as a plain string.
-  let electronPath;
-  try {
-    electronPath = createRequire(join(ROOT, "package.json"))("electron");
-  } catch {
-    console.error("!! electron is not installed — run `npm install` first.");
-    process.exit(2);
-  }
-  execFileSync(electronPath, ["docs/big-picture/render.mjs"], { cwd: ROOT, stdio: "inherit" });
-}
-
-// ---------------------------------------------------------------------------
 
 const [cmd, ...rest] = process.argv.slice(2);
 switch (cmd) {
@@ -523,10 +592,7 @@ switch (cmd) {
     }
     await cmdImpact(rest);
     break;
-  case "render":
-    cmdRender();
-    break;
   default:
-    console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 16).map((l) => l.replace(/^\/\/ ?/, "")).join("\n"));
+    console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 15).map((l) => l.replace(/^\/\/ ?/, "")).join("\n"));
     process.exit(cmd ? 2 : 0);
 }

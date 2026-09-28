@@ -20,10 +20,10 @@
     "an-image-in-a-tool-result-is-flattened-to-image-omitted-on-the-tool-role-message"
   ],
   "freshness": {
-    "hash": "e95e6026ce0bd921",
+    "hash": "13e5d3271d5896fd",
     "fileHashes": {
-      "engine/providers/src/openai-compat.ts": "e95e6026ce0bd921"
+      "engine/providers/src/openai-compat.ts": "13e5d3271d5896fd"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

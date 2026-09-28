@@ -29,15 +29,15 @@
     "a-call-id-reused-by-a-later-reply-gets-a-row-of-its-own"
   ],
   "freshness": {
-    "hash": "fe0a124e7578a44e",
+    "hash": "24913773fae1b1e6",
     "fileHashes": {
-      "engine/core/src/runtime/session.ts": "93334dd384820dd3",
-      "engine/protocol/src/types.ts": "061461fc38ede72e",
-      "app/renderer/modules/landing.js": "1db0235c09b0fab6",
-      "app/renderer/modules/stream.js": "9e4399a34a290958",
-      "tui/src/engine/useEngine.ts": "1f3b6b8365a3b02e",
-      "tui/src/protocol.ts": "67830b00616900b8"
+      "engine/core/src/runtime/session.ts": "84a40095d91a590b",
+      "engine/protocol/src/types.ts": "e36ce0535a1d470f",
+      "app/renderer/modules/landing.js": "17b84406d9e4300b",
+      "app/renderer/modules/stream.js": "f58d58adf3efafe2",
+      "tui/src/engine/useEngine.ts": "d18032df5db0ec64",
+      "tui/src/protocol.ts": "a636b420ef7c0e86"
     },
-    "recordedAt": "2026-09-25"
+    "recordedAt": "2026-09-28"
   }
 }

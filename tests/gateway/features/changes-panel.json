@@ -19,11 +19,11 @@
     "a-fresh-session-starts-with-no-changes"
   ],
   "freshness": {
-    "hash": "4cf908ff9dc80255",
+    "hash": "336becc0efff9625",
     "fileHashes": {
-      "app/renderer/modules/workbench.js": "3807dcc0769945d4",
+      "app/renderer/modules/workbench.js": "cd0a1f9f42b15d0d",
       "app/renderer/modules/events.js": "4d38dcbafdd92f2b"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

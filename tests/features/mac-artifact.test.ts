@@ -28,7 +28,7 @@
  * `process.platform === "darwin"`, so the same file is correct read on either
  * platform; only the Windows branch is exercised, and verified, from here.
  *
- * ARTIFACT OPT-IN. Items 1-4 are `artifact = true` (decisions/0010): withheld
+ * ARTIFACT OPT-IN. Items 1-4 are `artifact = true` (docs/decisions/0010): withheld
  * under plain `npm test`, named on stderr, and run only under
  * `npm run test:artifacts` — this holds even for the Windows-truth branch,
  * per the brief for this session, though that branch alone is fast (no

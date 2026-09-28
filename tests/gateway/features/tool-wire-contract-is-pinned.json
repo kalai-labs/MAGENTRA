@@ -20,11 +20,11 @@
     "two-renders-and-two-registries-produce-identical-bytes"
   ],
   "freshness": {
-    "hash": "5ba26cf8988a447b",
+    "hash": "009be4f87a23c0ed",
     "fileHashes": {
-      "engine/tools/src/index.ts": "014afda5d9dbf689",
-      "engine/core/src/agent/tool.ts": "789027d09aaa17fd"
+      "engine/tools/src/index.ts": "f1fe5ca4c0823e4d",
+      "engine/core/src/agent/tool.ts": "3e5506edf577a6a2"
     },
-    "recordedAt": "2026-09-21"
+    "recordedAt": "2026-09-28"
   }
 }

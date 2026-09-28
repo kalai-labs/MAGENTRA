@@ -21,11 +21,11 @@
     "a-seedless-query-is-an-error-and-a-long-answer-is-truncated-at-200-lines"
   ],
   "freshness": {
-    "hash": "0dacf5f716cd15a5",
+    "hash": "30ba935b76eae733",
     "fileHashes": {
       "engine/tools/src/graphQuery.ts": "456c6d0780907ed5",
-      "engine/core/src/knowledge/graph.ts": "e0b546c2d5a61fd4"
+      "engine/core/src/knowledge/graph.ts": "d50c8d53146f6f90"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

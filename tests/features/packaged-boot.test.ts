@@ -12,7 +12,7 @@
  * `["proc"]` (2026-09-20): checklist 1-4 are about `config.ts` and are proved
  * by calling its exported functions against real files under a real,
  * redirectable `HOME` — a temp directory and files are the whole cost, which
- * is `fs` (decisions/0004's own test: "a record whose checklist … boots an
+ * is `fs` (docs/decisions/0004's own test: "a record whose checklist … boots an
  * engine on a workspace … was never pure"; the same reasoning makes this one
  * not `proc` either — nothing is spawned for 1-4). Checklist 5 spawns a real
  * child process end to end and owns its lifecycle, which is `proc`.
@@ -36,8 +36,8 @@
  * module instance, in a directory this test owns, whose frozen constants are
  * computed from whatever this test set up first. It is the real code,
  * unmodified, merely given a filesystem location it can be tested at — the
- * same shape as the `node_modules` junction the Prompt Lab tests use to run
- * `server.mjs` untouched from a sandbox (`promptlab-promote.test.ts`).
+ * same shape as the `node_modules` junction `tty-dispatch.test.ts` uses to run
+ * the TUI unedited from a sandbox.
  *
  * `tui/src/engine/host.ts` needs no such trick for checklist 5: its only
  * runtime import is `node:child_process` (its other two imports are

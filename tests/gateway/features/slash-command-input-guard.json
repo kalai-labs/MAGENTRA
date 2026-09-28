@@ -20,10 +20,10 @@
     "after-a-refused-frame-the-next-well-formed-one-is-processed"
   ],
   "freshness": {
-    "hash": "ef7418a5eb86e339",
+    "hash": "84b0212db247b114",
     "fileHashes": {
-      "engine/core/src/runtime/engine.ts": "ef7418a5eb86e339"
+      "engine/core/src/runtime/engine.ts": "84b0212db247b114"
     },
-    "recordedAt": "2026-09-19"
+    "recordedAt": "2026-09-28"
   }
 }

@@ -30,15 +30,15 @@
     "on-the-configured-provider-a-turns-reasoning-stays-inside-its-output"
   ],
   "freshness": {
-    "hash": "cae936ab9dbf0b4a",
+    "hash": "589e0919505b22c0",
     "fileHashes": {
-      "engine/protocol/src/types.ts": "8654e21472659eb9",
+      "engine/protocol/src/types.ts": "e36ce0535a1d470f",
       "engine/protocol/src/tokens.ts": "b402e08d2f7b0ca4",
-      "engine/providers/src/openai-compat.ts": "e8427236c4044fe6",
+      "engine/providers/src/openai-compat.ts": "13e5d3271d5896fd",
       "engine/core/src/runtime/sessionStats.ts": "c928036101235de4",
-      "engine/core/src/runtime/session.ts": "57ce38507d9c0d5f",
+      "engine/core/src/runtime/session.ts": "84a40095d91a590b",
       "app/renderer/modules/tokens.js": "07a16ec831b69940"
     },
-    "recordedAt": "2026-09-24"
+    "recordedAt": "2026-09-28"
   }
 }

@@ -5,7 +5,7 @@
  * every FILE in its own process, so no test — and no `process.on("exit")` in
  * one — can see more than its own file's share. A reporter runs in the PARENT,
  * receives every child's events, and is therefore the only place a run-wide
- * figure can be assembled. It is the same constraint decisions/0011 measured
+ * figure can be assembled. It is the same constraint docs/decisions/0011 measured
  * when the withheld-test banner turned into 109 copies of itself: anything a
  * test process prints, it prints once per file.
  *

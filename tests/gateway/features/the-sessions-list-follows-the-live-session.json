@@ -17,10 +17,10 @@
     "a-background-tabs-turn-asks-its-own-engine-and-not-the-focused-one"
   ],
   "freshness": {
-    "hash": "fbe6428a7b549db3",
+    "hash": "17b84406d9e4300b",
     "fileHashes": {
-      "app/renderer/modules/landing.js": "fbe6428a7b549db3"
+      "app/renderer/modules/landing.js": "17b84406d9e4300b"
     },
-    "recordedAt": "2026-09-24"
+    "recordedAt": "2026-09-28"
   }
 }

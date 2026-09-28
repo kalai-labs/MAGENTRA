@@ -205,7 +205,7 @@ class ThePackageShipsNoNodeModules extends BundleTest {
 
     // Every platform copies exactly the four runtime artifacts and nothing
     // else. Two platforms, not three: MAGENTRA stopped shipping Linux
-    // binaries (decisions/0014), so `build.linux` is gone and asserting over
+    // binaries (docs/decisions/0014), so `build.linux` is gone and asserting over
     // it would assert over a target that no longer exists.
     for (const platform of ["win", "mac"] as const) {
       const extra = pkg.build[platform]?.extraResources ?? [];

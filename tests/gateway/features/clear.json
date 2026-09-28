@@ -19,10 +19,10 @@
     "the-wipe-clears-the-task-list-unless-it-is-asked-not-to"
   ],
   "freshness": {
-    "hash": "d3c39cd158b8b979",
+    "hash": "cb492b0da4be4dd6",
     "fileHashes": {
-      "app/renderer/modules/composer.js": "d3c39cd158b8b979"
+      "app/renderer/modules/composer.js": "cb492b0da4be4dd6"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

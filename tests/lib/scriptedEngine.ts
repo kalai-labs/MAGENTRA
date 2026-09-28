@@ -25,7 +25,7 @@
  * NEVER ASSERT THAT THE FAKE SAID WHAT IT WAS TOLD TO SAY. A test of a tool
  * asserts on the TOOL's result (`tool_call_finished`, the file on disk, the
  * `tool_result` block in the next request); the scripted text is only there to
- * end the turn. tests/README rule 4 and decisions/0009 are about exactly this.
+ * end the turn. tests/README rule 4 and docs/decisions/0009 are about exactly this.
  *
  * TWO SETTINGS THE FIXTURE PINS, so a script can be read as the sequence of
  * model calls it will really consume:

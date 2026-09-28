@@ -96,7 +96,7 @@ jobs:
   # docs/adr/0009-updates-have-two-tiers.md.
   #
   # There is no Linux leg: MAGENTRA does not ship Linux binaries — see
-  # decisions/0014-magentra-does-not-ship-linux.md, which also records what to
+  # docs/decisions/0014-magentra-does-not-ship-linux.md, which also records what to
   # put back. `app/main/updates.js` still KNOWS the Linux formats (AppImage,
   # deb, tar.gz) on purpose, so a self-built copy still resolves its own tier.
   binaries:

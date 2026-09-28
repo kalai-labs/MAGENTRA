@@ -5,12 +5,16 @@ description: The system map, and the contract that keeps it true. Use before wri
 
 # bigpicture
 
-Two artifacts, one rule.
+Two documents, one rule.
 
-| Artifact | What it is | Who writes it |
+| Document | What it is | Who writes it |
 |---|---|---|
 | `docs/big-picture/MAP.md` | Per-file skeleton — exports, members **with line numbers**, import edges | **Generated.** Never hand-edit. |
-| `BIG-PICTURE.pdf` | The narrative: why it is built this way, invariants, drift | **You.** Source is `docs/big-picture/big-picture.html`. |
+| `docs/big-picture/BIG-PICTURE.md` | The narrative: how each part works, why it is built that way, invariants, drift | **You.** Plain Markdown, no build step. |
+
+`docs/big-picture/coverage.json` binds them to the code: every `## §N · Title`
+section of BIG-PICTURE.md lists the paths that back it, with a hash of their
+content at the time the section was last known true.
 
 **The rule: read the map before you write, run `check` after you write.**
 A change that makes the doc wrong and leaves it wrong is how a repo stops being
@@ -24,8 +28,7 @@ Paths below are relative to the repo root.
 node .claude/skills/bigpicture/bigpicture.mjs impact <file> [file...]   # before editing
 node .claude/skills/bigpicture/bigpicture.mjs check                     # after editing
 node .claude/skills/bigpicture/bigpicture.mjs map                       # regenerate MAP.md
-node .claude/skills/bigpicture/bigpicture.mjs sync                      # re-record after updating the doc
-node .claude/skills/bigpicture/bigpicture.mjs render                    # rebuild the PDF
+node .claude/skills/bigpicture/bigpicture.mjs sync [--section N]        # re-record after updating the doc
 ```
 
 `map` and `impact` need `npm run build` first — they read the engine's compiled
@@ -34,8 +37,9 @@ index. `check` and `sync` do not.
 ### Order of work
 
 1. **Orient.** Grep `docs/big-picture/MAP.md` for the thing you are about to
-   write. If it already exists, you are editing, not adding. This is the step
-   that prevents a second implementation of something.
+   write, and read the BIG-PICTURE section that owns the area (§17 is a
+   concept → file index). If it already exists, you are editing, not adding.
+   This is the step that prevents a second implementation of something.
 2. **`impact <file>`** on every file you intend to edit. It names the reach, the
    untyped `app/` files downstream, and **which BIG-PICTURE sections document
    this file**.
@@ -43,9 +47,11 @@ index. `check` and `sync` do not.
    and the frame/symbol seams. `impact` prints the exact command.
 4. Write the code. Verify with the gates in `bigboycoding`.
 5. **`check`.** Exit 1 and a section list means the doc now claims something
-   untrue. Fix `docs/big-picture/big-picture.html`, then `render`, then `sync`.
-   If the change genuinely did not alter what a section claims, `sync` alone is
-   the right answer — say so in your report.
+   untrue. Fix that section of `docs/big-picture/BIG-PICTURE.md` (or the paths
+   in `coverage.json`, if a file moved), then `sync`. If the change genuinely
+   did not alter what a section claims, `sync --section N` alone is the right
+   answer — say so in your report.
+6. **`map`** if you added, removed or moved a top-level symbol or a file.
 
 `check` is cheap and safe to run any time. Treat a non-empty result as a task,
 not a warning.
@@ -69,42 +75,49 @@ FILE  engine/protocol/src/types.ts
 
 ```
 $ node .claude/skills/bigpicture/bigpicture.mjs check
-BIG-PICTURE freshness — 14 sections tracked
+BIG-PICTURE freshness — 19 sections tracked
 
-3 section(s) document code that has changed:
+2 section(s) document code that has changed:
 
   §6  The finishing ladder
       backed by: engine/core/src/runtime/finishing.ts
       changed:   engine/core/src/runtime/finishing.ts
-
-  §9  Token algebra and context
-      backed by: engine/protocol/src/tokens.ts, .../sessionStats.ts, app/renderer/modules/tokens.js
-      changed:   app/renderer/modules/tokens.js
 ```
+
+Besides changed files, `check` names a backing path that no longer exists
+(`missing:`), a section heading in BIG-PICTURE.md that coverage.json does not
+track (`NOT TRACKED`), and a coverage entry whose heading is gone. All of them
+exit 1.
 
 Exit 0 clean, 1 stale, 2 broken setup — usable in a chain.
 
 ## The map's shape
 
-`MAP.md` is 131 files in ~400 lines: 22 hubs in full, then one line each.
+`MAP.md` lists every scanned file in one line each (325 files, 1117 lines on
+2026-09-28), and 22 hubs in full:
 
 ```
 ### `engine/core/src/runtime/session.ts`
-*2802L · ↓26 transitive · ←2 direct*
+*3353L · ↓120 transitive · ←2 direct*
 
-**exports** `isSelfVerifyDone` `SessionOptions` `Session`
-**members** `remind:607 runInference:720 describeImage:822 spawnAgent:910
-             runTurn:1238 streamAssistantTurn:1737 executeToolCalls:1872 …`
+**exports** `isSelfVerifyDone` `addonNamedIn` `SessionOptions` `Session`
+**members** `remind:695 runInference:808 describeImage:910 spawnAgent:1001 runTurn:1341 …`
 ```
 
-The line numbers are the point: jump to `runTurn:1238` instead of reading 2800
-lines. Regenerate with `map` whenever you add or move a top-level symbol.
+The line numbers are the point: jump to `runTurn:1341` instead of reading 3353
+lines. The transitive count includes the test files that import a module. They are only as fresh as the last `map`, which is why BIG-PICTURE.md
+cites files and symbols, never line numbers.
 
 ## Adding a section to BIG-PICTURE
 
-Add it to `docs/big-picture/coverage.json` with the paths that back it, then
-`sync`. **A section that is not in `coverage.json` never goes stale** — it is
-silently exempt from the whole contract, which is worse than not having it.
+Write it as `## §N · Title` (the next unused number — never renumber: other
+files cite sections by number, e.g. §16 "Mirrored constants"), add an entry to
+`coverage.json` with the paths that back it, then `sync --section N`. `check`
+refuses a heading with no coverage entry, because a section outside the
+contract never goes stale — worse than not having it.
+
+Paths in coverage.json are literal files, `dir/**`, or `dir/**/*.ext`. Nothing
+else expands.
 
 ## Gotchas
 
@@ -119,14 +132,23 @@ silently exempt from the whole contract, which is worse than not having it.
   checkout` rewrites mtimes with identical content, so the guard fires on a
   clean tree and `npm run build` **cannot** clear it — tsc correctly emits
   nothing. Ask the compiler.
+- **Hashes fold CRLF to LF.** The repo has `core.autocrlf=true` and no
+  `.gitattributes`, so the same commit is CRLF on Windows and LF on a Mac. Until
+  2026-09-28 the hashes were raw bytes, and a coverage file recorded on one
+  machine read 14 of 14 sections stale on the other with nothing changed. The
+  gateway's `tools/magentra-gateway/src/freshness.ts` made the same fix first.
+- **A `package.json` is hashed without its `version`.** Every release bumps
+  eight manifests; a section backed by them must not go stale on every push to
+  `main` when nothing it describes changed. For the same reason `VERSION` is
+  never a backing path, and a gateway record is hashed without its `freshness`
+  block, which every reconcile rewrites.
 - **Bump `GraphData.version` with any extraction change.** Graph entries are
   reused whenever a file's mtime+size are unchanged, so a scanner fix is
   invisible on every workspace that already has a `.magentra/graph.json`. Two
   scanner defects were fixed on 2026-08-01 (multi-line braced imports produced
   no edge; workspace packages resolved to `pkg:` nodes) and the version went
   1 → 2 precisely so existing caches are rejected and rebuilt. A fix without the
-  bump ships as a no-op. The driver's own re-scan workaround was deleted in the
-  same change — verified byte-identical edges, so there is one scanner again.
+  bump ships as a no-op.
 - **`app/renderer/modules/*` have zero import edges.** They are classic scripts
   sharing one global scope, loaded in `index.html` order. Graph reach can never
   find them, so hub ranking gives `app/` a reserved quota — without it the hub
@@ -134,13 +156,11 @@ silently exempt from the whole contract, which is worse than not having it.
   the same reason a protocol change shows no `app reach`: that seam is bare
   frame strings, and only `blast-radius.mjs --frame` sees it.
 - **Fan-in alone is the wrong hub score.** It put `util/fsAtomic.ts` (35 lines,
-  one export) at #1 and left `session.ts` out entirely. Leaf utilities always
-  win a pure-fan-in race and are exactly the files you least need indexed.
-  The score is reach + coordination + size, tests excluded.
-- **Overlapping coverage is intended.** `app/renderer/modules/tokens.js` is
-  tracked by both §9 and §14, so one edit flags both. Read both; usually only
-  one is actually wrong.
-- **`sync` without editing the doc defeats the point.** It records "I looked at
+  one export) at #1 and left `session.ts` out entirely. The score is reach +
+  coordination + size, tests excluded.
+- **Overlapping coverage is intended.** A file backing two sections flags both
+  on one edit. Read both; usually only one is actually wrong.
+- **`sync` without reading the doc defeats the point.** It records "I looked at
   this and it is still true." Only run it after you have actually re-read the
   flagged sections.
 
@@ -152,19 +172,5 @@ silently exempt from the whole contract, which is worse than not having it.
 | `!! engine/core/dist is missing entirely` | Never built. `npm run build`. |
 | `!! <path> — not in the scanned graph` | Typo, or you pointed at `dist/`. Use the `src/` path. |
 | `check` flags a section you did not touch | A glob section (`app/main/**/*.js`) caught a sibling edit. Compare the `changed:` list against your diff. |
+| `missing: <path>` | A backing file was moved or deleted. Point coverage.json at its new home (or drop it), re-read the section, `sync`. |
 | `reach 0 direct · 0 transitive` on a renderer module | Expected — classic scripts have no import edges. Not dead code. |
-| `render` fails | Needs Electron: `npx electron docs/big-picture/render.mjs`. Takes ~10s. |
-
-## Verified
-
-Every command above was run on 2026-08-01, Windows 11 / Node 24.14, repo at
-`655326f`, version 0.16.0:
-
-- `map` → 131 files, 22 hubs, 406 lines
-- `sync` → 14 sections recorded
-- `check` → clean (exit 0); then with two files edited → 3 sections flagged
-  (exit 1), naming the exact changed file in each; reverted → clean again
-- `impact` → on `engine/protocol/src/types.ts` (53 transitive, wire-seam
-  warning, §4), `app/renderer/modules/tabs.js` (0 edges, §13 + §14),
-  `app/main/config.js` (5 untyped `app/` files downstream, §10 + §14)
-- `render` → `BIG-PICTURE.pdf`, 36 pages, 587 KB

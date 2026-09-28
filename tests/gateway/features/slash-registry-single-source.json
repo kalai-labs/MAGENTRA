@@ -21,11 +21,11 @@
     "every-built-in-entry-has-a-slash-prefixed-cmd-a-description-and-no-duplicate"
   ],
   "freshness": {
-    "hash": "8c7cff9d8870dfce",
+    "hash": "a4b1ad62c4a6fee1",
     "fileHashes": {
-      "engine/core/src/runtime/engine.ts": "ef7418a5eb86e339",
-      "engine/protocol/src/types.ts": "11d32208f2241da2"
+      "engine/core/src/runtime/engine.ts": "84b0212db247b114",
+      "engine/protocol/src/types.ts": "e36ce0535a1d470f"
     },
-    "recordedAt": "2026-09-19"
+    "recordedAt": "2026-09-28"
   }
 }

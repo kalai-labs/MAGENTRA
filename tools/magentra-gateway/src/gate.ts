@@ -1,15 +1,15 @@
 /**
- * The gate — SPEC §4.3, decisions/0005, narrowed by decisions/0006.
+ * The gate — SPEC §4.3, docs/decisions/0005, narrowed by docs/decisions/0006.
  *
  * The gateway is named for what it does: it decides whether the inventory may
  * be believed. This file composes the two stages into one verdict and owns the
  * hard-block semantics.
  *
- * ORDER (decisions/0005): connection is checked at startup, as the TUI does;
+ * ORDER (docs/decisions/0005): connection is checked at startup, as the TUI does;
  * freshness is checked on every read. Neither is bypassable by flag — if it
  * were, the flag would become the default in every hurry.
  *
- * WHAT THE VERDICT GATES (decisions/0006). Nothing runs from here. Tests are
+ * WHAT THE VERDICT GATES (docs/decisions/0006). Nothing runs from here. Tests are
  * run by the coding agent that implements a description, as a mandatory step
  * after the work, outside this tool. So `blocked` no longer means "no test may
  * run"; it means "no record here may be trusted" — a description written

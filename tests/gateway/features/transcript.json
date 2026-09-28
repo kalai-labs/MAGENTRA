@@ -21,10 +21,10 @@
     "an-interrupted-tool-batch-lands-in-the-transcript-already-paired"
   ],
   "freshness": {
-    "hash": "07a6ca3aedda6222",
+    "hash": "8dc45df43a958a9c",
     "fileHashes": {
-      "engine/core/src/state/transcript.ts": "07a6ca3aedda6222"
+      "engine/core/src/state/transcript.ts": "8dc45df43a958a9c"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

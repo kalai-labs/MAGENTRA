@@ -25,13 +25,13 @@
     "a-noisy-commands-live-tail-measures-the-page-once-per-frame-not-once-per-line"
   ],
   "freshness": {
-    "hash": "2e1fc6495263d3d8",
+    "hash": "ea7932b8cb4502b8",
     "fileHashes": {
-      "app/renderer/modules/landing.js": "4e7fbe06fa9a6471",
-      "app/renderer/modules/stream.js": "deac3e58ece6e0d6",
-      "app/renderer/modules/util.js": "3466935dccd87db0",
-      "app/renderer/modules/views.js": "5b08f42b45600fe7"
+      "app/renderer/modules/landing.js": "17b84406d9e4300b",
+      "app/renderer/modules/stream.js": "f58d58adf3efafe2",
+      "app/renderer/modules/util.js": "9a7cc031b00eb966",
+      "app/renderer/modules/views.js": "fe61fc0e6918d8dd"
     },
-    "recordedAt": "2026-09-23"
+    "recordedAt": "2026-09-28"
   }
 }

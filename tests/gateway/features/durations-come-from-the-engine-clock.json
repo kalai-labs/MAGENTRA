@@ -24,14 +24,14 @@
     "frames-delivered-late-show-the-engines-durations-not-the-delivery-gap"
   ],
   "freshness": {
-    "hash": "013e966130a06b1b",
+    "hash": "4f08054aa55103f8",
     "fileHashes": {
-      "engine/protocol/src/types.ts": "8654e21472659eb9",
+      "engine/protocol/src/types.ts": "e36ce0535a1d470f",
       "engine/core/src/state/taskStore.ts": "edcf294effa4b50a",
-      "engine/core/src/runtime/session.ts": "57ce38507d9c0d5f",
-      "app/renderer/modules/tasks.js": "3cc91aacd6ca38e0",
-      "app/renderer/modules/views.js": "4c962fd95fb289b1"
+      "engine/core/src/runtime/session.ts": "84a40095d91a590b",
+      "app/renderer/modules/tasks.js": "28c4321d880cdf05",
+      "app/renderer/modules/views.js": "fe61fc0e6918d8dd"
     },
-    "recordedAt": "2026-09-24"
+    "recordedAt": "2026-09-28"
   }
 }

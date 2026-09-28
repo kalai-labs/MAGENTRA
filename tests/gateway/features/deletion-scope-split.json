@@ -20,10 +20,10 @@
     "overdrive-is-the-one-mode-that-skips-a-protected-deletion"
   ],
   "freshness": {
-    "hash": "5e675cbefa29932b",
+    "hash": "1ada79ce2c432655",
     "fileHashes": {
-      "engine/core/src/runtime/permissions.ts": "5e675cbefa29932b"
+      "engine/core/src/runtime/permissions.ts": "1ada79ce2c432655"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

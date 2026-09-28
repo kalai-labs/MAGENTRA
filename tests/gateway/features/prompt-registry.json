@@ -19,10 +19,10 @@
     "orphan-files-are-listed-a-reset-deletes-the-file-and-a-duplicate-id-throws"
   ],
   "freshness": {
-    "hash": "cd3be27b66ec95fc",
+    "hash": "fe250940f2061f6a",
     "fileHashes": {
-      "engine/protocol/src/prompts.ts": "cd3be27b66ec95fc"
+      "engine/protocol/src/prompts.ts": "fe250940f2061f6a"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

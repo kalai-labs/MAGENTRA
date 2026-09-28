@@ -4,7 +4,7 @@
  * Every record is validated here on load. A malformed record is a loud failure
  * that names its file; it is never defaulted-and-continued, because an
  * inventory that can quietly disagree with the code is worse than no inventory
- * (decisions/0001).
+ * (docs/decisions/0001).
  *
  * Two things the schema deliberately refuses, both from §2.1:
  *
@@ -30,7 +30,7 @@ import { z } from "zod";
  */
 export const AREAS = ["engine", "app", "tui", "protocol", "providers", "tooling"] as const;
 
-/** The axis tests inherit on (decisions/0004). Kind decides setup, teardown, and whether a test can run at all. */
+/** The axis tests inherit on (docs/decisions/0004). Kind decides setup, teardown, and whether a test can run at all. */
 export const KINDS = ["pure", "fs", "proc", "net", "llm", "ui"] as const;
 
 /** Derived on load, never stored. See {@link deriveStatus}. */
@@ -169,7 +169,7 @@ export type DescriptionStatus = DescriptionRecord["status"];
  *
  * It is a set of ids and a set of kinds rather than the record's array because
  * the kind a test proves lives in the file, as the class it extends
- * (decisions/0004) — an id carries no kind, so the record alone could never
+ * (docs/decisions/0004) — an id carries no kind, so the record alone could never
  * answer whether every declared kind is covered.
  */
 export interface FeatureProof {
@@ -181,7 +181,7 @@ export interface FeatureProof {
  * §2.1's derivation: `untested` = no tests; `partial` = tests exist but not for
  * every declared kind; `covered` = one per kind.
  *
- * DERIVED FROM THE FILES, NOT FROM THE RECORD (fixed 2026-09-10, decisions/0007).
+ * DERIVED FROM THE FILES, NOT FROM THE RECORD (fixed 2026-09-10, docs/decisions/0007).
  * §2.1 defines `tests` as "test ids present in `tests/features/<id>.test.ts`",
  * so the file is the referent and the array is a stored copy of it. Deriving
  * status from the copy meant a hand-typed id read as coverage and a real test

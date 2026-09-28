@@ -20,11 +20,11 @@
     "neither-ladder-lists-a-level-twice"
   ],
   "freshness": {
-    "hash": "aca7d17438bd3c75",
+    "hash": "f14f92976a6d331f",
     "fileHashes": {
-      "engine/protocol/src/types.ts": "11d32208f2241da2",
+      "engine/protocol/src/types.ts": "e36ce0535a1d470f",
       "app/main/config.js": "b023d6d155878fb9"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

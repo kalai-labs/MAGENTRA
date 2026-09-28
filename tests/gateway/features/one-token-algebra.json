@@ -20,10 +20,10 @@
     "no-second-chars-per-token-constant-or-k-m-formatter-exists-outside-the-two-sanctioned-files"
   ],
   "freshness": {
-    "hash": "034eedec535e4a01",
+    "hash": "b402e08d2f7b0ca4",
     "fileHashes": {
-      "engine/protocol/src/tokens.ts": "034eedec535e4a01"
+      "engine/protocol/src/tokens.ts": "b402e08d2f7b0ca4"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

@@ -19,11 +19,11 @@
     "the-workspace-menu-offers-the-wizard-and-the-vision-toggle"
   ],
   "freshness": {
-    "hash": "49e308fe8a25e63d",
+    "hash": "a4ec8b6dede03b0d",
     "fileHashes": {
-      "app/renderer/index.html": "a84edad7b4d5fba1",
+      "app/renderer/index.html": "18b7cf9e72c780eb",
       "app/renderer/modules/setup.js": "ce3adc6655145389"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

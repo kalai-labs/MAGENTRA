@@ -44,7 +44,7 @@ a person speaks for the project in a public space.
 
 ## Reports
 
-Report bad behaviour to the maintainers at **ozturkmuhammetali.official@gmail.com**.
+Report bad behaviour to the maintainers at **muhammetaliozturk.official@gmail.com**.
 
 The maintainers look at every report quickly and fairly. The maintainers respect
 the privacy and the safety of the person who makes the report.

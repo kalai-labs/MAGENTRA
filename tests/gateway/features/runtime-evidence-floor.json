@@ -24,10 +24,10 @@
     "a-write-refused-by-the-freshness-check-does-not-count-as-a-changed-file"
   ],
   "freshness": {
-    "hash": "81dd55bfbeb78d6c",
+    "hash": "e0faf82266e78cdb",
     "fileHashes": {
-      "engine/core/src/runtime/finishing.ts": "81dd55bfbeb78d6c"
+      "engine/core/src/runtime/finishing.ts": "e0faf82266e78cdb"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

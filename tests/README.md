@@ -56,9 +56,9 @@ at all.
 Measured on 2026-09-21, engine freshly built: `npm test` 86s / 499 run of 584
 registered (85 withheld: 51 ui, 26 llm, 8 artifact), `npm run test:ui` 51
 tests, `npm run test:llm` 26 tests in ~5 minutes. Why `test:ui` subtracts is
-[`../decisions/0011`](../decisions/0011-ui-tests-are-opt-in.md); why `test:llm`
+[`../docs/decisions/0011`](../docs/decisions/0011-ui-tests-are-opt-in.md); why `test:llm`
 now does too, having been additive until that date, is
-[`../decisions/0013`](../decisions/0013-a-test-llm-run-is-the-llm-kind-alone.md).
+[`../docs/decisions/0013`](../docs/decisions/0013-a-test-llm-run-is-the-llm-kind-alone.md).
 
 Three things about that command, all verified on the platform rather than assumed:
 
@@ -94,7 +94,7 @@ runner cannot currently tell "everything passed" from "nothing ran". It closes
 the moment the first test lands, and the durable answer is the gateway's derived
 `status` (no record reads `covered` without a test per declared kind) rather
 than a flag on `node --test`, which has none. Adding a wrapper that fails on an
-empty discovery would be a runner, and decisions/0006 removed the runner on
+empty discovery would be a runner, and docs/decisions/0006 removed the runner on
 purpose.
 
 Because Node strips types instead of compiling them, **imports inside `tests/`
@@ -117,7 +117,7 @@ tools and the registry, the version tool, addons, prompt assembly. Phase 2
 (2026-09-20) covered the 22 `fs`-declared features and the one `net` one —
 the addon loader, the file tools and their freshness store, the knowledge
 indexes and the tools over them, layered settings and secret handling, the
-prompt registry and the Prompt Lab, sessions and the transcript, profile
+prompt registry, sessions and the transcript, profile
 pickup, version sync, and the OpenAI-compatible negotiation loop.
 
 `lib/` is SPEC §11 step 6: the base plus all six kinds. `llm` was written last
@@ -141,8 +141,9 @@ and refused the turn, and an unknown command was echoed with a doubled slash.
 Phase 2 found and fixed two more, each inside the record's own entry file: the
 symbol index recorded every TypeScript declaration that follows a blank line
 one line too early (`^\s*` let the export regex start its match on the line
-above), and Prompt Lab's `/api/reset-all` echoed a `changed` event per cleared
-prompt to the page it had just told to reset everything. Two checklist clauses
+above), and the prompt editor's `/api/reset-all` echoed a `changed` event per
+cleared prompt to the page it had just told to reset everything (the editor was
+removed on 2026-09-28). Two checklist clauses
 are withheld until their records are reconciled, because the approved spec and
 the code disagree on a number: `prompt-registry` pins 43 prompts in 7 groups
 where the catalog holds 46 in 6 (73 in 7 once the tool registry is built), and
@@ -193,18 +194,16 @@ OpenAI-compatible provider reaches the network through the global `fetch` and
 the only place to read what it sent is the far end of a socket; two gained
 `ui` because the renderer's copy of a mirrored constant exists only in a
 running page. Phase 2 re-declared four: `transcript` gained `pure` for its
-pairing repair, and the three Prompt Lab records became `proc` (two outright,
-one beside `fs`), because `server.mjs` exports nothing and starts listening on
-import, so the only honest way to prove it is to spawn it — in a sandbox copy
-of the repository, since `promote` edits the real engine sources and runs the
-real compiler.
+pairing repair, and three records of the prompt editor (removed on 2026-09-28)
+became `proc`, because its server exported nothing and started listening on
+import, so the only honest way to prove it was to spawn it.
 
 **A deferred feature may be proven.** Nine records are `deferred` by rule — all
 their entry files sit under `app/renderer/` — and this base used to refuse any
 test written for one. SPEC §2.1 says only that such a feature "carries no test
 expectation" and "never counts against coverage"; it does not forbid a test. All
 nine are now proven, through the real page in a real app. See
-[`../decisions/0008`](../decisions/0008-a-deferred-feature-may-still-be-proven.md).
+[`../docs/decisions/0008`](../docs/decisions/0008-a-deferred-feature-may-still-be-proven.md).
 
 **Real-model tests are opt-in, counted as skipped, and `test:llm` runs them
 ALONE.** `llm` is the one kind `npm test` does not run: it calls a real
@@ -222,20 +221,20 @@ npm run test:llm   the llm kind and nothing else. Every other kind is set
 directly. The script ALSO works through `npm_lifecycle_event`, because
 `MAGENTRA_LLM_TESTS=1 node …` is sh syntax and npm runs scripts through
 `cmd.exe` on Windows, where it is not an assignment but a missing command; see
-[`../decisions/0009`](../decisions/0009-real-model-tests-are-opt-in.md).
+[`../docs/decisions/0009`](../docs/decisions/0009-real-model-tests-are-opt-in.md).
 
 That command was ADDITIVE — the ordinary suite plus the real-model tests — until
 2026-09-21, when `npm test` and `npm run test:llm` were measured executing an
 identical 558 tests, 499 passing, 59 skipped, the two name lists matching line
 for line. The immediate cause was that nothing extended `LlmTest` at all; the
 shape was wrong regardless, for the reasons in
-[`../decisions/0013`](../decisions/0013-a-test-llm-run-is-the-llm-kind-alone.md).
+[`../docs/decisions/0013`](../docs/decisions/0013-a-test-llm-run-is-the-llm-kind-alone.md).
 
 **26 real-model tests now exist**, written the same day, covering 9 of the 15
 records that declare the kind: `turn-loop`, `clarify-pre-layer`, `interrupt`,
 `compaction`, `resume`, `self-verify-rung`, `approval-note`, `standards-md`,
-`mid-run-steering-both-stances`. The other six are named, with reasons, in
-`a-to-do.txt` §1 — three are subagent work deferred to a later version, one is
+`mid-run-steering-both-stances`. The other six are left unwritten on purpose —
+three are subagent work deferred to a later version, one is
 a desktop wizard, and two (`reuse-check`, `stall-detector`) look mis-declared:
 their subjects are reachable without a model, and the branch worth proving
 cannot be induced from one. Naming them beats a flaky green.
@@ -258,7 +257,7 @@ per-turn billed figure, and `lib/llmUsageReporter.mjs` totals them. It is a
 REPORTER rather than something a test prints because `node --test` gives every
 FILE its own process, so the parent is the only place a run-wide figure exists —
 the same constraint that turned the withheld-test banner into 109 copies of
-itself in [`../decisions/0011`](../decisions/0011-ui-tests-are-opt-in.md). It is
+itself in [`../docs/decisions/0011`](../docs/decisions/0011-ui-tests-are-opt-in.md). It is
 added alongside `spec`, never in place of it, and is why `test:llm` is the one
 test script whose command line differs at all. A cost estimate appears only when
 the model is in the engine's rate card, which is `config/pricing.ts`'s own rule:
@@ -296,7 +295,7 @@ than a silent `pass 0`. Neither prints a banner for `ui` — 20 files hold
 ui tests and each is its own process, so the banner became 20 copies on
 `npm test` and 109 on `test:ui`; the per-test skip reason says the same thing in
 the right place. See
-[`../decisions/0011`](../decisions/0011-ui-tests-are-opt-in.md).
+[`../docs/decisions/0011`](../docs/decisions/0011-ui-tests-are-opt-in.md).
 
 **This is not rule 4's skip, and the first attempt at it was worse.** Not
 registering a withheld test looks stricter and is the opposite: `node:test`
@@ -325,7 +324,7 @@ asserting the truth of whatever OS is running it. A `darwin`-tagged test still
 runs, and still has to prove something, in an ordinary `npm test` on Windows.
 Asking for an OS you are not on withholds every selected test, naming the OS it
 needs, and reports `pass 0` rather than a green. See
-[`../decisions/0012`](../decisions/0012-os-tests-are-selected-by-subject.md).
+[`../docs/decisions/0012`](../docs/decisions/0012-os-tests-are-selected-by-subject.md).
 
 - **File modes** are asserted on POSIX; on Windows, which has none, the same
   tests assert that the write landed.
@@ -411,7 +410,7 @@ What the base enforces, by mechanism rather than by reminder:
 ## What the gateway reads out of a test file
 
 `tools/magentra-gateway/src/tests.ts` parses this directory and derives each
-record's `status` from what it finds ([`../decisions/0007`](../decisions/0007-tests-are-discovered-not-declared.md)).
+record's `status` from what it finds ([`../docs/decisions/0007`](../docs/decisions/0007-tests-are-discovered-not-declared.md)).
 It parses; it never imports or runs a test. Four things it needs, each of which
 becomes a named problem in the gateway rather than a silent omission:
 
@@ -432,8 +431,8 @@ scaffold this reset removed. So a feature record exists before its test, and the
 record carries the dependency information an agent needs in order to write that
 test without guessing what else it touches.
 
-Design and rationale: [`../decisions/`](../decisions/). Read
-`decisions/SPEC.md` before adding anything here.
+Design and rationale: [`../docs/decisions/`](../docs/decisions/). Read
+`docs/decisions/SPEC.md` before adding anything here.
 
 ## The rules that are not negotiable
 
@@ -446,7 +445,7 @@ Design and rationale: [`../decisions/`](../decisions/). Read
 4. **A failing test stays failing until the feature is fixed correctly.** No
    skip, no soft assertion, no expected-failure state. The one `skip` in the
    suite is the registrar's, for an `llm` test nobody asked for; it is decided
-   before any test body exists and no test can reach it (decisions/0009).
+   before any test body exists and no test can reach it (docs/decisions/0009).
 5. **The suite must run without the gateway.** `npm test` imports nothing from
    `tools/magentra-gateway/` — `lib/inventory.ts` reads the committed records
    with `readFileSync` for exactly this reason. A broken tool must never mean no

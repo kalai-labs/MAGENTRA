@@ -14,10 +14,10 @@
   "deferred": false,
   "tests": [],
   "freshness": {
-    "hash": "924ffeb15d514ced",
+    "hash": "81c856cdc4f7982b",
     "fileHashes": {
-      "app/main/updates.js": "924ffeb15d514ced"
+      "app/main/updates.js": "81c856cdc4f7982b"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

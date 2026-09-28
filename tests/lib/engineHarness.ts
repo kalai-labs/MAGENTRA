@@ -22,7 +22,7 @@
  * compaction summary kept what the session needed. `FakeProvider` answers what
  * the script told it to. That is the `llm` kind's business, and `llmTest.ts` is
  * where a real endpoint is reached; this harness is deliberately not a route to
- * one (decisions/0009).
+ * one (docs/decisions/0009).
  *
  * HOW THE TEST SEES INSIDE. Three of the four things `set_connection` must do
  * happen to state that never leaves this process — `process.env`, the in-memory

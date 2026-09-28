@@ -19,10 +19,10 @@
     "a-worktree-entered-by-path-is-never-removed-even-with-discard-changes"
   ],
   "freshness": {
-    "hash": "a6838b7237489b7c",
+    "hash": "10330fdd45efd516",
     "fileHashes": {
-      "engine/tools/src/worktree.ts": "a6838b7237489b7c"
+      "engine/tools/src/worktree.ts": "10330fdd45efd516"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

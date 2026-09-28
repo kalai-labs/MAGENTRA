@@ -87,7 +87,7 @@ let mainWindow = null;
 // Each open workspace runs in its OWN engine process — a "tab". The pool holds
 // per-tab process state (the child, its not-yet-exited predecessor, and stdio
 // line buffers) so several workspaces can run concurrently; the engine binary
-// and the wire protocol are unchanged (see docs/CONCURRENT-WORKSPACES.md). Today
+// and the wire protocol are unchanged (docs/big-picture/BIG-PICTURE.md §13). Today
 // the renderer drives one tab at a time, so exactly one entry exists and the
 // behaviour matches a single engine; `activeTab()` is the tab an untagged
 // renderer request targets.
@@ -105,7 +105,7 @@ let mainWindow = null;
 const engineTabs = new Map();
 let tabSeq = 0;
 
-// At most this many workspaces run at once (docs/CONCURRENT-WORKSPACES.md): a
+// At most this many workspaces run at once (BIG-PICTURE §13): a
 // hard cap with manual close, no eviction. Each tab is one engine process. The
 // cap is global — across every window.
 const MAX_TABS = 4;

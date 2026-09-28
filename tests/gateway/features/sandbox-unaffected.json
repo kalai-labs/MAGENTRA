@@ -18,10 +18,10 @@
     "the-wrapper-reaches-the-sandbox-decision-not-the-tui"
   ],
   "freshness": {
-    "hash": "595c98f900fe14eb",
+    "hash": "d19b6a7473bbf75e",
     "fileHashes": {
-      "app/scripts/afterPack.js": "595c98f900fe14eb"
+      "app/scripts/afterPack.js": "d19b6a7473bbf75e"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

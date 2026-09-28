@@ -15,11 +15,11 @@
   "deferred": false,
   "tests": [],
   "freshness": {
-    "hash": "29432c24518a20cc",
+    "hash": "6f82acb64069dd17",
     "fileHashes": {
       "app/build/installer.nsh": "9fdcc7568c78b236",
-      "app/scripts/afterPack.js": "595c98f900fe14eb"
+      "app/scripts/afterPack.js": "d19b6a7473bbf75e"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

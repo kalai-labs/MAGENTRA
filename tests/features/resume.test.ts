@@ -16,8 +16,8 @@
  * about the paint list, and then the one that needs the model.
  *
  * CHECKLIST ITEMS 1 AND 3 ARE NOT HERE. Both are written around scripted
- * `FakeProvider` turns, and a-to-do.txt names them as unable to be expressed
- * against a real endpoint. They are left blocked rather than faked.
+ * `FakeProvider` turns, which cannot be expressed against a real endpoint.
+ * They are left blocked rather than faked.
  */
 
 import { writeFileSync } from "node:fs";

@@ -19,10 +19,10 @@
     "the-reasoning-streamed-with-a-tool-call-comes-back-in-the-next-request"
   ],
   "freshness": {
-    "hash": "5716b7692ca2d283",
+    "hash": "13e5d3271d5896fd",
     "fileHashes": {
-      "engine/providers/src/openai-compat.ts": "5716b7692ca2d283"
+      "engine/providers/src/openai-compat.ts": "13e5d3271d5896fd"
     },
-    "recordedAt": "2026-09-25"
+    "recordedAt": "2026-09-28"
   }
 }

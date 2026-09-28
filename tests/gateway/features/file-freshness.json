@@ -20,10 +20,10 @@
     "edit-refuses-an-unread-file-while-write-creates-a-new-one-freely"
   ],
   "freshness": {
-    "hash": "aafd7d45e7ab53c9",
+    "hash": "1db005bdf8e66660",
     "fileHashes": {
-      "engine/core/src/runtime/fileState.ts": "aafd7d45e7ab53c9"
+      "engine/core/src/runtime/fileState.ts": "1db005bdf8e66660"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

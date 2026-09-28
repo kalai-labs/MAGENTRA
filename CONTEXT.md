@@ -1,7 +1,8 @@
 # Context
 
 The ubiquitous language of MAGENTRA. A glossary, not a spec — no implementation
-details, no decisions. Decisions live in `docs/adr/`.
+details, no decisions. Decisions live in `docs/adr/` (the product) and
+`docs/decisions/` (the test suite and its gateway).
 
 ## Update Tier
 

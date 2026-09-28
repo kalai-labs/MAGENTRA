@@ -43,9 +43,9 @@ const FEATURE = "process-kill-guard";
 const INVARIANT =
   "A command that stops processes by name never runs unasked: outside OVERDRIVE it asks, in OVERDRIVE it is refused, and only a literal grant or an explicit rule for that exact command lets it run without a question.";
 
-/** The field command, verbatim from the transcript (s_mue8gg2u_5aed60.jsonl, 15:46:20Z). */
+/** The field command from the transcript (s_mue8gg2u_5aed60.jsonl, 15:46:20Z), verbatim but for a neutral path. */
 const FIELD_COMMAND =
-  'cd /c/Users/alini/phdworks/test && (taskkill //F //IM python.exe //FI "WINDOWTITLE eq *" 2>/dev/null; true) | head -n 2; sleep 1; echo done';
+  'cd /c/Users/dev/project && (taskkill //F //IM python.exe //FI "WINDOWTITLE eq *" 2>/dev/null; true) | head -n 2; sleep 1; echo done';
 
 /** Bash input for one command, as the tool's own schema produces it. */
 function bashInput(command: string): { command: string; description: string; run_in_background: boolean } {

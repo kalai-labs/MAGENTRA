@@ -19,10 +19,10 @@
     "the-package-manifest-ships-no-node-modules"
   ],
   "freshness": {
-    "hash": "3e912cb4bc15ac7e",
+    "hash": "5f72ea6145be9de7",
     "fileHashes": {
-      "app/scripts/bundle-engine.js": "3e912cb4bc15ac7e"
+      "app/scripts/bundle-engine.js": "5f72ea6145be9de7"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

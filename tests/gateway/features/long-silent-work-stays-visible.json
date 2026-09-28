@@ -24,12 +24,12 @@
     "the-reasoning-summary-counts-time-and-size-and-the-now-line-reads-in-minutes"
   ],
   "freshness": {
-    "hash": "6c6d27e0e4fe42a9",
+    "hash": "972973d98cb2f188",
     "fileHashes": {
-      "engine/core/src/runtime/session.ts": "57ce38507d9c0d5f",
-      "app/renderer/modules/stream.js": "05648f59025f3de1",
-      "app/renderer/modules/views.js": "4c962fd95fb289b1"
+      "engine/core/src/runtime/session.ts": "84a40095d91a590b",
+      "app/renderer/modules/stream.js": "f58d58adf3efafe2",
+      "app/renderer/modules/views.js": "fe61fc0e6918d8dd"
     },
-    "recordedAt": "2026-09-24"
+    "recordedAt": "2026-09-28"
   }
 }

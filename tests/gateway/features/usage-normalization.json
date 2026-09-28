@@ -22,11 +22,11 @@
     "addusage-onto-empty-is-the-identity-and-sums-each-class-separately"
   ],
   "freshness": {
-    "hash": "fa9ac43492af06d7",
+    "hash": "9e0853d372a99788",
     "fileHashes": {
-      "engine/protocol/src/types.ts": "11d32208f2241da2",
-      "engine/providers/src/openai-compat.ts": "e95e6026ce0bd921"
+      "engine/protocol/src/types.ts": "e36ce0535a1d470f",
+      "engine/providers/src/openai-compat.ts": "13e5d3271d5896fd"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

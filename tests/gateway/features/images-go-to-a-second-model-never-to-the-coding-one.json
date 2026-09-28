@@ -19,12 +19,12 @@
     "the-coding-model-receives-the-description-and-never-the-image"
   ],
   "freshness": {
-    "hash": "96b07558f46f36ee",
+    "hash": "9e4b00cd61265e13",
     "fileHashes": {
-      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f",
+      "engine/core/src/runtime/session.ts": "84a40095d91a590b",
       "engine/tools/src/read.ts": "6d92f6e4ae10d9dd",
       "app/main/profiles.js": "0556d9be2a29e391"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

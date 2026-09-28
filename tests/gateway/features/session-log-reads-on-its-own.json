@@ -23,11 +23,11 @@
     "in-the-app-a-background-tabs-frames-are-in-its-own-workspace-log"
   ],
   "freshness": {
-    "hash": "985bab343b5e6f4b",
+    "hash": "0c875e4df0462633",
     "fileHashes": {
-      "app/main/logging.js": "5861959cd8bc909b",
-      "app/main.js": "f6edde465f137c4d"
+      "app/main/logging.js": "e0659bb42062df60",
+      "app/main.js": "a2c76d78da1f1ab1"
     },
-    "recordedAt": "2026-09-24"
+    "recordedAt": "2026-09-28"
   }
 }

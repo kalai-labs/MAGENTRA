@@ -21,11 +21,11 @@
     "an-anthropic-message-delta-sets-only-the-output-class-and-leaves-the-three-input-classes-alone"
   ],
   "freshness": {
-    "hash": "53f72fc284778401",
+    "hash": "964bd96b11e39893",
     "fileHashes": {
-      "engine/providers/src/openai-compat.ts": "e95e6026ce0bd921",
-      "engine/providers/src/anthropic.ts": "e1a94424a5f0baf4"
+      "engine/providers/src/openai-compat.ts": "13e5d3271d5896fd",
+      "engine/providers/src/anthropic.ts": "aba07da78b151374"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

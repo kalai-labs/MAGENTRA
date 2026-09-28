@@ -21,10 +21,10 @@
     "a-git-that-fails-on-a-broken-repository-leaves-the-turn-running"
   ],
   "freshness": {
-    "hash": "7c7930bc5724d79f",
+    "hash": "84a40095d91a590b",
     "fileHashes": {
-      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+      "engine/core/src/runtime/session.ts": "84a40095d91a590b"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

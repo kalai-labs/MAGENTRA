@@ -154,7 +154,7 @@ const RE_FROM_BRACED = /\b(?:import|export)\s+(?:type\s+)?(?:[\w$]+\s*,\s*)?\{[^
  * Anchored to a statement position, because `\bimport\s*["']` alone matches the
  * word inside a STRING too. `if (path === "/api/import" && req.method === "POST")`
  * produced an edge to a package literally named ` && req.method === `, which is
- * how tools/prompt-lab/server.mjs came to have a phantom dependency.
+ * how a dev server's route check came to show a phantom dependency.
  */
 const RE_BARE_IMPORT = /(?:^|[;{}])\s*import\s*["']([^"']+)["']/gm;
 const RE_REQUIRE = /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;

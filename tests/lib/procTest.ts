@@ -1,6 +1,6 @@
 /**
  * `ProcTest` — the kind that spawns a real process and owns its lifecycle.
- * SPEC §3, decisions/0004.
+ * SPEC §3, docs/decisions/0004.
  *
  * WHAT THIS KIND IS FOR. A feature whose behaviour only exists once something
  * is actually running: the engine answering frames on its stdio, a CLI's exit

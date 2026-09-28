@@ -19,11 +19,11 @@
     "the-top-bar-meter-sums-open-consoles-and-only-when-tiled"
   ],
   "freshness": {
-    "hash": "4e91d8ee0e5d2aed",
+    "hash": "39a0e2cafd855294",
     "fileHashes": {
-      "app/renderer/modules/session.js": "da582004580447a5",
-      "app/renderer/modules/tokens.js": "a7a7fd38e7727583"
+      "app/renderer/modules/session.js": "f756335087b6d38d",
+      "app/renderer/modules/tokens.js": "07a16ec831b69940"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

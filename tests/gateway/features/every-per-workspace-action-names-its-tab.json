@@ -19,11 +19,11 @@
     "an-action-with-no-tab-named-falls-back-to-the-focused-one"
   ],
   "freshness": {
-    "hash": "da428ccdbb52484b",
+    "hash": "b7aa6e6860b09fd9",
     "fileHashes": {
-      "app/renderer/modules/tabs.js": "3bf864044a6d557f",
-      "app/renderer/modules/workbench.js": "3807dcc0769945d4"
+      "app/renderer/modules/tabs.js": "d46f0e318ce62e27",
+      "app/renderer/modules/workbench.js": "cd0a1f9f42b15d0d"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

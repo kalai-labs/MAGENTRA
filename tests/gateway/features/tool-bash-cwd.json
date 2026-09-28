@@ -21,11 +21,11 @@
     "the-tracked-shell-directory-is-private-to-bash"
   ],
   "freshness": {
-    "hash": "db5e2d76ad6f22f1",
+    "hash": "8ff3e308f87efa74",
     "fileHashes": {
-      "engine/tools/src/bash.ts": "b45fd5c652cc6bd9",
-      "engine/core/src/runtime/session.ts": "7c7930bc5724d79f"
+      "engine/tools/src/bash.ts": "f1230a0e685f0828",
+      "engine/core/src/runtime/session.ts": "84a40095d91a590b"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

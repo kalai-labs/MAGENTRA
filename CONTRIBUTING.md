@@ -124,17 +124,28 @@ of that commit.
 To check your work before you push:
 
 ```bash
-npm run version:check
+npm run build              # compile the engine and the TUI; the tests run the build
+npm test                   # the feature suite
+npm run test:ui            # the desktop-app tests, if you changed app/
+npm run version:check      # your commit messages
 ```
+
+[`tests/README.md`](tests/README.md) explains the suite and its opt-in runs.
+[`AGENTS.md`](AGENTS.md) and [`docs/big-picture/`](docs/big-picture/BIG-PICTURE.md)
+explain how the system fits together — read them before a change that crosses
+the engine and the app.
 
 ## What the CI job does
 
-| Job                 | It checks this                                     |
-| ------------------- | -------------------------------------------------- |
-| **Version tool**    | The tests of the version tool pass, on Node 20, 22 and 24. |
-| **Types**           | The types of the version tool are correct.         |
-| **Commit messages** | Your commits and your title have the correct form. |
-| **Next version**    | It shows the next version on the summary page.     |
+CI runs on every push to `main`, on Windows.
+
+| Job                   | It checks this                                     |
+| --------------------- | -------------------------------------------------- |
+| **Engine build + app smoke** | The engine builds and the desktop app starts. |
+| **Feature suite**     | `npm test` and `npm run test:ui` pass, on Node 22 and 24. |
+| **Types**             | The types of the version tool are correct.         |
+| **Commit messages**   | Your commits and your title have the correct form. |
+| **Next version**      | It shows the next version on the summary page.     |
 
 ## After the merge
 
@@ -151,10 +162,9 @@ The tool is in `tools/version/`. It has no runtime dependencies.
 npm run typecheck:version  # Check the types of the tool
 ```
 
-The tool's tests were deleted in the 2026-09-09 test reset and are being rebuilt,
-so there is no `npm run test:version` right now. If you change the tool, add a
-test — the tool decides every version and writes every changelog, so it is one of
-the first things the new suite needs to cover.
+Its tests are the `version-*` features in `tests/features/`, and they run with
+`npm test`. If you change the tool, extend the feature's own test file — the tool
+decides every version and writes every changelog.
 
 ## Licence
 

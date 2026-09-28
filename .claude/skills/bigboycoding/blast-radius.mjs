@@ -369,13 +369,15 @@ function reportEntrypoints() {
   const app = allFiles.filter(isApp).length;
   console.log(`\n  engine/  ${eng} .ts files   — checked by \`npm run build\` (tsc -b)`);
   console.log(`  app/     ${app} .js/.html files — NOT typechecked by anything`);
-  console.log(`\n  regression gates that actually exist:`);
-  console.log(`    npm run build                 typecheck engine/* + tui/* only`);
+  console.log(`\n  regression gates:`);
+  console.log(`    npm run build                 typecheck engine/* + tui/* only — build before testing`);
+  console.log(`    npm test                      the feature suite, tests/features/ (imports engine/*/dist)`);
+  console.log(`    npm run test:ui               the ui kind alone — the only run that launches the app`);
+  console.log(`    npm run typecheck:tests       tsc -p tests; CI does not run it`);
   console.log(`    npm run smoke --workspace app boots the app; fails on a renderer crash`);
-  console.log(`\n  That is the whole list. The test suite was reset to zero on 2026-09-09`);
-  console.log(`  (app/tests/, tools/version/test/, every *-check.mjs) and is being rebuilt.`);
-  console.log(`  NOTHING in this repo has a test suite. Reading the fan-in below IS the`);
-  console.log(`  verification, not a preliminary to it.`);
+  console.log(`\n  tests/README.md is the authority on the suite and its opt-in slices.`);
+  console.log(`  The suite reaches app/ only where a ui test drives that exact path, so`);
+  console.log(`  reading the fan-in below is still part of the verification.`);
 }
 
 // ── main ───────────────────────────────────────────────────────────────────

@@ -21,11 +21,11 @@
     "an-engine-event-is-assignable-to-the-tui-type-and-a-tui-request-to-the-engines"
   ],
   "freshness": {
-    "hash": "321a343878d74aa6",
+    "hash": "03a4871ab2d7ef65",
     "fileHashes": {
-      "tui/src/protocol.ts": "d2ec6f9d4c3c5e4c",
-      "engine/protocol/src/types.ts": "11d32208f2241da2"
+      "tui/src/protocol.ts": "a636b420ef7c0e86",
+      "engine/protocol/src/types.ts": "e36ce0535a1d470f"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

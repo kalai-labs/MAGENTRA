@@ -15,11 +15,11 @@
   "deferred": false,
   "tests": [],
   "freshness": {
-    "hash": "4dfed59d6b83f73c",
+    "hash": "74d912974a1baada",
     "fileHashes": {
-      "app/main/updates.js": "924ffeb15d514ced",
-      ".github/workflows/release.yml": "78261d09d87b7002"
+      "app/main/updates.js": "81c856cdc4f7982b",
+      ".github/workflows/release.yml": "0bf4cf86b73be54d"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

@@ -116,7 +116,7 @@ contextBridge.exposeInMainWorld("magentra", {
     ipcRenderer.on("setup:required", listener);
     return () => ipcRenderer.removeListener("setup:required", listener);
   },
-  // Concurrent workspace tabs (docs/CONCURRENT-WORKSPACES.md): main owns the
+  // Concurrent workspace tabs (docs/big-picture/BIG-PICTURE.md §13): main owns the
   // engine pool and drives these; the renderer creates/focuses/closes its
   // per-tab console state in response.
   focusTab: (tabId) => ipcRenderer.send("tab:focus", tabId),

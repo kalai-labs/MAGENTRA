@@ -19,7 +19,7 @@
  * scripted `{clarify: false}` verdict and a scripted garbage reply, to prove
  * the fail-open path. A real judge cannot be ordered to emit malformed JSON,
  * and stubbing one here would be the scaffold this kind exists to avoid;
- * a-to-do.txt names both as blocked rather than dropping them quietly. What
+ * both stay blocked rather than being dropped quietly. What
  * CAN be proved about fail-open is proved: `clarify: false` disables the layer
  * entirely, and no request ever hangs waiting on it.
  */

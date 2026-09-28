@@ -1,5 +1,5 @@
 /**
- * `NetTest` — the kind that uses the network, and no model. SPEC §3, decisions/0004.
+ * `NetTest` — the kind that uses the network, and no model. SPEC §3, docs/decisions/0004.
  *
  * WHAT THIS KIND IS FOR. A feature whose behaviour is what goes over a socket:
  * which header a request carries, what a client does with a status, whether a

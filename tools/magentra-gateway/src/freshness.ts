@@ -1,5 +1,5 @@
 /**
- * Stage 1 of the gate — SPEC §4.1, decisions/0005.
+ * Stage 1 of the gate — SPEC §4.1, docs/decisions/0005.
  *
  * Every record stores the files that implement it plus a hash of their
  * CONTENTS. Before anything runs, rehash and compare. Drift is not a bug in the
@@ -33,8 +33,9 @@ import type { Feature, FeatureRecord, FreshnessStamp } from "./schema.js";
  * The path goes into the digest before the bytes, which is why the rollup is
  * order-sensitive and why `entryFiles` order is part of a record's identity.
  *
- * ONE DEPARTURE from the bigpicture copy, 2026-09-09: CRLF is folded to LF
- * before digesting. This repo has `core.autocrlf=true` and no `.gitattributes`,
+ * CRLF is folded to LF before digesting — a departure from the bigpicture copy
+ * on 2026-09-09, which `.claude/skills/bigpicture/bigpicture.mjs` adopted in
+ * turn on 2026-09-28. This repo has `core.autocrlf=true` and no `.gitattributes`,
  * so a plain `git pull` on Windows checks every text file out as CRLF while the
  * blob — and the machine that stamped the records — has LF. Raw bytes then
  * reported 159 of 164 records stale on a clean tree, and the only way through

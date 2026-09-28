@@ -107,7 +107,7 @@ exactly that the first time a label moved. No banner, no trailing newline.
 ## Verification gates
 
 The feature suite in `tests/` is the gate. It was rebuilt after the 2026-09-09
-reset and held 590 registered tests on 2026-09-23. `tests/README.md` is the
+reset and held 646 registered tests on 2026-09-28. `tests/README.md` is the
 authority on it; where this section and that file disagree, the README wins.
 Reading the fan-in (above) is still required — it is how you know which tests
 to run and what they cannot see — but it is no longer the only check.
@@ -145,9 +145,9 @@ the one that adds (the ordinary suite plus the 8 artifact tests). Asking for
 script NAME (or `MAGENTRA_UI_TESTS=1` / `MAGENTRA_LLM_TESTS=1`); a withheld test
 is reported as skipped with the command that runs it — never as passed.
 
-2026-09-23, engine freshly built, Windows 11: `npm test` 590 registered, 505
-passed, 0 failed, 85 withheld (51 ui, 26 llm, 8 artifact), ~124 s;
-`npm run test:ui` 51 passed, 0 failed, ~159 s; `typecheck:tests` clean.
+2026-09-28, engine freshly built, macOS (Apple Silicon), Node 24: `npm test`
+646 registered, 535 passed, 0 failed, 111 withheld (76 ui, 27 llm, 8 artifact),
+~75 s; `npm run test:ui` 76 passed, 0 failed, ~220 s; `typecheck:tests` clean.
 
 ### 3. Count before, count after
 
@@ -169,7 +169,7 @@ symptom. Restore the fix, rebuild, and watch it pass. Say that you did it. A
 timing test asserts ratios or event order, never a wall-clock threshold that
 passes on a slow machine and fails on a fast one.
 
-### 5. The gateway comes first (decisions/0001, 0005)
+### 5. The gateway comes first (docs/decisions/0001, 0005)
 
 A new feature, a change to one, or a bug fix is entered in the inventory before
 its code:
@@ -197,7 +197,7 @@ start-up banner does (`npm run gateway -- --no-open`). Re-recording is a
 review: a person confirms the record still describes the code, then uses the
 gateway UI's reconcile action. It is never a way through the gate.
 
-### 6. Approved artifacts move only when a person moves them (decisions/0015)
+### 6. Approved artifacts move only when a person moves them (docs/decisions/0015)
 
 `tests/approved/system-prompt-is-pinned/system-prompt.txt` and
 `tests/approved/tool-wire-contract-is-pinned/tools.json` hold the exact bytes
@@ -246,16 +246,17 @@ What nothing guards yet:
 | Folder trust is global, inherited, and matched on path SEGMENTS, so `/home/me/work` never trusts `/home/me/workspace` | `tui/src/trust.ts` (`isTrusted`) | no test — tests only pre-trust a folder to get past the gate |
 | The compaction summarizer's own sizing against the context window, and the exact span boundary | `engine/core/src/runtime/session.ts` | `compaction` is `llm`-only; its header leaves checklist items 1, 2 and 6 blocked, because they need a scripted summarizer |
 
-The rest of the backlog is the gateway inventory itself: on 2026-09-23, 38 of
-166 records were `untested` and 2 `partial`.
+The rest of the backlog is the gateway inventory itself: on 2026-09-28, 35 of
+178 records were `untested` and 2 `partial`.
 
 ## The system map
 
 `bigpicture` is the companion skill: `docs/big-picture/MAP.md` is a generated
 per-file skeleton (exports, members with line numbers, import edges) and
-`BIG-PICTURE.pdf` is the narrative. Read the map to find where something already
-lives before adding a second one; run `bigpicture.mjs check` after your edit so
-the architecture doc does not silently rot.
+`docs/big-picture/BIG-PICTURE.md` is the narrative (§16 lists the invariants and
+the mirrored constants this skill warns about). Read the map to find where
+something already lives before adding a second one; run `bigpicture.mjs check`
+after your edit so the architecture doc does not silently rot.
 
 ```bash
 node .claude/skills/bigpicture/bigpicture.mjs impact <file>   # before editing

@@ -4,7 +4,7 @@
  * An approved artifact is a committed file holding the exact bytes some part of
  * the product produces. The test renders the same thing and compares; a
  * mismatch is a diff a person reads in the commit, not a number a person
- * guesses at. See `decisions/0015-approved-artifacts-live-in-tests-approved.md`.
+ * guesses at. See `docs/decisions/0015-approved-artifacts-live-in-tests-approved.md`.
  *
  * THE PRINTERS LIVE HERE AND NOWHERE ELSE. `tools/approvals/regenerate.mjs`
  * imports these same functions rather than carrying its own copy. A generator
@@ -104,8 +104,8 @@ function sortKeys(value: unknown): unknown {
  * `description` is the TEMPLATE, with its `{{slots}}` left unfilled. The
  * resolved text is what the model receives, but resolving it here would drag a
  * runtime value into a committed file and make the artifact machine-specific.
- * The template is also what Prompt Lab edits, so it is the thing a person
- * changes on purpose.
+ * The template is also what an override file replaces, so it is the thing a
+ * person changes on purpose.
  */
 export function renderToolContract(): string {
   const tools = createDefaultRegistry()

@@ -21,11 +21,11 @@
     "a-value-complaint-re-sends-down-the-ladder-while-an-unknown-field-drops-reasoning-effort-with-one-note"
   ],
   "freshness": {
-    "hash": "bb8d4a9912129214",
+    "hash": "63c01a700b2908bb",
     "fileHashes": {
-      "engine/providers/src/openai-compat.ts": "e95e6026ce0bd921",
+      "engine/providers/src/openai-compat.ts": "13e5d3271d5896fd",
       "engine/providers/src/effort.ts": "564f5934240d99fe"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

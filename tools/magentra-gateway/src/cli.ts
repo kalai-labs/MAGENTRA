@@ -9,9 +9,9 @@
  *
  * Run through `tsx`, with no build step in front of it: the gateway must start
  * when `npm run build` is broken, because a broken build is exactly when you
- * need to look at what the inventory says (decisions/0002).
+ * need to look at what the inventory says (docs/decisions/0002).
  *
- * Port 4320. Prompt Lab holds 4319.
+ * Port 4320.
  */
 
 import { spawn } from "node:child_process";
@@ -40,7 +40,7 @@ function openBrowser(url: string): void {
       : process.platform === "win32"
         ? // Not `npx`-style indirection: cmd.exe is spawned directly, because
           // `execFile`/`spawn` without a shell cannot run a `.cmd` shim — the
-          // lesson tools/prompt-lab/server.mjs records about `npx tsc`.
+          // same reason the compiler is never invoked as `npx tsc`.
           [process.env.COMSPEC ?? "cmd.exe", ["/c", "start", "", url]]
         : ["xdg-open", [url]];
   try {
@@ -63,9 +63,9 @@ async function main(): Promise<number> {
 
   // Records load before anything is served. A malformed record names its file
   // and stops the tool: an inventory that is trusted must never be served
-  // partially (SPEC §2, decisions/0001).
+  // partially (SPEC §2, docs/decisions/0001).
   // The test files are read before the records, because a record's `status` is
-  // derived from them (decisions/0007) — loading first and asking later is what
+  // derived from them (docs/decisions/0007) — loading first and asking later is what
   // made the banner and the UI report 164 untested features while tests existed.
   const tests = discoverTests(root);
   let features;
@@ -79,7 +79,7 @@ async function main(): Promise<number> {
     throw err;
   }
 
-  // Stage 2 is checked at startup, mirroring the TUI (decisions/0005). Unlike
+  // Stage 2 is checked at startup, mirroring the TUI (docs/decisions/0005). Unlike
   // the TUI, a refusal here does not stop the tool: the gateway's job is to
   // make the missing precondition visible, and a gateway that will not start
   // is a gateway that cannot show you the inventory.
@@ -91,8 +91,8 @@ async function main(): Promise<number> {
   try {
     bound = await gateway.listen(port, host);
   } catch (err) {
-    // A taken port is an ordinary thing to hit — prompt-lab holds 4319 and a
-    // second gateway holds 4320 — so it reads as one line, not as a stack.
+    // A taken port is an ordinary thing to hit — a second gateway already
+    // holding 4320 — so it reads as one line, not as a stack.
     const code = (err as { code?: string }).code;
     if (code === "EADDRINUSE") {
       process.stderr.write(

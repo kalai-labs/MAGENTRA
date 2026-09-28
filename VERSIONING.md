@@ -141,10 +141,12 @@ your work before you send a pull request.
    - writes the new version to `VERSION`;
    - writes the new version to each target file (see below);
    - adds a new section to the top of `CHANGELOG.md`;
-   - makes a commit with the message `chore(release): vX.Y.Z.B [skip ci]`;
-   - makes an annotated tag, for example `v0.2.0.0`;
-   - pushes the commit and the tag;
-   - publishes a GitHub release.
+   - makes a commit with the message `chore(release): vX.Y.Z [skip ci]`;
+   - makes an annotated tag, for example `v0.2.0`;
+   - pushes the commit and the tag.
+
+   The release workflow then creates the GitHub release as a draft, builds and
+   uploads the installers, and publishes it once they are attached.
 
 The `[skip ci]` mark stops the job from starting again for its own commit.
 

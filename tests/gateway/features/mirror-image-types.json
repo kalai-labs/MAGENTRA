@@ -22,11 +22,11 @@
     "read-refuses-exactly-the-listed-extensions-when-no-vision-model-is-configured"
   ],
   "freshness": {
-    "hash": "54b54e081d5cdb42",
+    "hash": "5514b2e6f4fd27b7",
     "fileHashes": {
       "engine/tools/src/read.ts": "6d92f6e4ae10d9dd",
-      "app/main.js": "97287a90f013d4ba"
+      "app/main.js": "a2c76d78da1f1ab1"
     },
-    "recordedAt": "2026-09-19"
+    "recordedAt": "2026-09-28"
   }
 }

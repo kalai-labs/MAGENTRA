@@ -1,15 +1,14 @@
 /**
  * The HTTP surface — SPEC §5, and the read-only UI of §9.
  *
- * `node:http` on 127.0.0.1 only, no framework, no dependency. Follows
- * `tools/prompt-lab/server.mjs` so `tools/` has one local-server pattern rather
- * than two (decisions/0002).
+ * `node:http` on 127.0.0.1 only, no framework, no dependency — one local-server
+ * pattern for `tools/` (docs/decisions/0002).
  *
  * SCOPE. This is SPEC §11 steps 1, 3, 4, 5, 7 and 9. The record-editing route
  * answers 501 naming the reason, rather than 404 — a route that silently does
  * not exist is indistinguishable from one that is broken. There is no run route
  * and no brief route: running tests and handing work to an agent happen outside
- * the gateway (decisions/0006). Nothing here touches git, and no route mutates
+ * the gateway (docs/decisions/0006). Nothing here touches git, and no route mutates
  * on GET.
  */
 
@@ -112,7 +111,7 @@ function stateOf(root: string, features: readonly Feature[], gate: GateState, te
     descriptions: loadDescriptions(root),
     gate,
     /**
-     * Discovery's own health. NOT part of the gate's verdict: decisions/0005
+     * Discovery's own health. NOT part of the gate's verdict: docs/decisions/0005
      * defines two stages and adding a third is a decision, not a side effect of
      * fixing discovery. It is reported beside the gate instead, because a test
      * file the parser could not read is a gap that must not be invisible.
@@ -138,7 +137,7 @@ export function createGateway(options: GatewayOptions = {}): Gateway {
   // loaded good set is kept rather than being replaced by a partial one.
   // Discovery comes FIRST: `status` is derived from the test files, so loading
   // records without having read them would report every feature untested
-  // (decisions/0007).
+  // (docs/decisions/0007).
   let testInventory: TestInventory = discoverTests(root);
   let features: Feature[] = loadFeatures(root, proofByFeature(testInventory));
   let loadError: RegistryError | null = null;

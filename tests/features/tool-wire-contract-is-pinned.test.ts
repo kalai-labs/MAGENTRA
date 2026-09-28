@@ -19,8 +19,8 @@
  * WHAT IS FROZEN is the description TEMPLATE, `{{slots}}` unfilled. The
  * resolved text is what the model receives, but resolving it here would drag a
  * runtime value into a committed file and make the artifact machine-specific.
- * The template is also what Prompt Lab edits, so it is what a person changes
- * on purpose.
+ * The template is also what an override file replaces, so it is what a person
+ * changes on purpose.
  */
 
 import { createDefaultRegistry } from "@magentra/tools";

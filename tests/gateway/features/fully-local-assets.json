@@ -20,10 +20,10 @@
     "the-running-page-reports-no-blocked-or-failed-resource"
   ],
   "freshness": {
-    "hash": "a84edad7b4d5fba1",
+    "hash": "18b7cf9e72c780eb",
     "fileHashes": {
-      "app/renderer/index.html": "a84edad7b4d5fba1"
+      "app/renderer/index.html": "18b7cf9e72c780eb"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }

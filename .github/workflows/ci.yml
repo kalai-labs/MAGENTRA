@@ -44,7 +44,7 @@ jobs:
     name: Engine build + app smoke
     # Windows, because that is what MAGENTRA ships. This job used to run on
     # ubuntu with xvfb, which was the right choice while a Linux AppImage was
-    # published; since decisions/0014 it would have been the only thing in the
+    # published; since docs/decisions/0014 it would have been the only thing in the
     # repository still booting the app on a platform nobody receives.
     runs-on: windows-latest
     steps:
@@ -89,7 +89,7 @@ jobs:
   # build a fact about the runner instead of a fact about the code.
   #
   # Nothing in this repository runs on Linux any more: MAGENTRA does not ship
-  # Linux binaries either — see decisions/0014-magentra-does-not-ship-linux.md,
+  # Linux binaries either — see docs/decisions/0014-magentra-does-not-ship-linux.md,
   # which records what to put back. The way back here is to run the suite on
   # Linux once by hand and then add `ubuntu-latest` to a matrix.
   tests:
@@ -134,8 +134,8 @@ jobs:
       #
       # It is asserted here, in CI, and not inside `npm test`, because
       # tests/README keeps that command a bare `node --test`: a wrapper that
-      # interprets the result is the runner decisions/0006 removed, and
-      # decisions/0001 requires the suite to stand up without any tool of ours.
+      # interprets the result is the runner docs/decisions/0006 removed, and
+      # docs/decisions/0001 requires the suite to stand up without any tool of ours.
       # Reading the summary afterwards adds no tool to the run itself.
       #
       # The floor catches collapse, not drift. It sits well under the 581

@@ -11,7 +11,7 @@
  *
  * ARTIFACT OPT-IN. Items 1-4 build and launch a real packaged app — minutes of
  * work, ~1 GB written, one shared `app/dist`. They are `artifact = true`
- * (decisions/0010): withheld under plain `npm test`, named on stderr, and run
+ * (docs/decisions/0010): withheld under plain `npm test`, named on stderr, and run
  * only under `npm run test:artifacts`. Items 5 and 6 need no packager and run
  * every time.
  *
@@ -32,7 +32,7 @@
  * written.
  *
  * app/dist ALREADY HELD STALE BUILDS FROM EARLIER VERSIONS when this was
- * written (0.16.9, 0.16.10, 0.17.0, next to the current 0.17.4) — decisions/
+ * written (0.16.9, 0.16.10, 0.17.0, next to the current 0.17.4) — docs/decisions/
  * (this session) says `app/dist` may be deleted outright before a build,
  * since it is gitignored; item 1 does exactly that, which is also why its
  * "contains exactly" check tolerates `builder-debug.yml` (electron-builder's

@@ -18,8 +18,8 @@
  *
  * CHECKLIST ITEMS 1, 2 AND 6 ARE NOT HERE. They need a scripted summarizer and
  * a forced usage figure, to pin the summarizer's own sizing and the exact span
- * boundary. a-to-do.txt names them as unable to be expressed against a real
- * endpoint; they are left blocked rather than faked.
+ * boundary. None of that can be expressed against a real endpoint, so they are
+ * left blocked rather than faked.
  */
 
 import { writeFileSync } from "node:fs";

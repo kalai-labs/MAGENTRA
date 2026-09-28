@@ -1,5 +1,5 @@
 /**
- * Stage 2 of the gate — SPEC §4.2, decisions/0005.
+ * Stage 2 of the gate — SPEC §4.2, docs/decisions/0005.
  *
  * No test runs without a connection, whether or not it involves a model.
  * Optimising the non-model tiers to run without one was rejected: a model is
@@ -8,7 +8,7 @@
  *
  * This file is a WRAPPER, not a fourth implementation. `tui/src/profiles.ts`
  * is already the second copy of this logic (after `app/main/profiles.js`) and
- * the gateway is the third consumer; decisions/0005 records promoting it into
+ * the gateway is the third consumer; docs/decisions/0005 records promoting it into
  * the engine as debt rather than doing it silently here. Everything below
  * delegates: no profile file is parsed, no `.env` line is written, and no
  * connection precondition is decided anywhere but in that file.

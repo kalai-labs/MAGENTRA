@@ -24,11 +24,11 @@
     "a-real-rm-is-stopped-by-a-refusal-and-removes-the-file-on-an-approval"
   ],
   "freshness": {
-    "hash": "a0c96b9ea713850c",
+    "hash": "790044f931e31c6a",
     "fileHashes": {
-      "engine/core/src/runtime/permissions.ts": "5e675cbefa29932b",
-      "engine/tools/src/bash.ts": "b45fd5c652cc6bd9"
+      "engine/core/src/runtime/permissions.ts": "1ada79ce2c432655",
+      "engine/tools/src/bash.ts": "f1230a0e685f0828"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-09-28"
   }
 }
