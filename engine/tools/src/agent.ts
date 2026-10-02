@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isPromptDisabled } from "@magentra/protocol";
+import { isPromptDisabled, toolDescription, toolParam } from "@magentra/protocol";
 import { AGENT_TYPES, agentDescriptionText, type ToolDefinition } from "@magentra/core";
 
 /** The types a subagent can actually be spawned as: those whose blurb is not empty. */
@@ -23,38 +23,25 @@ function agentTypeList(): string {
 }
 
 const inputSchema = z.object({
-  description: z.string().describe("A short (3-5 word) description of the task"),
+  description: z.string().describe(toolParam("Agent", "description")),
   prompt: z
     .string()
-    .describe(
-      "The full task for the subagent. It runs autonomously and cannot ask you questions, so include every detail it needs and state exactly what to return.",
-    ),
+    .describe(toolParam("Agent", "prompt")),
   subagent_type: z
     .string()
     .optional()
     // Deliberately not a second copy of the type list: this string is built at
     // module load and would go stale, while `{{agentTypes}}` below is read live.
-    .describe("The type of subagent to use, named exactly as listed in this tool's description (default general-purpose)."),
+    .describe(toolParam("Agent", "subagent_type")),
   run_in_background: z
     .boolean()
     .optional()
-    .describe(
-      "Run the subagent in the background and return a task id immediately; its result lands in the task output file. Use TaskOutput to collect it.",
-    ),
+    .describe(toolParam("Agent", "run_in_background")),
 });
 
 export const agentTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "Agent",
-  description: `Delegates a task to a fresh subagent with its own context window and a restricted tool set, then returns the subagent's final report as the tool result.
-
-Use it to fan out independent work (parallel Agent calls in one turn run concurrently), or to run a large search whose intermediate file contents you do not want in your own context. The subagent shares your working directory but starts with no memory of this conversation, so its prompt must be self-contained.
-
-Once you delegate a search, do not also run it yourself — wait for the result. For a single-fact lookup where you already know the file or symbol, search directly instead.
-
-The subagent's report is never shown to the user, so relay what matters. Subagents cannot spawn further subagents and cannot ask the user questions.
-
-Available subagent types:
-{{agentTypes}}`,
+  description: toolDescription("Agent"),
   // A getter, so the list is resolved when the description is rendered rather
   // than when this module is imported.
   descriptionVars: {

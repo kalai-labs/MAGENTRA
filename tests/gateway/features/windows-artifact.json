@@ -24,12 +24,12 @@
     "ci-smoke-launches-the-packaged-windows-app-and-fails-the-job-otherwise"
   ],
   "freshness": {
-    "hash": "65863e8c527c1649",
+    "hash": "10c8cac9366abf5a",
     "fileHashes": {
-      "app/package.json": "896988edbcf3e1dd",
+      "app/package.json": "acfccf9c354bb675",
       "app/scripts/dist.js": "c5b0761569fbd059",
       "app/build/installer.nsh": "9fdcc7568c78b236"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-02"
   }
 }

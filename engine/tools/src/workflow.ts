@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
+import { toolDescription, toolParam } from "@magentra/protocol";
 import { WorkflowRunner, type ToolDefinition } from "@magentra/core";
 
 const inputSchema = z
@@ -8,34 +9,18 @@ const inputSchema = z
     script: z
       .string()
       .optional()
-      .describe(
-        "Self-contained JS workflow script. Must begin with `export const meta = { name, description }` (a pure literal) followed by a body that uses agent/parallel/pipeline/phase/log.",
-      ),
+      .describe(toolParam("Workflow", "script")),
     scriptPath: z
       .string()
       .optional()
-      .describe("Path to a workflow script file (relative to cwd or absolute). Takes precedence over `script`."),
-    args: z.unknown().optional().describe("Value exposed to the script as the global `args`, verbatim."),
+      .describe(toolParam("Workflow", "scriptPath")),
+    args: z.unknown().optional().describe(toolParam("Workflow", "args")),
   })
-  .describe("Provide at least one of `script` or `scriptPath`.");
+  .describe(toolParam("Workflow", "(root)"));
 
 type WorkflowInput = z.infer<typeof inputSchema>;
 
-const description = `Run a workflow script that orchestrates multiple subagents deterministically. Use it only when the user has explicitly asked for multi-agent orchestration ("use a workflow", "fan out agents") — a task that would merely benefit from parallelism does NOT qualify; use the Agent tool for one-off subagents.
-
-The script is plain JavaScript (NOT TypeScript — no type annotations). It MUST begin with a pure object literal:
-  export const meta = { name: 'my-flow', description: 'one-liner', phases: [{ title: 'Scan' }] }
-Required meta fields: name, description. Optional: whenToUse, phases. The rest of the file is the async body (use await directly) and its \`return\` value is the workflow result.
-
-Body hooks:
-- agent(prompt, opts?): Promise — spawn a subagent, returns its final text. opts: { label, phase, agentType, model, schema }. With schema (a JSON Schema object) the reply is parsed into a validated object (markdown fences stripped, one retry on failure); returns null if it still can't parse or the agent errors. Filter with .filter(Boolean).
-- pipeline(items, stage1, stage2, ...): Promise<any[]> — run each item through all stages independently, NO barrier between stages. Each stage callback gets (prevResult, originalItem, index). A throwing stage drops that item to null. This is the DEFAULT for multi-stage work.
-- parallel(thunks): Promise<any[]> — run thunks concurrently and await all (a BARRIER). A thunk that throws resolves to null. Use ONLY when you need every result together (dedup/merge across the full set).
-- phase(title) / log(msg): emit progress lines to the user.
-- args: the tool's \`args\` input, verbatim.
-- budget: { total, spent(), remaining() } — output tokens, ENFORCED: total is the turn's token ceiling; agent() throws once remaining() hits 0. Guard long loops with e.g. \`while (budget.remaining() > 20000) { ... }\`.
-
-DEFAULT TO pipeline; reach for a barrier only when a stage genuinely needs all prior-stage results at once. Concurrent agents are capped at 4; total agent calls per run are capped at 100. Date/Math.random are available but discouraged (no resume in this build).`;
+const description = toolDescription("Workflow");
 
 export const workflowTool: ToolDefinition<WorkflowInput> = {
   name: "Workflow",

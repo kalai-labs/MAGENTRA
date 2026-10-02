@@ -33,7 +33,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { SessionStats } from "@magentra/core";
-import { inputTokensOf, type CoreEvent, type Usage } from "@magentra/protocol";
+import { inputTokensOf, toolAvailabilityWith, type CoreEvent, type Usage } from "@magentra/protocol";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
 import { FsTest } from "../lib/fsTest.ts";
@@ -189,6 +189,8 @@ class ASubagentsWindowNeverOverwritesTheRoots extends FsTest {
     // measure a large window; the subagent's measures a tiny one.
     const engine = await startScriptedEngine({
       workspace,
+      // brain/availability.json withholds Agent; this test is about a subagent's usage, so it opts Agent back in.
+      toolAvailability: toolAvailabilityWith("Agent"),
       turns: [
         {
           text: "delegating",

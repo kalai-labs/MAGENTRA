@@ -4,6 +4,7 @@ import { realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import type { SessionServices, ToolDefinition, ToolResult } from "@magentra/core";
+import { toolDescription, toolParam } from "@magentra/protocol";
 
 /**
  * EnterWorktree / ExitWorktree. Creates and switches into git worktrees under
@@ -87,13 +88,11 @@ const enterSchema = z
     name: z
       .string()
       .optional()
-      .describe(
-        "Name for a new worktree (segments of A-Za-z0-9._-, max 64 chars total). Creates .magentra/worktrees/<name> on branch magentra/<name>. Random if omitted.",
-      ),
+      .describe(toolParam("EnterWorktree", "name")),
     path: z
       .string()
       .optional()
-      .describe("Path of an EXISTING worktree to switch into (must already appear in `git worktree list`). Mutually exclusive with name."),
+      .describe(toolParam("EnterWorktree", "path")),
   })
   .refine((d) => !(d.name !== undefined && d.path !== undefined), {
     message: "name and path are mutually exclusive",
@@ -101,9 +100,7 @@ const enterSchema = z
 
 export const enterWorktreeTool: ToolDefinition<z.infer<typeof enterSchema>> = {
   name: "EnterWorktree",
-  description: `Creates a git worktree under .magentra/worktrees and switches the session into it, so isolated work does not touch the main checkout.
-
-Provide "name" to create a new worktree on branch magentra/<name> (or omit for a random name), or "path" to switch into an existing worktree. Base ref follows settings.worktree.baseRef: "fresh" branches from origin's default branch, "head" from the current HEAD. Only works inside a git repository. Use ExitWorktree to leave.`,
+  description: toolDescription("EnterWorktree"),
   permissionClass: "execute",
   describeInput: (input) => (input.path ? `enter worktree ${input.path}` : `create worktree ${input.name ?? "(random)"}`),
   execute: async (input, ctx): Promise<ToolResult> => {
@@ -179,19 +176,17 @@ Provide "name" to create a new worktree on branch magentra/<name> (or omit for a
 const exitSchema = z.object({
   action: z
     .enum(["keep", "remove"])
-    .describe("keep: leave the worktree and branch in place. remove: delete the worktree and its branch."),
+    .describe(toolParam("ExitWorktree", "action")),
   discard_changes: z
     .boolean()
     .optional()
     .default(false)
-    .describe("Required to remove a worktree that has uncommitted changes or unmerged commits; otherwise removal is refused."),
+    .describe(toolParam("ExitWorktree", "discard_changes")),
 });
 
 export const exitWorktreeTool: ToolDefinition<z.infer<typeof exitSchema>> = {
   name: "ExitWorktree",
-  description: `Leaves the active Magentra worktree and restores the original session cwd.
-
-action "keep" preserves the worktree and its branch. action "remove" deletes both, but refuses (listing the work) if there are uncommitted changes or commits not in the base ref, unless discard_changes is true. Worktrees entered via an existing path are never removed. No-op if no worktree session is active.`,
+  description: toolDescription("ExitWorktree"),
   permissionClass: "execute",
   describeInput: (input) => `exit worktree (${input.action})`,
   deletionSubject: (input) => (input.action === "remove" ? "remove the active worktree and its branch" : undefined),

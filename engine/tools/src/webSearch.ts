@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { toolDescription, toolParam } from "@magentra/protocol";
 import type { ToolDefinition } from "@magentra/core";
 
 export interface SearchResult {
@@ -136,17 +137,17 @@ export class TavilyBackend implements SearchBackend {
 }
 
 const inputSchema = z.object({
-  query: z.string().describe("The search query."),
+  query: z.string().describe(toolParam("WebSearch", "query")),
   allowed_domains: z
     .array(z.string())
     .optional()
-    .describe("If set, only results whose hostname matches one of these domains are kept."),
-  blocked_domains: z.array(z.string()).optional().describe("Results whose hostname matches one of these domains are dropped."),
+    .describe(toolParam("WebSearch", "allowed_domains")),
+  blocked_domains: z.array(z.string()).optional().describe(toolParam("WebSearch", "blocked_domains")),
 });
 
 export const webSearchTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "WebSearch",
-  description: `Searches the web and returns titles, URLs, and snippets. Use it to find current information, docs, or pages to follow up on with WebFetch. Restrict or exclude sources with allowed_domains / blocked_domains. Works out of the box via DuckDuckGo.`,
+  description: toolDescription("WebSearch"),
   permissionClass: "network",
   permissionSubject: (input) => input.query,
   describeInput: (input) => `WebSearch ${input.query}`,

@@ -81,8 +81,8 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { Engine, loadSettings, type Addon, type Settings } from "@magentra/core";
-import type { CoreEvent, FrontendRequest, PermissionDecision } from "@magentra/protocol";
+import { Engine, loadSettings, type Addon, type AnyToolDefinition, type Settings } from "@magentra/core";
+import type { CoreEvent, FrontendRequest, PermissionDecision, ToolAvailability } from "@magentra/protocol";
 import { FakeProvider, type FakeTurn, type Provider } from "@magentra/providers";
 import { createDefaultRegistry } from "@magentra/tools";
 
@@ -112,6 +112,20 @@ export interface EngineOnOptions {
    * which is what a test ABOUT the prompt does.
    */
   readonly permissions?: PermissionDecision;
+  /**
+   * `EngineOptions.toolAvailability`, passed through untouched. Omit it and the
+   * engine offers what brain/availability.json ships (Agent and Workflow
+   * withheld); a test that scripts a withheld tool opts it back in with
+   * `toolAvailabilityWith("Agent")` from `@magentra/protocol`.
+   */
+  readonly toolAvailability?: Partial<ToolAvailability>;
+  /**
+   * Registered on top of `createDefaultRegistry()`, as the host registers a
+   * workspace's MCP tools — for a test whose subject is a tool that is not
+   * built in (an `mcp__*` name). Its description lands in the process-wide
+   * prompt catalog as `tool.<name>`, as an MCP tool's does.
+   */
+  readonly extraTools?: readonly AnyToolDefinition[];
 }
 
 export interface ScriptedEngineOptions extends EngineOnOptions {
@@ -181,12 +195,16 @@ export async function startEngineOn<P extends Provider>(provider: P, opts: Engin
     ...opts.settings,
   };
 
+  const registry = createDefaultRegistry();
+  for (const tool of opts.extraTools ?? []) registry.register(tool);
+
   const engine = new Engine({
     cwd: opts.workspace,
     settings,
     provider,
-    registry: createDefaultRegistry(),
+    registry,
     ...(opts.addons !== undefined ? { addons: opts.addons } : {}),
+    ...(opts.toolAvailability !== undefined ? { toolAvailability: opts.toolAvailability } : {}),
   });
 
   const events: CoreEvent[] = [];

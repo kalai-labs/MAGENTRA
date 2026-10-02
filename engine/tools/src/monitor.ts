@@ -1,6 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { z } from "zod";
 import type { ToolDefinition } from "@magentra/core";
+import { assertToolParamStates, toolDescription, toolParam } from "@magentra/protocol";
 import { bashDeletionScope, bashDeletionSubject, bashProcessKillSubject, killTree, spawnShell } from "./bash.js";
 
 const DEFAULT_TIMEOUT = 300_000;
@@ -14,33 +15,28 @@ const NOISE_WINDOW_MS = 60_000;
 /** A batch larger than this is summarized in the reminder instead of pasted whole. */
 const BATCH_REMINDER_CAP = 20;
 
+// timeout_ms's text in brain states DEFAULT_TIMEOUT; the import fails if the two drift apart.
+assertToolParamStates("Monitor", "timeout_ms", `(default ${DEFAULT_TIMEOUT})`);
+
 const inputSchema = z.object({
-  command: z.string().describe("The shell command to run and watch; each line it prints to stdout becomes an event."),
-  description: z.string().describe("Clear, concise description of what is being monitored, shown to the user."),
+  command: z.string().describe(toolParam("Monitor", "command")),
+  description: z.string().describe(toolParam("Monitor", "description")),
   timeout_ms: z
     .number()
     .int()
     .min(MIN_TIMEOUT)
     .max(MAX_TIMEOUT)
     .default(DEFAULT_TIMEOUT)
-    .describe(`Kill the monitor after this many ms unless persistent (default ${DEFAULT_TIMEOUT}).`),
+    .describe(toolParam("Monitor", "timeout_ms")),
   persistent: z
     .boolean()
     .default(false)
-    .describe("If true, ignore timeout_ms and keep monitoring until stopped with TaskStop."),
+    .describe(toolParam("Monitor", "persistent")),
 });
 
 export const monitorTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "Monitor",
-  description: `Runs a long-lived command and turns each stdout line into an event you are notified about, in batches, on your next turn. Use it to watch logs, a dev server, a file tail, or a test watcher for specific output.
-
-- For a SINGLE event ("tell me when the server is ready") this is the wrong tool: use Bash with run_in_background and a command that exits once the condition holds — \`until grep -q "Ready in" dev.log; do sleep 0.5; done\`. An unbounded command (\`tail
--f\`, \`while true\`) armed for a one-off event stays armed long after it fired. Monitor is for repeated events, and a command that emits lines and then exits ends its own watch.
-- Every pipe stage must flush per line or matches sit unseen in its buffer: \`grep\` needs --line-buffered, \`awk\` needs fflush().
-- Returns a task id immediately; stop it with TaskStop(task_id).
-- Lines arriving close together are batched into one notification. stderr is written to the task output file only (read it with TaskOutput).
-- If the command floods more than {{noiseLimit}} lines within {{noiseWindowSec}}s it is auto-stopped for noise; narrow the command (grep/filter) and try again.
-- Unless persistent, it is killed after timeout_ms.`,
+  description: toolDescription("Monitor"),
   descriptionVars: { noiseWindowSec: NOISE_WINDOW_MS / 1000, noiseLimit: NOISE_LIMIT },
   permissionClass: "execute",
   permissionSubject: (input) => input.command,

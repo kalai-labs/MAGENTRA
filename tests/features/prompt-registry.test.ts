@@ -1,8 +1,10 @@
 /**
  * `prompt-registry`.
  *
- * Every piece of model-facing prose the engine sends is declared once with
- * `definePrompt`, which gives it a stable id, a group and an override file.
+ * Every piece of model-facing prose the engine sends is registered once —
+ * seeded from brain/prompts (named with `brainPrompt`), or declared with
+ * `definePrompt` for the subagent.* prompts and the tool.<Name> descriptions —
+ * which gives it a stable id, a group and an override file.
  * The override is a plain `<id>.txt` in `promptsDir()`, re-read live behind a
  * 250 ms cache — so tuning a prompt takes effect on the next turn rather than
  * on the next restart. An EMPTY override is not "no override": it switches the
@@ -18,11 +20,13 @@
  * ONE CHECKLIST ITEM IS NOT REGISTERED, and it is not an omission. Item 1 asks
  * that `promptCatalog()` hold "exactly 43 entries ... and 7 distinct groups".
  * With `@magentra/core`, `@magentra/tools` and `@magentra/protocol` imported the
- * catalog holds 46, in 6 groups; group 7 is the per-tool descriptions, which
- * register when `createDefaultRegistry()` runs and bring it to 73 in 7 groups.
- * The spec and the code disagree on a number, which is a record to reconcile
- * rather than an assertion to adjust, so that item is reported instead of
- * written. (2026-09-19.)
+ * catalog holds 72, in 6 groups (65 from brain/prompts, 7 subagent.*); group 7
+ * is the per-tool descriptions, which register when `createDefaultRegistry()`
+ * runs and bring it to 99 in 7 groups. The record's invariant now states 99
+ * (brain-is-the-single-source brought the inline literals into the registry,
+ * 2026-10-02); the approved checklist still says 43, which is a description to
+ * reconcile rather than an assertion to adjust, so that item is still reported
+ * instead of written. (2026-09-19, counts updated 2026-10-02.)
  *
  * TWO CORRECTIONS TO THE DESCRIPTION, followed rather than reinterpreted:
  * `Engine.send` does NOT route a `user_message` beginning with "/" to
@@ -50,8 +54,8 @@ import {
   promptTextIfEnabled,
   writePromptOverride,
 } from "@magentra/protocol";
-// Imported for their registrations: the prompts these tests tune are declared
-// next to the code that sends them, in core.
+// Imported for their registrations: brain/prompts is seeded when protocol
+// loads, and core adds the subagent.* prompts the catalog also holds.
 import "@magentra/core";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
@@ -62,7 +66,7 @@ const FEATURE = "prompt-registry";
 
 /** Verbatim from the record. */
 const INVARIANT =
-  "All 43 registered prompts appear in the catalog, an override file is re-read live, and emptying a prompt cancels its inference round rather than sending a blank message.";
+  "All 99 registered prompts — the 65 defaults in brain/prompts, the 7 subagent.* prompts and one tool.<Name> per built-in tool — appear in the catalog, an override file is re-read live, and emptying a prompt cancels its inference round rather than sending a blank message.";
 
 /**
  * Re-ask until the registry reflects the file, or fail at the deadline.

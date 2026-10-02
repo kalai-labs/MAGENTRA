@@ -18,9 +18,7 @@
 // from the session or the permission engine, so it can be checked in isolation.
 
 import { extname } from "node:path";
-import { definePrompt, promptText, renderPrompt } from "@magentra/protocol";
-
-const GROUP = "4 · End-of-turn rungs";
+import { brainPrompt, promptText, renderPrompt } from "@magentra/protocol";
 
 /**
  * File suffixes whose contents are executable behaviour, so a change to one can
@@ -137,49 +135,11 @@ function fileList(files: string[]): string {
  * not run this, here is what stays unverified" as a FULLY correct ending is what
  * keeps the rung from manufacturing the very failure it exists to catch.
  */
-const RUNTIME_EVIDENCE = definePrompt({
-  id: "finishing.runtime-evidence",
-  group: GROUP,
-  label: "Runtime evidence rung",
-  channel: "reminder",
-  where:
-    "Fires once at the end of a turn that edited source files but never ran a command. Injected as a user-role reminder, which costs at least one extra round trip — shorten or blank it to make turns finish faster.",
-  placeholders: ["files", "visionNote", "doubleNote"],
-  text: `<system-reminder>You changed code this turn ({{files}}) and did not run a single command, so nothing you wrote has been observed working. Handle that now, then finish.
+const RUNTIME_EVIDENCE = brainPrompt("finishing.runtime-evidence");
 
-Work down this list and stop as soon as the change is settled:
-1. Fast gate first — the project's own build/typecheck/lint if it has one. It catches the cheap failures, but passing it is NOT evidence: it proves the code parses, not that it behaves.
-2. Execute the path you changed, and the callers it reaches that your change could break.
-3. If a one-liner will not reach it, write a throwaway harness — put it in the system temp directory, not in the repository — and DELETE it in this same turn. A harness DRIVES your real code; it does not replace the thing you are unsure about. The
-moment you substitute a stand-in for the dependency, you stopped measuring reality and started measuring your own assumption.
-4. Judge against something you can actually read: exit codes, stdout, a log line, a returned value, a file the code wrote. {{visionNote}}
-5. Say in your wrap-up what you ran and what you observed. A failing run reported honestly is a good outcome; a silent one is not.
+const VISION_ON = brainPrompt("finishing.vision-on");
 
-{{doubleNote}}
-If this change genuinely cannot be executed on this machine — it needs a device, a credential or a service you do not have — then STOP HERE AND SAY SO. Name the closest thing you did run, name what stays unverified, and move on. That is a complete and correct answer to this reminder, and it is worth more than a green result you had to manufacture. Nothing here asks you to end with a passing check; it asks you to know, and to say, what you actually observed.
-
-Where you cannot run a thing, you can still usually confirm its CONTRACT: import it and print its signature or docstring, check the type of what it returns, read the source you are calling. A function that needs a console still tells you what it gives back. That costs one command and is real evidence; guessing the contract and then encoding the guess into a stand-in is not.</system-reminder>`,
-});
-
-const VISION_ON = definePrompt({
-  id: "finishing.vision-on",
-  group: GROUP,
-  label: "Vision clause — enabled",
-  channel: "reminder",
-  where:
-    "Substituted into `{{visionNote}}` of the runtime-evidence rung when settings.vision is true AND a vision model is configured. Tells the agent a screenshot is real evidence it may go and get — through the describing model, not with its own eyes.",
-  text: "You CAN get at images here: capture a screenshot of the running app and Read it. A separate vision model looks at it and hands you a written description — that description is the observation, so take it rather than reasoning about what the pixels probably do. Say it came from the description; never claim you looked at the screen yourself.",
-});
-
-const VISION_OFF = definePrompt({
-  id: "finishing.vision-off",
-  group: GROUP,
-  label: "Vision clause — disabled",
-  channel: "reminder",
-  where:
-    "Substituted into `{{visionNote}}` when settings.vision is false (the default). States the limit as a fact about this workspace, not as a claim about what the harness can do.",
-  text: "Vision is off for this workspace, so you cannot read an image even if you produce one. Never claim you looked at a screenshot or a window. Verify a visual change through what the app WRITES instead — rendered text, DOM state, a log line, an exit code — or say plainly that the appearance stays unverified.",
-});
+const VISION_OFF = brainPrompt("finishing.vision-off");
 
 /**
  * The circular-evidence clause, folded into the rung above rather than shipped
@@ -193,18 +153,7 @@ const VISION_OFF = definePrompt({
  * already said once in the closing paragraphs, and saying them twice in one
  * reminder teaches the model to skim.
  */
-const DOUBLE_CLAUSE = definePrompt({
-  id: "finishing.double-clause",
-  group: GROUP,
-  label: "Stand-in clause",
-  channel: "reminder",
-  where:
-    "Substituted into `{{doubleNote}}` of the runtime-evidence rung when the turn's checking leaned on mocks, fakes or stubs the agent wrote itself. Empty otherwise, so a turn with real evidence never pays for it.",
-  placeholders: ["doubleFiles"],
-  text: `
-The checking you ran leans on stand-ins you wrote yourself ({{doubleFiles}}). Read that again. A mock, fake, stub or patch is a MODEL of the thing it replaces, and you are its author — it agrees with whatever you believed when you wrote it. A passing check against your own stand-in proves your code is self-consistent and nothing more; it will agree with you just as confidently when you are wrong. So: say where each replaced contract came from, and if the answer is "I assumed it", that is the thing to fix, not the code. If the real contract differs from what your stand-in does, your code is wrong and your check was agreeing with the bug — fix both, and say so.
-`,
-});
+const DOUBLE_CLAUSE = brainPrompt("finishing.double-clause");
 
 export function runtimeEvidenceText(files: string[], vision: boolean, doubleFiles: string[] = []): string {
   return renderPrompt(RUNTIME_EVIDENCE, {
@@ -225,24 +174,7 @@ export function runtimeEvidenceText(files: string[], vision: boolean, doubleFile
  * than a clause, because the runtime-evidence opening ("did not run a single
  * command") would be false here; it reuses the vision clauses and the fuse.
  */
-const BROWSER_EVIDENCE = definePrompt({
-  id: "finishing.browser-evidence",
-  group: GROUP,
-  label: "Browser evidence rung",
-  channel: "reminder",
-  where:
-    "Fires once at the end of a turn that changed a browser-facing file (.html, .css, a component) and never drove a browser or read a screenshot. Shares the runtime-evidence fuse, so at most one of the two fires per turn. Costs at least one extra round trip.",
-  placeholders: ["files", "visionNote"],
-  text: `<system-reminder>You changed what the user sees ({{files}}) and checked it only from the outside — commands, HTTP requests, syntax checks. Nothing has been observed in a browser, where the user will use it, and a page can load with HTTP 200 and still not work.
-
-Before you call it done:
-1. Open it the way the user will: drive the page in a real or headless browser — for example a short Playwright or Puppeteer script in the system temp directory, deleted in this same turn. Load it, do each main thing the user asked for with the default settings, and read what happens: the rendered text, the DOM, the console errors.
-2. {{visionNote}}
-3. Check that the user can tell what happened: every action they take gets visible feedback, and every rule they need is on the screen, not only in your answer.
-4. Say in your wrap-up what you drove in the browser and what you observed.
-
-If no browser can run on this machine, STOP HERE AND SAY SO: name what you checked instead and say plainly that the page itself stays unverified. That is a complete and correct answer.</system-reminder>`,
-});
+const BROWSER_EVIDENCE = brainPrompt("finishing.browser-evidence");
 
 export function browserEvidenceText(files: string[], vision: boolean): string {
   return renderPrompt(BROWSER_EVIDENCE, {
@@ -275,54 +207,13 @@ export function browserEvidenceText(files: string[], vision: boolean): string {
  * opposite failure is the likely one, so the closing clause flips to demand the
  * evidence instead of warning against it.
  */
-const SELF_VERIFY = definePrompt({
-  id: "finishing.self-verify",
-  group: GROUP,
-  label: "Self-verify rung",
-  channel: "reminder",
-  where:
-    "Fires at the end of an OVERDRIVE turn that made at least one tool call — never in normal mode, never on a turn with no tool calls, and at most once per turn. The agent answers DONE (never shown to the user) or keeps working, so it costs one extra inference round on the turns it does fire, and nothing on the rest. `{{closing}}` is one of the two clauses below it. Empty this prompt to switch the round off.",
-  placeholders: ["closing"],
-  text: `<system-reminder>Internal self-check — this is NOT a new user message and the user is NOT waiting for another reply. Your entire output for this step must be either the single word DONE or continued work. Nothing else. Do not greet, do not re-answer, do not summarize, do not introduce yourself.
+const SELF_VERIFY = brainPrompt("finishing.self-verify");
 
-Decide silently: is every part of the user's original query already fully handled (a conversational message with nothing to do counts as handled), and did this turn leave nothing unnecessary behind (scratch files, duplicated helpers, abandoned attempts)?
-- If YES → output exactly this literal ASCII word and nothing else, never translated or localized even when the conversation is in another language: DONE
-- If NO → do the remaining work now (call tools / write the fix / clean up). Whatever you write in this case IS shown to the user; the DONE token never is.
+const SELF_VERIFY_CLOSING_CODE = brainPrompt("finishing.self-verify.closing-code");
 
-{{closing}}</system-reminder>`,
-});
+const SELF_VERIFY_SYMPTOMS = brainPrompt("finishing.self-verify.symptoms");
 
-const SELF_VERIFY_CLOSING_CODE = definePrompt({
-  id: "finishing.self-verify.closing-code",
-  group: GROUP,
-  label: "Self-verify closing — code changed",
-  channel: "reminder",
-  where: "Substituted into `{{closing}}` of the self-verify rung when the turn edited source files.",
-  placeholders: ["files"],
-  text: `You changed code this turn ({{files}}). "Fully handled" includes SETTLED: either the change was observed doing what it was supposed to do — executed against the real thing, not merely compiled, re-read, reasoned about, or agreed with by a stand-in you wrote yourself — or you told the user plainly which parts you could not run and what stays unverified. Either of those is done. Reporting a verification you did not actually perform is not. When a fix corrected a mistake that can be repeated elsewhere (a misspelled or wrongly cased name, a wrong call), search every file for it before you answer.`,
-});
-
-const SELF_VERIFY_SYMPTOMS = definePrompt({
-  id: "finishing.self-verify.symptoms",
-  group: GROUP,
-  label: "Self-verify clause — reported symptoms",
-  channel: "reminder",
-  where:
-    "Appended inside `{{closing}}` of the self-verify rung when the model reported failures while it worked (sentences the engine found in its mid-turn text). Empty otherwise.",
-  placeholders: ["symptoms"],
-  text: "While you worked you reported: {{symptoms}}. Each of these is settled only when it was re-tested after its fix — a passing case for one symptom does not settle another.",
-});
-
-const SELF_VERIFY_HEDGES = definePrompt({
-  id: "finishing.self-verify.hedges",
-  group: GROUP,
-  label: "Self-verify clause — hedges in the answer",
-  channel: "reminder",
-  where:
-    "Appended inside `{{closing}}` of the self-verify rung when the final answer hedges (\"may still\", \"unverified\", \"not tested\"). Empty otherwise.",
-  placeholders: ["hedges"],
-  text: `Your answer hedges: {{hedges}}. Each of these is open work. If you can settle it now — run it, check it, clean it up — do that. If you cannot, keep it in your answer as a plain note to the user; that is fine. "May still" must never stand in for a cleanup you could do yourself.`,
-});
+const SELF_VERIFY_HEDGES = brainPrompt("finishing.self-verify.hedges");
 
 /** Sentences of `text`, trimmed, each at most 200 characters. */
 function sentencesOf(text: string): string[] {
@@ -356,14 +247,7 @@ function quoted(items: string[]): string {
   return items.map((s) => `«${s}»`).join("; ");
 }
 
-const SELF_VERIFY_CLOSING_PLAIN = definePrompt({
-  id: "finishing.self-verify.closing-plain",
-  group: GROUP,
-  label: "Self-verify closing — no code changed",
-  channel: "reminder",
-  where: "Substituted into `{{closing}}` of the self-verify rung on a turn that changed no source files.",
-  text: "Judge only against the query itself — never invent verification rituals (builds, tests) it did not ask for.",
-});
+const SELF_VERIFY_CLOSING_PLAIN = brainPrompt("finishing.self-verify.closing-plain");
 
 /**
  * The rung's text, or undefined when it has been switched off.

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { brainPrompt, promptTextIfEnabled, toolDescription, toolParam } from "@magentra/protocol";
 import type { ToolDefinition } from "@magentra/core";
 
 const MAX_REDIRECTS = 5;
@@ -6,26 +7,30 @@ const MAX_TEXT_CHARS = 40_000;
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const USER_AGENT = "Magentra-WebFetch/1.0";
 
+/** System prompt of the call that answers the tool's question from the page. */
+const WEBFETCH_SYSTEM = brainPrompt("webfetch.system");
+
 // Module-level 15-minute cache of readable page text, keyed by final URL.
 const cache = new Map<string, { ts: number; markdown: string }>();
 
 const inputSchema = z.object({
-  url: z.string().describe("The URL to fetch (http/https; http is upgraded to https)."),
-  prompt: z.string().describe("What to extract from or answer about the page content."),
+  url: z.string().describe(toolParam("WebFetch", "url")),
+  prompt: z.string().describe(toolParam("WebFetch", "prompt")),
 });
 
 export const webFetchTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "WebFetch",
-  description: `Fetches a URL, converts the page to readable text, and answers your prompt about it using a separate digest model (settings.smallModel when set, else the session model).
-
-- http:// URLs are upgraded to https:// before fetching.
-- Same-host redirects are followed automatically; a redirect to a DIFFERENT host is NOT followed — the tool returns the redirect target so you can decide whether to re-call WebFetch with it.
-- Page content is cached for 15 minutes, so repeated fetches of the same URL are cheap.
-- The answer is produced by a separate digest-model call over the page text; for the raw page, ask for a verbatim excerpt.`,
+  description: toolDescription("WebFetch"),
   permissionClass: "network",
   permissionSubject: (input) => input.url,
   describeInput: (input) => `WebFetch ${input.url}`,
   execute: async (input, ctx, signal) => {
+    // A model call with its instructions removed is not a cheaper call, so a
+    // switched-off reader refuses, before it fetches anything.
+    const system = promptTextIfEnabled(WEBFETCH_SYSTEM);
+    if (system === undefined) {
+      return { content: "WebFetch is switched off — webfetch.system is empty in the prompt registry.", isError: true };
+    }
     let start: URL;
     try {
       start = new URL(input.url);
@@ -61,8 +66,7 @@ export const webFetchTool: ToolDefinition<z.infer<typeof inputSchema>> = {
     }
 
     const answer = await ctx.session.runInference({
-      system:
-        "You are given the readable text of a web page and a question about it. Answer the question using only the page content. Be concise and factual; if the page does not contain the answer, say so.",
+      system,
       user: `Page URL: ${input.url}\n\nPage content:\n${markdown}\n\nQuestion: ${input.prompt}`,
       maxTokens: 1024,
     });

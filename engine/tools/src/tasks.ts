@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ToolDefinition } from "@magentra/core";
-import type { TaskItem } from "@magentra/protocol";
+import { toolDescription, toolParam, type TaskItem } from "@magentra/protocol";
 
 /**
  * Resolve a model-supplied task reference to a real task id. Models routinely
@@ -39,27 +39,18 @@ function taskNotFound(tasks: TaskItem[], ref: string): string {
 }
 
 const createSchema = z.object({
-  subject: z.string().describe("A brief, actionable title in imperative form"),
-  description: z.string().describe("What needs to be done"),
+  subject: z.string().describe(toolParam("TaskCreate", "subject")),
+  description: z.string().describe(toolParam("TaskCreate", "description")),
   activeForm: z
     .string()
     .optional()
-    .describe('Present continuous form shown in the spinner when in_progress (e.g. "Running tests")'),
-  metadata: z.record(z.string(), z.unknown()).optional().describe("Arbitrary metadata to attach to the task"),
+    .describe(toolParam("TaskCreate", "activeForm")),
+  metadata: z.record(z.string(), z.unknown()).optional().describe(toolParam("TaskCreate", "metadata")),
 });
 
 export const taskCreateTool: ToolDefinition<z.infer<typeof createSchema>> = {
   name: "TaskCreate",
-  description: `Adds a task to the session task list so the user can follow progress.
-
-## When To Use:
-- Use it for multi-step work (3+ distinct steps), when the user lists several things to do, or when new requirements arrive mid-task.
-- TaskCreate must build tasks in logically feasible order, i.e. what must be done in which order has to be carefully decided.
-- Skip it for a single trivial action — just do the work.
-- After completing a task, add any follow-up work you found while doing it.
-
-## Note that:
-- Tasks start as pending; use TaskUpdate to move them through in_progress to completed, and check TaskList first to avoid duplicates.`,
+  description: toolDescription("TaskCreate"),
   permissionClass: "interact",
   parallelSafe: true,
   execute: async (input, ctx) => {
@@ -70,31 +61,26 @@ export const taskCreateTool: ToolDefinition<z.infer<typeof createSchema>> = {
 };
 
 const updateSchema = z.object({
-  taskId: z.string().describe('The task id as reported by TaskCreate/TaskList — a number string like "3" ("#3" is also accepted)'),
-  subject: z.string().optional().describe("New subject for the task"),
-  description: z.string().optional().describe("New description for the task"),
-  activeForm: z.string().optional().describe("Present continuous form shown in spinner when in_progress"),
+  taskId: z.string().describe(toolParam("TaskUpdate", "taskId")),
+  subject: z.string().optional().describe(toolParam("TaskUpdate", "subject")),
+  description: z.string().optional().describe(toolParam("TaskUpdate", "description")),
+  activeForm: z.string().optional().describe(toolParam("TaskUpdate", "activeForm")),
   status: z
     .enum(["pending", "in_progress", "completed", "deleted"])
     .optional()
-    .describe("New status. Workflow: pending -> in_progress -> completed; deleted removes the task permanently."),
-  owner: z.string().optional().describe("New owner for the task"),
+    .describe(toolParam("TaskUpdate", "status")),
+  owner: z.string().optional().describe(toolParam("TaskUpdate", "owner")),
   metadata: z
     .record(z.string(), z.unknown())
     .optional()
-    .describe("Metadata keys to merge into the task. Set a key to null to delete it."),
-  addBlocks: z.array(z.string()).optional().describe("Task IDs that this task blocks"),
-  addBlockedBy: z.array(z.string()).optional().describe("Task IDs that block this task"),
+    .describe(toolParam("TaskUpdate", "metadata")),
+  addBlocks: z.array(z.string()).optional().describe(toolParam("TaskUpdate", "addBlocks")),
+  addBlockedBy: z.array(z.string()).optional().describe(toolParam("TaskUpdate", "addBlockedBy")),
 });
 
 export const taskUpdateTool: ToolDefinition<z.infer<typeof updateSchema>> = {
   name: "TaskUpdate",
-  description: `Updates a task in the session task list.
-
-Mark a task in_progress before starting it and completed the moment it is fully done. Never mark completed while tests fail, the implementation is partial, or errors are unresolved — keep it in_progress and create a new task for the blocker. Read the task's current state (TaskGet) before updating it.
-
-## Note that:
-- After resolving a task, call TaskList and pick up the next one.`,
+  description: toolDescription("TaskUpdate"),
   permissionClass: "interact",
   parallelSafe: true,
   execute: async (input, ctx) => {
@@ -160,7 +146,7 @@ const listSchema = z.object({});
 
 export const taskListTool: ToolDefinition<z.infer<typeof listSchema>> = {
   name: "TaskList",
-  description: `Lists all tasks in the session task list with id, subject, status, owner, and blockedBy. Pending tasks are tagged [pending READY] or [pending BLOCKED by #ids] based on whether their blockers are done. Use it to find available work, check progress, or spot blocked tasks. Prefer working on tasks in id order.`,
+  description: toolDescription("TaskList"),
   permissionClass: "read",
   execute: async (_input, ctx) => {
     const tasks = ctx.session.tasks.list();
@@ -186,12 +172,12 @@ export const taskListTool: ToolDefinition<z.infer<typeof listSchema>> = {
 };
 
 const getSchema = z.object({
-  taskId: z.string().describe('The task id as reported by TaskCreate/TaskList — a number string like "3" ("#3" is also accepted)'),
+  taskId: z.string().describe(toolParam("TaskGet", "taskId")),
 });
 
 export const taskGetTool: ToolDefinition<z.infer<typeof getSchema>> = {
   name: "TaskGet",
-  description: `Retrieves one task with its full description, status, owner, and dependency lists (blocks / blockedBy). Check that blockedBy is empty before starting the task.`,
+  description: toolDescription("TaskGet"),
   permissionClass: "read",
   execute: async (input, ctx) => {
     const all = ctx.session.tasks.list();

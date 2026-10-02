@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { basename, extname, isAbsolute } from "node:path";
 import { z } from "zod";
+import { toolDescription, toolParam } from "@magentra/protocol";
 import { extractDocumentText, type ToolDefinition } from "@magentra/core";
 
 const MAX_LINES_DEFAULT = 2000;
@@ -44,32 +45,24 @@ function numberLines(text: string, start: number, limit: number): { numbered: st
 }
 
 const inputSchema = z.object({
-  file_path: z.string().describe("The absolute path to the file to read"),
+  file_path: z.string().describe(toolParam("Read", "file_path")),
   offset: z
     .number()
     .int()
     .min(0)
     .optional()
-    .describe("The line number to start reading from. Only provide if the file is too large to read at once"),
+    .describe(toolParam("Read", "offset")),
   limit: z
     .number()
     .int()
     .positive()
     .optional()
-    .describe("The number of lines to read. Only provide if the file is too large to read at once."),
+    .describe(toolParam("Read", "limit")),
 });
 
 export const readTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "Read",
-  description: `Reads a file from the local filesystem.
-
-- file_path must be an absolute path.
-- Reads up to {{maxLines}} lines by default; use offset/limit for larger files, and read only the part you need when you already know where it is.
-- Output uses cat -n format: line number, a tab, then the line content, starting at line 1.
-- Image files (png/jpg/gif/webp) come back as a written description produced by a separate vision model — you never see the image itself, so treat that text as your only account of it. When no vision model is configured, reading an image is refused rather than returning content you cannot see.
-- Document files (PDF, DOCX, PPTX, XLSX, RTF, ODT, EPUB) are text-extracted (best-effort, for text-based documents); the output is line-numbered and prefixed with an extraction header. Scanned or encrypted documents are not supported and return an error.
-- Reading a directory, a missing file, or an empty file returns an explanatory error instead of content.
-- Do not re-read a file you just edited to verify the change — Edit/Write fail loudly when they cannot apply.`,
+  description: toolDescription("Read"),
   descriptionVars: { maxLines: MAX_LINES_DEFAULT },
   permissionClass: "read",
   permissionSubject: (input) => input.file_path,

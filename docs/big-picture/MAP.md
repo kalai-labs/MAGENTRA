@@ -10,7 +10,7 @@ cannot drift apart.
 **Read this to find where something already lives before writing a second one.**
 Narrative and rationale are in [`BIG-PICTURE.md`](BIG-PICTURE.md); this is the index.
 
-- files scanned **325** — engine 75, app 35, other 215
+- files scanned **329** — engine 77, app 35, other 217
 - `app/` is typechecked by **nothing**; `tsc -b` covers `engine/*` and `tui/` only.
 
 ---
@@ -20,104 +20,105 @@ Narrative and rationale are in [`BIG-PICTURE.md`](BIG-PICTURE.md); this is the i
 Changing one of these reaches the whole system. `↓N` = transitive importers.
 
 ### `engine/core/src/runtime/session.ts`
-*3353L · ↓120 transitive · ←2 direct*
+*3203L · ↓121 transitive · ←2 direct*
 
 **exports** `isSelfVerifyDone` `addonNamedIn` `SessionOptions` `Session`
-**members** `cleanSessionTitle:100 isSelfVerifyDone:245 graphSkeleton:314 addonNamedIn:363 remind:695 addContextMessage:704 setPromptSection:711 setDeletionPolicy:720 setOverdrive:738 setProvider:757 steer:766 isOverdrive:771 snapshotForOverdrive:779 runInference:808 visionUnavailableReason:882 describeImage:910 describeImageForContext:950 emitFromChild:967 spawnAgent:1001 interrupt:1121 stopBackgroundTasks:1128 isBusy:1136 toolSchemas:1140 buildSystemPrompt:1148 section:1176 recentExchange:1195 maybeClarify:1216 askQuestionRound:1263 buildClarifySkim:1288 peekWorkspaceOverview:1311 runTurn:1341 streamAssistantTurn:1994 executeToolCalls:2180 describeToolImages:2443 toolContext:2478 observeTurnWork:2494 fileEditOutsideWorkspace:2532 fileEditProtectedPath:2553 evaluateWriteReuseGate:2570 loadSymbolIndex:2592` …+41
+**members** `cleanSessionTitle:87 isSelfVerifyDone:163 graphSkeleton:206 addonNamedIn:239 renderIfEnabled:289 remind:537 addContextMessage:546 setPromptSection:553 setDeletionPolicy:562 setOverdrive:580 setProvider:599 steer:608 isOverdrive:613 snapshotForOverdrive:621 runInference:650 visionUnavailableReason:724 describeImage:752 describeImageForContext:798 emitFromChild:815 spawnAgent:849 interrupt:969 stopBackgroundTasks:976 isBusy:984 toolSchemas:988 buildSystemPrompt:996 section:1024 recentExchange:1043 maybeClarify:1064 askQuestionRound:1108 buildClarifySkim:1134 peekWorkspaceOverview:1157 runTurn:1187 streamAssistantTurn:1848 executeToolCalls:2034 describeToolImages:2308 toolContext:2340 observeTurnWork:2356 fileEditOutsideWorkspace:2394 fileEditProtectedPath:2415 evaluateWriteReuseGate:2432` …+42
 **imported by** `engine/core/src/index.ts` `engine/core/src/runtime/engine.ts`
 
+### `engine/protocol/src/brain.generated.ts`
+*958L · ↓165 transitive · ←2 direct*
+
+**exports** `BrainPromptDefault` `BrainToolDefault` `BrainAvailabilityDefault` `BRAIN_PROMPTS` `BRAIN_TOOLS` `BRAIN_BUILTIN_TOOLS` `BRAIN_AVAILABILITY`
+**members** `BRAIN_PROMPTS:28 BRAIN_TOOLS:648 BRAIN_BUILTIN_TOOLS:871 BRAIN_AVAILABILITY:902`
+**imported by** `engine/protocol/src/brain.ts` `engine/protocol/src/prompts.ts`
+
+### `engine/protocol/src/prompts.ts`
+*299L · ↓165 transitive · ←2 direct*
+
+**exports** `PromptChannel` `PromptMeta` `PromptEntry` `promptsDir` `promptFile` `definePrompt` `promptText` `renderPrompt` `promptTextIfEnabled` `isPromptDisabled` `promptDefault` `promptCatalog` `writePromptOverride` `clearPromptOverride` `orphanedPromptFiles` `brainPrompt` `brainPromptIdList`
+**members** `promptsDir:91 promptFile:97 definePrompt:108 overrideText:118 promptText:154 renderPrompt:165 promptTextIfEnabled:180 isPromptDisabled:186 promptDefault:196 promptCatalog:203 writePromptOverride:229 clearPromptOverride:244 orphanedPromptFiles:251 brainPrompt:288 brainPromptIdList:296`
+**imported by** `engine/protocol/src/brain.generated.ts` `engine/protocol/src/index.ts`
+
 ### `engine/protocol/src/types.ts`
-*543L · ↓162 transitive · ←2 direct*
+*543L · ↓163 transitive · ←2 direct*
 
 **exports** `PROTOCOL_VERSION` `TaskStatus` `TaskItem` `Usage` `QuestionOption` `Question` `SessionSummary` `PermissionDecision` `SlashCommandInfo` `CoreEvent` `RestoredToolCall` `RestoredMessage` `ConnectionSpec` `VisionConnectionSpec` `REASONING_EFFORTS` `ReasoningEffort` `ImageAttachment` `FrontendRequest` `Frame`
 **members** `PROTOCOL_VERSION:1 REASONING_EFFORTS:428`
 **imported by** `engine/protocol/src/index.ts` `engine/protocol/src/tokens.ts`
 
-### `engine/protocol/src/prompts.ts`
-*244L · ↓161 transitive · ←1 direct*
-
-**exports** `PromptChannel` `PromptMeta` `PromptEntry` `promptsDir` `promptFile` `definePrompt` `promptText` `renderPrompt` `promptTextIfEnabled` `isPromptDisabled` `promptCatalog` `writePromptOverride` `clearPromptOverride` `orphanedPromptFiles`
-**members** `promptsDir:84 promptFile:90 definePrompt:101 overrideText:111 promptText:147 renderPrompt:158 promptTextIfEnabled:173 isPromptDisabled:179 promptCatalog:184 writePromptOverride:210 clearPromptOverride:225 orphanedPromptFiles:232`
-**imported by** `engine/protocol/src/index.ts`
-
 ### `engine/protocol/src/index.ts`
-*6L · ↓160 transitive · ←82 direct*
+*7L · ↓161 transitive · ←100 direct*
 
-**imported by** `engine/core/src/agent/addons.ts` `engine/core/src/agent/agents.ts` `engine/core/src/agent/prompts.ts` `engine/core/src/agent/tool.ts` `engine/core/src/config/settings.ts` `engine/core/src/knowledge/graph.ts` `engine/core/src/runtime/engine.ts` `engine/core/src/runtime/finishing.ts` …+74
-
-### `engine/protocol/src/tokens.ts`
-*133L · ↓161 transitive · ←1 direct*
-
-**exports** `emptyUsage` `addUsage` `reasoningPart` `inputTokensOf` `CHARS_PER_TOKEN` `estimateTokens` `formatTokens` `contextPercentOf` `freeContextOf`
-**members** `emptyUsage:30 addUsage:39 reasoningPart:56 inputTokensOf:73 CHARS_PER_TOKEN:83 estimateTokens:91 formatTokens:106 contextPercentOf:119 freeContextOf:130`
-**imported by** `engine/protocol/src/index.ts`
+**imported by** `engine/core/src/agent/addons.ts` `engine/core/src/agent/agents.ts` `engine/core/src/agent/prompts.ts` `engine/core/src/agent/tool.ts` `engine/core/src/config/settings.ts` `engine/core/src/knowledge/graph.ts` `engine/core/src/runtime/engine.ts` `engine/core/src/runtime/finishing.ts` …+92
 
 ### `engine/protocol/src/branding.ts`
-*6L · ↓162 transitive · ←2 direct*
+*6L · ↓165 transitive · ←2 direct*
 
 **exports** `PRODUCT_NAME` `PRODUCT_REPO_URL` `CLI_NAME` `STATE_DIR_NAME`
 **members** `PRODUCT_NAME:1 PRODUCT_REPO_URL:3 CLI_NAME:4 STATE_DIR_NAME:5`
 **imported by** `engine/protocol/src/index.ts` `engine/protocol/src/prompts.ts`
 
+### `engine/protocol/src/brain.ts`
+*146L · ↓162 transitive · ←1 direct*
+
+**exports** `toolDescription` `toolParam` `assertToolParamStates` `brainToolNames` `unreadToolParams` `ToolAvailability` `builtinToolNames` `isBuiltinTool` `brainAvailability` `resolveToolAvailability` `toolAvailabilityWith` `isToolOffered`
+**members** `toolDescription:29 toolParam:41 assertToolParamStates:57 brainToolNames:69 unreadToolParams:78 builtinToolNames:97 isBuiltinTool:101 brainAvailability:106 resolveToolAvailability:116 toolAvailabilityWith:131 isToolOffered:142`
+**imported by** `engine/protocol/src/index.ts`
+
+### `engine/protocol/src/tokens.ts`
+*133L · ↓162 transitive · ←1 direct*
+
+**exports** `emptyUsage` `addUsage` `reasoningPart` `inputTokensOf` `CHARS_PER_TOKEN` `estimateTokens` `formatTokens` `contextPercentOf` `freeContextOf`
+**members** `emptyUsage:30 addUsage:39 reasoningPart:56 inputTokensOf:73 CHARS_PER_TOKEN:83 estimateTokens:91 formatTokens:106 contextPercentOf:119 freeContextOf:130`
+**imported by** `engine/protocol/src/index.ts`
+
 ### `engine/protocol/src/ndjson.ts`
-*44L · ↓161 transitive · ←1 direct*
+*44L · ↓162 transitive · ←1 direct*
 
 **exports** `encodeFrame` `decodeFrames`
 **members** `encodeFrame:3 parseLine:37`
 **imported by** `engine/protocol/src/index.ts`
 
 ### `engine/core/src/runtime/engine.ts`
-*1830L · ↓119 transitive · ←1 direct*
+*1804L · ↓120 transitive · ←1 direct*
 
 **exports** `SETTING_TIMING` `EngineOptions` `Engine` `reconstructForDisplay`
-**members** `SETTING_TIMING:77 createSession:206 start:247 publishModelCatalog:262 announceSession:280 idle:326 stopBackgroundJobs:336 addonSummaries:343 addonCommands:352 emitAddonsUpdated:371 reloadAddons:385 handleAddonCommand:405 startAddonGeneration:435 generateAddon:465 installAddon:518 exportAddon:547 startExclusive:583 maybeAutoNameSession:612 currentSession:630 send:634 handleSlash:812 renderAddons:946 extensionLines:971 handleSettings:976 renderSettings:1008 withImageDescriptions:1040 handleSetModel:1102 applySettingLive:1118 handleSetConnection:1152 rebuildProvider:1243 applyInsecureTls:1257 handleBang:1272 flushPendingBangs:1283 runBang:1289 gcStateFiles:1310 pruneStateDirectory:1359 listSessions:1397 resumeSession:1441 renameSession:1485 archiveSession:1515` …+10
+**members** `SETTING_TIMING:80 createSession:217 start:259 publishModelCatalog:274 announceSession:292 idle:338 stopBackgroundJobs:348 addonSummaries:355 addonCommands:364 emitAddonsUpdated:383 reloadAddons:397 handleAddonCommand:417 startAddonGeneration:447 generateAddon:477 installAddon:538 exportAddon:567 startExclusive:603 maybeAutoNameSession:632 currentSession:650 send:654 handleSlash:832 renderAddons:966 extensionLines:991 handleSettings:996 renderSettings:1028 withImageDescriptions:1060 handleSetModel:1122 applySettingLive:1138 handleSetConnection:1172 rebuildProvider:1263 applyInsecureTls:1277 handleBang:1292 flushPendingBangs:1303 runBang:1309 gcStateFiles:1331 pruneStateDirectory:1380 listSessions:1418 resumeSession:1462 renameSession:1506 archiveSession:1536` …+10
 **imported by** `engine/core/src/index.ts`
 
 ### `engine/providers/src/openai-compat.ts`
-*620L · ↓137 transitive · ←1 direct*
+*620L · ↓138 transitive · ←1 direct*
 
 **exports** `OpenAICompatOptions` `OpenAICompatProvider`
 **members** `rejectedField:95 buildBody:144 ollamaNative:176 listModels:272 mapFinish:499 toWireTool:522 toWireMessages:543 joinText:599 joinThinking:607 flattenToolResult:614`
 **imported by** `engine/providers/src/index.ts`
 
 ### `engine/core/src/index.ts`
-*30L · ↓118 transitive · ←89 direct*
+*30L · ↓119 transitive · ←90 direct*
 
 **exports** `writeFileAtomic` `AsyncQueue` `zodToJsonSchema`
-**imported by** `engine/host/src/bootstrap.ts` `engine/host/src/serve.ts` `engine/tools/src/addon.ts` `engine/tools/src/agent.ts` `engine/tools/src/askUserQuestion.ts` `engine/tools/src/bash.ts` `engine/tools/src/cron.ts` `engine/tools/src/edit.ts` …+81
+**imported by** `engine/host/src/bootstrap.ts` `engine/host/src/serve.ts` `engine/tools/src/addon.ts` `engine/tools/src/agent.ts` `engine/tools/src/askUserQuestion.ts` `engine/tools/src/bash.ts` `engine/tools/src/cron.ts` `engine/tools/src/edit.ts` …+82
 
 ### `engine/providers/src/ollama.ts`
-*295L · ↓138 transitive · ←2 direct*
+*295L · ↓139 transitive · ←2 direct*
 
 **exports** `OllamaOptions` `OllamaProvider`
 **members** `thinkFor:44 describeThink:55 buildBody:65 mapDone:212 toOllamaTool:218 toOllamaMessages:244 joinText:284 flattenToolResult:291`
 **imported by** `engine/providers/src/index.ts` `engine/providers/src/openai-compat.ts`
 
 ### `engine/providers/src/anthropic.ts`
-*282L · ↓137 transitive · ←1 direct*
+*282L · ↓138 transitive · ←1 direct*
 
 **exports** `AnthropicOptions` `AnthropicProvider`
 **members** `listModels:174 countTokens:179 describeAnthropicEffort:199 mapStop:216 toAnthropicMessage:231 toAnthropicImage:240 toAnthropicBlock:251`
 **imported by** `engine/providers/src/index.ts`
 
 ### `engine/providers/src/index.ts`
-*9L · ↓136 transitive · ←27 direct*
+*9L · ↓137 transitive · ←28 direct*
 
 **exports** `FakeProvider` `FakeToolCall` `FakeTurn` `OpenAICompatOptions` `OpenAICompatProvider` `OllamaOptions` `OllamaProvider` `ThinkTagSplitter` `EffortClamp` `toWireEffort` `WIRE_EFFORTS` `WireEffort` `AnthropicOptions` `AnthropicProvider`
-**imported by** `engine/core/src/agent/tool.ts` `engine/core/src/config/providerFactory.ts` `engine/core/src/runtime/engine.ts` `engine/core/src/runtime/session.ts` `engine/core/src/state/transcript.ts` `engine/host/src/bootstrap.ts` `tests/features/a-tool-call-shows-while-it-is-written.test.ts` `tests/features/honest-gap-outranks-a-manufactured-green.test.ts` …+19
-
-### `engine/core/src/config/settings.ts`
-*665L · ↓133 transitive · ←9 direct*
-
-**exports** `DEFAULT_OPENAI_BASE_URL` `DEFAULT_API_KEY_ENV` `settingsSchema` `Settings` `Hooks` `HookEvent` `HookMatcherEntry` `SettingsWarning` `globalSettingsPath` `projectSettingsPath` `loadSettings` `SettingSourceKind` `EffectiveSetting` `describeSettings` `setSettingPath` `deleteSettingPath` `coerceSettingValue` `AppliedSetting` `SettingsTarget` `setSetting` `addExactPermission` `ApiKeySource` `resolveApiKeySource` `resolveApiKey` `VISION_API_KEY_ENV` `resolveVisionApiKey`
-**members** `DEFAULT_OPENAI_BASE_URL:14 DEFAULT_API_KEY_ENV:21 settingsSchema:42 globalSettingsPath:240 projectSettingsPath:245 loadSettings:273 readJson:296 deepMerge:311 applyEnvOverrides:329 isSecretPath:353 redactSecret:361 flattenLeaves:367 describeSettings:385 setSettingPath:406 deleteSettingPath:419 coerceSettingValue:430 setSetting:456 mergedLayersAreValid:517 writeSettingsFile:542 addExactPermission:556 isSameGrant:573 envKey:594 resolveApiKeySource:614 resolveApiKey:642 VISION_API_KEY_ENV:652 resolveVisionApiKey:662`
-**imported by** `engine/core/src/agent/hooks.ts` `engine/core/src/agent/tool.ts` `engine/core/src/config/pricing.ts` `engine/core/src/config/providerFactory.ts` `engine/core/src/index.ts` `engine/core/src/knowledge/reuseGate.ts` `engine/core/src/runtime/engine.ts` `engine/core/src/runtime/session.ts` …+1
-
-### `engine/providers/src/types.ts`
-*108L · ↓141 transitive · ←5 direct*
-
-**exports** `ContentBlock` `ToolResultPart` `Msg` `ToolSchema` `StopReason` `ProviderEvent` `StreamRequest` `Provider`
-**imported by** `engine/providers/src/anthropic.ts` `engine/providers/src/fake.ts` `engine/providers/src/index.ts` `engine/providers/src/ollama.ts` `engine/providers/src/openai-compat.ts`
+**imported by** `engine/core/src/agent/tool.ts` `engine/core/src/config/providerFactory.ts` `engine/core/src/runtime/engine.ts` `engine/core/src/runtime/session.ts` `engine/core/src/state/transcript.ts` `engine/host/src/bootstrap.ts` `tests/features/a-tool-call-shows-while-it-is-written.test.ts` `tests/features/brain-is-the-single-source.test.ts` …+20
 
 ### `app/main.js`
 *2020L · ↓0 transitive · ←0 direct*
@@ -189,7 +190,7 @@ before adding one.
 
 **app/main/updates.js/**
 
-- `` · 353L · ↓1
+- `` · 354L · ↓1
 
 **app/preload.js/**
 
@@ -277,39 +278,39 @@ before adding one.
 
 **engine/core/src/**
 
-- `agent/addons.ts` · 221L · ↓121 — addonInvocationHeader, ADDONS_DIR, ADDON_ENTRY, Addon, loadAddons
-- `agent/agents.ts` · 101L · ↓121 — AgentTypeDef, AGENT_TYPES, SUBAGENT_RESULT_ID, agentRoleText, agentDescriptionText, resolveAgentType, agentToolNames
-- `agent/builtinAddons.ts` · 109L · ↓122 — BUILTIN_ADDONS
-- `agent/hooks.ts` · 134L · ↓121 — HookConfig, HookOutcome, HookSummary, HookRunner
-- `agent/prompts.ts` · 279L · ↓121 — SECTION_IDENTITY, SECTION_HARNESS, SECTION_COMMUNICATION, SECTION_ACTION_CARE, SECTION_GIT, SECTION_CODE_STYLE, SECTION_TASKS, SECTION_WORKING_METHOD, SECTION_AUTONOMY, behaviorCore, …
-- `agent/tool.ts` · 291L · ↓127 — PermissionClass, ToolResult, SpawnAgentOptions, SessionServices, ToolContext, ToolDescriptionVars, ToolDefinition, AnyToolDefinition, registerToolPrompt, toolDescriptionText, …
-- `config/frontmatter.ts` · 66L · ↓122 — FrontmatterEntry, Frontmatter, parseFrontmatter
-- `config/pricing.ts` · 84L · ↓122 — ModelPricing, MODEL_PRICING, pricingFor, contextWindowFor, formatDuration
-- `config/providerFactory.ts` · 107L · ↓121 — ProviderKind, EndpointSpec, isLocalBaseUrl, ConnectionSettings, endpointSpecFromSettings, createProviderForEndpoint
-- `config/settings.ts` ⬢ · 665L · ↓133 — DEFAULT_OPENAI_BASE_URL, DEFAULT_API_KEY_ENV, settingsSchema, Settings, Hooks, HookEvent, HookMatcherEntry, SettingsWarning, globalSettingsPath, projectSettingsPath, …
-- `index.ts` ⬢ · 30L · ↓118 — writeFileAtomic, AsyncQueue, zodToJsonSchema
-- `integrations/mcp.ts` · 323L · ↓119 — McpServerConfig, mcpServerConfigSchema, McpToolInfo, McpToolError, McpClient, createMcpTools
-- `knowledge/docs.ts` · 889L · ↓119 — extractPdfText, extractDocxText, extractPptxText, extractXlsxText, extractRtfText, extractOdtText, extractEpubText, extractDocumentText
-- `knowledge/graph.ts` · 1247L · ↓124 — GraphFileEntry, GraphData, MAX_FILE_BYTES, SCAN_EXTS, langOf, shouldSkipDir, normalizeToId, extOf, buildGraph, loadOrBuildGraph, …
-- `knowledge/reuseGate.ts` · 156L · ↓121 — SearchLog, ReuseGateResult, evaluateReuseGate
-- `knowledge/seeds.ts` · 55L · ↓119 — resolveSeeds
-- `knowledge/standards.ts` · 32L · ↓121 — STANDARDS_FILENAMES, loadStandards
-- `knowledge/symbols.ts` · 442L · ↓123 — SymbolFileEntry, SymbolIndexData, a, c, D, NAME, SymbolSite, extractSymbolSites, extractSymbols, buildSymbolIndex, …
-- `knowledge/workspace.ts` · 50L · ↓121 — workspaceLooksNonTrivial, projectName
-- `runtime/engine.ts` ⬢ · 1830L · ↓119 — SETTING_TIMING, EngineOptions, Engine, reconstructForDisplay
-- `runtime/fileState.ts` · 67L · ↓121 — FileState
-- `runtime/finishing.ts` · 393L · ↓121 — codeFilesAmong, looksLikeTestDouble, uiFilesAmong, looksLikeBrowserRun, runtimeEvidenceText, browserEvidenceText, findSymptoms, findHedges, selfVerifyText
-- `runtime/permissions.ts` · 491L · ↓121 — PermissionRequestPayload, PermissionOutcome, ApprovalSource, protectedEditPath, ExactGrant, deriveAlwaysGrant, PermissionEngine
-- `runtime/session.ts` ⬢ · 3353L · ↓120 — isSelfVerifyDone, addonNamedIn, SessionOptions, Session
-- `runtime/sessionStats.ts` · 326L · ↓121 — ContextBreakdown, SessionStats
-- `scheduling/background.ts` · 102L · ↓121 — BackgroundManager
-- `scheduling/cron.ts` · 348L · ↓128 — CronFields, parseCron, matchesCron, nextCronMatch, CronJobSource, CronJob, CronSchedulerOptions, CronScheduler
-- `scheduling/workflow.ts` · 328L · ↓119 — ParsedMeta, WorkflowMeta, WorkflowResult, WorkflowRunOptions, WorkflowRunner
-- `state/taskStore.ts` · 136L · ↓121 — TaskStore
-- `state/transcript.ts` · 225L · ↓121 — stripSystemReminders, unansweredToolUseIds, syntheticToolResults, repairToolPairing, TranscriptRecord, Transcript
-- `util/asyncQueue.ts` · 32L · ↓120 — AsyncQueue
-- `util/fsAtomic.ts` · 35L · ↓141 — writeFileAtomic
-- `util/zodToJsonSchema.ts` · 8L · ↓121 — zodToJsonSchema
+- `agent/addons.ts` · 210L · ↓122 — addonInvocationHeader, ADDONS_DIR, ADDON_ENTRY, Addon, loadAddons
+- `agent/agents.ts` · 101L · ↓122 — AgentTypeDef, AGENT_TYPES, SUBAGENT_RESULT_ID, agentRoleText, agentDescriptionText, resolveAgentType, agentToolNames
+- `agent/builtinAddons.ts` · 109L · ↓123 — BUILTIN_ADDONS
+- `agent/hooks.ts` · 134L · ↓122 — HookConfig, HookOutcome, HookSummary, HookRunner
+- `agent/prompts.ts` · 105L · ↓122 — SECTION_IDENTITY, SECTION_HARNESS, SECTION_COMMUNICATION, SECTION_ACTION_CARE, SECTION_GIT, SECTION_CODE_STYLE, SECTION_TASKS, SECTION_WORKING_METHOD, SECTION_AUTONOMY, behaviorCore, …
+- `agent/tool.ts` · 307L · ↓128 — PermissionClass, ToolResult, SpawnAgentOptions, SessionServices, ToolContext, ToolDescriptionVars, ToolDefinition, AnyToolDefinition, registerToolPrompt, toolDescriptionText, …
+- `config/frontmatter.ts` · 66L · ↓123 — FrontmatterEntry, Frontmatter, parseFrontmatter
+- `config/pricing.ts` · 84L · ↓123 — ModelPricing, MODEL_PRICING, pricingFor, contextWindowFor, formatDuration
+- `config/providerFactory.ts` · 107L · ↓122 — ProviderKind, EndpointSpec, isLocalBaseUrl, ConnectionSettings, endpointSpecFromSettings, createProviderForEndpoint
+- `config/settings.ts` · 665L · ↓134 — DEFAULT_OPENAI_BASE_URL, DEFAULT_API_KEY_ENV, settingsSchema, Settings, Hooks, HookEvent, HookMatcherEntry, SettingsWarning, globalSettingsPath, projectSettingsPath, …
+- `index.ts` ⬢ · 30L · ↓119 — writeFileAtomic, AsyncQueue, zodToJsonSchema
+- `integrations/mcp.ts` · 323L · ↓120 — McpServerConfig, mcpServerConfigSchema, McpToolInfo, McpToolError, McpClient, createMcpTools
+- `knowledge/docs.ts` · 889L · ↓120 — extractPdfText, extractDocxText, extractPptxText, extractXlsxText, extractRtfText, extractOdtText, extractEpubText, extractDocumentText
+- `knowledge/graph.ts` · 1247L · ↓125 — GraphFileEntry, GraphData, MAX_FILE_BYTES, SCAN_EXTS, langOf, shouldSkipDir, normalizeToId, extOf, buildGraph, loadOrBuildGraph, …
+- `knowledge/reuseGate.ts` · 156L · ↓122 — SearchLog, ReuseGateResult, evaluateReuseGate
+- `knowledge/seeds.ts` · 55L · ↓120 — resolveSeeds
+- `knowledge/standards.ts` · 32L · ↓122 — STANDARDS_FILENAMES, loadStandards
+- `knowledge/symbols.ts` · 442L · ↓124 — SymbolFileEntry, SymbolIndexData, a, c, D, NAME, SymbolSite, extractSymbolSites, extractSymbols, buildSymbolIndex, …
+- `knowledge/workspace.ts` · 50L · ↓122 — workspaceLooksNonTrivial, projectName
+- `runtime/engine.ts` ⬢ · 1804L · ↓120 — SETTING_TIMING, EngineOptions, Engine, reconstructForDisplay
+- `runtime/fileState.ts` · 67L · ↓122 — FileState
+- `runtime/finishing.ts` · 277L · ↓122 — codeFilesAmong, looksLikeTestDouble, uiFilesAmong, looksLikeBrowserRun, runtimeEvidenceText, browserEvidenceText, findSymptoms, findHedges, selfVerifyText
+- `runtime/permissions.ts` · 491L · ↓122 — PermissionRequestPayload, PermissionOutcome, ApprovalSource, protectedEditPath, ExactGrant, deriveAlwaysGrant, PermissionEngine
+- `runtime/session.ts` ⬢ · 3203L · ↓121 — isSelfVerifyDone, addonNamedIn, SessionOptions, Session
+- `runtime/sessionStats.ts` · 326L · ↓122 — ContextBreakdown, SessionStats
+- `scheduling/background.ts` · 102L · ↓122 — BackgroundManager
+- `scheduling/cron.ts` · 348L · ↓129 — CronFields, parseCron, matchesCron, nextCronMatch, CronJobSource, CronJob, CronSchedulerOptions, CronScheduler
+- `scheduling/workflow.ts` · 328L · ↓120 — ParsedMeta, WorkflowMeta, WorkflowResult, WorkflowRunOptions, WorkflowRunner
+- `state/taskStore.ts` · 136L · ↓122 — TaskStore
+- `state/transcript.ts` · 225L · ↓122 — stripSystemReminders, unansweredToolUseIds, syntheticToolResults, repairToolPairing, TranscriptRecord, Transcript
+- `util/asyncQueue.ts` · 32L · ↓121 — AsyncQueue
+- `util/fsAtomic.ts` · 35L · ↓142 — writeFileAtomic
+- `util/zodToJsonSchema.ts` · 8L · ↓122 — zodToJsonSchema
 
 **engine/host/src/**
 
@@ -322,48 +323,50 @@ before adding one.
 
 **engine/protocol/src/**
 
-- `branding.ts` ⬢ · 6L · ↓162 — PRODUCT_NAME, PRODUCT_REPO_URL, CLI_NAME, STATE_DIR_NAME
-- `index.ts` ⬢ · 6L · ↓160
-- `ndjson.ts` ⬢ · 44L · ↓161 — encodeFrame, decodeFrames
-- `prompts.ts` ⬢ · 244L · ↓161 — PromptChannel, PromptMeta, PromptEntry, promptsDir, promptFile, definePrompt, promptText, renderPrompt, promptTextIfEnabled, isPromptDisabled, …
-- `tokens.ts` ⬢ · 133L · ↓161 — emptyUsage, addUsage, reasoningPart, inputTokensOf, CHARS_PER_TOKEN, estimateTokens, formatTokens, contextPercentOf, freeContextOf
-- `types.ts` ⬢ · 543L · ↓162 — PROTOCOL_VERSION, TaskStatus, TaskItem, Usage, QuestionOption, Question, SessionSummary, PermissionDecision, SlashCommandInfo, CoreEvent, …
+- `brain.generated.ts` ⬢ · 958L · ↓165 — BrainPromptDefault, BrainToolDefault, BrainAvailabilityDefault, BRAIN_PROMPTS, BRAIN_TOOLS, BRAIN_BUILTIN_TOOLS, BRAIN_AVAILABILITY
+- `brain.ts` ⬢ · 146L · ↓162 — toolDescription, toolParam, assertToolParamStates, brainToolNames, unreadToolParams, ToolAvailability, builtinToolNames, isBuiltinTool, brainAvailability, resolveToolAvailability, …
+- `branding.ts` ⬢ · 6L · ↓165 — PRODUCT_NAME, PRODUCT_REPO_URL, CLI_NAME, STATE_DIR_NAME
+- `index.ts` ⬢ · 7L · ↓161
+- `ndjson.ts` ⬢ · 44L · ↓162 — encodeFrame, decodeFrames
+- `prompts.ts` ⬢ · 299L · ↓165 — PromptChannel, PromptMeta, PromptEntry, promptsDir, promptFile, definePrompt, promptText, renderPrompt, promptTextIfEnabled, isPromptDisabled, …
+- `tokens.ts` ⬢ · 133L · ↓162 — emptyUsage, addUsage, reasoningPart, inputTokensOf, CHARS_PER_TOKEN, estimateTokens, formatTokens, contextPercentOf, freeContextOf
+- `types.ts` ⬢ · 543L · ↓163 — PROTOCOL_VERSION, TaskStatus, TaskItem, Usage, QuestionOption, Question, SessionSummary, PermissionDecision, SlashCommandInfo, CoreEvent, …
 
 **engine/providers/src/**
 
-- `anthropic.ts` ⬢ · 282L · ↓137 — AnthropicOptions, AnthropicProvider
-- `effort.ts` · 126L · ↓139 — WIRE_EFFORTS, WireEffort, toWireEffort, EffortClamp, mentionsReasoningEffort, looksLikeUnknownField
-- `fake.ts` · 88L · ↓137 — FakeToolCall, FakeTurn, FakeProvider
-- `index.ts` ⬢ · 9L · ↓136 — FakeProvider, FakeToolCall, FakeTurn, OpenAICompatOptions, OpenAICompatProvider, OllamaOptions, OllamaProvider, ThinkTagSplitter, EffortClamp, toWireEffort, …
-- `ollama.ts` ⬢ · 295L · ↓138 — OllamaOptions, OllamaProvider
-- `openai-compat.ts` ⬢ · 620L · ↓137 — OpenAICompatOptions, OpenAICompatProvider
-- `retry.ts` · 231L · ↓140 — RetryOptions, RetryInfo, ProviderHttpError, looksLikeContextOverflow, isContextOverflowError, isRetryable, retryReason, friendlyProviderError, withRetry, parseRetryAfter
-- `think.ts` · 93L · ↓139 — ThinkTagSplitter
-- `types.ts` ⬢ · 108L · ↓141 — ContentBlock, ToolResultPart, Msg, ToolSchema, StopReason, ProviderEvent, StreamRequest, Provider
+- `anthropic.ts` ⬢ · 282L · ↓138 — AnthropicOptions, AnthropicProvider
+- `effort.ts` · 126L · ↓140 — WIRE_EFFORTS, WireEffort, toWireEffort, EffortClamp, mentionsReasoningEffort, looksLikeUnknownField
+- `fake.ts` · 88L · ↓138 — FakeToolCall, FakeTurn, FakeProvider
+- `index.ts` ⬢ · 9L · ↓137 — FakeProvider, FakeToolCall, FakeTurn, OpenAICompatOptions, OpenAICompatProvider, OllamaOptions, OllamaProvider, ThinkTagSplitter, EffortClamp, toWireEffort, …
+- `ollama.ts` ⬢ · 295L · ↓139 — OllamaOptions, OllamaProvider
+- `openai-compat.ts` ⬢ · 620L · ↓138 — OpenAICompatOptions, OpenAICompatProvider
+- `retry.ts` · 231L · ↓141 — RetryOptions, RetryInfo, ProviderHttpError, looksLikeContextOverflow, isContextOverflowError, isRetryable, retryReason, friendlyProviderError, withRetry, parseRetryAfter
+- `think.ts` · 93L · ↓140 — ThinkTagSplitter
+- `types.ts` · 108L · ↓142 — ContentBlock, ToolResultPart, Msg, ToolSchema, StopReason, ProviderEvent, StreamRequest, Provider
 
 **engine/tools/src/**
 
-- `addon.ts` · 65L · ↓84 — addonTool
-- `agent.ts` · 89L · ↓84 — agentTool
-- `askUserQuestion.ts` · 44L · ↓84 — askUserQuestionTool
-- `bash.ts` · 918L · ↓85 — bashDeletionSubject, bashDeletionTargets, bashDeletionScope, bashProcessKillSubject, bashTool, resolveBashPath, spawnShell, killTree
-- `cron.ts` · 167L · ↓84 — cronCreateTool, cronDeleteTool, cronListTool, scheduleWakeupTool
-- `edit.ts` · 127L · ↓84 — editTool
-- `glob.ts` · 93L · ↓84 — globTool
-- `graphQuery.ts` · 150L · ↓84 — graphQueryTool
-- `grep.ts` · 96L · ↓84 — grepTool
-- `index.ts` · 98L · ↓83 — addonTool, agentTool, askUserQuestionTool, bashTool, cronCreateTool, cronDeleteTool, cronListTool, editTool, enterWorktreeTool, exitWorktreeTool, …
-- `monitor.ts` · 152L · ↓84 — monitorTool
-- `pushNotification.ts` · 94L · ↓84 — pushNotificationTool
-- `read.ts` · 180L · ↓84 — readTool
-- `taskControl.ts` · 70L · ↓84 — taskStopTool, taskOutputTool
-- `tasks.ts` · 205L · ↓84 — resolveTaskId, taskCreateTool, taskUpdateTool, taskListTool, taskGetTool
-- `util/diff.ts` · 122L · ↓86 — unifiedDiff
-- `webFetch.ts` · 145L · ↓84 — webFetchTool, htmlToText
-- `webSearch.ts` · 223L · ↓84 — SearchResult, SearchBackend, parseDuckDuckGoHtml, DuckDuckGoBackend, BraveBackend, TavilyBackend, webSearchTool
-- `workflow.ts` · 102L · ↓84 — meta, workflowTool
-- `worktree.ts` · 253L · ↓84 — enterWorktreeTool, exitWorktreeTool
-- `write.ts` · 51L · ↓84 — writeTool
+- `addon.ts` · 69L · ↓85 — addonTool
+- `agent.ts` · 76L · ↓85 — agentTool
+- `askUserQuestion.ts` · 43L · ↓85 — askUserQuestionTool
+- `bash.ts` · 900L · ↓86 — bashDeletionSubject, bashDeletionTargets, bashDeletionScope, bashProcessKillSubject, bashTool, resolveBashPath, spawnShell, killTree
+- `cron.ts` · 162L · ↓85 — cronCreateTool, cronDeleteTool, cronListTool, scheduleWakeupTool
+- `edit.ts` · 123L · ↓85 — editTool
+- `glob.ts` · 86L · ↓85 — globTool
+- `graphQuery.ts` · 143L · ↓85 — graphQueryTool
+- `grep.ts` · 92L · ↓85 — grepTool
+- `index.ts` · 98L · ↓84 — addonTool, agentTool, askUserQuestionTool, bashTool, cronCreateTool, cronDeleteTool, cronListTool, editTool, enterWorktreeTool, exitWorktreeTool, …
+- `monitor.ts` · 148L · ↓85 — monitorTool
+- `pushNotification.ts` · 95L · ↓85 — pushNotificationTool
+- `read.ts` · 173L · ↓85 — readTool
+- `taskControl.ts` · 71L · ↓85 — taskStopTool, taskOutputTool
+- `tasks.ts` · 191L · ↓85 — resolveTaskId, taskCreateTool, taskUpdateTool, taskListTool, taskGetTool
+- `util/diff.ts` · 122L · ↓87 — unifiedDiff
+- `webFetch.ts` · 149L · ↓85 — webFetchTool, htmlToText
+- `webSearch.ts` · 224L · ↓85 — SearchResult, SearchBackend, parseDuckDuckGoHtml, DuckDuckGoBackend, BraveBackend, TavilyBackend, webSearchTool
+- `workflow.ts` · 87L · ↓85 — workflowTool
+- `worktree.ts` · 248L · ↓85 — enterWorktreeTool, exitWorktreeTool
+- `write.ts` · 46L · ↓85 — writeTool
 
 **tests/features/a-404-on-models-is-disambiguated-not-assumed.test.ts/**
 
@@ -383,7 +386,7 @@ before adding one.
 
 **tests/features/a-tool-call-shows-while-it-is-written.test.ts/**
 
-- `` · 425L · ↓0
+- `` · 427L · ↓0
 
 **tests/features/addons-listing.test.ts/**
 
@@ -408,6 +411,10 @@ before adding one.
 **tests/features/bootstrap.test.ts/**
 
 - `` · 232L · ↓0
+
+**tests/features/brain-is-the-single-source.test.ts/**
+
+- `` · 1361L · ↓0
 
 **tests/features/bundled-files.test.ts/**
 
@@ -455,7 +462,7 @@ before adding one.
 
 **tests/features/context-accounting.test.ts/**
 
-- `` · 249L · ↓0
+- `` · 251L · ↓0
 
 **tests/features/cost-estimate.test.ts/**
 
@@ -659,7 +666,7 @@ before adding one.
 
 **tests/features/prompt-registry.test.ts/**
 
-- `` · 305L · ↓0
+- `` · 309L · ↓0
 
 **tests/features/protected-state-dir.test.ts/**
 
@@ -951,11 +958,11 @@ before adding one.
 
 **tests/lib/approved.ts/**
 
-- `` · 147L · ↓2 — CANONICAL_ENV, approvedPath, readApproved, overriddenPromptIds, renderSystemPrompt, renderToolContract, firstDifference
+- `` · 147L · ↓3 — CANONICAL_ENV, approvedPath, readApproved, overriddenPromptIds, renderSystemPrompt, renderToolContract, firstDifference
 
 **tests/lib/childProcesses.ts/**
 
-- `` · 284L · ↓56 — SpawnOptions, Exit, ProcHandle, ChildProcesses
+- `` · 284L · ↓57 — SpawnOptions, Exit, ProcHandle, ChildProcesses
 
 **tests/lib/directTool.ts/**
 
@@ -967,19 +974,19 @@ before adding one.
 
 **tests/lib/exclusive.ts/**
 
-- `` · 50L · ↓4 — withExclusiveLock
+- `` · 50L · ↓5 — withExclusiveLock
 
 **tests/lib/featureTest.ts/**
 
-- `` · 746L · ↓150 — TestRun, FeatureTest, inventoryLinkageProblems, LLM_OPT_IN_VAR, realModelTestsEnabled, ARTIFACT_OPT_IN_VAR, realArtifactTestsEnabled, UI_OPT_IN_VAR, realUiTestsEnabled, kindScopeRequested, …
+- `` · 746L · ↓151 — TestRun, FeatureTest, inventoryLinkageProblems, LLM_OPT_IN_VAR, realModelTestsEnabled, ARTIFACT_OPT_IN_VAR, realArtifactTestsEnabled, UI_OPT_IN_VAR, realUiTestsEnabled, kindScopeRequested, …
 
 **tests/lib/fsTest.ts/**
 
-- `` · 103L · ↓67 — FsTest
+- `` · 103L · ↓68 — FsTest
 
 **tests/lib/inventory.ts/**
 
-- `` · 120L · ↓155 — repoRoot, Kind, FeatureRecordSubset, featureRecordPath, readFeatureRecord
+- `` · 120L · ↓156 — repoRoot, Kind, FeatureRecordSubset, featureRecordPath, readFeatureRecord
 
 **tests/lib/llmTest.ts/**
 
@@ -999,15 +1006,15 @@ before adding one.
 
 **tests/lib/procTest.ts/**
 
-- `` · 59L · ↓28 — Exit, ProcHandle, SpawnOptions, ProcTest
+- `` · 59L · ↓29 — Exit, ProcHandle, SpawnOptions, ProcTest
 
 **tests/lib/pureTest.ts/**
 
-- `` · 59L · ↓56 — PureTest
+- `` · 59L · ↓57 — PureTest
 
 **tests/lib/scriptedEngine.ts/**
 
-- `` · 282L · ↓40 — FakeToolCall, FakeTurn, EngineOnOptions, ScriptedEngineOptions, TurnOutcome, EngineDriver, ScriptedEngine, startScriptedEngine, startEngineOn
+- `` · 300L · ↓41 — FakeToolCall, FakeTurn, EngineOnOptions, ScriptedEngineOptions, TurnOutcome, EngineDriver, ScriptedEngine, startScriptedEngine, startEngineOn
 
 **tests/lib/scriptedFetch.ts/**
 
@@ -1021,12 +1028,16 @@ before adding one.
 
 - `` · 85L · ↓0
 
+**tools/brain/compile.mjs/**
+
+- `` · 622L · ↓0 — BUILTIN_TOOLS, GROUP_DIRS, CHANNELS, brainPromptIdsInSource, compileBrain, BrainPromptDefault, BrainToolDefault, BrainAvailabilityDefault, BRAIN_PROMPTS, BRAIN_TOOLS, …
+
 **tools/magentra-gateway/src/**
 
 - `cli.ts` · 134L · ↓0
 - `connection.ts` · 196L · ↓3 — ProfileOffer, ConnectionState, checkConnection, UnknownProfileError, applyProfileToWorkspace, disconnectWorkspace, describeConnection
 - `deps.ts` · 187L · ↓2 — FileDependencies, MirroredConstant, DependencyReport, MIRRORED_SECTION, clearDependencyCache, resolveDependencies
-- `freshness.ts` · 160L · ↓3 — hashFiles, normalizeEol, stamp, FeatureFreshness, checkFeature, FreshnessReport, checkFreshness, reRecord
+- `freshness.ts` · 161L · ↓3 — hashFiles, normalizeEol, stamp, FeatureFreshness, checkFeature, FreshnessReport, checkFreshness, reRecord
 - `gate.ts` · 68L · ↓2 — GateState, evaluateGate
 - `registry.ts` · 361L · ↓3 — repoRoot, featuresDir, descriptionsDir, readyDescriptionsDir, RecordProblem, RegistryError, loadFeatures, loadDescriptions, serializeFeature, writeFeature, …
 - `schema.ts` · 202L · ↓7 — AREAS, KINDS, STATUSES, Area, Kind, Status, DEFERRED_PREFIX, FreshnessStampSchema, FreshnessStamp, FeatureRecordSchema, …

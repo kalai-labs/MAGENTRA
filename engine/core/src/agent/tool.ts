@@ -2,10 +2,12 @@ import type { z } from "zod";
 import {
   definePrompt,
   isPromptDisabled,
+  isToolOffered,
   promptText,
   renderPrompt,
   type CoreEvent,
   type TaskItem,
+  type ToolAvailability,
 } from "@magentra/protocol";
 import type { ToolResultPart } from "@magentra/providers";
 import type { Settings } from "../config/settings.js";
@@ -223,6 +225,20 @@ export class ToolRegistry {
   /** The tools actually offered to the model — {@link isToolDisabled} excluded. */
   enabled(): AnyToolDefinition[] {
     return this.list().filter((t) => !isToolDisabled(t.name));
+  }
+
+  /**
+   * The tools a session offers right now: {@link enabled}, narrowed by a ROOT
+   * session's availability (brain/availability.json, or an engine override) for
+   * the current context — `overdrive` while OVERDRIVE is on, `main` otherwise.
+   * Only built-in tool names are subject to it; MCP tools always pass. Pass
+   * `undefined` (a subagent child) to skip availability: a child's registry is
+   * already its agent type's subset.
+   */
+  offered(availability: ToolAvailability | undefined, overdrive: boolean): AnyToolDefinition[] {
+    const enabled = this.enabled();
+    if (!availability) return enabled;
+    return enabled.filter((t) => isToolOffered(t.name, availability, overdrive));
   }
 
   /** A registry containing only the named subset (for subagents). */

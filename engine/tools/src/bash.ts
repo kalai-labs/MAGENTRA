@@ -3,6 +3,7 @@ import { createWriteStream, existsSync } from "node:fs";
 import { isAbsolute, join, resolve as pathResolve, sep as pathSep } from "node:path";
 import { z } from "zod";
 import type { SessionServices, ToolDefinition, ToolResult } from "@magentra/core";
+import { toolDescription, toolParam } from "@magentra/protocol";
 
 const DEFAULT_TIMEOUT = 120_000;
 const MAX_TIMEOUT = 600_000;
@@ -661,45 +662,26 @@ function effectiveCwd(session: SessionServices, sessionDir: string): string {
 }
 
 const inputSchema = z.object({
-  command: z.string().describe("The command to execute"),
+  command: z.string().describe(toolParam("Bash", "command")),
   description: z
     .string()
-    .describe(
-      'Clear, concise description of what this command does in active voice, e.g. "List files in current directory", "Install package dependencies", "Discard all local changes and match remote main". Shown to the user in the approval prompt.',
-    ),
+    .describe(toolParam("Bash", "description")),
   timeout: z
     .number()
     .int()
     .positive()
     .max(MAX_TIMEOUT)
     .optional()
-    .describe(`Optional timeout in milliseconds (max {{maxTimeout}})`),
+    .describe(toolParam("Bash", "timeout")),
   run_in_background: z
     .boolean()
     .default(false)
-    .describe("Set to true to run this command in the background; you are notified when it exits."),
+    .describe(toolParam("Bash", "run_in_background")),
 });
 
 export const bashTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "Bash",
-  description: `Executes a shell command and returns its combined stdout/stderr.
-
-- The working directory persists across calls (a cd in one call carries to the next), but env vars and functions do not. Prefer absolute paths over cd.
-- Do not use this for reading, searching, or editing files — Read/Grep/Glob/Edit are faster and safer than cat/grep/find/sed.
-- timeout is in milliseconds: default {{defaultTimeout}}, max {{maxTimeout}}. On timeout the whole process tree is killed.
-- run_in_background: true detaches the command; you get a task id immediately, output streams to a file, and a task-notification arrives when it exits. Never run bare foreground "sleep" commands — background the wait instead.
-- To stop a background command, use TaskStop with its task id. Never stop processes by name (taskkill /IM, pkill, killall, Stop-Process -Name): that stops every matching process on the machine, not only yours.
-- To wait for a server you started in the background, keep the wait short and check its job between tries (TaskOutput with block: false shows whether it is still running): a loop that only polls the port keeps spinning after the server has died.
-- Never use interactive flags (-i) — there is no TTY.
-- Command output is shown to you, not reliably to the user. Restate anything that matters in your final message.
-
-Git:
-- Never commit, push, or create branches unless the user asked for it in this conversation. If it is unclear whether they want a commit, ask.
-- To commit when asked: run git status, git diff, and git log (recent style) in parallel; draft a one-to-two-sentence message explaining why the change exists; stage the specific files by name (never git add -A or .); commit passing the message through
-a heredoc so formatting survives; then verify with git status.
-- Never use --force, --no-verify, --no-gpg-sign, git config changes, reset --hard, checkout ., clean -f, or branch -D unless the user explicitly requests that exact operation. Never force-push to main/master — warn instead.
-- If a pre-commit hook fails, the commit did not happen: fix the issue, re-stage, and create a NEW commit. Never amend, since amending after a hook failure rewrites the previous commit and can destroy work.
-- Do not commit files that look like secrets (.env, credentials); warn if asked to. Do not create empty commits.`,
+  description: toolDescription("Bash"),
   descriptionVars: { defaultTimeout: DEFAULT_TIMEOUT, maxTimeout: MAX_TIMEOUT },
   permissionClass: "execute",
   permissionSubject: (input) => input.command,

@@ -1,14 +1,15 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import type { ToolDefinition } from "@magentra/core";
+import { toolDescription, toolParam } from "@magentra/protocol";
 
 const stopSchema = z.object({
-  task_id: z.string().describe("The id of the background task (bash, monitor, or agent) to stop"),
+  task_id: z.string().describe(toolParam("TaskStop", "task_id")),
 });
 
 export const taskStopTool: ToolDefinition<z.infer<typeof stopSchema>> = {
   name: "TaskStop",
-  description: `Stops a running background task (a backgrounded Bash command, a Monitor, or a background Agent) by its task id. Returns whether it was running. Already-finished or unknown ids are reported, not an error you need to retry.`,
+  description: toolDescription("TaskStop"),
   permissionClass: "execute",
   permissionSubject: (input) => input.task_id,
   describeInput: (input) => `Stop task ${input.task_id}`,
@@ -27,22 +28,22 @@ export const taskStopTool: ToolDefinition<z.infer<typeof stopSchema>> = {
 };
 
 const outputSchema = z.object({
-  task_id: z.string().describe("The id of the background task to read output from"),
+  task_id: z.string().describe(toolParam("TaskOutput", "task_id")),
   block: z
     .boolean()
     .default(true)
-    .describe("If true, wait for the task to finish (up to timeout) before returning its output."),
+    .describe(toolParam("TaskOutput", "block")),
   timeout: z
     .number()
     .int()
     .positive()
     .default(30_000)
-    .describe("Max milliseconds to block waiting for the task to finish (default 30000)."),
+    .describe(toolParam("TaskOutput", "timeout")),
 });
 
 export const taskOutputTool: ToolDefinition<z.infer<typeof outputSchema>> = {
   name: "TaskOutput",
-  description: `Reads the accumulated output of a background task (backgrounded Bash, Monitor, or Agent). With block:true (the default) it waits until the task finishes or the timeout elapses, then returns the output; with block:false it returns whatever output exists right now. Use it to collect a background Agent's report or check on a long-running command.`,
+  description: toolDescription("TaskOutput"),
   permissionClass: "read",
   permissionSubject: (input) => input.task_id,
   execute: async (input, ctx, signal) => {

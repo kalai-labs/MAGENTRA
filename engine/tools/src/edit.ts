@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, relative } from "node:path";
 import { z } from "zod";
+import { toolDescription, toolParam } from "@magentra/protocol";
 import type { ToolDefinition } from "@magentra/core";
 import { unifiedDiff } from "./util/diff.js";
 
@@ -11,20 +12,15 @@ function flatten(text: string, n: number): string {
 }
 
 const inputSchema = z.object({
-  file_path: z.string().describe("The absolute path to the file to modify"),
-  old_string: z.string().describe("The text to replace"),
-  new_string: z.string().describe("The text to replace it with (must be different from old_string)"),
-  replace_all: z.boolean().default(false).describe("Replace all occurrences of old_string (default false)"),
+  file_path: z.string().describe(toolParam("Edit", "file_path")),
+  old_string: z.string().describe(toolParam("Edit", "old_string")),
+  new_string: z.string().describe(toolParam("Edit", "new_string")),
+  replace_all: z.boolean().default(false).describe(toolParam("Edit", "replace_all")),
 });
 
 export const editTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "Edit",
-  description: `Performs exact string replacement in a file.
-
-- You must Read the file in this session before editing; the call fails otherwise.
-- old_string must match the file contents exactly, including whitespace and indentation, and must be unique in the file — otherwise the edit fails. Never include the Read line-number prefix (number + tab) in old_string.
-- Keep old_string short: the smallest unique anchor — a few lines at most — copied from your latest Read of the file, never retyped from memory. A long old_string written from memory fails on one missing character.
-- Set replace_all: true to replace every occurrence instead of requiring uniqueness.`,
+  description: toolDescription("Edit"),
   permissionClass: "mutate",
   isFileEdit: true,
   permissionSubject: (input) => input.file_path,

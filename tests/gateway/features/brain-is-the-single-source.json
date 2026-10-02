@@ -1,0 +1,41 @@
+{
+  "id": "brain-is-the-single-source",
+  "name": "The brain folder is the single source of MAGENTRA's model-facing defaults",
+  "area": "protocol",
+  "section": "Protocol & host",
+  "prose": "brain/ holds every model-facing default outside the subagent.* group: system and conditional sections, reminders, finishing rungs, side-call instructions, tool and parameter descriptions, and the per-context tool sets in availability.json. A build step compiles it into the engine; ~/.magentra/prompts overrides still apply on top. Agent and Workflow are withheld by default.",
+  "kinds": [
+    "pure",
+    "fs",
+    "proc"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/prompts.ts",
+    "engine/core/src/agent/tool.ts"
+  ],
+  "invariant": "Every model-facing default outside the subagent.* group is read from brain/ and nowhere else, and moving it there changed no byte the model receives except the deliberate withholding of Agent and Workflow.",
+  "tests": [
+    "the-catalog-outside-the-subagent-group-and-the-brain-files-are-one-to-one",
+    "no-definePrompt-call-outside-agents-ts-carries-literal-text",
+    "the-engines-defaults-are-a-fresh-compile-of-brain-and-every-file-round-trips",
+    "every-registered-tool-has-one-brain-folder-and-every-wire-description-comes-from-it",
+    "the-shipped-availability-withholds-agent-and-workflow-and-filters-only-built-in-tools",
+    "the-wire-pin-still-holds-agent-and-workflow-and-every-pinned-text-is-brains",
+    "the-compiler-returns-each-body-byte-for-byte-including-the-whitespace-a-trim-would-take",
+    "a-tool-absent-from-main-is-not-offered-and-a-call-to-it-is-refused-by-name",
+    "a-tool-absent-from-overdrive-is-withheld-only-while-overdrive-is-on",
+    "with-the-shipped-brain-agent-and-workflow-are-withheld-and-refused-in-both-contexts",
+    "a-subagent-child-keeps-its-agent-type-tools-whatever-the-root-withholds",
+    "an-override-file-still-replaces-a-brain-default-for-the-next-request",
+    "an-availability-entry-or-tool-folder-naming-an-unknown-tool-fails-the-build-with-that-name",
+    "the-bundled-engine-boots-and-answers-session-started-with-no-brain-folder-beside-it"
+  ],
+  "freshness": {
+    "hash": "6b5c99745d2f73cc",
+    "fileHashes": {
+      "engine/protocol/src/prompts.ts": "fe250940f2061f6a",
+      "engine/core/src/agent/tool.ts": "3e5506edf577a6a2"
+    },
+    "recordedAt": "2026-10-02"
+  }
+}

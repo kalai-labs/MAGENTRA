@@ -2,15 +2,22 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { STATE_DIR_NAME } from "./branding.js";
+import { BRAIN_PROMPTS } from "./brain.generated.js";
 
 /**
  * The prompt registry: one place that knows every piece of model-facing prose
  * the engine sends, what it is for, and where it gets injected.
  *
- * Each prompt is declared once next to the code that uses it, with its default
- * text kept in the source so the repository stays readable on its own. The
- * registry adds two things on top: a catalog an external editor can enumerate,
- * and a per-prompt override read from a plain `.txt` file on disk.
+ * Defaults live in brain/ (one file per prompt, see brain/README.md), compiled
+ * into ./brain.generated.ts by tools/brain/compile.mjs before tsc runs, and
+ * are registered below while this module is evaluated — before any consumer
+ * runs. A call site names its prompt with {@link brainPrompt}, which throws at
+ * module load on an id brain/ does not hold. {@link definePrompt} still
+ * registers prompts declared in code: the subagent.* group in
+ * engine/core/src/agent/agents.ts (the one documented exception) and each tool's
+ * `tool.<name>` description, registered when a ToolRegistry registers the tool.
+ * The registry adds two things on top: a catalog an external editor can
+ * enumerate, and a per-prompt override read from a plain `.txt` file on disk.
  *
  * Overrides are re-read live (see {@link CACHE_TTL_MS}), so editing a file
  * changes the next turn's prompt without restarting the engine.
@@ -180,6 +187,18 @@ export function isPromptDisabled(id: string): boolean {
   return promptTextIfEnabled(id) === undefined;
 }
 
+/**
+ * The shipped default of `id` — never an override. Reads no file and leaves the
+ * override cache untouched, so it is safe at module load (a SECTION_* constant
+ * computed while a module is imported must not stat the prompts directory). An
+ * unknown id throws, as {@link promptText} does.
+ */
+export function promptDefault(id: string): string {
+  const meta = registry.get(id);
+  if (!meta) throw new Error(`unknown prompt id: ${id}`);
+  return meta.text;
+}
+
 /** Every declared prompt, with its default, its current text, and its file. */
 export function promptCatalog(): PromptEntry[] {
   return [...registry.values()].map((meta) => {
@@ -240,4 +259,40 @@ export function orphanedPromptFiles(): string[] {
   return names
     .filter((n) => n.endsWith(".txt") && !registry.has(n.slice(0, -4)))
     .map((n) => join(dir, n));
+}
+
+const brainPromptIds = new Set<string>();
+for (const p of BRAIN_PROMPTS) {
+  definePrompt({
+    id: p.id,
+    group: p.group,
+    label: p.label,
+    channel: p.channel,
+    where: p.where,
+    ...(p.placeholders ? { placeholders: [...p.placeholders] } : {}),
+    text: p.text,
+  });
+  brainPromptIds.add(p.id);
+}
+
+/**
+ * The id of a prompt whose default lives in brain/ — what a call site holds
+ * instead of a `definePrompt({...})` literal:
+ *
+ *   const WRAPUP_NUDGE = brainPrompt("reminder.wrapup-nudge");
+ *   promptText(WRAPUP_NUDGE);
+ *
+ * Throws on an id with no brain/prompts/<group>/<id>.md, so a typo fails when
+ * the module loads, not mid-turn.
+ */
+export function brainPrompt(id: string): string {
+  if (!brainPromptIds.has(id)) {
+    throw new Error(`unknown brain prompt id: ${id} (no brain/prompts/<group>/${id}.md)`);
+  }
+  return id;
+}
+
+/** Every prompt id whose default comes from brain/prompts, sorted. */
+export function brainPromptIdList(): string[] {
+  return [...brainPromptIds].sort();
 }

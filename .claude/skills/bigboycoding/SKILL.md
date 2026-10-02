@@ -202,12 +202,14 @@ gateway UI's reconcile action. It is never a way through the gate.
 `tests/approved/system-prompt-is-pinned/system-prompt.txt` and
 `tests/approved/tool-wire-contract-is-pinned/tools.json` hold the exact bytes
 of the standing system prompt and of every tool's wire schema. Rewording a
-`SECTION_*` in `engine/core/src/agent/prompts.ts`, or any tool description or
-`.describe()` in `engine/tools/src/`, fails them by design. **Never run
+core section in `brain/prompts/1-core-system/`, or any tool description or
+parameter text in `brain/tools/<Name>/`, fails them by design. **Never run
 `npm run approve`.** Show the owner the before and after wording, get approval,
 and the owner runs it and reads the diff. Other model-facing wording — turn
-reminders in `session.ts`, finishing rungs in `finishing.ts` — is not pinned,
-and still needs the owner's approval before it changes.
+reminders, finishing rungs, side-call prompts under `brain/prompts/` — is not
+in `tests/approved/`, but `brain-is-the-single-source` holds it against
+`tests/features/fixtures/brain-baseline/`, and it still needs the owner's
+approval before it changes.
 
 ### 7. Smoke, and what CI gates
 
@@ -284,11 +286,17 @@ node .claude/skills/bigpicture/bigpicture.mjs check           # after editing
   run it, and nothing rebuilds it for you — `npm run build` does. The driver
   skips `dist/` deliberately — if you grep and get hits in `dist/`, you are
   reading build output, not source.
-- **The system prompt is one file.** `engine/core/src/agent/prompts.ts` — every
-  behavior section is a `SECTION_*` export composed by `behaviorCore()`.
-  Editing prose there changes every session's system prompt, and
-  `system-prompt-is-pinned` fails on any changed byte of it. Only the owner
-  re-approves it (Verification gates, step 6).
+- **Model-facing prose lives in `brain/`, not in code.** The system prompt
+  sections are `brain/prompts/1-core-system/<id>.md`, composed in order by
+  `behaviorCore()` in `engine/core/src/agent/prompts.ts`. Tool descriptions and
+  parameter texts are `brain/tools/<Name>/`, and `brain/availability.json`
+  decides which built-in tools a root session offers. `npm run build` compiles
+  brain/ into the engine (`tools/brain/compile.mjs`); `brain/README.md` has the
+  exact file rules. Editing a file there changes what every session sends, and
+  `system-prompt-is-pinned` / `tool-wire-contract-is-pinned` fail on any
+  changed byte. Only the owner re-approves them (Verification gates, step 6).
+  The `subagent.*` prompts in `engine/core/src/agent/agents.ts` are the one
+  exception and stay in code.
 - **Never write a dollar sign followed by `ARGUMENTS`, a digit or a brace in
   this file.** Claude Code substitutes those in a skill body with the args the
   caller passed, even inside a code span. Until 2026-09-23 the old backlog

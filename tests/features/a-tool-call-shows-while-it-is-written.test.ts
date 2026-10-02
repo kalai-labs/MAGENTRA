@@ -22,7 +22,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { CoreEvent } from "@magentra/protocol";
+import { toolAvailabilityWith, type CoreEvent } from "@magentra/protocol";
 import { OpenAICompatProvider } from "@magentra/providers";
 
 import { openWorkspace, waitForSpawn } from "../lib/appDriver.ts";
@@ -153,6 +153,8 @@ class ASubagentsCallStaysOnItsCard extends FsTest {
     this.redirectHome();
     this.#engine = await startScriptedEngine({
       workspace: this.tempDir("magentra-writing-child-"),
+      // brain/availability.json withholds Agent; this test scripts a subagent, so it opts Agent back in.
+      toolAvailability: toolAvailabilityWith("Agent"),
       turns: [
         { toolCalls: [{ id: "a1", name: "Agent", input: { description: "probe the tree", prompt: "Report what you find.", subagent_type: "explore" } }] },
         { toolCalls: [{ id: "child_glob", name: "Glob", input: { pattern: "*.none" } }] },

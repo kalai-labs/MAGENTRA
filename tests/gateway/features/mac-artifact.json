@@ -25,13 +25,13 @@
     "ci-smoke-launches-the-packaged-mac-app-and-fails-the-job-otherwise"
   ],
   "freshness": {
-    "hash": "9e413d5d3bcd378b",
+    "hash": "b972c91486865454",
     "fileHashes": {
-      "app/package.json": "896988edbcf3e1dd",
+      "app/package.json": "acfccf9c354bb675",
       "app/scripts/dist.js": "c5b0761569fbd059",
       "app/scripts/afterPack.js": "d19b6a7473bbf75e",
       "app/scripts/bundle-engine.js": "5f72ea6145be9de7"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-02"
   }
 }

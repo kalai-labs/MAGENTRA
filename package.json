@@ -13,9 +13,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "node tools/brain/compile.mjs && tsc -b",
     "clean": "tsc -b --clean",
-    "typecheck": "tsc -b",
+    "typecheck": "node tools/brain/compile.mjs && tsc -b",
     "test": "node --test --test-concurrency=1 \"tests/features/**/*.test.ts\"",
     "//test:llm": "NOT a duplicate of `test`, and the tests it SELECTS are chosen by the script NAME, not by the command line: npm exports it as npm_lifecycle_event to every child, which realModelTestsEnabled() in tests/lib/featureTest.ts reads. `MAGENTRA_LLM_TESTS=1` in front of it is sh syntax and would not work under cmd.exe on Windows. SUBTRACTIVE like test:ui since 2026-09-21 — a test:llm run executes the `llm` kind ALONE. It was additive until then, and the measurement that changed it is in docs/decisions/0013. This is the ONE test script whose command differs, and only by its reporters: `spec` keeps the ordinary output and llmUsageReporter.mjs adds the run's token total, which cannot be assembled anywhere else because node --test gives every FILE its own process. The opt-in is still the script NAME, so MAGENTRA_LLM_TESTS=1 node --test ... still runs the same tests — it just prints no total. See docs/decisions/0009 and 0013.",
     "test:llm": "node --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tests/lib/llmUsageReporter.mjs --test-reporter-destination=stdout \"tests/features/**/*.test.ts\"",

@@ -135,3 +135,18 @@ is a correct answer, and it outranks a green result that had to be manufactured.
 Nothing in MAGENTRA asks a turn to end with a passing check. It asks the turn to
 know, and to say, what it actually observed.
 
+
+## Brain
+
+The one place that holds everything MAGENTRA says to the model by default: the
+system prompt, the reminders, the finishing rungs, the instructions of every
+side call, each tool's description and the description of each of its
+parameters, and which tools a session is offered.
+
+The code decides when a text is sent and what shape a tool's input has. The
+brain decides what the words are. Changing how the agent is addressed means
+editing the brain, not the code. A user's own prompt overrides still apply on
+top of it.
+
+The prompts that brief a subagent are the one exception. They stay with the
+code that defines the subagent types.

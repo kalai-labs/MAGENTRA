@@ -1,0 +1,7 @@
+# brain/ files are compiled byte for byte into what the model receives.
+# A trailing space or a stripped final newline is a change to a prompt.
+[*]
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = false
+insert_final_newline = true

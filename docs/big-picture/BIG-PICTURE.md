@@ -142,7 +142,8 @@ These are the known places where a frontend and the engine share something other
 | `FEATURES.md` | The feature backlog: every feature and whether a real test covers it. |
 | `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE`, `NOTICE` | Contribution terms; Apache-2.0 and its notice. |
 | `AGENTS.md` | Entry point for coding agents. |
-| `.gitignore` | Ignores every `dist/`, `app/build-resources/`, `app/dist/`, `.magentra/`, `.env*`, and all of `.claude/` except `.claude/skills/`. |
+| `brain/` | The single source of model-facing defaults (§12): `prompts/<group-dir>/<id>.md` (one file per prompt outside the `subagent.*` group), `tools/<Name>/description.md` and optional `params.md` (tool description templates and `.describe()` texts), `availability.json` (the built-in tools a root session offers, per context). `README.md` is its contract; `.editorconfig` and `.gitattributes` keep its bytes LF and untrimmed. Never read at run time — compiled by `tools/brain/compile.mjs`. |
+| `.gitignore` | Ignores every `dist/`, `app/build-resources/`, `app/dist/`, `.magentra/`, `.env*`, the generated `engine/protocol/src/brain.generated.ts`, and all of `.claude/` except `.claude/skills/`. |
 
 ### The engine: `engine/*`
 
@@ -154,7 +155,7 @@ protocol  ←  providers  ←  core  ←  tools  ←  host
 
 | Package | Depends on | Holds |
 |---|---|---|
-| `engine/protocol` | nothing (Node built-ins only) | `types.ts` (the wire contract, §4), `ndjson.ts` (framing), `tokens.ts` (the token algebra), `prompts.ts` (the prompt registry and `~/.magentra/prompts/<id>.txt` overrides), `branding.ts` (`STATE_DIR_NAME = ".magentra"`, product name, repo URL) |
+| `engine/protocol` | nothing (Node built-ins only) | `types.ts` (the wire contract, §4), `ndjson.ts` (framing), `tokens.ts` (the token algebra), `prompts.ts` (the prompt registry and `~/.magentra/prompts/<id>.txt` overrides), `brain.ts` (accessors over the compiled brain: tool descriptions, param texts, tool availability), `brain.generated.ts` (gitignored, written by `tools/brain/compile.mjs`), `branding.ts` (`STATE_DIR_NAME = ".magentra"`, product name, repo URL) |
 | `engine/providers` | protocol, `@anthropic-ai/sdk` | The `Provider` interface (`types.ts`), `anthropic.ts`, `openai-compat.ts`, `ollama.ts` (reached through openai-compat), `fake.ts` (scripted, for tests), `retry.ts`, `effort.ts`, `think.ts` |
 | `engine/core` | protocol, providers, `zod` | The engine proper — see below |
 | `engine/tools` | core, protocol, `fast-glob`, `@vscode/ripgrep`, `zod` | One module per tool and `createDefaultRegistry()` in `index.ts` |
@@ -198,6 +199,7 @@ TypeScript + Ink + React, inside the `tsc -b` graph but with **no** reference to
 | `tests/features/<feature-id>.test.ts` | One file per feature record; run by `node --test` with Node's type stripping (Node ≥ 22.18, no build step for the tests themselves). |
 | `tests/lib/` | The test class hierarchy (`featureTest.ts` and one class per kind: pure, fs, proc, net, llm, ui) and harnesses (`engineHarness.ts`, `scriptedEngine.ts`, `appHarness.cjs`, `appDriver.ts`, …). |
 | `tests/gateway/` | `features/*.json` — the committed feature inventory — and `descriptions/*.json`. |
+| `tests/features/fixtures/brain-baseline/` | The pre-migration prompt catalog (and addon-author texts) that `brain-is-the-single-source` holds the compiled brain against, for prompts the approved pins do not cover. |
 | `tests/approved/<feature-id>/` | Pinned artifacts (the system prompt, the tool wire contract), rewritten only by `npm run approve` (`docs/decisions/0015-approved-artifacts-live-in-tests-approved.md`). |
 | `tests/tsconfig.json` | `noEmit`, `allowImportingTsExtensions`, `erasableSyntaxOnly`; its own project. |
 
@@ -209,6 +211,7 @@ The tests import the engine as `@magentra/*`, which resolves to `engine/*/dist/`
 |---|---|
 | `tools/magentra-gateway/` | The feature inventory and test gate (`npm run gateway`, via `tsx`). Imports `tui/src/profiles.ts` and `engine/core/src/util/fsAtomic.ts` by relative source path. Its `package.json` version is not a version-tool target and lags the product. |
 | `tools/version/` | The semver/changelog tool (`npm run commit`, `version:*`), JavaScript typed by JSDoc. Called by `.githooks/commit-msg` and `.github/workflows/release.yml`. |
+| `tools/brain/compile.mjs` | The brain compiler (plain Node, no dependencies): validates `brain/` and writes `engine/protocol/src/brain.generated.ts`. Run first by `npm run build` and `npm run typecheck`; `--check` validates and fails when the generated module is stale. |
 | `tools/approvals/regenerate.mjs` | Writes `tests/approved/`; imports its printers from `tests/lib/approved.ts`. |
 | `benchmarks/` | Benchmark task prompts (`01-…06-*.txt`, `agent-benchmark-prompt*.md`) and the Terminal-Bench 2.0 harness in `benchmarks/terminal-bench/` (`driver.mjs` is a headless NDJSON client of the unmodified `engine.cjs`). |
 | `docs/big-picture/` | This document, the generated `MAP.md`, and `coverage.json` (read by `.claude/skills/bigpicture/bigpicture.mjs`). |
@@ -222,7 +225,8 @@ The tests import the engine as `@magentra/*`, which resolves to `engine/*/dist/`
 
 | Code | Checked by | Run in CI? |
 |---|---|---|
-| `engine/*`, `tui/` | `npm run build` / `npm run typecheck` (both `tsc -b`) | yes, in `ci.yml` |
+| `engine/*`, `tui/` | `npm run build` / `npm run typecheck` (both `node tools/brain/compile.mjs && tsc -b`) | yes, in `ci.yml` |
+| `brain/` | `node tools/brain/compile.mjs` (the first step of `npm run build` and `npm run typecheck`); the byte pins in `npm test` | yes, through `npm run build` in `ci.yml` |
 | `app/` | nothing | — (only the `npm run smoke --workspace app` boot, and `ui`-kind tests under `npm run test:ui`) |
 | `tests/` | `npm run typecheck:tests` (`tsc -p tests`) | no |
 | `tools/magentra-gateway/` | `npm run typecheck:gateway` | no |
@@ -234,6 +238,7 @@ The workspaces are `engine/*`, `app` and `tui`. `tools/` and `tests/` are **not*
 
 ### Traps
 
+- **`brain.generated.ts` is build output too.** It is gitignored and written only by `node tools/brain/compile.mjs` (the first half of `npm run build`). A bare `tsc -b` on a fresh clone fails on the missing module, and after a `brain/` edit it compiles the previous brain.
 - **`dist/` is the thing that runs.** The tests, `npm run app` in development, the dev TUI and `app/main.js`'s dev doc-extractor all load `engine/*/dist/`. None of those commands builds it. Change `src/`, skip `npm run build`, and you test or run the previous build.
 - **Moving a hoisted dependency breaks a non-workspace.** Dropping `zod` from the engine, or `tsx` from `tui`, silently breaks `tools/magentra-gateway`, which never declared them.
 - **A new engine package needs three edits:** its `tsconfig.json` references, the root `tsconfig.json` references, and `version.config.json` targets — or it is either unbuilt or left at an old version.
@@ -493,7 +498,7 @@ Nothing pins the `app/` side except the `ui` tests.
 | `interrupt` | `Session.interrupt()`, then settles any half-answered question round and prints `⏹ stopped` |
 | `permission_response`, `question_response` | resolve the promise the running tool is awaiting |
 | `slash_command` | `handleSlash()`: `/help /clear /compact /session /tasks /addons /overdrive /settings /resume /sessions` (case-insensitive, one registry `SLASH_COMMANDS` feeds both `/help` and `session_started.commands`); any other name runs the addon of that name as a turn (`handleAddonCommand`), else `Unknown command` |
-| `bang_command` | runs the shell line; while busy it is queued and flushed after the turn, never spliced between a `tool_use` and its results |
+| `bang_command` | runs the shell line and adds its input and output to the conversation as context, followed by `reminder.shell-command` ("…context, not a request"); while busy it is queued and flushed after the turn, never spliced between a `tool_use` and its results |
 | `list/resume/rename/archive/delete_session` | see "Sessions" below |
 | `set_model`, `set_connection`, `set_overdrive`, `set_vision`, `set_compact_limit`, `set_deletion_guard` | mutate the live session; see "Live swaps" |
 
@@ -507,12 +512,12 @@ Nothing pins the `app/` side except the `ui` tests.
 
 `Session.buildSystemPrompt()` runs on **every** model call and calls `buildSystemPrompt()` in `engine/core/src/agent/prompts.ts`:
 
-1. `behaviorCore()`: nine sections in fixed order: `SECTION_IDENTITY`, `SECTION_HARNESS`, `SECTION_COMMUNICATION`, `SECTION_ACTION_CARE`, `SECTION_GIT`, `SECTION_CODE_STYLE`, `SECTION_TASKS`, `SECTION_WORKING_METHOD`, `SECTION_AUTONOMY`. Each is a registered prompt (`system.*`), so an override in `~/.magentra/prompts/<id>.txt` replaces it and an emptied one is dropped.
-2. The environment block (cwd, git yes/no, platform, model, date).
-3. The addons block, names and descriptions only, when any addon is installed.
+1. `behaviorCore()`: nine sections in fixed order: `SECTION_IDENTITY`, `SECTION_HARNESS`, `SECTION_COMMUNICATION`, `SECTION_ACTION_CARE`, `SECTION_GIT`, `SECTION_CODE_STYLE`, `SECTION_TASKS`, `SECTION_WORKING_METHOD`, `SECTION_AUTONOMY`. Each is a registered prompt (`system.*`) whose default text is `brain/prompts/1-core-system/<id>.md` (§12). The exported `SECTION_*` constants are those shipped defaults (`promptDefault`, which never reads an override); `behaviorCore()` reads whatever is in force, so an override in `~/.magentra/prompts/<id>.txt` replaces a section and an emptied one is dropped.
+2. The environment block (`system.environment`: cwd, git yes/no, platform, model, date).
+3. The addons block (`system.addons-block`), names and descriptions only, when any addon is installed.
 4. Extra sections: `SessionOptions.extraPromptSections`, then the dynamic sections in insertion order (`overdrive` while OVERDRIVE is on, `deletion-policy` while Allow deletions is on), then `STANDARDS.md` (or `.magentra/STANDARDS.md`) under `system.standards-header`, re-read from disk each call.
 
-Tool schemas come from `toolSchemas()`: enabled tools only, with descriptions resolved through the registry.
+Tool schemas come from `toolSchemas()`: the tools `ToolRegistry.offered()` returns (enabled, and for a root session also in the current context's set from `brain/availability.json`: `overdrive` while OVERDRIVE is on, `main` otherwise, §7), with descriptions resolved through the registry. Because the set follows the live OVERDRIVE flag, toggling it can change the next request's tool list as well as its prompt.
 
 ### Before the loop
 
@@ -553,17 +558,17 @@ Then `runTurn()` adds the usage to `turnUsage` and handles the silent self-verif
 
 ### Executing a tool batch
 
-`executeToolCalls()` first vets each call. A disabled tool, an unknown name, truncated JSON (answered with `reminder.tool-cutoff`, so the model reissues the call rather than debugging it), or input that fails zod even after one `repairPrimitiveTypes()` pass (`"true"`/`"5"` become a boolean or number when unambiguous) becomes an error result. File edits outside the workspace or onto a protected path get that path as their permission subject. Each surviving call then runs: search terms go to the reuse log, a `Write` may add a reuse reminder (it never blocks), a `PreToolUse` hook may block (no `tool_call_started`), then `permissions.check()` (§7). A denial is an error result. An approval note becomes a reminder. Then `tool_call_started`, `tool.execute()`, `observeTurnWork()` (§6), `truncateResult()` (head and tail kept, `outputByteLimit` or 40,000 bytes), and a `PostToolUse` hook, whose block text is appended to the result.
+`executeToolCalls()` first vets each call. A disabled tool or a registered tool the root session's availability withholds (both refused by name with `reminder.tool-switched-off`), an unknown name (`Unknown tool "…". Available tools: …`, listing the offered set), truncated JSON (answered with `reminder.tool-cutoff`, so the model reissues the call rather than debugging it), or input that fails zod even after one `repairPrimitiveTypes()` pass (`"true"`/`"5"` become a boolean or number when unambiguous) becomes an error result. File edits outside the workspace or onto a protected path get that path as their permission subject. Each surviving call then runs: search terms go to the reuse log, a `Write` may add a reuse reminder (it never blocks), a `PreToolUse` hook may block (no `tool_call_started`), then `permissions.check()` (§7). A denial is an error result. An approval note becomes a reminder (`reminder.approval-note`). A `PreToolUse` block's result is wrapped in `reminder.pre-tool-use-hook`. Then `tool_call_started`, `tool.execute()`, `observeTurnWork()` (§6), `truncateResult()` (head and tail kept, `outputByteLimit` or 40,000 bytes), and a `PostToolUse` hook, whose block text is appended to the result wrapped in `reminder.post-tool-use-hook`. A tool that throws returns `reminder.tool-failed` (`Tool failed: {{error}}`; the bare message when switched off), and a call that never settled (the batch was aborted) returns `reminder.tool-did-not-run` (`Tool did not run.`). A tool image is replaced by its vision description; with vision unavailable it becomes `vision.tool-image-unseen`, and when describing it fails, `vision.tool-image-failed` (either note emptied drops the image silently).
 
 Scheduling: read-class and `parallelSafe` calls, plus every refusal, start at once. All other calls run one at a time in call order, so permission prompts never race, with an abort check between them. `tool_call_finished` goes out as each call settles. Results come back in call order, with images replaced by vision text (`describeToolImages`, §8).
 
 ### Reminders, steering, stalls
 
-`remind()` queues text (an empty string is dropped). `withReminders()` appends the whole queue, each item wrapped in `<system-reminder>`, to the next message built through it: the turn's user message, each tool-result message, and the synthetic results after an overflow. Ladder messages are pushed directly and do not drain the queue. Steering (`steer()`) is drained at the top of every round and as the first ladder rung. It arrives as a user message prefixed "The user adds, mid-run", re-arms self-verify and clears the stall state. The stall detector fingerprints (tool name + raw JSON, isError + content), excluding `toolUseId`. On the third identical round in a row it adds `reminder.stall-pivot` (twice per turn), then `reminder.stall-ask`. It only reminds. Rounds whose results mint fresh ids (background launches) or carry images are never seen as identical.
+`remind()` queues text (an empty string is dropped). `withReminders()` appends the whole queue, each item wrapped in `<system-reminder>`, to the next message built through it: the turn's user message, each tool-result message, and the synthetic results after an overflow. Ladder messages are pushed directly and do not drain the queue. Steering (`steer()`) is drained at the top of every round and as the first ladder rung. It arrives as a user message prefixed with `reminder.steering` ("The user adds, mid-run…"; an emptied prefix sends the bare text), re-arms self-verify and clears the stall state. The stall detector fingerprints (tool name + raw JSON, isError + content), excluding `toolUseId`. On the third identical round in a row it adds `reminder.stall-pivot` (twice per turn), then `reminder.stall-ask`. It only reminds. Rounds whose results mint fresh ids (background launches) or carry images are never seen as identical.
 
 ### Ending, errors, interrupt
 
-The `catch` block synthesizes a `tool_result` for every unanswered `tool_use` (`syntheticToolResults`, `unansweredToolUseIds`) before recording anything, so the history stays valid for the next request and for `/resume`. An abort sets `stopReason: "aborted"` and adds an interrupt reminder. Any other error becomes a `friendlyProviderError()` `error` event. The `finally` block clears `busy`, `suppressAssistantText` and the controller, closes the phase (root) and emits `turn_finished` (`usage`, `contextTokens`, optional `contextWarn` and `overdriveSnapshot`). It then force-saves meta. `maybeCompact()` runs after that, outside `finally`.
+The `catch` block synthesizes a `tool_result` for every unanswered `tool_use` (`syntheticToolResults`, `unansweredToolUseIds`) before recording anything, so the history stays valid for the next request and for `/resume`. An abort sets `stopReason: "aborted"` and adds `reminder.interrupted`. Any other error becomes a `friendlyProviderError()` `error` event, and when unanswered calls were repaired `reminder.turn-error` rides along with the synthetic results. A blocking `Stop` hook's reason reaches the model wrapped in `reminder.stop-hook`. The `finally` block clears `busy`, `suppressAssistantText` and the controller, closes the phase (root) and emits `turn_finished` (`usage`, `contextTokens`, optional `contextWarn` and `overdriveSnapshot`). It then force-saves meta. `maybeCompact()` runs after that, outside `finally`.
 
 `Session.interrupt()` aborts this session's controller, interrupts every foreground child (`liveChildren`) and stops this session's running background jobs.
 
@@ -575,6 +580,7 @@ Limits verifiable in code:
 
 - **Own task list.** The child's `TaskStore` is keyed by its own id, and its `task_list_updated` frames pass through untagged, so a child that creates tasks replaces the list the frontend shows.
 - **No hooks, addons, cron or OVERDRIVE.** There is no `hookRunner`, no addons (the `Addon` tool answers "(none installed)"), no `services.cron`, and `overdrive` stays false, so there is no self-verify. The child also never sees the OVERDRIVE, deletion-policy or STANDARDS sections, although the permission engine it shares does follow OVERDRIVE.
+- **Root sessions do not offer `Agent` by default.** The shipped `brain/availability.json` withholds `Agent` and `Workflow` in both contexts (§7), so the model reaches `spawnAgent()` only when an embedder or test opts `Agent` back in (`EngineOptions.toolAvailability`, e.g. `toolAvailabilityWith("Agent")`). Children ignore availability: their registry is `this.registry.subset(agentToolNames(def, registry.list()))`.
 - **Recursion guard is partial.** Only `Agent` is removed. A general-purpose child keeps `Workflow` (`engine/tools/src/workflow.ts`), whose `agent()` hook calls the child's own `spawnAgent()`.
 - **Background jobs outlive the child.** Each child has its own `BackgroundManager`. Jobs a finished child left running are reachable neither by the parent's `interrupt()` nor by `Engine.stopBackgroundJobs()`.
 - **Errors look like success.** A child's provider error is caught inside its own `runTurn()`. The parent receives the last text (or `(the subagent produced no text output)`), and `agent_finished` carries no `isError`.
@@ -602,7 +608,7 @@ Limits verifiable in code:
 
 **When a response arrives with no tool calls, `runTurn()` does not end the turn. It walks a fixed ladder of checks. Each rung that fires pushes one user-role message, emits a `command_output` marker, and `continue`s the loop. The loop `break`s only when every rung declines. Each rung has a bound, because an interactive turn has no iteration cap (§5).**
 
-The ladder is the `if (toolCalls.length === 0) { … }` block in `Session.runTurn()` (`engine/core/src/runtime/session.ts`). The prose and the pure predicates for the evidence and self-verify rungs live in `engine/core/src/runtime/finishing.ts`, which imports only `node:path` and `@magentra/protocol`, so it can be checked in isolation. The recovery, wrap-up and cutoff texts and the `MAX_*` bounds live at the top of `session.ts`. Every rung text is a registered prompt: group "4 · End-of-turn rungs" for those in `finishing.ts`, "3 · In-turn reminders" for those in `session.ts`.
+The ladder is the `if (toolCalls.length === 0) { … }` block in `Session.runTurn()` (`engine/core/src/runtime/session.ts`). The pure predicates for the evidence and self-verify rungs live in `engine/core/src/runtime/finishing.ts`, which imports only `node:path` and `@magentra/protocol`, so it can be checked in isolation. The `MAX_*` bounds live at the top of `session.ts`. Every rung text is a registered prompt whose default is a `brain/` file (§12): `brain/prompts/4-end-of-turn-rungs/` for the evidence and self-verify rungs `finishing.ts` names with `brainPrompt()`, `brain/prompts/3-in-turn-reminders/` for the recovery, wrap-up and cutoff texts `session.ts` names.
 
 ```mermaid
 flowchart TD
@@ -637,15 +643,15 @@ Except for steering and the cutoff, every rung requires `stopReason === "end_tur
 
 | # | Rung | Fires when | Bound | Marker, then prompt pushed |
 |---|---|---|---|---|
-| 1 | Steering | `drainSteering()` finds queued text | none, since the user drives it | the queued text, prefixed as mid-run guidance |
-| 2 | Stop hook | `!stopHookFired && hooks.has("Stop")` and the hook blocks | once per turn (`stopHookFired` is set before the hook runs) | `Stop hook: <reason>` reminder |
+| 1 | Steering | `drainSteering()` finds queued text | none, since the user drives it | the queued text, prefixed with `reminder.steering` |
+| 2 | Stop hook | `!stopHookFired && hooks.has("Stop")` and the hook blocks | once per turn (`stopHookFired` is set before the hook runs) | `reminder.stop-hook` (`Stop hook: {{reason}}`) |
 | 3 | Length cutoff ("LAYER 3") | `stopReason === "max_tokens" && cutoffStreak <= MAX_CUTOFF_STREAK` (3) | consecutive streak. The fourth cutoff in a row ends the turn with `⏸ … cut off N times in a row` | `↻ continuing after output-length cutoff`, `reminder.length-continuation` |
 | 4 | Error recovery ("LAYER 2") | `lastBatchHadError && nudgeCount < MAX_AUTO_NUDGES` (3) | `nudgeCount++`, and the flag is spent (`lastBatchHadError = false`) | `↻ auto-recovery…`, `reminder.recovery-nudge` |
 | 5 | Incomplete tasks ("LAYER 1.5") | `!lastBatchHadError && !incompleteTasksNudgeFired` and any task is `pending`/`in_progress` | once per turn. Does not touch `nudgeCount` | `↻ tasks incomplete — continuing`, `reminder.incomplete-tasks` listing them |
 | 6 | Runtime evidence | `!evidenceNudgeFired`, `codeFilesAmong(filesChangedThisTurn)` non-empty, and either no command ran or one ran while this turn wrote a test double | once per turn | `↻ nothing was run…` or `↻ checked against your own stand-in…`, `finishing.runtime-evidence` |
 | 7 | Browser evidence | `!browserNudgeFired`, `uiFilesAmong(filesChangedThisTurn)` non-empty, `!browserEvidenceThisTurn` | once per turn, **own fuse** | `↻ the page was never opened in a browser…`, `finishing.browser-evidence` |
 | 8 | Self-verify | `!selfVerifyFired && totalToolCallsThisTurn > 0 && overdrive` and `selfVerifyText()` is defined | once per turn, re-armed by steering | `⚡ overdrive: self-verifying…`, `finishing.self-verify` |
-| 9 | Wrap-up ("LAYER 1") | `!lastBatchHadError && totalToolCallsThisTurn >= 5 && assistantTextLength < 150 && nudgeCount < MAX_AUTO_NUDGES` | shares `nudgeCount` with rung 4 | `↻ requesting a work summary`, `reminder.wrapup-nudge`. When files were written and a STANDARDS.md exists, it adds a line asking to confirm the diff complies |
+| 9 | Wrap-up ("LAYER 1") | `!lastBatchHadError && totalToolCallsThisTurn >= 5 && assistantTextLength < 150 && nudgeCount < MAX_AUTO_NUDGES` | shares `nudgeCount` with rung 4 | `↻ requesting a work summary`, `reminder.wrapup-nudge`. When files were written and a STANDARDS.md exists, it adds `reminder.wrapup-standards`, a line asking to confirm the diff complies |
 
 The field fuses (`evidenceNudgeFired`, `browserNudgeFired`, `incompleteTasksNudgeFired`) and the observations they judge reset together at turn start. `stopHookFired`, `selfVerifyFired`, `nudgeCount` and `cutoffStreak` are locals of `runTurn()`. Without steering or cutoffs, a turn buys at most eight extra rounds: Stop hook 1, `nudgeCount` 3, tasks 1, runtime evidence 1, browser evidence 1, self-verify 1. Cutoff resumes are bounded per streak. A complete response resets the streak.
 
@@ -690,8 +696,8 @@ It runs in OVERDRIVE only, because an attended turn already has a checkpoint: th
 
 ### Traps and drift
 
-- **An emptied prompt does not switch most rungs off.** Only rung 8 (`selfVerifyText()` returns `undefined`) and `remind()` honour an emptied registry prompt. Rungs 3, 4, 5, 6, 7 and 9 push their rendered text directly, so an emptied `reminder.recovery-nudge`, `reminder.wrapup-nudge`, `reminder.length-continuation`, `reminder.incomplete-tasks`, `finishing.runtime-evidence` or `finishing.browser-evidence` still fires, sends an empty text block and costs the round trip.
-- **Stale descriptions in the prompt registry and comments.** The `where` text of `finishing.browser-evidence` says it shares the runtime-evidence fuse; it has its own (`browserNudgeFired`), so both can fire in one turn. `reminder.recovery-nudge` says "capped at 3", but those 3 are shared with the wrap-up. The rung-5 comment says `nudgeCount` is read by nothing but the wrap-up; rung 4 reads it too. The rung-4 comment still says the stall detector "terminates" a model; it only reminds (§5).
+- **An emptied prompt does not switch most rungs off.** Only rung 8 (`selfVerifyText()` returns `undefined`) and `remind()` honour an emptied registry prompt. Rungs 1 and 2 degrade instead: an emptied `reminder.steering` sends the user's text bare, and an emptied `reminder.stop-hook` sends the hook's reason bare (an empty reason as well, and the turn ends as if the hook had not blocked). Rungs 3, 4, 5, 6, 7 and 9 push their rendered text directly, so an emptied `reminder.recovery-nudge`, `reminder.wrapup-nudge`, `reminder.length-continuation`, `reminder.incomplete-tasks`, `finishing.runtime-evidence` or `finishing.browser-evidence` still fires, sends an empty text block and costs the round trip.
+- **Stale descriptions in the prompt registry and comments.** The `where` text of `finishing.browser-evidence` (in `brain/prompts/4-end-of-turn-rungs/`) says it shares the runtime-evidence fuse; it has its own (`browserNudgeFired`), so both can fire in one turn. `reminder.recovery-nudge` says "capped at 3", but those 3 are shared with the wrap-up. The rung-5 comment says `nudgeCount` is read by nothing but the wrap-up; rung 4 reads it too. The rung-4 comment still says the stall detector "terminates" a model; it only reminds (§5).
 - **Only `Bash` counts as running something.** `observeTurnWork()` ignores other tools. It also sees only this session: a parent that edits and delegates the test run to a subagent still gets "nothing was run", and a parent whose edits were all made by a subagent gets no evidence rung at all.
 - **Subagents climb the same ladder** against their own observations and task list, without rung 8 (`overdrive` is never set on a child) and without the Stop hook (children get no hook runner).
 
@@ -707,8 +713,8 @@ It runs in OVERDRIVE only, because an attended turn already has a checkpoint: th
 
 | Field | What it does |
 |---|---|
-| `name`, `description`, `descriptionVars` | The description is a template. Runtime values go in `{{slots}}` filled from `descriptionVars`, never interpolated into the literal. |
-| `inputSchema` (zod) | Validated before execution. `rawInputSchema` (MCP only) replaces it on the wire. |
+| `name`, `description`, `descriptionVars` | The description is a template. A built-in tool's is `toolDescription(name)`, read from `brain/tools/<Name>/description.md` (§12). Runtime values go in `{{slots}}` filled from `descriptionVars` (which stay in code), never interpolated into the template. |
+| `inputSchema` (zod) | Validated before execution. The code owns its shape (types, optional/required, enums, defaults). Every `.describe()` text is `toolParam(name, path)`, read from `brain/tools/<Name>/params.md`. `rawInputSchema` (MCP only) replaces it on the wire. |
 | `permissionClass` | `read`, `mutate`, `execute`, `network` or `interact`. It has exactly two consumers: `read` runs in parallel, and `execute` gets command-shape grants (below). |
 | `parallelSafe` | Runs concurrently even when the class is not `read` (Agent, Addon, GraphQuery, TaskCreate, TaskUpdate). |
 | `isFileEdit` | Write and Edit only. Turns on the out-of-workspace and protected-path checks. |
@@ -717,9 +723,15 @@ It runs in OVERDRIVE only, because an attended turn already has a checkpoint: th
 | `outputByteLimit` | Result budget before truncation. The default `DEFAULT_OUTPUT_LIMIT` in `session.ts` is 40 000 bytes. Read raises it to 250 000. |
 | `searchTerms` | Evidence for the reuse gate (§11). Only Grep, Glob and GraphQuery implement it. |
 
-`ToolRegistry.register()` throws on a duplicate name. It also publishes the description to the prompt registry as `tool.<name>` (`registerToolPrompt`), so an override file can retune it (§12). `enabled()` drops any tool whose description prompt is blank (`isToolDisabled`). A blank description withholds the tool entirely. `subset(names)` builds a subagent's registry.
+`ToolRegistry.register()` throws on a duplicate name. It also publishes the description to the prompt registry as `tool.<name>` (`registerToolPrompt`), so an override file can retune it (§12). `enabled()` drops any tool whose description prompt is blank (`isToolDisabled`). A blank description withholds the tool entirely. `subset(names)` builds a subagent's registry. `offered(availability, overdrive)` is `enabled()` narrowed by a root session's per-context tool set from `brain/availability.json` (built-in names only; `undefined` for a child skips it). `list()` is never filtered, so the wire pin and subagent subsets still see all 27 tools.
 
-What reaches the provider is `Session.toolSchemas()`. The description comes from `toolDescriptionText()` (override-aware, slots filled). The schema is `rawInputSchema ?? zodToJsonSchema(inputSchema)`, and `engine/core/src/util/zodToJsonSchema.ts` renders zod as draft-7 in **input** mode, so a field with a `.default()` is optional on the wire.
+### Availability: which built-in tools a root session offers
+
+`brain/availability.json` holds two explicit lists of built-in tool names, `main` (OVERDRIVE off) and `overdrive` (OVERDRIVE on). The shipped file lists all 27 except `Agent` and `Workflow`, in both. `Session` resolves it once in its constructor (`resolveToolAvailability(opts.toolAvailability)` in `engine/protocol/src/brain.ts`) and keeps `undefined` for a child. `isToolOffered(name, availability, overdrive)` passes every name that is not built-in (`BRAIN_BUILTIN_TOOLS`, the compiler's fixed `BUILTIN_TOOLS`), so MCP tools and an embedder's own tools are never filtered. The context is read live from `Session.overdrive`, so `set_overdrive` changes the offered set on the next request.
+
+A withheld tool is absent from `toolSchemas()` (and so from the context estimate) and a call to it is refused by name with `reminder.tool-switched-off`, the same refusal as a blank description. The override is `EngineOptions.toolAvailability` (passed to every root session the engine creates: boot, `/clear`, `/resume`) or `SessionOptions.toolAvailability`: a context it names replaces that list, an omitted one keeps the shipped list, and an unknown name throws. `toolAvailabilityWith(...names)` adds names to both shipped lists; tests use it to opt `Agent` back in. It is not a setting and is never persisted.
+
+What reaches the provider is `Session.toolSchemas()`, over `registry.offered(...)`. The description comes from `toolDescriptionText()` (override-aware, slots filled). The schema is `rawInputSchema ?? zodToJsonSchema(inputSchema)`, and `engine/core/src/util/zodToJsonSchema.ts` renders zod as draft-7 in **input** mode, so a field with a `.default()` is optional on the wire.
 
 ### The registry: 27 tools plus MCP
 
@@ -740,13 +752,13 @@ What reaches the provider is `Session.toolSchemas()`. The description comes from
 | Extension | Addon (read), §12 |
 | MCP | `mcp__<server>__<tool>` (network), from `engine/core/src/integrations/mcp.ts` |
 
-Subagent types in `engine/core/src/agent/agents.ts` get registry subsets. `explore` and `plan` get Read, Glob, Grep, TaskList and TaskGet. `general-purpose` gets everything except Agent. A child shares the parent's `PermissionEngine` and cannot ask the user.
+The registry always holds all 27. What a root session *offers* is narrower: the shipped `brain/availability.json` withholds Agent and Workflow (see Availability above). Subagent types in `engine/core/src/agent/agents.ts` get registry subsets. `explore` and `plan` get Read, Glob, Grep, TaskList and TaskGet. `general-purpose` gets everything except Agent. A child shares the parent's `PermissionEngine` and cannot ask the user.
 
 ### One call, end to end
 
 Each call in a batch is planned in order inside `executeToolCalls()`:
 
-1. A disabled tool name or an unknown tool name is refused. Truncated JSON (`isUnparseable`) is refused with `reminder.tool-cutoff`, which tells the model the call did **not** run.
+1. A disabled tool name, a registered tool the root's availability withholds in the current context, or an unknown tool name is refused. Truncated JSON (`isUnparseable`) is refused with `reminder.tool-cutoff`, which tells the model the call did **not** run.
 2. `inputSchema.safeParse()`. On failure there is one `repairPrimitiveTypes()` pass, which converts only a `"true"`/`"false"` or numeric string that zod flagged as the wrong primitive. It never uses `z.coerce`, because `Boolean("false")` is `true`.
 3. The subject is computed. For an `isFileEdit` tool, `fileEditOutsideWorkspace()` and `fileEditProtectedPath()` read `file_path`, `path` or `notebook_path` from the input.
 4. `searchTerms` are logged. For Write, the reuse gate may queue a reminder.
@@ -754,7 +766,7 @@ Each call in a batch is planned in order inside `executeToolCalls()`:
 6. `PermissionEngine.check()`. Outcomes from rules and the stance are appended to the transcript as `permission` records. User decisions are recorded inside the approval callback.
 7. `tool_call_started` is emitted, even for a refusal, so every `tool_call_finished` has a row. Then `execute()` runs, then `truncateResult()` (head plus tail, with a marker), then the PostToolUse hook.
 
-A thrown `execute()` becomes `{ content: "Tool failed: …", isError: true }` unless the turn was aborted. Errors are data. Calls with class `read` or with `parallelSafe` run concurrently. All other calls run one at a time in order, so permission prompts never race. Each `tool_call_finished` goes out as soon as its own call settles.
+A thrown `execute()` becomes `{ content: "Tool failed: …", isError: true }` (the `reminder.tool-failed` prompt) unless the turn was aborted. Errors are data. Calls with class `read` or with `parallelSafe` run concurrently. All other calls run one at a time in order, so permission prompts never race. Each `tool_call_finished` goes out as soon as its own call settles.
 
 ### Permission resolution
 
@@ -805,9 +817,9 @@ EnterWorktree with `name` runs `git worktree add <cwd>/.magentra/worktrees/<name
 
 ### The pinned wire contract
 
-`tests/approved/tool-wire-contract-is-pinned/tools.json` freezes every registered tool, sorted by name: name, class, the description **template** with slots unfilled, the `descriptionVars` names, and the schema as rendered by `renderToolContract()` in `tests/lib/approved.ts`. `tests/features/tool-wire-contract-is-pinned.test.ts` demands byte identity and that the count matches the registry. `tests/features/tool-registry-contract.test.ts` separately pins the 27 names.
+`tests/approved/tool-wire-contract-is-pinned/tools.json` freezes every registered tool (`registry.list()`, so Agent and Workflow stay pinned although root sessions do not offer them), sorted by name: name, class, the description **template** with slots unfilled, the `descriptionVars` names, and the schema as rendered by `renderToolContract()` in `tests/lib/approved.ts`. `tests/features/tool-wire-contract-is-pinned.test.ts` demands byte identity and that the count matches the registry. `tests/features/tool-registry-contract.test.ts` separately pins the 27 names.
 
-Any change to a description, to a `.describe()` string, to enum width, or to whether a field is required fails the pin **by design**. The model's behaviour depends on every observable detail. `npm run approve` (`tools/approvals/regenerate.mjs`) rewrites the artifact. The committed diff *is* the approval, and only the owner grants it. Never regenerate to get to green.
+The pinned prose now lives in `brain/tools/`, so editing a `description.md` or `params.md` there is what moves these bytes. Any change to a description, to a `.describe()` string, to enum width, or to whether a field is required fails the pin **by design**. The model's behaviour depends on every observable detail. `npm run approve` (`tools/approvals/regenerate.mjs`) rewrites the artifact. The committed diff *is* the approval, and only the owner grants it. Never regenerate to get to green.
 
 What the pin does not cover: MCP tools; `~/.magentra/prompts/tool.<name>.txt` overrides; and the exact wire bytes. The artifact uses zod's default JSON Schema output, while the provider receives `zodToJsonSchema()`'s draft-7 input-mode rendering. A change to `zodToJsonSchema.ts` changes the wire and passes the pin.
 
@@ -822,6 +834,7 @@ What the pin does not cover: MCP tools; `~/.magentra/prompts/tool.<name>.txt` ov
 
 - **A worktree edit asks.** A worktree created by EnterWorktree lives under `.magentra/worktrees/`. Every Write or Edit inside it therefore matches `protectedEditPath()` and asks outside OVERDRIVE. This is verified in code and no test covers it.
 - **Shell writes bypass the protected-path guard.** `echo x > .env` goes through Bash, and `fileEditProtectedPath()` only reads the path fields of `isFileEdit` tools.
+- **A new built-in tool needs three edits beyond its module.** Its name in `BUILTIN_TOOLS` (`tools/brain/compile.mjs`), a `brain/tools/<Name>/` folder (the compile fails without one), and an entry in both lists of `brain/availability.json`, or root sessions silently never offer it. `brain-is-the-single-source` checks `BUILTIN_TOOLS` against the registry.
 - **A new tool is not guarded by default.** A new file-editing tool must set `isFileEdit` and name its path `file_path`, `path` or `notebook_path`, or both edit checks silently skip it. A new destructive tool needs a `deletionSubject`, or the deletion guard never sees it.
 - **A PreToolUse hook sees calls that the permission engine may still refuse.**
 
@@ -874,9 +887,9 @@ sequenceDiagram
 
 1. **Attachments.** `imageFrameParts()` in `app/renderer/modules/composer.js` puts `images: [{name, mediaType, data}]` on `user_message` or `steer_message`. The app caps a pick at `MAX_ATTACH_FILES` (15) and `MAX_ATTACH_TOTAL_BYTES` (2 MB). The engine does not trust the frontend. `Engine.withImageDescriptions()` enforces `MAX_IMAGES_PER_MESSAGE` (8) and `MAX_IMAGE_DATA_CHARS` (9 000 000 base64 characters). It announces each image *before* the call, because describing runs inside the turn lock and a silent interface reads as a swallowed message. It then prepends the description blocks to the typed text.
 2. **The Read tool.** `engine/tools/src/read.ts` maps `IMAGE_TYPES` (png, jpg, jpeg, gif, webp) to media types. When the gate is closed it returns `isError` ("you cannot see it … say plainly that it stays unverified"). It refuses files over `MAX_IMAGE_BYTES` (8 MB). Otherwise it returns `describeImageForContext()` and records the Read.
-3. **Tool results.** `Session.describeToolImages()` turns every image `ToolResultPart` into a description, or into a "You have NOT seen it" note. This matters because the OpenAI-compatible wire cannot carry an image in a `role: "tool"` message (`flattenToolResult` writes `[image omitted]`). Today it has no producer: no registered tool returns image parts, and `McpClient.callTool()` flattens MCP image content to `[image content omitted]` before it gets here.
+3. **Tool results.** `Session.describeToolImages()` turns every image `ToolResultPart` into a description, or into a "You have NOT seen it" note (`vision.tool-image-unseen` / `vision.tool-image-failed`; an emptied note drops the image). This matters because the OpenAI-compatible wire cannot carry an image in a `role: "tool"` message (`flattenToolResult` writes `[image omitted]`). Today it has no producer: no registered tool returns image parts, and `McpClient.callTool()` flattens MCP image content to `[image content omitted]` before it gets here.
 
-`Session.describeImage()` is **private**, so nothing can put an unwrapped description into the conversation. It builds the vision provider through the same `createProviderForEndpoint(endpointSpecFromSettings(visionConnection, key))` as the main connection, cached under the key `[provider, baseUrl, contextWindow, apiKey]`. The key is part of the cache key because it is baked into the provider instance. It then calls `runInference()` with the `vision.describe` system prompt, `VISION_DESCRIBE_MAX_TOKENS` (4 000) and the image, on `visionConnection.model`. The tokens are banked in the session ledger. An empty description throws. No reasoning effort is sent on this call.
+`Session.describeImage()` is **private**, so nothing can put an unwrapped description into the conversation. It builds the vision provider through the same `createProviderForEndpoint(endpointSpecFromSettings(visionConnection, key))` as the main connection, cached under the key `[provider, baseUrl, contextWindow, apiKey]`. The key is part of the cache key because it is baked into the provider instance. It then calls `runInference()` with the `vision.describe` system prompt, the `vision.describe-request` user line (`Describe this image ({{label}}).`; emptied, `describeImage()` throws and the image becomes the failure note), `VISION_DESCRIBE_MAX_TOKENS` (4 000) and the image, on `visionConnection.model`. The tokens are banked in the session ledger. An empty description throws. No reasoning effort is sent on this call.
 
 **Nothing here fails the turn.** An image that cannot be described becomes a bracketed note plus a non-fatal `error` event, and the typed text still runs.
 
@@ -1213,11 +1226,30 @@ When the agent Writes a brand-new source file, `Session.evaluateWriteReuseGate()
 
 ## §12 · Extension surfaces
 
-**MAGENTRA can be changed without editing engine code in five ways: prompt override files, addons, hooks, MCP servers, and scheduled prompts. The same scheduling package also runs background jobs and the Workflow runner. Each surface is loaded at a fixed moment, and each fails soft: a broken extension produces a warning or a skipped entry, never a session that will not start.**
+**MAGENTRA can be changed without editing engine code in five ways: prompt override files (on top of the `brain/` defaults), addons, hooks, MCP servers, and scheduled prompts. The same scheduling package also runs background jobs and the Workflow runner. Each surface is loaded at a fixed moment, and each fails soft: a broken extension produces a warning or a skipped entry, never a session that will not start.**
+
+### The brain — `brain/`, compiled by `tools/brain/compile.mjs`
+
+`brain/` is the single source of every model-facing default except the `subagent.*` group. `brain/README.md` is its contract (layout, exact file rules, accessors, verify commands). Code keeps the logic and the schema shape; only prose lives here.
+
+| Path | Holds |
+| --- | --- |
+| `brain/prompts/<group-dir>/<id>.md` | One registered prompt: a frontmatter (`id`, `group`, `label`, `channel`, `where`, optional `placeholders`), then the exact text. 65 files: `1-core-system` (11), `2-conditional-system` (2), `3-in-turn-reminders` (31), `4-end-of-turn-rungs` (10), `5-background-inference` (11). `7-tool-descriptions` is reserved for non-`tool.*` prompts of group 7; none exist today, so the folder does not either. |
+| `brain/tools/<Name>/description.md` | The tool's description template (`{{slots}}` unfilled), one folder per built-in tool (27). |
+| `brain/tools/<Name>/params.md` | Optional (24 tools): one `## <path>` section per `.describe()` text, dotted paths with array elements transparent, `(root)` for the schema object itself. |
+| `brain/availability.json` | `{ main, overdrive }`: the built-in tools a root session offers per context (§7). |
+
+**Build.** `npm run build` and `npm run typecheck` run `node tools/brain/compile.mjs` before `tsc -b`. The compiler (plain Node, no dependencies) folds CRLF and a BOM, validates every file, and writes `engine/protocol/src/brain.generated.ts` (gitignored): `BRAIN_PROMPTS`, `BRAIN_TOOLS`, `BRAIN_BUILTIN_TOOLS`, `BRAIN_AVAILABILITY`. A body is everything after the closing `---` minus exactly one trailing newline, so bytes round-trip exactly. The CLI also demands completeness: a folder for each name in its fixed `BUILTIN_TOOLS` list, and a file for every id the engine source names with `brainPrompt("…")`. A `subagent.*` id, a group-6 folder, an unknown tool folder or availability entry fails with the offending name. `--check` validates and exits 1 when the generated module is stale. Nothing reads `brain/` at run time: `tsc` compiles the module into `engine/protocol/dist`, and `app/scripts/bundle-engine.js` inlines it into `engine.cjs`.
+
+**Accessors** (`engine/protocol/src/brain.ts`, exported from `@magentra/protocol`): `toolDescription(name)`, `toolParam(name, path)`, `assertToolParamStates(name, path, …facts)` (a params text that states a code constant, such as Monitor's default timeout, is checked against it when the tool module loads), `unreadToolParams()` (orphan sections), `brainAvailability()`, `resolveToolAvailability()`, `toolAvailabilityWith()`, `isToolOffered()`. In `prompts.ts`: `brainPrompt(id)`, `promptDefault(id)` (the shipped text, never an override, safe at module load) and `brainPromptIdList()`. Every accessor throws on an unknown key while its module loads.
+
+**The exception.** `engine/core/src/agent/agents.ts` and its `subagent.*` prompts stay literals in code. Text that only frames or reports runtime data also stays in code: a tool's own result and error text, the `Unknown tool "…"` and `Invalid input` refusals, `<task-notification>` reports, data labels inside side-call user messages, and user-visible `command_output` status lines.
+
+**Held by tests.** `tests/features/brain-is-the-single-source.test.ts` checks the catalog against the files one to one, that no `definePrompt` outside `agents.ts` carries literal text, that every wire description comes from brain, that the compiled bytes match `tests/features/fixtures/brain-baseline/` for the prompts the approved pins do not cover, and that the bundled engine boots with no `brain/` beside it.
 
 ### The prompt registry — `engine/protocol/src/prompts.ts`
 
-Every piece of model-facing prose is declared once, next to the code that uses it, with `definePrompt({id, group, label, channel, where, placeholders?, text})`. The call returns the id, and the call site reads the text through `promptText(id)`, `renderPrompt(id, vars)` or `promptTextIfEnabled(id)`. The default text stays in the source, so the repository reads on its own. Redeclaring an id with *different* text throws, because two prompts sharing one override file would be ambiguous. An unknown id also throws, because a typo returning `""` would silently delete a section. The channels are `system`, `system-conditional`, `reminder`, `tool`, `side-call`, `side-call-user` and `subagent`.
+`prompts.ts` registers every `BRAIN_PROMPTS` entry while the module is evaluated, before any consumer runs. A call site holds `const X = brainPrompt(id)`, which throws at module load when brain/ has no such id. `definePrompt({id, group, label, channel, where, placeholders?, text})` still registers the prompts declared in code: the `subagent.*` group (`agents.ts`) and each tool's `tool.<name>`. Either way the call site reads the text through `promptText(id)`, `renderPrompt(id, vars)` or `promptTextIfEnabled(id)`. The registry holds 99 prompts: the 65 brain prompts, 7 `subagent.*`, and one `tool.<Name>` per built-in tool. Redeclaring an id with *different* text throws, because two prompts sharing one override file would be ambiguous. An unknown id also throws, because a typo returning `""` would silently delete a section. The channels are `system`, `system-conditional`, `reminder`, `tool`, `side-call`, `side-call-user` and `subagent`.
 
 **Overrides** are plain files at `<promptsDir>/<id>.txt`. `promptsDir()` is `MAGENTRA_PROMPTS_DIR` when set, else `~/.magentra/prompts`, so an override applies to every workspace of that user. Overrides are re-read live: a resolved override is trusted for 250 ms (`CACHE_TTL_MS`), then the file's mtime is checked again. Editing a file changes the next request without a restart. CRLF is normalized and trailing newlines are stripped.
 
@@ -1226,8 +1258,9 @@ Every piece of model-facing prose is declared once, next to the code that uses i
 - A model call guarded by `promptTextIfEnabled()` does not run at all. A blank system prompt is the same call with the instructions removed.
 - A system section is dropped with its body (`Session.section`). A blank reminder is never queued (`Session.remind`).
 - A blank tool description withholds the tool itself (§7). `ToolRegistry.enabled()` leaves it out of the schema list, and `executeToolCalls()` refuses a call to it by name.
+- A built-in tool missing from `brain/availability.json` for the current context (`main`, or `overdrive` while OVERDRIVE is on) is withheld from a ROOT session the same way, and refused with the same text. MCP tools and child sessions are exempt. `EngineOptions.toolAvailability` / `SessionOptions.toolAvailability` override it per engine (not a setting). The shipped file withholds Agent and Workflow.
 
-Tool descriptions join the registry as `tool.<name>` through `registerToolPrompt()`. MCP tools join too. Subagent roles and picker blurbs are `subagent.role.<type>` and `subagent.description.<type>` (`engine/core/src/agent/agents.ts`).
+Tool descriptions join the registry as `tool.<name>` through `registerToolPrompt()`, with the brain template as the default text. MCP tools join too. Subagent roles and picker blurbs are `subagent.role.<type>` and `subagent.description.<type>` (`engine/core/src/agent/agents.ts`).
 
 `promptCatalog()`, `writePromptOverride()`, `clearPromptOverride()` and `orphanedPromptFiles()` exist for an external editor. Nothing in `engine/`, `app/` or `tui/` calls them.
 
@@ -1243,7 +1276,7 @@ An addon is a procedure the model loads on demand: a Markdown file whose frontma
 - **On-invoke load.** The Addon tool (`engine/tools/src/addon.ts`) returns `addonInvocationHeader(name)`, then the body with `$ARGUMENTS` substituted (or `ARGUMENTS: …` appended), then a reminder listing the bundled files. A directory addon advertises up to 24 sibling files, one nested level deep, as workspace-relative *paths*. They are never inlined; the model Reads or runs the ones the body points at. A built-in has no directory, so it cannot bundle files.
 - **Precedence header.** `addon.invoke-header` is the one header both entry paths use. It says the addon outranks default behaviour *and the user outranks the addon*: a message that hands a decision back, says stop, or narrows the request wins, and the procedure adapts.
 - **Two ways in.** The user can type `/<name>`: `Engine.handleAddonCommand()` runs a turn whose text is the header plus the body. A leading-slash name *anywhere* in a message (`bana /grill-me yap`) is detected by `addonNamedIn()` in `session.ts`, which matches on a word boundary, lets the longest name win, and ignores paths like `src/grill-me`. It queues `reminder.addon-named` and skips the clarify pre-layer for that turn, whether clarify is on or off.
-- **Authoring.** `generate_addon` makes one `runInference()` call on the main model (or on a profile connection the app passes), repairs a fenced or preambled reply (`repairAddonText`), validates it with the real parser (`validateAddonText`), and retries up to 3 times with the error appended. `install_addon` re-validates, writes `.magentra/addons/<slug>.md`, and reloads the roster *in place* (`reloadAddons` mutates the array the live Session holds), then emits `addons_updated`.
+- **Authoring.** `generate_addon` makes one `runInference()` call on the main model (or on a profile connection the app passes), repairs a fenced or preambled reply (`repairAddonText`), validates it with the real parser (`validateAddonText`), and retries up to 3 times with the error appended through `addon-author.retry-feedback`. Its system prompt is `addon-author.role` and its user message `addon-author.instruction` (with `addon-author.context-line` when the wizard passes context), all from `brain/prompts/5-background-inference/`; emptying the role or the instruction switches authoring off with an error. `install_addon` re-validates, writes `.magentra/addons/<slug>.md`, and reloads the roster *in place* (`reloadAddons` mutates the array the live Session holds), then emits `addons_updated`.
 
 ### Hooks — `engine/core/src/agent/hooks.ts`
 
@@ -1251,10 +1284,10 @@ An addon is a procedure the model loads on demand: a Markdown file whose frontma
 
 | Event | Payload beyond `hook_event_name`, `session_id`, `cwd` | Exit 2 | Exit 0 stdout |
 |---|---|---|---|
-| PreToolUse | `tool_name`, `tool_input` | Call refused before the permission check | — |
-| PostToolUse | `+ tool_response` (a 400-character preview) | Reason appended to the result as a reminder | — |
+| PreToolUse | `tool_name`, `tool_input` | Call refused before the permission check; the result is the reason wrapped in `reminder.pre-tool-use-hook` | — |
+| PostToolUse | `+ tool_response` (a 400-character preview) | Reason appended to the result, wrapped in `reminder.post-tool-use-hook` | — |
 | UserPromptSubmit | `prompt` | Turn not run; error event | Queued as a reminder |
-| Stop | — | Reason pushed as a user message; the loop continues, once per turn | — |
+| Stop | — | Reason pushed as a user message wrapped in `reminder.stop-hook`; the loop continues, once per turn | — |
 | SessionStart | — (boot, `/clear`, `/resume`; fire and forget) | — | Added as a context message |
 
 `matcher` is a regex tested against `tool_name`; an invalid regex falls back to exact equality. Hooks are wired at construction (`SETTING_TIMING`: `restart`). Subagent sessions get no hook runner.
@@ -1275,6 +1308,7 @@ A hand-rolled stdio client that speaks JSON-RPC 2.0 as **newline-delimited** JSO
 - **Hand-dropped addons need a restart.** An addon file dropped into `addons/` by hand is not seen until the engine restarts. Only `install_addon` reloads the roster, and `/clear` reuses the loaded list.
 - **A matcher silences non-tool hooks.** A `matcher` on a UserPromptSubmit, Stop or SessionStart entry means that hook never runs. Their payloads carry no `tool_name`, and `matcherMatches()` returns false for any non-wildcard matcher.
 - **A PostToolUse block cannot annotate an array result.** The reason is appended only when the tool result is a string.
+- **Workflow is withheld from root sessions by default** (`brain/availability.json`), so the model reaches it only when an embedder opts it in, or from inside a general-purpose child (whose registry ignores availability) once `Agent` is opted in.
 - **Workflow ignores some options.** `agent()` accepts `model` and `phase` options and ignores both: `SpawnAgentOptions` has no model field. A general-purpose subagent keeps the Workflow tool, so recursion through Workflow is not blocked.
 - **MCP servers start once.** They are spawned at boot and live for the engine process. A server that dies later fails every call until restart.
 
@@ -1530,7 +1564,7 @@ Nothing typechecks `app/`: the root `tsconfig.json` references only `engine/*` a
 
 | Build | Produces | Consumed by |
 | --- | --- | --- |
-| `npm run build` (`tsc -b`, root `tsconfig.json` references `engine/protocol`, `providers`, `core`, `tools`, `host`, `tui`) | `engine/*/dist/`, `tui/dist/` (gitignored) | dev app (`node engine/host/dist/main.js`), the dev attach extractor (`engine/core/dist/knowledge/docs.js`), the test suite (engine package `exports` point at `dist/`), `tty-dispatch` (`tui/dist/`), and `bundle-engine.js`'s engine entry |
+| `npm run build` (`node tools/brain/compile.mjs` writes `engine/protocol/src/brain.generated.ts` from `brain/`, then `tsc -b`, root `tsconfig.json` references `engine/protocol`, `providers`, `core`, `tools`, `host`, `tui`) | `engine/*/dist/`, `tui/dist/` (gitignored) | dev app (`node engine/host/dist/main.js`), the dev attach extractor (`engine/core/dist/knowledge/docs.js`), the test suite (engine package `exports` point at `dist/`), `tty-dispatch` (`tui/dist/`), and `bundle-engine.js`'s engine entry |
 | `app/scripts/bundle-engine.js` (esbuild) | `app/build-resources/engine/*` and `app/build-resources/app/` (gitignored) | electron-builder only |
 
 `app/` has no build step in development: `npm run app` runs `app/scripts/launch.js`, which spawns Electron on the source tree and builds nothing. `npm test` doesn't build either. Both run whatever `dist/` is on disk, so a stale build looks like a feature that doesn't happen. CI and the release job always run `npm run build` first.
@@ -1654,6 +1688,8 @@ Break one and the app breaks in a way that is hard to see. "Guard" names the fea
 | `TAB_ACCESSORS` lists every per-conversation singleton | `app/renderer/modules/tabs.js`: the `[name, get, set, makeDefault]` rows that the tab swap captures and restores | A global left out of the table leaks across tabs, so one workspace's rows appear in another's transcript. | Specific cases only (`every-per-workspace-action-names-its-tab`, `the-sessions-list-follows-the-live-session`). Nothing checks that the table is complete. |
 | Chrome updaters do nothing for a non-focused tab | `chromeIsFocused()` in `tabs.js`, called from `util.js`, `stream.js`, `session.js`, `overdrive.js`, `landing.js`, `tasks.js`, `views.js` | A background tab's turn repaints the focused tab's composer, LED, meter or model picker. | `the-sessions-list-follows-the-live-session` (one case) |
 | Never add B(t), D(t) and T_turn together | `engine/protocol/src/tokens.ts`. B(t) is `inputTokensOf()` of the latest call. D(t) is the current phase's output. T_turn is `addUsage()` over every call. The renderer copy only displays these values. | The context meter climbs forever, or a cost figure turns out to be a window size. | `one-token-algebra`, `context-accounting`, `usage-normalization` |
+| Model-facing defaults have one source, `brain/` | `brain/` compiled by `tools/brain/compile.mjs` into `engine/protocol/src/brain.generated.ts`; read through `brainPrompt()`, `toolDescription()`, `toolParam()`. The `subagent.*` prompts in `engine/core/src/agent/agents.ts` are the one exception. | A literal prompt or `.describe()` text left in code is invisible to the brain and can drift from it; a hand-edited generated module is overwritten by the next build. | `brain-is-the-single-source`, `system-prompt-is-pinned`, `tool-wire-contract-is-pinned` |
+| Root sessions offer only the current context's built-in tools | `brain/availability.json` (`main`, `overdrive`), applied by `ToolRegistry.offered()` and the by-name refusal in `Session.executeToolCalls()`. MCP tools and child sessions are exempt. | A withheld tool (Agent and Workflow by default) reaches the model, or a new built-in tool is never offered. | `brain-is-the-single-source` |
 | Keys in persisted state are only ever added | `CONTEXT.md` (*Additive-Only State*), `docs/adr/0009-updates-have-two-tiers.md` (*Recovery*) | Going back one version stops being safe. MAGENTRA has no migration machinery, on purpose. | None: this is a convention |
 | Drop the graph edge when unsure | `resolveJsSpec()` in `engine/core/src/knowledge/graph.ts` returns `undefined` rather than guess. `docs/adr/0004-the-import-graph-has-two-tiers.md` states the rule for every language. | An invented edge poisons PageRank, the blast radius and every consumer downstream. | `import-graph` |
 | The finishing ladder runs in a fixed order | `Session.runTurn()` in `engine/core/src/runtime/session.ts`. The order is: Stop hook → Layer 3 (output cutoff) → Layer 2 (failed tool batch) → Layer 1.5 (open tasks) → runtime evidence → browser check → self-verify → Layer 1 (wrap-up summary). The header of `engine/core/src/runtime/finishing.ts` gives the reason. | Self-verify runs only under OVERDRIVE. When it gets `DONE` it breaks the loop, so on an OVERDRIVE turn any rung placed after it never runs. | `runtime-evidence-floor`, `web-changes-are-seen-in-a-browser`, `self-verify-rung` (`llm`), `honest-gap-outranks-a-manufactured-green` |
@@ -1687,24 +1723,28 @@ Other deliberate pairs. These are not between the app and the engine, but they h
 | The six kinds | `tests/lib/inventory.ts` `Kind` (a type) | `tools/magentra-gateway/src/schema.ts` `KINDS` | No test. It is loud by construction: a new kind shows up as "no base class for kind x". |
 | Kind base-class names | `tools/magentra-gateway/src/tests.ts` `KIND_BY_BASE_CLASS` | the classes in `tests/lib/*Test.ts` | No test. It is loud by construction: a renamed base shows up as "extends an unknown base class", with file and line. |
 | Release asset names | `app/main/updates.js` `assetName()` | `build.*.artifactName` in `app/package.json` | `mac-artifact` and `windows-artifact` compare against `app/package.json` (these are opt-in artifact tests). `offline-rests` pins literals (`pure`). |
+| The built-in tool names | `tools/brain/compile.mjs` `BUILTIN_TOOLS` (the compiler runs before `tsc` and cannot import the registry) | `engine/tools/src/index.ts` `createDefaultRegistry()` | `brain-is-the-single-source` (the compiler's list equals the registry's names) and `tool-registry-contract` (the 27 names) |
+| A params text that states a code value (Monitor's `timeout_ms` default, PushNotification's `message` cap) | `brain/tools/<Name>/params.md` | the constant in `engine/tools/src/<tool>.ts` | `assertToolParamStates()` at module load: the import throws when they disagree |
+| The brain file rules | `brain/README.md` | the header comment and parser of `tools/brain/compile.mjs` | The parser is authoritative; `brain-is-the-single-source` round-trips every file. Nothing compares the README's prose. |
 | Freshness hash (path + content, CRLF folded) | `tools/magentra-gateway/src/freshness.ts` `hashFiles()` | `.claude/skills/bigpicture/bigpicture.mjs` `hashFiles()`, which also drops a `package.json`'s top-level `version` and a gateway record's `freshness` block on purpose | **Nothing** |
 
 One pair is avoided on purpose. `tools/approvals/regenerate.mjs` imports its printers from `tests/lib/approved.ts` instead of repeating them, so the generator and the test cannot disagree about an artifact (`docs/decisions/0015-approved-artifacts-live-in-tests-approved.md`).
 
 ### Tripwires: things that break silently
 
+- **A stale or stripped brain.** `engine/protocol/src/brain.generated.ts` is gitignored and written only by `node tools/brain/compile.mjs`; a bare `tsc -b` compiles whatever brain was compiled last. Prompt bodies keep every byte except one trailing newline, so an editor that trims trailing whitespace or drops the final newline changes a prompt (`brain/.editorconfig` and `brain/.gitattributes` exist to stop that).
 - **A stale `engine/*/dist/`.** Every `@magentra/*` package exports `./dist/index.js`. In development, `app/main.js` spawns `engine/host/dist/main.js`, and `tui/src/config.ts` resolves the same file. Every test imports the built packages. `npm run app` (`app/scripts/launch.js`) and `npm test` never build, and `dist/` is gitignored. After changing engine source, run `npm run build`, or you are running the previous build.
 - **The untyped `app/` seam.** `tsconfig.json` references `engine/*` and `tui` only. Nothing typechecks `app/`, and frame names are bare string literals on both sides of `app/main.js` ↔ `app/renderer/modules/landing.js`. Renaming a frame in `engine/protocol/src/types.ts` still compiles. Ask `.claude/skills/bigboycoding/blast-radius.mjs` (`untypedAppReach`, `untypedSeam`, `frames`) before you rename.
-- **Pinned approved artifacts.** `tests/approved/system-prompt-is-pinned/system-prompt.txt` and `tests/approved/tool-wire-contract-is-pinned/tools.json` are compared byte for byte, after LF-normalising. Reword any `SECTION_*` in `engine/core/src/agent/prompts.ts`, or any tool's schema or description in `engine/tools/src/`, and these tests fail. Only a person runs `npm run approve`, and it refuses while any prompt override under `~/.magentra/prompts/` is in effect. No environment variable lets a test re-approve its own change.
+- **Pinned approved artifacts.** `tests/approved/system-prompt-is-pinned/system-prompt.txt` and `tests/approved/tool-wire-contract-is-pinned/tools.json` are compared byte for byte, after LF-normalising. Reword any `brain/prompts/1-core-system/*.md` (or `system.environment`), any `brain/tools/<Name>/description.md` or `params.md`, or any tool's schema shape in `engine/tools/src/`, and these tests fail. Only a person runs `npm run approve`, and it refuses while any prompt override under `~/.magentra/prompts/` is in effect. No environment variable lets a test re-approve its own change.
 - **Gateway freshness hashes path and content.** Each record's stamp digests `path + NUL + content` per entry file, with CRLF folded to LF (`tools/magentra-gateway/src/freshness.ts`). Any of the following makes the record stale, and one stale record marks the whole inventory untrusted: editing a comment or whitespace in an entry file, moving or deleting that file (it hashes as `MISSING`), or reordering `entryFiles`. If you add an entry file without its `fileHashes` entry, or put a non-renderer file on a `deferred` record, the schema rejects the record and the gateway refuses to start.
 - **`GraphData.version` in `engine/core/src/knowledge/graph.ts`.** Cached entries are reused whenever a file's mtime and size are unchanged. A fix to import extraction therefore reaches no existing `graph.json` until the version is bumped, and the version appears in three places: the type, `buildGraph()` and `isValidGraph()`.
 - **NodeNext specifiers.** Engine source imports `./x.js` for a file that is `x.ts` on disk, so a grep for `x.ts` finds nothing. `tests/` is the opposite: Node's type stripping resolves specifiers literally, so tests import `./x.ts`, and a `.js` specifier there fails at load time. `tools/magentra-gateway/` uses `.js` and runs only under `tsx`.
-- **Barrels widen the public surface.** `engine/core/src/index.ts` uses `export *` over 26 modules, and `engine/protocol/src/index.ts` over 5. A new export in any of those modules becomes public API of the package, and the tests and the gateway can reach it. The barrel also hides fan-in: everything reaches `types.ts` through `engine/protocol/src/index.ts`.
+- **Barrels widen the public surface.** `engine/core/src/index.ts` uses `export *` over 26 modules, and `engine/protocol/src/index.ts` over 6. A new export in any of those modules becomes public API of the package, and the tests and the gateway can reach it. The barrel also hides fan-in: everything reaches `types.ts` through `engine/protocol/src/index.ts`.
 - **Gateway dependencies come from neighbours.** `tools/magentra-gateway/package.json` declares no dependencies and is not an npm workspace. `npm run gateway` needs `tsx`, which only `tui/package.json` declares. The gateway and `tests/lib/approved.ts` need `zod`, which only `engine/core` and `engine/tools` declare. Remove either package from those manifests and the gateway stops starting.
 
 ### Known drift
 
-Each item below was checked against the working tree on 2026-09-28. None of them changes behaviour. They change what a reader believes about the behaviour.
+Each item below was checked against the working tree on 2026-09-28 (the brain/ and Monitor rows on 2026-10-02). None of them changes behaviour. They change what a reader believes about the behaviour.
 
 | Where | Drift |
 | --- | --- |
@@ -1715,6 +1755,8 @@ Each item below was checked against the working tree on 2026-09-28. None of them
 | `docs/decisions/0006-the-gateway-does-not-run-or-brief.md` | This file is cited by `docs/decisions/README.md`, `SPEC.md`, 0007, 0009, `gate.ts`, `tests.ts`, `server.ts`, `ui/app.js`, `ci.yml` and `tests/README.md`. It does not exist, and no commit has ever held it. |
 | `engine/host/src/main.ts` | The header says the desktop app "is its only frontend". `tui/` spawns the same host (`tui/src/config.ts`). |
 | `app/renderer/modules/landing.js`, `events.js` | `landing.js` announces itself as the startup landing page, but it holds `handleEngineEvent()` and every `on*` engine-event handler. `events.js` opens with an "Engine event handlers" banner that has no handlers under it (the file holds the changes panel and the failure banner). |
+| `brain/tools/TaskOutput/description.md`, `brain/tools/TaskStop/description.md`, `brain/prompts/3-in-turn-reminders/reminder.stall-ask.md` | With Agent withheld from root sessions by default, the TaskOutput and TaskStop descriptions still mention a background Agent, and `reminder.stall-ask` still says "(you are a subagent)". They are pinned bytes, recorded in `brain/README.md` as residuals for a person to reword. |
+| `engine/tools/src/monitor.ts` | The noise-stop `<task-notification>` sends the literal text `{{noiseLimit}}` and `{{noiseWindowSec}}`: it is a plain template literal that nothing renders, before or after the move to brain/. |
 | `tui/src/profiles.ts` | It writes `.magentra/settings.json` and `.env` with plain `writeFileSync`. That is outside the write-then-rename rule, even though `state-files-are-written-atomically` names `settings.json`. |
 
 ---
@@ -1730,7 +1772,10 @@ Each item below was checked against the working tree on 2026-09-28. None of them
 | Every event and request shape, `PROTOCOL_VERSION`, `REASONING_EFFORTS` | `engine/protocol/src/types.ts` |
 | NDJSON framing: `encodeFrame()`, `decodeFrames()` | `engine/protocol/src/ndjson.ts` |
 | The token algebra: B(t), D(t), T_turn, `estimateTokens()`, `formatTokens()` | `engine/protocol/src/tokens.ts` |
-| The prompt registry, `~/.magentra/prompts/<id>.txt` overrides, `promptCatalog()` | `engine/protocol/src/prompts.ts` |
+| The text of any prompt, tool description or parameter description; which tools a root session offers | `brain/` (`brain/README.md`): `prompts/<group-dir>/<id>.md`, `tools/<Name>/`, `availability.json` |
+| Compiling brain/ into the engine | `tools/brain/compile.mjs` → `engine/protocol/src/brain.generated.ts` (gitignored) |
+| The prompt registry, `brainPrompt()`, `promptDefault()`, `~/.magentra/prompts/<id>.txt` overrides, `promptCatalog()` | `engine/protocol/src/prompts.ts` |
+| `toolDescription()`, `toolParam()`, tool availability (`resolveToolAvailability()`, `isToolOffered()`, `toolAvailabilityWith()`) | `engine/protocol/src/brain.ts` |
 | Product name, CLI name, the `.magentra` state-dir name | `engine/protocol/src/branding.ts` |
 | Host process entry, and boot failures reported in-band | `engine/host/src/main.ts` |
 | Settings → provider → `Engine`, and the keyless-local boot check | `engine/host/src/bootstrap.ts` |
@@ -1739,16 +1784,16 @@ Each item below was checked against the working tree on 2026-09-28. None of them
 | Request dispatch, slash commands, addon install and export, session list / resume / rename / archive, live model and connection swap | `engine/core/src/runtime/engine.ts` `Engine.send()` |
 | The turn loop and every finishing rung | `engine/core/src/runtime/session.ts` `runTurn()` |
 | Compaction, subagent spawn, image description, the clarify round | `session.ts` `maybeCompact()`, `spawnAgent()`, `describeImage()`, `maybeClarify()` |
-| Finishing-rung prose and predicates | `engine/core/src/runtime/finishing.ts` |
+| Finishing-rung predicates (their prose is in `brain/prompts/4-end-of-turn-rungs/`) | `engine/core/src/runtime/finishing.ts` |
 | Permission resolution, stances, the deletion guard, grant shapes | `engine/core/src/runtime/permissions.ts` |
 | The read-before-write freshness store | `engine/core/src/runtime/fileState.ts` |
 | Per-session token and cost stats behind `session_report` | `engine/core/src/runtime/sessionStats.ts` |
 | The settings schema (the source of truth), key resolution, the vision key | `engine/core/src/config/settings.ts` |
 | Turning settings into a Provider, `isLocalBaseUrl()` | `engine/core/src/config/providerFactory.ts` |
 | The rate card behind cost estimates | `engine/core/src/config/pricing.ts` |
-| System-prompt sections (`SECTION_*`, `behaviorCore()`) | `engine/core/src/agent/prompts.ts` |
+| System-prompt assembly (`SECTION_*`, `behaviorCore()`, `buildSystemPrompt()`); the section texts are in `brain/prompts/1-core-system/` | `engine/core/src/agent/prompts.ts` |
 | Addons: loader, built-ins | `engine/core/src/agent/addons.ts`, `engine/core/src/agent/builtinAddons.ts` |
-| Hooks, subagent types, the tool base | `engine/core/src/agent/hooks.ts`, `agents.ts`, `tool.ts` |
+| Hooks, subagent types (and the `subagent.*` prompts, the one exception to brain/), the tool base and `ToolRegistry.offered()` | `engine/core/src/agent/hooks.ts`, `agents.ts`, `tool.ts` |
 | The import graph, PageRank, blast radius, `GraphData.version` | `engine/core/src/knowledge/graph.ts` |
 | Symbols, request → seeds, the reuse reminder, `STANDARDS.md`, document text extraction | `engine/core/src/knowledge/symbols.ts`, `seeds.ts`, `reuseGate.ts`, `standards.ts`, `docs.ts` |
 | Transcript JSONL and tool-pairing repair; the task store | `engine/core/src/state/transcript.ts`, `engine/core/src/state/taskStore.ts` |
@@ -1806,6 +1851,7 @@ Each item below was checked against the working tree on 2026-09-28. None of them
 | One tool, run as the Session runs it | `tests/lib/directTool.ts` |
 | Driving the real desktop app | `tests/lib/appHarness.cjs`, `tests/lib/appDriver.ts` |
 | One feature's tests | `tests/features/<feature-id>.test.ts` |
+| The brain's tests and its pre-migration baseline | `tests/features/brain-is-the-single-source.test.ts`, `tests/features/fixtures/brain-baseline/` |
 | Approved artifacts and their printers | `tests/approved/`, `tests/lib/approved.ts`, `tools/approvals/regenerate.mjs` |
 | Feature records and descriptions | `tests/gateway/features/<id>.json`, `tests/gateway/descriptions/` |
 | The gateway: record schema, freshness, gate, test discovery, HTTP | `tools/magentra-gateway/src/schema.ts`, `freshness.ts`, `gate.ts`, `tests.ts`, `server.ts` |
@@ -1966,7 +2012,7 @@ Tests inherit on **kind**, not on area. The kind decides setup, teardown, and wh
 | `llm` | `tests/lib/llmTest.ts` | A real model on the connection this folder names. It throws when there is none. |
 | `ui` | `tests/lib/uiTest.ts` | The real desktop app under Electron (`appHarness.cjs` hosts `app/main.js` unchanged), driven over a loopback socket passed in `MAGENTRA_HARNESS_PORT`. Electron's main process has no usable stdin on Windows, which is why a socket is used. |
 
-**The doubles are scripts, never mocks.** The model is the only thing replaced. `FakeProvider` (`engine/providers/src/fake.ts`) plays back scripted turns. `tests/lib/scriptedEngine.ts` runs the real `Engine` in-process on it. `tests/lib/engineHarness.ts` runs the real host loop (`runServe`) around a real `Engine` in a child process, and reports only what it observes, as `type: "harness"` lines. The one other script is `tests/lib/scriptedFetch.ts`. It exists for the connection wizard, whose `testEndpoint` takes `fetchImpl` as a parameter. A behaviour that belongs to the model itself is the `llm` kind's job, and no scripted test may claim it.
+**The doubles are scripts, never mocks.** The model is the only thing replaced. `FakeProvider` (`engine/providers/src/fake.ts`) plays back scripted turns. `tests/lib/scriptedEngine.ts` runs the real `Engine` in-process on it, offering what `brain/availability.json` ships unless the test passes `toolAvailability` (a test that scripts an `Agent` call opts it back in with `toolAvailabilityWith("Agent")`). `tests/lib/engineHarness.ts` runs the real host loop (`runServe`) around a real `Engine` in a child process, and reports only what it observes, as `type: "harness"` lines. The one other script is `tests/lib/scriptedFetch.ts`. It exists for the connection wizard, whose `testEndpoint` takes `fetchImpl` as a parameter. A behaviour that belongs to the model itself is the `llm` kind's job, and no scripted test may claim it.
 
 ### Selecting what runs: the script name is the switch
 

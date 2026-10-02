@@ -1,17 +1,20 @@
 import { execFile } from "node:child_process";
 import { z } from "zod";
+import { assertToolParamStates, toolDescription, toolParam } from "@magentra/protocol";
 import type { ToolDefinition, ToolResult } from "@magentra/core";
 
 const MAX_MESSAGE_CHARS = 200;
+// message's text in brain states MAX_MESSAGE_CHARS; the import fails if the two drift apart.
+assertToolParamStates("PushNotification", "message", `Truncated to ${MAX_MESSAGE_CHARS} characters.`);
 
 const inputSchema = z.object({
   message: z
     .string()
     .min(1)
-    .describe(`The notification text. Truncated to ${MAX_MESSAGE_CHARS} characters.`),
+    .describe(toolParam("PushNotification", "message")),
   status: z
     .literal("proactive")
-    .describe('Always "proactive" — this signals an unprompted, attention-worthy notification.'),
+    .describe(toolParam("PushNotification", "status")),
 });
 
 /**
@@ -28,9 +31,7 @@ const inputSchema = z.object({
  */
 export const pushNotificationTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "PushNotification",
-  description: `Sends a proactive OS notification to get the user's attention (e.g. a long task finished, or input is needed).
-
-Use sparingly for genuinely notification-worthy moments. Delivery is best-effort and platform-dependent; it never interrupts or fails the current work.`,
+  description: toolDescription("PushNotification"),
   permissionClass: "interact",
   describeInput: (input) => `notify: ${input.message.slice(0, 60)}`,
   execute: async (input): Promise<ToolResult> => {

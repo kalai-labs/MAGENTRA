@@ -1,32 +1,31 @@
 import { z } from "zod";
+import { toolDescription, toolParam } from "@magentra/protocol";
 import type { ToolDefinition } from "@magentra/core";
 
 const optionSchema = z.object({
-  label: z.string().describe("Concise display text for this option (1-5 words)"),
-  description: z.string().describe("What choosing this option means, including trade-offs"),
-  preview: z.string().optional().describe("Optional preview content (mockup, code snippet) rendered when focused"),
+  label: z.string().describe(toolParam("AskUserQuestion", "questions.options.label")),
+  description: z.string().describe(toolParam("AskUserQuestion", "questions.options.description")),
+  preview: z.string().optional().describe(toolParam("AskUserQuestion", "questions.options.preview")),
 });
 
 const questionSchema = z.object({
-  question: z.string().describe("The complete question, clear and specific, ending with a question mark"),
-  header: z.string().max(12).describe("Very short chip label (max 12 chars), e.g. \"Approach\""),
+  question: z.string().describe(toolParam("AskUserQuestion", "questions.question")),
+  header: z.string().max(12).describe(toolParam("AskUserQuestion", "questions.header")),
   options: z
     .array(optionSchema)
     .min(2)
     .max(4)
-    .describe("2-4 distinct choices. Do not add an 'Other' option — the UI adds one automatically."),
-  multiSelect: z.boolean().default(false).describe("true allows selecting multiple options"),
+    .describe(toolParam("AskUserQuestion", "questions.options")),
+  multiSelect: z.boolean().default(false).describe(toolParam("AskUserQuestion", "questions.multiSelect")),
 });
 
 const inputSchema = z.object({
-  questions: z.array(questionSchema).min(1).max(5).describe("Questions to ask the user (1-5)"),
+  questions: z.array(questionSchema).min(1).max(5).describe(toolParam("AskUserQuestion", "questions")),
 });
 
 export const askUserQuestionTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "AskUserQuestion",
-  description: `Asks the user up to 5 multiple-choice questions and blocks until they answer.
-
-Use it only when you are stuck on a decision that genuinely belongs to the user — one the request, the code, and sensible defaults cannot settle. For choices with a conventional default, pick it, mention it, and move on. If you recommend an option, put it first and append "(Recommended)" to its label. The UI always adds an "Other" free-text option. Also use it for a dependent follow up question.`,
+  description: toolDescription("AskUserQuestion"),
   permissionClass: "interact",
   execute: async (input, ctx) => {
     const answers = await ctx.session.askUser(input.questions);

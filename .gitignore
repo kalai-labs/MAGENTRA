@@ -27,3 +27,5 @@ app/dist/
 *.zip
 *.exe
 .idea/*
+# generated from brain/ by tools/brain/compile.mjs (npm run build)
+engine/protocol/src/brain.generated.ts

@@ -1,20 +1,19 @@
 import { statSync } from "node:fs";
 import fg from "fast-glob";
 import { z } from "zod";
+import { toolDescription, toolParam } from "@magentra/protocol";
 import type { ToolDefinition } from "@magentra/core";
 
 const inputSchema = z.object({
-  pattern: z.string().describe("The glob pattern to match files against"),
+  pattern: z.string().describe(toolParam("Glob", "pattern")),
   path: z
     .string()
     .optional()
-    .describe(
-      "The directory to search in. Omit it to use the current working directory — never pass \"undefined\" or \"null\".",
-    ),
+    .describe(toolParam("Glob", "path")),
   dot: z
     .boolean()
     .optional()
-    .describe("Set true to also match dotfiles/dot-directories (e.g. .github/**); default false."),
+    .describe(toolParam("Glob", "dot")),
 });
 
 /**
@@ -34,13 +33,7 @@ function targetsStateDir(pattern: string, path: string | undefined): boolean {
 
 export const globTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   name: "Glob",
-  description: `Fast filename/path matching. Supports glob patterns like "**/*.js" or "src/**/*.{ts,tsx}".
-
-- Matches file names and paths only; it never looks inside files (use Grep for contents).
-- Results are sorted by modification time, most recently modified first.
-- * matches within one path segment; ** crosses directories; {a,b} alternates; ? matches one character.
-- \`node_modules\`, \`.git\`, and MAGENTRA's own \`.magentra/\` state directory and other directory of files start with \`.\` are skipped. To search the state directory, name it in the pattern or path (e.g. ".magentra/**/*.json") — it holds session transcripts and worktree checkouts, so an accidental match is a large waste of context.
-- An empty result is not an error. Prefer this over find/ls via Bash.`,
+  description: toolDescription("Glob"),
   permissionClass: "read",
   permissionSubject: (input) => input.pattern,
   searchTerms: (input) => [input.pattern],

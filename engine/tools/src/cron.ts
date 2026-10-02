@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { SessionServices, ToolDefinition } from "@magentra/core";
+import { toolDescription, toolParam } from "@magentra/protocol";
 
 /**
  * Structural view of the CronScheduler the session exposes as `session.cron`.
@@ -39,30 +40,26 @@ function getCron(session: SessionServices): CronSchedulerLike | undefined {
 const createSchema = z.object({
   cron: z
     .string()
-    .describe(
-      'Standard 5-field cron (minute hour day-of-month month day-of-week), local time. Supports *, */N, N, N-M, and comma lists. For one-shot "remind me at X" jobs, pin the exact fields; avoid round times like :00/:30 when the time is only approximate.',
-    ),
+    .describe(toolParam("CronCreate", "cron")),
   prompt: z
     .string()
     .min(1)
-    .describe("The instruction to inject as a user message when the job fires while the REPL is idle."),
+    .describe(toolParam("CronCreate", "prompt")),
   recurring: z
     .boolean()
     .optional()
     .default(true)
-    .describe("If false, the job fires once at the next matching minute and is then removed."),
+    .describe(toolParam("CronCreate", "recurring")),
   durable: z
     .boolean()
     .optional()
     .default(false)
-    .describe("If true, the job persists to disk and survives restarts. Otherwise it is session-only."),
+    .describe(toolParam("CronCreate", "durable")),
 });
 
 export const cronCreateTool: ToolDefinition<z.infer<typeof createSchema>> = {
   name: "CronCreate",
-  description: `Schedules a recurring or one-shot cron job that fires a prompt while the REPL is idle.
-
-Jobs fire only when the current minute matches the cron expression AND the session is idle (never mid-turn). Recurring jobs auto-expire 7 days after creation — tell the user this when you schedule one. Jobs are session-only unless durable is set. Use recurring:false for one-time reminders.`,
+  description: toolDescription("CronCreate"),
   permissionClass: "interact",
   describeInput: (input) => `cron ${input.cron}`,
   execute: async (input, ctx) => {
@@ -90,12 +87,12 @@ Jobs fire only when the current minute matches the cron expression AND the sessi
 // -- CronDelete --------------------------------------------------------------
 
 const deleteSchema = z.object({
-  id: z.string().describe("The id of the scheduled job to delete."),
+  id: z.string().describe(toolParam("CronDelete", "id")),
 });
 
 export const cronDeleteTool: ToolDefinition<z.infer<typeof deleteSchema>> = {
   name: "CronDelete",
-  description: "Deletes a scheduled cron job or wakeup by its id.",
+  description: toolDescription("CronDelete"),
   permissionClass: "interact",
   describeInput: (input) => `delete ${input.id}`,
   execute: async (input, ctx) => {
@@ -115,7 +112,7 @@ const listSchema = z.object({});
 
 export const cronListTool: ToolDefinition<z.infer<typeof listSchema>> = {
   name: "CronList",
-  description: "Lists all scheduled cron jobs and wakeups for this session.",
+  description: toolDescription("CronList"),
   permissionClass: "interact",
   execute: async (_input, ctx) => {
     const cron = getCron(ctx.session);
@@ -140,16 +137,14 @@ export const cronListTool: ToolDefinition<z.infer<typeof listSchema>> = {
 const wakeupSchema = z.object({
   delaySeconds: z
     .number()
-    .describe("Delay before the wakeup fires, in seconds. Clamped to [60, 3600]."),
-  reason: z.string().min(1).describe("Short human-readable reason for the wakeup."),
-  prompt: z.string().min(1).describe("The instruction injected when the wakeup fires (only while idle)."),
+    .describe(toolParam("ScheduleWakeup", "delaySeconds")),
+  reason: z.string().min(1).describe(toolParam("ScheduleWakeup", "reason")),
+  prompt: z.string().min(1).describe(toolParam("ScheduleWakeup", "prompt")),
 });
 
 export const scheduleWakeupTool: ToolDefinition<z.infer<typeof wakeupSchema>> = {
   name: "ScheduleWakeup",
-  description: `Schedules a single delayed wakeup (60s–1h) that injects a prompt once the REPL is next idle.
-
-Use this to revisit something after a short wait (e.g. "check the build in 5 minutes"). The delay is clamped to [60, 3600] seconds. It fires once and is then removed; it never interrupts a running turn.`,
+  description: toolDescription("ScheduleWakeup"),
   permissionClass: "interact",
   describeInput: (input) => `wakeup in ${input.delaySeconds}s`,
   execute: async (input, ctx) => {

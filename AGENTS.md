@@ -25,6 +25,8 @@ providers, and the state it keeps in a workspace's `.magentra/`.
 ## Layout
 
 ```
+brain/            model-facing prose: prompts, tool and parameter descriptions,
+                  tool availability — compiled into engine/protocol by npm run build
 engine/protocol   the wire contract (events, requests, NDJSON), token algebra, prompt registry
 engine/providers  model providers (OpenAI-compatible, Anthropic, Ollama)
 engine/core       the engine: runtime (Session, Engine), agent, config, knowledge,
@@ -34,7 +36,7 @@ engine/host       the headless process both frontends spawn
 app/              desktop app — main process, preload bridge, renderer (plain JS)
 tui/              terminal UI (TypeScript, Ink)
 tests/            feature suite (features/, lib/), gateway records (gateway/), approved artifacts
-tools/            dev tooling: magentra-gateway, version, approvals — never shipped
+tools/            dev tooling: magentra-gateway, version, approvals, brain compiler — never shipped
 docs/             big-picture/, adr/, decisions/
 ```
 
@@ -42,7 +44,7 @@ docs/             big-picture/, adr/, decisions/
 
 ```bash
 npm install
-npm run build              # tsc -b: engine/* and tui/ — REQUIRED before any test
+npm run build              # compile brain/, then tsc -b: engine/* and tui/ — REQUIRED before any test
 npm test                   # feature suite (pure, fs, proc, net kinds)
 npm run test:ui            # the ui kind ALONE — the only run that launches the app
 npm run test:llm           # the llm kind alone; needs a real model connection
@@ -74,10 +76,11 @@ node .claude/skills/bigpicture/bigpicture.mjs impact <file> | check | sync | map
    `tests/features/<id>.test.ts` (one file per feature — extend it). Editing a
    record's entry files makes it stale; re-recording it is a person's review in
    the gateway UI, never a way through the gate.
-5. **Pinned bytes move only by a person.** The system prompt
-   (`engine/core/src/agent/prompts.ts`) and every tool's wire schema are pinned
-   in `tests/approved/`. Rewording them fails those tests by design. Never run
-   `npm run approve`; show the owner the before and after.
+5. **Pinned bytes move only by a person.** Model-facing prose lives in
+   `brain/` (see `brain/README.md`), not in code. The system prompt and every
+   tool's wire schema are pinned in `tests/approved/`. Rewording them fails
+   those tests by design. Never run `npm run approve`; show the owner the
+   before and after.
 6. **State keys are additive only.** Never rename or repurpose a settings or
    state key — there is no migration machinery, on purpose.
 7. **Keep the big picture true.** After an edit, run `bigpicture.mjs check`. If a

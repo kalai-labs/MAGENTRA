@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
-import { definePrompt, renderPrompt } from "@magentra/protocol";
+import { brainPrompt, renderPrompt } from "@magentra/protocol";
 import { parseFrontmatter } from "../config/frontmatter.js";
 import { BUILTIN_ADDONS } from "./builtinAddons.js";
 
@@ -20,18 +20,7 @@ import { BUILTIN_ADDONS } from "./builtinAddons.js";
  * redirect it — delegating a decision back to the agent, or asking it to stop —
  * because nothing in the system said the user ranked above a loaded addon.
  */
-const ADDON_INVOKE_HEADER = definePrompt({
-  id: "addon.invoke-header",
-  group: "3 · In-turn reminders",
-  label: "Addon invocation header",
-  channel: "reminder",
-  where:
-    "Prepended to an addon's body every time one is invoked, by the Addon tool and by the /<name> slash command alike. `{{name}}` is the addon's name.",
-  placeholders: ["name"],
-  text: `The "{{name}}" addon was invoked. Follow its instructions below for this task — they outrank your default behaviour.
-
-The user outranks them in turn. When their message asks for something these instructions do not allow for — handing a decision back to you, telling you to stop or move on, or narrowing what they want — follow the user and adapt the procedure to fit. An addon shapes how you work; the user decides what you are working on.`,
-});
+const ADDON_INVOKE_HEADER = brainPrompt("addon.invoke-header");
 
 /**
  * The `<system-reminder>` + `<command-name>` preamble an invoked addon's body is

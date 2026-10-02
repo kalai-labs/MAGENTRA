@@ -5,8 +5,10 @@ import {
   PROTOCOL_VERSION,
   REASONING_EFFORTS,
   STATE_DIR_NAME,
-  definePrompt,
+  brainPrompt,
+  isPromptDisabled,
   promptTextIfEnabled,
+  renderPrompt,
   type ConnectionSpec,
   type CoreEvent,
   type FrontendRequest,
@@ -15,6 +17,7 @@ import {
   type RestoredMessage,
   type SessionSummary,
   type SlashCommandInfo,
+  type ToolAvailability,
 } from "@magentra/protocol";
 import type { ContentBlock, Msg, Provider } from "@magentra/providers";
 import { AsyncQueue } from "../util/asyncQueue.js";
@@ -136,6 +139,14 @@ export interface EngineOptions {
    * network.
    */
   providerFactory?: (spec: EndpointSpec) => Provider;
+  /**
+   * Overrides brain/availability.json for every root session this engine
+   * creates (boot, /clear, /resume): a context named here replaces that
+   * context's tool list, an omitted one keeps the shipped list. Not a setting —
+   * an embedder's choice, e.g. a test that scripts a withheld tool. See
+   * SessionOptions.toolAvailability.
+   */
+  toolAvailability?: Partial<ToolAvailability>;
 }
 
 /**
@@ -235,6 +246,7 @@ export class Engine {
         }),
       hookRunner: this.hookRunner,
       ...(this.opts.addons ? { addons: this.opts.addons } : {}),
+      ...(this.opts.toolAvailability ? { toolAvailability: this.opts.toolAvailability } : {}),
       ...(sessionId ? { sessionId } : {}),
       ...(initialMessages ? { initialMessages } : {}),
       ...(stats ? { stats } : {}),
@@ -494,6 +506,12 @@ export class Engine {
           error: "Addon authoring is switched off — addon-author.role is empty in the prompt registry.",
         };
       }
+      if (isPromptDisabled(ADDON_AUTHOR_INSTRUCTION)) {
+        return {
+          ok: false,
+          error: "Addon authoring is switched off — addon-author.instruction is empty in the prompt registry.",
+        };
+      }
       const raw = await this.session.runInference({
         system: authorRole,
         user: buildAddonPrompt(description, takenNames, opts) + feedback,
@@ -505,7 +523,9 @@ export class Engine {
       const check = validateAddonText(text);
       if (check.ok) return { ok: true, text, suggestedFilename: check.filename };
       lastError = check.error;
-      feedback = `\n\nYour previous attempt was rejected by the validator:\n${check.error}\nReturn ONLY the corrected file, starting with the "---" line — no sentence before it.`;
+      feedback = isPromptDisabled(ADDON_AUTHOR_RETRY_FEEDBACK)
+        ? ""
+        : `\n\n${renderPrompt(ADDON_AUTHOR_RETRY_FEEDBACK, { error: check.error })}`;
     }
     return { ok: false, error: `Generation failed validation after 3 attempts: ${lastError}` };
   }
@@ -1296,8 +1316,9 @@ export class Engine {
       }
       const exitCode = err && typeof (err as { code?: unknown }).code === "number" ? (err as { code: number }).code : err ? 1 : 0;
       this.emit({ type: "command_output", text: output });
+      const note = promptTextIfEnabled(SHELL_COMMAND_REMINDER);
       this.session.addContextMessage(
-        `<bash-input>! ${cmd}</bash-input>\n<bash-output exit-code="${exitCode}">\n${output}\n</bash-output>\n<system-reminder>The user ran this shell command directly; its output above is context, not a request.</system-reminder>`,
+        `<bash-input>! ${cmd}</bash-input>\n<bash-output exit-code="${exitCode}">\n${output}\n</bash-output>${note === undefined ? "" : `\n${note}`}`,
       );
     });
   }
@@ -1698,25 +1719,13 @@ export function reconstructForDisplay(messages: Msg[]): RestoredMessage[] {
 // ── Create-addon wizard: authoring prompt ────────────────────────────────────
 
 /** The persona behind generate_addon: it writes exactly one file, no commentary. */
-const ADDON_AUTHOR_ROLE = definePrompt({
-  id: "addon-author.role",
-  group: "5 · Background inference calls",
-  label: "Addon author role",
-  channel: "subagent",
-  where:
-    "Role of the call behind the create-addon wizard (generate_addon). Its entire reply is written straight to a .md file, so any commentary corrupts the output.",
-  text: `You are an addon author for the MAGENTRA agent workbench. An addon is a
-procedure a coding agent loads on demand: its description decides WHEN the agent
-reaches for it, and its body is the method the agent then follows.
+const ADDON_AUTHOR_ROLE = brainPrompt("addon-author.role");
+const ADDON_AUTHOR_INSTRUCTION = brainPrompt("addon-author.instruction");
+const ADDON_AUTHOR_CONTEXT_LINE = brainPrompt("addon-author.context-line");
+const ADDON_AUTHOR_RETRY_FEEDBACK = brainPrompt("addon-author.retry-feedback");
 
-An addon exists to buy PREDICTABILITY — the same process every run. Judge every
-line you write by that: it earns its place only if it changes what the agent
-actually does. A line the agent would already obey ("be careful", "be thorough")
-costs tokens and buys nothing.
-
-Your entire final response must be EXACTLY the content of one addon .md file —
-no code fences, no commentary before or after it.`,
-});
+/** Follows a user's `!` command and its output into the conversation. */
+const SHELL_COMMAND_REMINDER = brainPrompt("reminder.shell-command");
 
 /** Optional knobs the wizard passes into addon authoring. */
 type AddonGenOptions = {
@@ -1727,9 +1736,10 @@ type AddonGenOptions = {
 
 /**
  * The format the generator must produce — one place, so the wizard and the
- * validator agree.
+ * validator agree. The prose is brain/prompts/5-background-inference/
+ * addon-author.instruction.md (and addon-author.context-line.md).
  *
- * The "Writing the body" rules below are MAGENTRA's adaptation of the
+ * Its "Writing the body" rules are MAGENTRA's adaptation of the
  * skill-authoring principles set out by Mat Pocock in his "writing great skills"
  * reference: predictability as the root virtue, completion criteria that are
  * checkable, positive phrasing over prohibition, leading words that recruit the
@@ -1740,51 +1750,15 @@ type AddonGenOptions = {
  */
 function buildAddonPrompt(description: string, takenNames: string[], opts: AddonGenOptions = {}): string {
   const contextLine =
-    opts.context && opts.context.trim()
-      ? `\n\nWhen it should apply / extra detail from the user:\n"""\n${opts.context.trim()}\n"""`
+    opts.context && opts.context.trim() && !isPromptDisabled(ADDON_AUTHOR_CONTEXT_LINE)
+      ? `\n\n${renderPrompt(ADDON_AUTHOR_CONTEXT_LINE, { context: opts.context.trim() })}`
       : "";
 
-  return `The user wants a new addon. Their description:
-"""
-${description}
-"""${contextLine}
-
-Already-taken addon names (choose a DIFFERENT short kebab-case name): ${takenNames.join(", ") || "(none)"}.
-
-Produce a Markdown file in this exact shape — frontmatter with exactly these two
-keys, then the procedure as the body:
-
----
-name: <short-kebab-case-name>
-description: <one line, on ONE physical line: the CONDITION for reaching for this addon — what kind of task, and what trigger words. This is the only text the agent sees before invoking, so it must be enough to decide. Name each DISTINCT situation once; two phrasings of the same situation are one trigger, not two. Say so plainly if following it costs noticeably more tokens.>
----
-
-<the procedure the agent follows once this addon is loaded: concrete steps,
-headings and bullet lists welcome. Write instructions to the agent, not prose
-about the addon.>
-
-Writing the body — these are what make an addon repeatable:
-- **End every step on a checkable condition.** "Run the suite and report the
-  actual output" beats "test it"; "every call site listed" beats "review the
-  call sites". An agent that cannot tell done from not-done stops early.
-- **State the target behaviour rather than the ban.** "Prefer X" steers; "don't
-  do Y" names Y and makes it more available. Keep a prohibition only where it is
-  a hard guardrail, and pair it with what to do instead.
-- **Reach for a word the model already knows.** One vivid, familiar term
-  ("reconnaissance pass", "smoke test", "dry run") anchors a whole behaviour more
-  reliably than three sentences describing it.
-- **Say each thing once.** The same instruction in two places is two places to
-  fall out of step.
-
-Hard rules:
-- The frontmatter has ONLY \`name:\` and \`description:\`, and each value sits on
-  ONE physical line. The parser is line-based: it splits a line at its FIRST
-  colon, so punctuation inside a value — colons included — is safe, but a value
-  that wraps onto a second line is lost.
-- The body must be non-empty and must stand on its own: an agent reading only
-  this file has to know what to do.
-- Use \`$ARGUMENTS\` in the body if the addon should accept an argument from the
-  user; it is substituted at invocation.`;
+  return renderPrompt(ADDON_AUTHOR_INSTRUCTION, {
+    description,
+    context: contextLine,
+    taken: takenNames.join(", ") || "(none)",
+  });
 }
 
 /**
