@@ -1,0 +1,39 @@
+{
+  "id": "brain-editor",
+  "name": "The brain editor is the control center for editing brain/",
+  "area": "tooling",
+  "section": "Tooling",
+  "prose": "npm run brain-editor opens a local page that shows every prompt, tool text, tool set and behaviour knob in brain/ and saves edits back as brain files. The same core answers a command line for agents (check, show, plan, apply, new-profile), so a person and an agent change the brain through one path. It validates with tools/brain/compile.mjs, labels which pinned tests a change moves, and runs npm run build to put the brain into the engine. A brain folder other than brain/ can be opened and copied, which is how a new profile starts.",
+  "kinds": [
+    "pure",
+    "fs",
+    "proc"
+  ],
+  "entryFiles": [
+    "tools/brain-editor/src/model.ts",
+    "tools/brain-editor/src/server.ts",
+    "tools/brain-editor/src/cli.ts"
+  ],
+  "invariant": "A change the brain editor saves, from its page or its command line, is compiled on a staged copy first and written only when the whole brain still compiles, every edited text compiles back to exactly what was asked, and the brain on disk is the one the change was planned against; otherwise nothing on disk changes.",
+  "deferred": false,
+  "tests": [
+    "the-editor-reads-every-prompt-tool-knob-and-tool-set-exactly-as-the-compiler-does",
+    "the-change-guide-names-exactly-the-ops-and-fields-the-editor-accepts",
+    "a-saved-text-round-trips-byte-for-byte-including-the-whitespace-a-trim-would-take",
+    "a-change-that-breaks-the-brain-or-the-engine-writes-nothing-and-quotes-the-reason",
+    "a-change-planned-against-an-older-revision-is-refused-and-writes-nothing",
+    "in-the-shipped-brain-a-change-to-held-text-is-refused-until-its-test-is-acknowledged",
+    "new-profile-copies-a-complete-brain-and-never-overwrites-a-folder",
+    "the-server-answers-only-on-loopback-and-refuses-a-write-without-the-action-header",
+    "the-command-line-plans-and-applies-the-change-the-page-sends"
+  ],
+  "freshness": {
+    "hash": "8d973c643d619eea",
+    "fileHashes": {
+      "tools/brain-editor/src/model.ts": "27bbcf99b0cffaa8",
+      "tools/brain-editor/src/server.ts": "ee479c172bde8103",
+      "tools/brain-editor/src/cli.ts": "be4d5c5a6d8f2efc"
+    },
+    "recordedAt": "2026-10-03"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "$comment": "Own project, NOT referenced by the root tsconfig.json — the editor must start when `npm run build` is broken, because a broken brain is exactly when you need it (the gateway's arrangement, docs/decisions/0002). Run it with `npm run typecheck:brain-editor`. Imports carry their real `.ts` extension and the syntax stays erasable, so tests/features/brain-editor.test.ts can import these files under `node --test`'s type stripping, as tests/tsconfig.json explains.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "types": ["node"],
+
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts"]
+}

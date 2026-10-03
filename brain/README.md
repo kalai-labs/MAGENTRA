@@ -14,6 +14,13 @@ module into `engine/protocol/dist`, and the app bundle inlines it into
 `engine.cjs`, so a packaged install carries these defaults with no brain/
 folder beside it.
 
+**Editing it.** `npm run brain-editor` opens the brain editor
+(`tools/brain-editor/README.md`): a page that shows and edits everything here,
+and the same editor as a command line for agents
+(`npm run -s brain-editor -- help changes`). It writes these files by the rules
+below, and saves nothing that the compiler or the built engine refuses. Hand
+edits remain fine; the rules below are what both must follow.
+
 User overrides still apply on top, unchanged: `~/.magentra/prompts/<id>.txt`
 (or `$MAGENTRA_PROMPTS_DIR/<id>.txt`) replaces a prompt's default, and a blank
 override file switches it off. A tool's description is the prompt

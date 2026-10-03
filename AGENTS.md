@@ -53,6 +53,7 @@ npm run test:mac           # tests whose subject is macOS (test:windows likewise
 npm run typecheck:tests    # plus typecheck:gateway, typecheck:version
 npm run smoke --workspace app
 npm run gateway            # feature inventory UI at http://127.0.0.1:4320
+npm run brain-editor       # brain editor at http://127.0.0.1:4321; agents: npm run -s brain-editor -- help
 
 node .claude/skills/bigboycoding/blast-radius.mjs <file> | --symbol <Name> | --frame <type>
 node .claude/skills/bigpicture/bigpicture.mjs impact <file> | check | sync | map
@@ -78,7 +79,9 @@ node .claude/skills/bigpicture/bigpicture.mjs impact <file> | check | sync | map
    record's entry files makes it stale; re-recording it is a person's review in
    the gateway UI, never a way through the gate.
 5. **Pinned bytes move only by a person.** Model-facing prose lives in
-   `brain/` (see `brain/README.md`), not in code. The system prompt and every
+   `brain/` (see `brain/README.md`), not in code. Change it with the brain
+   editor (`tools/brain-editor/README.md`), which checks every save against the
+   compiler and the built engine and names the tests it moves. The system prompt and every
    tool's wire schema are pinned in `tests/approved/`. Rewording them fails
    those tests by design. Never run `npm run approve`; show the owner the
    before and after.

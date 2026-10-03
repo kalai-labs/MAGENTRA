@@ -10,7 +10,7 @@ cannot drift apart.
 **Read this to find where something already lives before writing a second one.**
 Narrative and rationale are in [`BIG-PICTURE.md`](BIG-PICTURE.md); this is the index.
 
-- files scanned **330** — engine 77, app 35, other 218
+- files scanned **342** — engine 77, app 35, other 230
 - `app/` is typechecked by **nothing**; `tsc -b` covers `engine/*` and `tui/` only.
 
 ---
@@ -100,6 +100,13 @@ Changing one of these reaches the whole system. `↓N` = transitive importers.
 **exports** `writeFileAtomic` `AsyncQueue` `zodToJsonSchema`
 **imported by** `engine/host/src/bootstrap.ts` `engine/host/src/serve.ts` `engine/tools/src/addon.ts` `engine/tools/src/agent.ts` `engine/tools/src/askUserQuestion.ts` `engine/tools/src/bash.ts` `engine/tools/src/cron.ts` `engine/tools/src/edit.ts` …+83
 
+### `engine/core/src/util/fsAtomic.ts`
+*35L · ↓148 transitive · ←7 direct*
+
+**exports** `writeFileAtomic`
+**members** `writeFileAtomic:17`
+**imported by** `engine/core/src/config/settings.ts` `engine/core/src/index.ts` `engine/core/src/knowledge/graph.ts` `engine/core/src/knowledge/symbols.ts` `engine/core/src/state/taskStore.ts` `tools/brain-editor/src/model.ts` `tools/magentra-gateway/src/registry.ts`
+
 ### `engine/providers/src/ollama.ts`
 *295L · ↓140 transitive · ←2 direct*
 
@@ -113,12 +120,6 @@ Changing one of these reaches the whole system. `↓N` = transitive importers.
 **exports** `AnthropicOptions` `AnthropicProvider`
 **members** `listModels:174 countTokens:179 describeAnthropicEffort:199 mapStop:216 toAnthropicMessage:231 toAnthropicImage:240 toAnthropicBlock:251`
 **imported by** `engine/providers/src/index.ts`
-
-### `engine/providers/src/index.ts`
-*9L · ↓138 transitive · ←29 direct*
-
-**exports** `FakeProvider` `FakeToolCall` `FakeTurn` `OpenAICompatOptions` `OpenAICompatProvider` `OllamaOptions` `OllamaProvider` `ThinkTagSplitter` `EffortClamp` `toWireEffort` `WIRE_EFFORTS` `WireEffort` `AnthropicOptions` `AnthropicProvider`
-**imported by** `engine/core/src/agent/tool.ts` `engine/core/src/config/providerFactory.ts` `engine/core/src/runtime/engine.ts` `engine/core/src/runtime/session.ts` `engine/core/src/state/transcript.ts` `engine/host/src/bootstrap.ts` `tests/features/a-tool-call-shows-while-it-is-written.test.ts` `tests/features/brain-controls-behavior.test.ts` …+21
 
 ### `app/main.js`
 *2020L · ↓0 transitive · ←0 direct*
@@ -309,7 +310,7 @@ before adding one.
 - `state/taskStore.ts` · 136L · ↓123 — TaskStore
 - `state/transcript.ts` · 225L · ↓123 — stripSystemReminders, unansweredToolUseIds, syntheticToolResults, repairToolPairing, TranscriptRecord, Transcript
 - `util/asyncQueue.ts` · 32L · ↓122 — AsyncQueue
-- `util/fsAtomic.ts` · 35L · ↓143 — writeFileAtomic
+- `util/fsAtomic.ts` ⬢ · 35L · ↓148 — writeFileAtomic
 - `util/zodToJsonSchema.ts` · 8L · ↓123 — zodToJsonSchema
 
 **engine/host/src/**
@@ -337,7 +338,7 @@ before adding one.
 - `anthropic.ts` ⬢ · 282L · ↓139 — AnthropicOptions, AnthropicProvider
 - `effort.ts` · 126L · ↓141 — WIRE_EFFORTS, WireEffort, toWireEffort, EffortClamp, mentionsReasoningEffort, looksLikeUnknownField
 - `fake.ts` · 88L · ↓139 — FakeToolCall, FakeTurn, FakeProvider
-- `index.ts` ⬢ · 9L · ↓138 — FakeProvider, FakeToolCall, FakeTurn, OpenAICompatOptions, OpenAICompatProvider, OllamaOptions, OllamaProvider, ThinkTagSplitter, EffortClamp, toWireEffort, …
+- `index.ts` · 9L · ↓138 — FakeProvider, FakeToolCall, FakeTurn, OpenAICompatOptions, OpenAICompatProvider, OllamaOptions, OllamaProvider, ThinkTagSplitter, EffortClamp, toWireEffort, …
 - `ollama.ts` ⬢ · 295L · ↓140 — OllamaOptions, OllamaProvider
 - `openai-compat.ts` ⬢ · 620L · ↓139 — OpenAICompatOptions, OpenAICompatProvider
 - `retry.ts` · 231L · ↓142 — RetryOptions, RetryInfo, ProviderHttpError, looksLikeContextOverflow, isContextOverflowError, isRetryable, retryReason, friendlyProviderError, withRetry, parseRetryAfter
@@ -416,9 +417,13 @@ before adding one.
 
 - `` · 1705L · ↓0
 
+**tests/features/brain-editor.test.ts/**
+
+- `` · 504L · ↓0
+
 **tests/features/brain-is-the-single-source.test.ts/**
 
-- `` · 1514L · ↓0
+- `` · 1518L · ↓0
 
 **tests/features/bundled-files.test.ts/**
 
@@ -966,7 +971,7 @@ before adding one.
 
 **tests/lib/childProcesses.ts/**
 
-- `` · 284L · ↓57 — SpawnOptions, Exit, ProcHandle, ChildProcesses
+- `` · 284L · ↓58 — SpawnOptions, Exit, ProcHandle, ChildProcesses
 
 **tests/lib/directTool.ts/**
 
@@ -982,15 +987,15 @@ before adding one.
 
 **tests/lib/featureTest.ts/**
 
-- `` · 746L · ↓152 — TestRun, FeatureTest, inventoryLinkageProblems, LLM_OPT_IN_VAR, realModelTestsEnabled, ARTIFACT_OPT_IN_VAR, realArtifactTestsEnabled, UI_OPT_IN_VAR, realUiTestsEnabled, kindScopeRequested, …
+- `` · 746L · ↓153 — TestRun, FeatureTest, inventoryLinkageProblems, LLM_OPT_IN_VAR, realModelTestsEnabled, ARTIFACT_OPT_IN_VAR, realArtifactTestsEnabled, UI_OPT_IN_VAR, realUiTestsEnabled, kindScopeRequested, …
 
 **tests/lib/fsTest.ts/**
 
-- `` · 103L · ↓69 — FsTest
+- `` · 103L · ↓70 — FsTest
 
 **tests/lib/inventory.ts/**
 
-- `` · 120L · ↓157 — repoRoot, Kind, FeatureRecordSubset, featureRecordPath, readFeatureRecord
+- `` · 120L · ↓158 — repoRoot, Kind, FeatureRecordSubset, featureRecordPath, readFeatureRecord
 
 **tests/lib/llmTest.ts/**
 
@@ -1010,11 +1015,11 @@ before adding one.
 
 **tests/lib/procTest.ts/**
 
-- `` · 59L · ↓29 — Exit, ProcHandle, SpawnOptions, ProcTest
+- `` · 59L · ↓30 — Exit, ProcHandle, SpawnOptions, ProcTest
 
 **tests/lib/pureTest.ts/**
 
-- `` · 59L · ↓58 — PureTest
+- `` · 59L · ↓59 — PureTest
 
 **tests/lib/scriptedEngine.ts/**
 
@@ -1031,6 +1036,20 @@ before adding one.
 **tools/approvals/regenerate.mjs/**
 
 - `` · 85L · ↓0
+
+**tools/brain-editor/src/**
+
+- `cli.ts` · 267L · ↓0
+- `compiler.ts` · 120L · ↓8 — REPO, SHIPPED_BRAIN, GENERATED_MODULE, COMPILER_FILE, CompiledPrompt, CompiledTool, Availability, Json, JsonObject, CompileResult, …
+- `engine.ts` · 118L · ↓5 — PinCheck, ProbeResult, probeUnavailable, probeBrain, forgetProbes
+- `format.ts` · 239L · ↓5 — PROMPT_KEY_ORDER, PromptFile, FormatError, normalizeText, formatPrompt, formatToolDescription, ParamSection, formatParams, formatAvailability, replaceJsonValue, …
+- `guide.ts` · 133L · ↓3 — FieldGuide, OpGuide, CHANGE_GUIDE
+- `model.ts` · 1114L · ↓4 — PromptItem, ToolItem, KnobItem, BrokenFile, BrainSnapshot, brainRevision, loadBrain, checkEngine, Change, CHANGE_OPS, …
+- `probe.mjs` · 71L · ↓0
+- `project.ts` · 181L · ↓5 — isShippedBrain, Holder, PIN_HOLDERS, PIN_TESTS, holdersOf, promptUsers, LocalOverride, localOverrides, EngineState, engineState, …
+- `server.ts` · 252L · ↓1 — ACTION_HEADER, BrainEditorOptions, BrainEditor, createBrainEditor
+- `ui/app.js` · 1720L · ↓0
+- `ui/brain.js` · 529L · ↓0
 
 **tools/brain/compile.mjs/**
 

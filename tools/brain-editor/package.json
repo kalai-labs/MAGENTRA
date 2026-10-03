@@ -1,0 +1,7 @@
+{
+  "name": "@magentra/brain-editor",
+  "private": true,
+  "type": "module",
+  "description": "The control center for brain/: a local page and an agent command line that edit MAGENTRA's model-facing prose, tool texts, tool access and behaviour knobs through the brain compiler. Dev tooling: never enters the Electron bundle.",
+  "engines": { "node": ">=20" }
+}
