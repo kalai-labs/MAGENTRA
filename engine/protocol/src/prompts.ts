@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { STATE_DIR_NAME } from "./branding.js";
-import { BRAIN_PROMPTS } from "./brain.generated.js";
+import { BRAIN_CORE_ORDER, BRAIN_PROMPTS } from "./brain.generated.js";
 
 /**
  * The prompt registry: one place that knows every piece of model-facing prose
@@ -63,7 +63,7 @@ export interface PromptEntry extends PromptMeta {
   /** The text actually in use — the override when one exists, else the default. */
   currentText: string;
   overridden: boolean;
-  /** True when the override is blank: the prompt is switched off. */
+  /** True when the text in force is blank — a blank override, or a brain default shipped `enabled: false`: the prompt is switched off. */
   disabled: boolean;
   /** Absolute path of this prompt's override file (whether or not it exists). */
   file: string;
@@ -182,9 +182,18 @@ export function promptTextIfEnabled(id: string): string | undefined {
   return text.trim() === "" ? undefined : text;
 }
 
-/** Whether a prompt is switched off — its override exists and is blank. */
+/** Whether a prompt is switched off — its override exists and is blank, or brain/ ships it `enabled: false`. */
 export function isPromptDisabled(id: string): boolean {
   return promptTextIfEnabled(id) === undefined;
+}
+
+/**
+ * {@link renderPrompt}, or undefined when the prompt is switched off — so a
+ * call site can fall back to the bare fact (`?? message`) instead of sending a
+ * wrapper with nothing in it.
+ */
+export function renderPromptIfEnabled(id: string, vars: Record<string, string | number>): string | undefined {
+  return isPromptDisabled(id) ? undefined : renderPrompt(id, vars);
 }
 
 /**
@@ -208,7 +217,8 @@ export function promptCatalog(): PromptEntry[] {
       defaultText: meta.text,
       currentText: override ?? meta.text,
       overridden: override !== undefined,
-      disabled: override !== undefined && override.trim() === "",
+      // Blank text in force: a blank override, or a default shipped `enabled: false`.
+      disabled: (override ?? meta.text).trim() === "",
       file: promptFile(meta.id),
     };
   });
@@ -295,4 +305,13 @@ export function brainPrompt(id: string): string {
 /** Every prompt id whose default comes from brain/prompts, sorted. */
 export function brainPromptIdList(): string[] {
   return [...brainPromptIds].sort();
+}
+
+/**
+ * The brain/prompts/1-core-system ids in their `order:` — the sections that
+ * open the system prompt, in sequence. brain/ decides which core sections exist
+ * and where each sits; a file added there joins the prompt with no code change.
+ */
+export function coreSectionOrder(): readonly string[] {
+  return BRAIN_CORE_ORDER;
 }

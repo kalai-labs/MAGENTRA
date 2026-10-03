@@ -69,6 +69,7 @@ import {
   brainPromptIdList,
   brainToolNames,
   builtinToolNames,
+  coreSectionOrder,
   isPromptDisabled,
   isToolOffered,
   promptCatalog,
@@ -124,6 +125,7 @@ interface CompiledPrompt {
   readonly channel: string;
   readonly where: string;
   readonly placeholders?: readonly string[];
+  readonly order?: number;
   readonly text: string;
 }
 
@@ -311,8 +313,11 @@ class CatalogAndBrainFilesAreOneToOne extends BrainPureTest {
     );
 
     // Seeding registers every brain file, so registration alone cannot show a
-    // file nothing reads: each one must be named by a brainPrompt("<id>") call.
-    const named = new Set<string>();
+    // file nothing reads: each one must be named by a brainPrompt("<id>") call,
+    // or be a core section, which buildSystemPrompt() assembles by walking
+    // coreSectionOrder() (brain-controls-behavior: brain decides which core
+    // sections exist), so a section added only in brain reaches every request.
+    const named = new Set<string>(coreSectionOrder());
     for (const file of engineSources()) {
       for (const line of readFileSync(join(repoRoot(), file), "utf8").split("\n")) {
         if (/^\s*(\*|\/\/)/.test(line)) continue;
@@ -429,6 +434,7 @@ class RuntimeDefaultsAreAFreshCompileOfBrain extends BrainPureTest {
       const p = byId.get(id)!;
       const head = [`id: ${p.id}`, `group: ${p.group}`, `label: ${p.label}`, `channel: ${p.channel}`, `where: ${p.where}`];
       if (p.placeholders) head.push(`placeholders: ${p.placeholders.join(", ")}`);
+      if (p.order !== undefined) head.push(`order: ${p.order}`);
       t.assert.equal(`---\n${head.join("\n")}\n---\n${p.text}\n`, readBrainText(file), `${relative(repoRoot(), file)} does not round-trip`);
     }
     for (const name of toolFolders()) {
@@ -1073,6 +1079,156 @@ const FORMER_LITERALS: readonly { id: string; rendered: string; head: string }[]
     rendered: renderDefault("webfetch.system"),
     head: "You are given the readable text of a web page and a question about it. Answer the question using only the page content. Be concise and factual; if the page does not contain the answer, say so.",
   },
+
+  // ---- brain-controls-behavior: the last instructional texts composed in code.
+  // Each head is the literal as HEAD 32a5f67 built it (session.ts, engine.ts,
+  // permissions.ts, reuseGate.ts, background.ts and the five tools), with the
+  // values the code passes rendered in the same way.
+  {
+    id: "system.deletion-policy",
+    rendered: renderDefault("system.deletion-policy"),
+    head: `Deletion policy:
+- The user has enabled "Allow deletions" in the app settings — a durable authorization for destructive local operations (deleting files or folders, forced git history rewrites, and similar). They run without an extra confirmation prompt.
+- This is a license, not a directive: delete only what the task genuinely requires, keep the smallest possible blast radius, and still call out anything surprising you are about to remove.`,
+  },
+  {
+    id: "vision.attached-unreadable",
+    rendered: renderDefault("vision.attached-unreadable", { count: "3", reason: TRICKY }),
+    head:
+      `[The user attached 3 image(s) to this message, but they could not be read: ${TRICKY}. ` +
+      `You have NOT seen them — do not describe them or draw conclusions from them; say what happened and ask the user how to proceed.]`,
+  },
+  {
+    id: "vision.attached-malformed",
+    rendered: renderDefault("vision.attached-malformed", { label: TRICKY }),
+    head: `[The user attached "${TRICKY}", but it arrived malformed and was not read. You have NOT seen it.]`,
+  },
+  {
+    id: "vision.attached-too-large",
+    rendered: renderDefault("vision.attached-too-large", { label: TRICKY }),
+    head: `[The user attached "${TRICKY}", but it is too large to send to the vision model. You have NOT seen it.]`,
+  },
+  {
+    id: "vision.attached-failed",
+    rendered: renderDefault("vision.attached-failed", { label: "shot.png", error: TRICKY }),
+    head:
+      `[The user attached "shot.png", but the vision model could not look at it: ${TRICKY}. ` +
+      `You have NOT seen it — do not describe it or draw conclusions from it.]`,
+  },
+  {
+    // The pre-existing literal never filled its two counts: the model received
+    // `{{noiseLimit}}` and `{{noiseWindowSec}}` as written, and the move keeps
+    // that byte for byte (the code still passes only the id).
+    id: "reminder.monitor-noise-stop",
+    rendered: renderDefault("reminder.monitor-noise-stop", { id: "monitor_0a1b2c3d" }),
+    head: "<task-notification>Monitor monitor_0a1b2c3d was stopped automatically: more than {{noiseLimit}} events within {{noiseWindowSec}}s (too noisy). Narrow the command and restart if you still need it.</task-notification>",
+  },
+  {
+    id: "reminder.background-exit",
+    rendered: renderDefault("reminder.background-exit", { kind: "bash", id: "bash_0a1b2c3d", description: TRICKY, code: String(null), file: "/tmp/out.log" }),
+    head: `<task-notification>Background bash task bash_0a1b2c3d ("${TRICKY}") finished with exit code ${null}. Output file: /tmp/out.log</task-notification>`,
+  },
+  {
+    id: "reminder.permission-rule-denied",
+    rendered: renderDefault("reminder.permission-rule-denied"),
+    head: `Permission denied by settings rule. The user's configuration forbids this call; do not retry it verbatim.`,
+  },
+  {
+    id: "reminder.permission-kill-overdrive",
+    rendered: renderDefault("reminder.permission-kill-overdrive"),
+    head: "Refused: this command stops processes by name, which stops every matching process on this computer, not only the ones this session started. In OVERDRIVE nothing asks, so a kill by name never runs. To stop a background command you started, use TaskStop with its task id; to stop one process, kill its pid. If the user wants every matching process stopped, say so in your answer: they can run it themselves or turn OVERDRIVE off.",
+  },
+  ...[undefined, TRICKY].flatMap((note) => {
+    // `res.message ? `: ${res.message}` : "."` — the code's {{detail}}, with and without the user's note.
+    const detail = note ? `: ${note}` : ".";
+    return [
+      {
+        id: "reminder.permission-kill-declined",
+        rendered: renderDefault("reminder.permission-kill-declined", { detail }),
+        head: `The user declined this process kill${note ? `: ${note}` : "."} It stops processes by name — every matching process on this computer. To stop a background command you started, use TaskStop with its task id, or kill its pid; do not retry the same call.`,
+      },
+      {
+        id: "reminder.permission-protected-declined",
+        rendered: renderDefault("reminder.permission-protected-declined", { path: "/w/.env", detail }),
+        head: `The user declined this edit to a protected path (/w/.env)${note ? `: ${note}` : "."} Edits to .magentra state and .env files always require approval; do not retry the same call.`,
+      },
+      {
+        id: "reminder.permission-deletion-declined",
+        rendered: renderDefault("reminder.permission-deletion-declined", { detail }),
+        head: `The user declined this destructive tool call${note ? `: ${note}` : "."} Deletion calls always require approval; adjust your approach instead of retrying the same call.`,
+      },
+      {
+        id: "reminder.permission-declined",
+        rendered: renderDefault("reminder.permission-declined", { detail }),
+        head: `The user declined this tool call${note ? `: ${note}` : "."} Adjust your approach instead of retrying the same call.`,
+      },
+    ];
+  }),
+  {
+    id: "reminder.reuse-check-firm",
+    rendered: renderDefault("reminder.reuse-check-firm", { target: "src/profile.ts", hits: `- src/user.ts — formatUserDisplayName (0.93)\n- ${TRICKY}` }),
+    head:
+      `Reuse check: src/profile.ts was just created, but very similar code already exists and no related search/read happened this session:\n` +
+      `- src/user.ts — formatUserDisplayName (0.93)\n- ${TRICKY}` +
+      "\nRead the closest match now. If it already covers this, extend it (Edit) and delete the new file; keep the new file only if it is genuinely distinct.",
+  },
+  {
+    id: "reminder.reuse-check",
+    rendered: renderDefault("reminder.reuse-check", { target: "src/profile.ts", hits: `- src/user.ts — formatUserDisplayName (0.61)\n- ${TRICKY}` }),
+    head:
+      `Reuse check: src/profile.ts was just created, but similar code may already exist:\n` +
+      `- src/user.ts — formatUserDisplayName (0.61)\n- ${TRICKY}` +
+      "\nIf one of these already covers it, extend that with Edit and remove the new file rather than keeping a parallel implementation.",
+  },
+  {
+    id: "bash.foreground-sleep",
+    rendered: renderDefault("bash.foreground-sleep"),
+    head: "Foreground sleep is blocked. If you are waiting for something, run the wait in the background (run_in_background with an until-loop) so you keep working meanwhile.",
+  },
+  {
+    id: "read.image-unseen",
+    rendered: renderDefault("read.image-unseen", { file: "shot.png", reason: TRICKY }),
+    head:
+      `shot.png is an image and you cannot see it — ${TRICKY}. ` +
+      `Do not describe or draw conclusions from it. Verify this change some other way, or say plainly that it stays unverified.`,
+  },
+  {
+    id: "read.image-failed",
+    rendered: renderDefault("read.image-failed", { file: "shot.png", error: TRICKY }),
+    head: `Could not look at shot.png: ${TRICKY}. ` + `You have NOT seen this image — do not describe it or draw conclusions from it.`,
+  },
+  {
+    // The code keeps the newline that puts the note on its own line after "File written: …".
+    id: "write.replaced-note",
+    rendered: `\n${renderDefault("write.replaced-note")}`,
+    head: "\nnote: existing file replaced entirely — for incremental changes, use Edit instead of rewriting with Write.",
+  },
+  {
+    id: "websearch.disabled",
+    rendered: renderDefault("websearch.disabled"),
+    head: 'Web search is disabled in settings ("search.enabled" is false). Do not retry; work without web search or ask the user to enable it.',
+  },
+];
+
+/**
+ * Model-facing texts with no pre-migration literal: brain-controls-behavior's
+ * three OVERDRIVE refusals, sent only when a guard in brain/behavior.json is
+ * set to "refuse" (never with the shipped "run"). Their bytes are the ones the
+ * owner approved; rewording one fails here, as a reworded pin does.
+ */
+const NEW_TEXTS: readonly { id: string; text: string }[] = [
+  {
+    id: "reminder.overdrive-deletion-refused",
+    text: "Refused by policy: in OVERDRIVE this workspace refuses calls that delete, and this one would delete ({{what}}). Nothing ran and nobody was asked. Do not retry it, and do not delete the same thing another way. Reach the goal without deleting; if the deletion is truly needed, say so in your answer so the user can do it.",
+  },
+  {
+    id: "reminder.overdrive-protected-edit-refused",
+    text: "Refused by policy: in OVERDRIVE this workspace refuses edits to .magentra state and .env files, and this edit targets one ({{path}}). The file was not changed and nobody was asked. Do not retry it, and do not change the file another way. Reach the goal without editing it; if the change is truly needed, say in your answer what it is so the user can make it.",
+  },
+  {
+    id: "reminder.overdrive-outside-edit-refused",
+    text: "Refused by policy: in OVERDRIVE this workspace refuses edits outside the workspace, and this edit targets a file outside it ({{path}}). The file was not changed and nobody was asked. Do not retry it, and do not change the file another way. Keep the work inside the workspace; if the change is truly needed, say in your answer what it is so the user can make it.",
+  },
 ];
 
 /** The ids brought into the registry from inline literals by this feature: FORMER_LITERALS plus the addon-author three. */
@@ -1104,6 +1260,7 @@ function assertPreMigrationTexts(t: TestRun): void {
     }
 
     for (const literal of FORMER_LITERALS) t.assert.equal(literal.rendered, literal.head, `${literal.id} does not render to the literal it replaced`);
+    for (const added of NEW_TEXTS) t.assert.equal(promptDefault(added.id), added.text, `${added.id}: its default is not the approved text`);
 
     // Composed as engine.ts composes them (buildAddonPrompt, the retry feedback).
     const addon = addonAuthorBaseline();
@@ -1117,7 +1274,7 @@ function assertPreMigrationTexts(t: TestRun): void {
 
     // Nothing in brain/ escapes both checks: every id is either a pre-migration
     // prompt or a former literal compared above.
-    const covered = new Set([...baseline.map((p) => p.id), ...FORMER_LITERALS.map((l) => l.id), ...ADDON_AUTHOR_IDS]);
+    const covered = new Set([...baseline.map((p) => p.id), ...FORMER_LITERALS.map((l) => l.id), ...ADDON_AUTHOR_IDS, ...NEW_TEXTS.map((n) => n.id)]);
     t.assert.deepEqual(
       brainPromptIdList().filter((id) => !covered.has(id)),
       [],

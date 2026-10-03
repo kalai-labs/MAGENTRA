@@ -1,4 +1,11 @@
-import type { PermissionDecision } from "@magentra/protocol";
+import {
+  brainBehavior,
+  brainPrompt,
+  promptTextIfEnabled,
+  renderPromptIfEnabled,
+  type BrainBehavior,
+  type PermissionDecision,
+} from "@magentra/protocol";
 import type { AnyToolDefinition } from "../agent/tool.js";
 
 export interface PermissionRequestPayload {
@@ -34,6 +41,39 @@ export type ApprovalSource = "ask" | "deletion-guard" | "protected-path" | "proc
 /** The process-kill guard's line on the approval card. */
 const PROCESS_KILL_WARNING =
   "Stops processes by name — every matching process on this computer, not only the ones this session started.";
+
+// What the model is told when a call is refused or declined (brain/prompts/
+// 3-in-turn-reminders). A prompt switched off (blank override, or shipped
+// `enabled: false`) leaves `message` out, and the session answers the call
+// with its bare "Permission denied." instead. `{{detail}}` is ": <the user's
+// note>" or "." — no space before the slot, one after it.
+const RULE_DENIED = brainPrompt("reminder.permission-rule-denied");
+const KILL_REFUSED_OVERDRIVE = brainPrompt("reminder.permission-kill-overdrive");
+const KILL_DECLINED = brainPrompt("reminder.permission-kill-declined");
+const PROTECTED_EDIT_DECLINED = brainPrompt("reminder.permission-protected-declined");
+const DELETION_DECLINED = brainPrompt("reminder.permission-deletion-declined");
+const CALL_DECLINED = brainPrompt("reminder.permission-declined");
+// Sent only when brain/behavior.json sets an overdrive.guards.* key to
+// "refuse" — never with the shipped values ("run").
+const OVERDRIVE_DELETION_REFUSED = brainPrompt("reminder.overdrive-deletion-refused");
+const OVERDRIVE_PROTECTED_EDIT_REFUSED = brainPrompt("reminder.overdrive-protected-edit-refused");
+const OVERDRIVE_OUTSIDE_EDIT_REFUSED = brainPrompt("reminder.overdrive-outside-edit-refused");
+
+/** `{ message }` when the prompt is on, `{}` when it is switched off. */
+function messageOf(text: string | undefined): { message?: string } {
+  return text !== undefined ? { message: text } : {};
+}
+
+/** The `{{detail}}` slot of a decline: the user's note, or a full stop. */
+function declineDetail(note: string | undefined): string {
+  return note ? `: ${note}` : ".";
+}
+
+/** A call refused by the OVERDRIVE policy (overdrive.guards.* = "refuse"):
+ *  decided by the mode, never asked, never recorded as a grant. */
+function policyRefusal(id: string, vars: Record<string, string>): PermissionOutcome {
+  return { allowed: false, source: "mode", ...messageOf(renderPromptIfEnabled(id, vars)) };
+}
 
 /**
  * Paths a file-editing tool may never write without an explicit confirmation,
@@ -120,7 +160,26 @@ export function deriveAlwaysGrant(subject: string): string | undefined {
  * rules still refuse — silently ignoring the user's own configuration would be
  * a different feature — and so does the process-kill guard, which in OVERDRIVE
  * refuses instead of asking: nobody is there to ask, and a kill by name must
- * not run unasked.
+ * not run unasked. That refusal is a fixed floor with no brain key.
+ *
+ * What OVERDRIVE does with the other guarded targets is brain policy,
+ * `overdrive.guards.*` in brain/behavior.json, and it can only TIGHTEN: each
+ * key is "run" (shipped — the call runs unasked) or "refuse" (the call is
+ * refused with source "mode"). No value asks, and a refusal never records a
+ * grant, so the OVERDRIVE stance never reaches requestApproval.
+ *   - protectedDeletions / protectedEdits decide a protected target (`.magentra`
+ *     state, `.env*`) FIRST, and their value wins: a protected target is not
+ *     also judged by deletions / outsideWorkspaceEdits. A protected refusal is
+ *     absolute — no allow rule or grant passes it.
+ *   - deletions / outsideWorkspaceEdits decide every other target. Their
+ *     refusal is passed by the same deliberate narrow grant that passes the
+ *     attended deletion guard: an explicit subject-scoped allow rule or a
+ *     literal "always allow" grant — never a broad rule or a command shape.
+ *   - deletions = "refuse" also refuses a worktree removal (it is a deletion
+ *     with no scope), and holds whatever the "Allow deletions" switch says:
+ *     that switch only stops the attended guard from asking.
+ *   - protectedEdits and outsideWorkspaceEdits cover the Write and Edit tools
+ *     (isFileEdit) only. A shell redirect (`echo x > .env`) is not seen here.
  */
 export class PermissionEngine {
   /** When true (default), destructive calls ask the user outside OVERDRIVE.
@@ -129,9 +188,12 @@ export class PermissionEngine {
   private deletionGuard = true;
   /** OVERDRIVE: nothing asks. Every call runs unless a deny rule forbids it —
    *  deletions at any scope (the `.magentra` state dir included), edits to
-   *  protected paths, and writes outside the workspace. It is an explicit
-   *  user-thrown switch, so it is allowed to mean what it says. */
+   *  protected paths, and writes outside the workspace — or the kill-by-name
+   *  floor or a brain `overdrive.guards.*` = "refuse" refuses it. It is an
+   *  explicit user-thrown switch, so it is allowed to mean what it says. */
   private overdrive = false;
+  /** The brain behaviour in force — only `overdrive.guards.*` is read here. */
+  private readonly behavior: BrainBehavior;
   private readonly deny: ParsedRule[];
   private readonly allow: ParsedRule[];
   private readonly sessionAllow: ParsedRule[] = [];
@@ -146,7 +208,10 @@ export class PermissionEngine {
     ) => Promise<{ decision: PermissionDecision; message?: string }>,
     /** Persists an "always allow" grant. Absent in contexts with nowhere to write. */
     private readonly persistExact?: (tool: string, subject: string, prefix?: boolean) => void,
+    /** The resolved brain behaviour (its `overdrive.guards`). Absent = the shipped brain. */
+    behavior?: BrainBehavior,
   ) {
+    this.behavior = behavior ?? brainBehavior();
     this.allow = rules.allow.map(parseRule);
     this.deny = rules.deny.map(parseRule);
     this.allowExact = [...(rules.allowExact ?? [])];
@@ -162,6 +227,11 @@ export class PermissionEngine {
 
   setOverdrive(enabled: boolean): void {
     this.overdrive = enabled;
+  }
+
+  /** The brain behaviour this engine applies. */
+  getBehavior(): BrainBehavior {
+    return this.behavior;
   }
 
   /** Adds a session-scoped allow rule. Subject "*" or undefined matches any subject. */
@@ -198,7 +268,7 @@ export class PermissionEngine {
       return {
         allowed: false,
         source: "rule",
-        message: `Permission denied by settings rule. The user's configuration forbids this call; do not retry it verbatim.`,
+        ...messageOf(promptTextIfEnabled(RULE_DENIED)),
       };
     }
 
@@ -229,12 +299,7 @@ export class PermissionEngine {
     const killSubject = killOverride ? undefined : tool.processKillSubject?.(input);
     if (killSubject !== undefined) {
       if (this.overdrive) {
-        return {
-          allowed: false,
-          source: "mode",
-          message:
-            "Refused: this command stops processes by name, which stops every matching process on this computer, not only the ones this session started. In OVERDRIVE nothing asks, so a kill by name never runs. To stop a background command you started, use TaskStop with its task id; to stop one process, kill its pid. If the user wants every matching process stopped, say so in your answer: they can run it themselves or turn OVERDRIVE off.",
-        };
+        return { allowed: false, source: "mode", ...messageOf(promptTextIfEnabled(KILL_REFUSED_OVERDRIVE)) };
       }
       const res = await this.requestApproval(
         {
@@ -249,7 +314,7 @@ export class PermissionEngine {
         return {
           allowed: false,
           source: "user",
-          message: `The user declined this process kill${res.message ? `: ${res.message}` : "."} It stops processes by name — every matching process on this computer. To stop a background command you started, use TaskStop with its task id, or kill its pid; do not retry the same call.`,
+          ...messageOf(renderPromptIfEnabled(KILL_DECLINED, { detail: declineDetail(res.message) })),
         };
       }
       // Literal grant only, as for a deletion: one click never widens to a shape.
@@ -262,7 +327,14 @@ export class PermissionEngine {
     // placement, and for the same reason, as the deletion guard below. A
     // deliberate narrow grant (an explicit `Tool(path)` allow rule, or an
     // earlier "always allow" on this exact path) satisfies it; broad grants
-    // and OVERDRIVE never do.
+    // never do. OVERDRIVE does not ask: overdrive.guards.protectedEdits decides
+    // — "run" lets the edit through unasked, "refuse" refuses it outright,
+    // whatever the rules say. Either way this decision is the one that counts
+    // for a protected file: the out-of-workspace guard below does not judge it.
+    const protectedEditDecided = this.overdrive && editProtectedPath !== undefined;
+    if (protectedEditDecided && this.behavior.overdrive.guards.protectedEdits === "refuse") {
+      return policyRefusal(OVERDRIVE_PROTECTED_EDIT_REFUSED, { path: editProtectedPath });
+    }
     if (editProtectedPath !== undefined && !this.overdrive) {
       const deliberatelyAllowed =
         matchesExplicit(this.allow, tool.name, subject) || this.matchesExact(tool.name, subject, true);
@@ -280,7 +352,12 @@ export class PermissionEngine {
           return {
             allowed: false,
             source: "user",
-            message: `The user declined this edit to a protected path (${editProtectedPath})${res.message ? `: ${res.message}` : "."} Edits to .magentra state and .env files always require approval; do not retry the same call.`,
+            ...messageOf(
+              renderPromptIfEnabled(PROTECTED_EDIT_DECLINED, {
+                path: editProtectedPath,
+                detail: declineDetail(res.message),
+              }),
+            ),
           };
         }
         // Literal grant only — one approval covers this exact file, never a
@@ -290,7 +367,7 @@ export class PermissionEngine {
       }
     }
     // Deletion guard: a tool call that would delete a file/folder requires
-    // interactive approval. OVERDRIVE skips it outright — see below. The one
+    // interactive approval. OVERDRIVE never asks it — see below. The one
     // other exception is the explicit grant computed above, so a repeated
     // cleanup can run without re-prompting forever. The guard never adds a
     // session-allow, so it re-fires on every other matching call.
@@ -299,8 +376,21 @@ export class PermissionEngine {
     // the "allow deletions" off-switch and explicit allow rules, but not a
     // switch the user threw by hand.
     const protectedTarget = deletionScope === "protected";
+    if (this.overdrive) {
+      // OVERDRIVE never asks. overdrive.guards decides whether the deletion
+      // runs ("run", shipped) or is refused ("refuse"): protectedDeletions
+      // for a protected target — absolute, its value wins — and deletions for
+      // anything else, where the deliberate narrow grant above still passes.
+      const guards = this.behavior.overdrive.guards;
+      const refuse = protectedTarget
+        ? guards.protectedDeletions === "refuse"
+        : guards.deletions === "refuse" && !explicitlyAllowed;
+      const refusedDeletion = refuse ? tool.deletionSubject?.(input) : undefined;
+      if (refusedDeletion !== undefined) {
+        return policyRefusal(OVERDRIVE_DELETION_REFUSED, { what: refusedDeletion });
+      }
+    }
     const deletionSubject =
-      // OVERDRIVE means nothing asks — including this, at any scope.
       this.overdrive ? undefined
       : protectedTarget || (this.deletionGuard && !explicitlyAllowed)
         ? tool.deletionSubject?.(input)
@@ -322,7 +412,7 @@ export class PermissionEngine {
         return {
           allowed: false,
           source: "user",
-          message: `The user declined this destructive tool call${res.message ? `: ${res.message}` : "."} Deletion calls always require approval; adjust your approach instead of retrying the same call.`,
+          ...messageOf(renderPromptIfEnabled(DELETION_DECLINED, { detail: declineDetail(res.message) })),
         };
       }
       // "Always allow" on a destructive prompt grants only this exact subject.
@@ -337,6 +427,22 @@ export class PermissionEngine {
     // An approved kill that is not also a deletion: the user decided it.
     if (killApproval) return { allowed: true, source: "user", ...killApproval };
 
+    // OVERDRIVE with overdrive.guards.outsideWorkspaceEdits = "refuse": a file
+    // edit that escapes the workspace is refused here, ahead of the allow
+    // rules, so only the deliberate narrow grant passes it (a broad rule or a
+    // session allow does not). A protected file was already decided above.
+    if (
+      this.overdrive &&
+      tool.isFileEdit &&
+      editOutsideWorkspace === true &&
+      !protectedEditDecided &&
+      !explicitlyAllowed &&
+      this.behavior.overdrive.guards.outsideWorkspaceEdits === "refuse"
+    ) {
+      // The subject of Write/Edit is the target path as the model wrote it.
+      return policyRefusal(OVERDRIVE_OUTSIDE_EDIT_REFUSED, { path: subject ?? tool.name });
+    }
+
     if (
       matches(this.allow, tool.name, subject) ||
       matches(this.sessionAllow, tool.name, subject) ||
@@ -348,8 +454,9 @@ export class PermissionEngine {
     // A file edit that escapes the workspace is downgraded from its usual
     // auto-allow to an approval prompt — the frictionless default is meant for
     // edits inside the tree, not for overwriting a shell profile or an SSH key.
-    // OVERDRIVE (fully autonomous, risk accepted) and explicit user allow rules
-    // above are untouched; only the auto-allow default is overridden.
+    // OVERDRIVE (fully autonomous, risk accepted — it never asks; its
+    // "refuse" policy is applied above) and explicit user allow rules above are
+    // untouched; only the auto-allow default is overridden.
     let stance = this.stanceDefault(tool);
     if (stance === "allow" && !this.overdrive && tool.isFileEdit && editOutsideWorkspace === true) {
       stance = "ask";
@@ -378,7 +485,7 @@ export class PermissionEngine {
           return {
             allowed: false,
             source: "user",
-            message: `The user declined this tool call${res.message ? `: ${res.message}` : "."} Adjust your approach instead of retrying the same call.`,
+            ...messageOf(renderPromptIfEnabled(CALL_DECLINED, { detail: declineDetail(res.message) })),
           };
         }
         if (res.decision === "allow_always") {

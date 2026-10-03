@@ -287,16 +287,34 @@ node .claude/skills/bigpicture/bigpicture.mjs check           # after editing
   skips `dist/` deliberately — if you grep and get hits in `dist/`, you are
   reading build output, not source.
 - **Model-facing prose lives in `brain/`, not in code.** The system prompt
-  sections are `brain/prompts/1-core-system/<id>.md`, composed in order by
-  `behaviorCore()` in `engine/core/src/agent/prompts.ts`. Tool descriptions and
-  parameter texts are `brain/tools/<Name>/`, and `brain/availability.json`
-  decides which built-in tools a root session offers. `npm run build` compiles
-  brain/ into the engine (`tools/brain/compile.mjs`); `brain/README.md` has the
-  exact file rules. Editing a file there changes what every session sends, and
+  sections are `brain/prompts/1-core-system/<id>.md`, assembled in the order
+  of their `order:` frontmatter (`coreSectionOrder()`, used by
+  `buildSystemPrompt()` in `engine/core/src/agent/prompts.ts`). Tool
+  descriptions and parameter texts are `brain/tools/<Name>/`, and
+  `brain/availability.json` decides which built-in tools a root session
+  offers. `npm run build` compiles brain/ into the engine
+  (`tools/brain/compile.mjs`); `brain/README.md` has the exact file rules.
+  Editing a file there changes what every session sends, and
   `system-prompt-is-pinned` / `tool-wire-contract-is-pinned` fail on any
   changed byte. Only the owner re-approves them (Verification gates, step 6).
   The `subagent.*` prompts in `engine/core/src/agent/agents.ts` are the one
   exception and stay in code.
+- **Behaviour policy lives in `brain/behavior.json`, not in `session.ts`.**
+  The nudge budget, the cutoff streak, each finishing rung's count, the stall
+  thresholds, clarify's limits, the compaction tail, the default output bytes,
+  the evidence word lists and what OVERDRIVE does with each guard are knobs
+  there, read off `Session.activeBehavior()` (the base plus
+  `overdrive.overrides` while OVERDRIVE is on, root only). Do not add a
+  constant for one in engine code: `brain-controls-behavior` fails on a
+  replaced constant that comes back and on a knob the engine does not read
+  under its full dotted path. A new knob is a key in `BEHAVIOR_SPEC`
+  (`tools/brain/compile.mjs`, type and finite range, no value) plus its value
+  in the JSON plus its row in `brain/README.md`; the runtime validator in
+  `engine/protocol/src/brain.ts` is a line-for-line twin of the compiler's, so
+  change both. A test changes one knob with `behaviorWith({...})` passed as
+  the scripted engine's `behavior`, never by editing the shipped file. Moving a
+  shipped value is a behaviour change, not a refactor. Rung order and the
+  safety floors are mechanism and stay in code.
 - **Never write a dollar sign followed by `ARGUMENTS`, a digit or a brace in
   this file.** Claude Code substitutes those in a skill body with the args the
   caller passed, even inside a code span. Until 2026-09-23 the old backlog

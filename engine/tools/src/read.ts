@@ -1,7 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { basename, extname, isAbsolute } from "node:path";
 import { z } from "zod";
-import { toolDescription, toolParam } from "@magentra/protocol";
+import { brainPrompt, renderPromptIfEnabled, toolDescription, toolParam } from "@magentra/protocol";
 import { extractDocumentText, type ToolDefinition } from "@magentra/core";
 
 const MAX_LINES_DEFAULT = 2000;
@@ -11,6 +11,9 @@ const MAX_DOC_BYTES = 20 * 1024 * 1024; // 20 MB cap for document extraction
  *  a screenshot that matters is far under this; the limit is here so a stray
  *  20 MB render fails fast instead of after the upload. */
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+const IMAGE_UNSEEN = brainPrompt("read.image-unseen");
+const IMAGE_FAILED = brainPrompt("read.image-failed");
 
 const DOC_EXTS = new Set([".pdf", ".docx", ".pptx", ".xlsx", ".rtf", ".odt", ".epub"]);
 
@@ -90,10 +93,11 @@ export const readTool: ToolDefinition<z.infer<typeof inputSchema>> = {
       // back here is that model's description — text, in the transcript.
       const unavailable = ctx.session.visionUnavailableReason();
       if (unavailable) {
+        const file = basename(path);
         return {
           content:
-            `${basename(path)} is an image and you cannot see it — ${unavailable}. ` +
-            `Do not describe or draw conclusions from it. Verify this change some other way, or say plainly that it stays unverified.`,
+            renderPromptIfEnabled(IMAGE_UNSEEN, { file, reason: unavailable }) ??
+            `${file} is an image and you cannot see it — ${unavailable}.`,
           isError: true,
         };
       }
@@ -112,10 +116,12 @@ export const readTool: ToolDefinition<z.infer<typeof inputSchema>> = {
           label: basename(path),
         });
       } catch (err) {
+        // String(): a non-Error throw has no message, and the template literal
+        // this replaced rendered that as "undefined", not as a left-in {{error}}.
+        const error = String((err as Error).message);
+        const file = basename(path);
         return {
-          content:
-            `Could not look at ${basename(path)}: ${(err as Error).message}. ` +
-            `You have NOT seen this image — do not describe it or draw conclusions from it.`,
+          content: renderPromptIfEnabled(IMAGE_FAILED, { file, error }) ?? `Could not look at ${file}: ${error}.`,
           isError: true,
         };
       }

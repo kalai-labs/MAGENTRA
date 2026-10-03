@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { z } from "zod";
 import type { ToolDefinition } from "@magentra/core";
-import { assertToolParamStates, toolDescription, toolParam } from "@magentra/protocol";
+import { assertToolParamStates, brainPrompt, renderPromptIfEnabled, toolDescription, toolParam } from "@magentra/protocol";
 import { bashDeletionScope, bashDeletionSubject, bashProcessKillSubject, killTree, spawnShell } from "./bash.js";
 
 const DEFAULT_TIMEOUT = 300_000;
@@ -14,6 +14,11 @@ const NOISE_LIMIT = 600;
 const NOISE_WINDOW_MS = 60_000;
 /** A batch larger than this is summarized in the reminder instead of pasted whole. */
 const BATCH_REMINDER_CAP = 20;
+
+// Only {{id}} is filled: the text has always reached the model with a literal
+// {{noiseLimit}} and {{noiseWindowSec}} (a known residual, see brain/README.md).
+// Filling them changes what the model receives, so it is a separate approved change.
+const MONITOR_NOISE_STOP = brainPrompt("reminder.monitor-noise-stop");
 
 // timeout_ms's text in brain states DEFAULT_TIMEOUT; the import fails if the two drift apart.
 assertToolParamStates("Monitor", "timeout_ms", `(default ${DEFAULT_TIMEOUT})`);
@@ -102,8 +107,10 @@ export const monitorTool: ToolDefinition<z.infer<typeof inputSchema>> = {
               kind: "monitor_stopped",
               payload: { reason: "noise" },
             });
+            // Switched off, the bare fact still goes out: the model must learn the monitor stopped.
             ctx.session.remind(
-              `<task-notification>Monitor ${info.id} was stopped automatically: more than {{noiseLimit}} events within {{noiseWindowSec}}s (too noisy). Narrow the command and restart if you still need it.</task-notification>`,
+              renderPromptIfEnabled(MONITOR_NOISE_STOP, { id: info.id }) ??
+                `<task-notification>Monitor ${info.id} was stopped automatically (too noisy).</task-notification>`,
             );
             ctx.session.background.stop(info.id);
           }

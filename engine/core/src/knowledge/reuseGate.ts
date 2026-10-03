@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { brainPrompt, renderPromptIfEnabled } from "@magentra/protocol";
 import { SCAN_EXTS, extOf, shouldSkipDir } from "./graph.js";
 import { extractSymbols, findSimilarSymbols, tokensOf, type SymbolHit, type SymbolIndexData } from "./symbols.js";
 import type { Settings } from "../config/settings.js";
@@ -47,6 +48,9 @@ export type ReuseGateResult = { kind: "pass" } | { kind: "remind"; text: string 
 
 const PASS: ReuseGateResult = { kind: "pass" };
 
+const REUSE_CHECK_FIRM = brainPrompt("reminder.reuse-check-firm");
+const REUSE_CHECK = brainPrompt("reminder.reuse-check");
+
 /** `foo.test.ts`, `bar.spec.tsx`, `test_x.py`, `conftest.py`, or a test/fixture dir segment. */
 function isTestPath(base: string, dirSegments: string[]): boolean {
   if (/\.(test|spec)\.[^.]+$/.test(base)) return true;
@@ -57,7 +61,8 @@ function isTestPath(base: string, dirSegments: string[]): boolean {
 
 /**
  * Evaluate the reuse check for a would-be Write of `filePath` with `content`.
- * Pure and side-effect-free. Decision table (top-down, first match wins):
+ * Side-effect-free (it reads only the workspace, the index and the prompt
+ * registry). Decision table (top-down, first match wins):
  *
  *  1. mode `off`                                              → pass
  *  2. extension not a scanned source ext (md/json/configs)    → pass
@@ -72,6 +77,7 @@ function isTestPath(base: string, dirSegments: string[]): boolean {
  *  9. one of the top matches was Read this session            → pass
  * 10. best score ≥ blockThreshold                             → REMIND (firm)
  * 11. best score ≥ remindThreshold                            → REMIND
+ *     (10 and 11 pass instead when their brain prompt is switched off)
  * 12. otherwise                                               → pass
  */
 export function evaluateReuseGate(
@@ -123,12 +129,16 @@ export function evaluateReuseGate(
   if (hits.length === 0) return PASS; // 12 (nothing similar enough)
   if (hits.some((h) => wasRead(join(cwd, h.file)))) return PASS; // 9
 
+  // A reminder prompt switched off in the registry sends no reminder: the
+  // check is advice, and the Write runs either way.
   const best = hits[0]!.score;
   if (best >= cfg.blockThreshold) {
-    return { kind: "remind", text: firmRemindMessage(hits, rel) }; // 10
+    const text = firmRemindMessage(hits, rel);
+    return text === undefined ? PASS : { kind: "remind", text }; // 10
   }
   if (best >= cfg.remindThreshold) {
-    return { kind: "remind", text: remindMessage(hits, rel) }; // 11
+    const text = remindMessage(hits, rel);
+    return text === undefined ? PASS : { kind: "remind", text }; // 11
   }
   return PASS; // 12
 }
@@ -138,18 +148,12 @@ function hitLines(hits: SymbolHit[]): string {
   return hits.map((h) => `- ${h.file} — ${h.symbol} (${h.score.toFixed(2)})`).join("\n");
 }
 
-function firmRemindMessage(hits: SymbolHit[], relTarget: string): string {
-  return (
-    `Reuse check: ${relTarget} was just created, but very similar code already exists and no related search/read happened this session:\n` +
-    hitLines(hits) +
-    "\nRead the closest match now. If it already covers this, extend it (Edit) and delete the new file; keep the new file only if it is genuinely distinct."
-  );
+/** brain/prompts reminder.reuse-check-firm, or undefined when it is switched off. */
+function firmRemindMessage(hits: SymbolHit[], relTarget: string): string | undefined {
+  return renderPromptIfEnabled(REUSE_CHECK_FIRM, { target: relTarget, hits: hitLines(hits) });
 }
 
-function remindMessage(hits: SymbolHit[], relTarget: string): string {
-  return (
-    `Reuse check: ${relTarget} was just created, but similar code may already exist:\n` +
-    hitLines(hits) +
-    "\nIf one of these already covers it, extend that with Edit and remove the new file rather than keeping a parallel implementation."
-  );
+/** brain/prompts reminder.reuse-check, or undefined when it is switched off. */
+function remindMessage(hits: SymbolHit[], relTarget: string): string | undefined {
+  return renderPromptIfEnabled(REUSE_CHECK, { target: relTarget, hits: hitLines(hits) });
 }

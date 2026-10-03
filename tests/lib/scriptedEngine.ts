@@ -82,7 +82,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { Engine, loadSettings, type Addon, type AnyToolDefinition, type Settings } from "@magentra/core";
-import type { CoreEvent, FrontendRequest, PermissionDecision, ToolAvailability } from "@magentra/protocol";
+import type { BehaviorOverride, CoreEvent, FrontendRequest, PermissionDecision, ToolAvailability } from "@magentra/protocol";
 import { FakeProvider, type FakeTurn, type Provider } from "@magentra/providers";
 import { createDefaultRegistry } from "@magentra/tools";
 
@@ -119,6 +119,14 @@ export interface EngineOnOptions {
    * `toolAvailabilityWith("Agent")` from `@magentra/protocol`.
    */
   readonly toolAvailability?: Partial<ToolAvailability>;
+  /**
+   * `EngineOptions.behavior`, passed through untouched. Omit it and the engine
+   * runs what brain/behavior.json ships; a test about one knob hands in
+   * `behaviorWith({ … })` from `@magentra/protocol`, or the `behavior` a real
+   * compile of a temp brain produced. Validated by the engine with the
+   * compiler's own rules, and never persisted.
+   */
+  readonly behavior?: BehaviorOverride;
   /**
    * Registered on top of `createDefaultRegistry()`, as the host registers a
    * workspace's MCP tools — for a test whose subject is a tool that is not
@@ -205,6 +213,7 @@ export async function startEngineOn<P extends Provider>(provider: P, opts: Engin
     registry,
     ...(opts.addons !== undefined ? { addons: opts.addons } : {}),
     ...(opts.toolAvailability !== undefined ? { toolAvailability: opts.toolAvailability } : {}),
+    ...(opts.behavior !== undefined ? { behavior: opts.behavior } : {}),
   });
 
   const events: CoreEvent[] = [];

@@ -4,6 +4,7 @@ group: 1 · Core system prompt
 label: How the harness works
 channel: system
 where: Explains permissions, system-reminders, which tools to prefer, and parallel tool calls. The parallel-calls line is the main lever on how fast a turn feels. Part of the main system prompt, sent on every request of every session.
+order: 20
 ---
 How the harness works:
 - When several tool calls do not depend on each other, issue them together in one turn so they run in parallel. Calls whose inputs depend on earlier results must wait. This is the single biggest lever on how fast a turn feels: the moment you know you need three files, open all three in one round instead of opening in three rounds.

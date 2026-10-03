@@ -7,6 +7,7 @@ import {
   STATE_DIR_NAME,
   addUsage,
   brainPrompt,
+  effectiveBehavior,
   emptyUsage,
   estimateTokens,
   isPromptDisabled,
@@ -16,7 +17,11 @@ import {
   promptText,
   promptTextIfEnabled,
   renderPrompt,
+  renderPromptIfEnabled,
+  resolveBehavior,
   resolveToolAvailability,
+  type BehaviorOverride,
+  type BrainBehavior,
   type CoreEvent,
   type PermissionDecision,
   type TaskItem,
@@ -45,6 +50,7 @@ import {
   codeFilesAmong,
   findHedges,
   findSymptoms,
+  isScreenshotPath,
   looksLikeBrowserRun,
   looksLikeTestDouble,
   runtimeEvidenceText,
@@ -71,8 +77,6 @@ import type {
 } from "../agent/tool.js";
 import { Transcript, syntheticToolResults, unansweredToolUseIds } from "../state/transcript.js";
 
-const DEFAULT_OUTPUT_LIMIT = 40_000;
-
 /** Conversation-content tokens (message history, not system/tools) after which a
  * session earns an auto-generated title. Below this the generic default stands —
  * there isn't enough said yet to summarize meaningfully. */
@@ -95,23 +99,16 @@ function cleanSessionTitle(raw: string): string {
   return s.slice(0, 60);
 }
 
-/** Per-turn cap on auto-recovery / wrap-up nudges (see runTurn). */
-const MAX_AUTO_NUDGES = 3;
-/**
- * How many output-length cutoffs IN A ROW a turn rides out before it ends
- * visibly. Each cutoff is resumed (text) or reissued (tool call); a model that
- * is cut off this many consecutive times is rewriting the same oversized
- * response — the transcript pattern of "↻ continuing" forever — and no further
- * resume will land it. Any complete response resets the streak.
- */
-const MAX_CUTOFF_STREAK = 3;
-/**
- * How many times one turn may recover from a context overflow by compacting
- * and retrying. Two: the first compaction can be defeated by a single huge
- * tool result still in the kept tail; a second forced pass squeezes that too.
- * A third overflow means the window cannot hold even the compacted history.
- */
-const MAX_OVERFLOW_RECOVERIES = 2;
+// The turn loop's budgets and switches are brain/behavior.json knobs, read off
+// the session's behaviour object at each decision (see Session.activeBehavior):
+//   finishing.nudgeBudget              — the per-turn budget rungs 4 and 9 share;
+//   finishing.lengthCutoff.maxStreak   — output-length cutoffs IN A ROW a turn
+//     rides out before it ends visibly. A model cut off that many consecutive
+//     times is rewriting the same oversized response, and no further resume
+//     will land it. Any complete response resets the streak;
+//   context.overflowRecoveries         — compact-and-retry passes per turn after
+//     a context overflow. The first compaction can be defeated by a single huge
+//     tool result still in the kept tail; a second forced pass squeezes that too.
 
 const ERROR_BATCH_REMINDER = brainPrompt("reminder.error-batch");
 
@@ -127,11 +124,12 @@ const LENGTH_CONTINUATION_TEXT = brainPrompt("reminder.length-continuation");
 // call in full — never assuming the truncated call ran.
 const TOOL_CUTOFF_TEXT = brainPrompt("reminder.tool-cutoff");
 
-// Stall handling: with the interactive numeric caps lifted, the brake is
-// noticing that rounds have stopped producing anything new. Three consecutive
-// identical rounds (same tool calls, same results) = a stall; the first two
-// stalls force a strategy pivot, the third forces one concrete question to the
-// user — never a silent surrender, never an infinite burn.
+// Stall handling: with the interactive numeric caps lifted, the detector
+// notices that rounds have stopped producing anything new. stall.repeatRounds
+// consecutive identical rounds (same tool calls, same results) = a stall; the
+// first stall.pivots stalls force a strategy pivot, every later one asks for
+// one concrete question to the user. It only reminds — it never ends a turn by
+// itself, so a model that ignores it keeps going until the user interrupts.
 const STALL_PIVOT_TEXT = brainPrompt("reminder.stall-pivot");
 
 const STALL_ASK_TEXT = brainPrompt("reminder.stall-ask");
@@ -173,29 +171,19 @@ export function isSelfVerifyDone(text: string): boolean {
 
 // ── Clarify pre-layer ───────────────────────────────────────────────────────
 // Before acting on an open-ended request ("build a game", "improve this
-// app"), the same main model first judges whether guessing the unstated
-// choices wrong would force a redo — and only then asks the user up to three
-// concrete multiple-choice questions. Strictly fail-open: any inference
+// app"), the main model (clarify.model) first judges whether guessing the
+// unstated choices wrong would force a redo — and only then asks the user up to
+// clarify.maxQuestions (shipped: three) concrete multiple-choice questions.
+// clarify.enabled can only switch it off. Strictly fail-open: any inference
 // error, malformed verdict, or interrupt proceeds without clarifying.
 const CLARIFY_SYSTEM = brainPrompt("clarify.system");
 
 // Caps that keep the clarify skim a cursory glance, not a context dump: the
 // whole overview injected into the clarify prompt, and the per-fallback read of
-// the working directory's overview files.
+// the working directory's overview files (clarify.skim.peekFiles, read richest
+// first only until this budget runs out).
 const CLARIFY_SKIM_MAX_CHARS = 6000;
 const CLARIFY_PEEK_MAX_CHARS = 4000;
-// The obvious "what is this project" files, richest first — read only until the
-// peek budget runs out.
-const CLARIFY_PEEK_FILES = [
-  "README.md",
-  "README",
-  "readme.md",
-  "README.txt",
-  "package.json",
-  "pyproject.toml",
-  "Cargo.toml",
-  "go.mod",
-];
 
 /**
  * A compact one-glance skeleton of the import graph for the clarify skim: the
@@ -220,9 +208,6 @@ function graphSkeleton(g: GraphData, project: string): string | undefined {
 
 /** How often a running turn writes its ledger to the transcript, at most. */
 const META_SAVE_EVERY_MS = 30_000;
-
-/** Reasoning written with no word to the user, in characters, before the silent-reasoning rung asks for one. */
-const SILENT_REASONING_LIMIT = 8_000;
 
 const SILENT_REASONING_REMINDER = brainPrompt("reminder.silent-reasoning");
 
@@ -285,10 +270,8 @@ const TOOL_SWITCHED_OFF = brainPrompt("reminder.tool-switched-off");
 const PRE_TOOL_USE_HOOK_REMINDER = brainPrompt("reminder.pre-tool-use-hook");
 const APPROVAL_NOTE_REMINDER = brainPrompt("reminder.approval-note");
 
-/** `renderPrompt(id, vars)`, or undefined when the prompt is switched off. */
-function renderIfEnabled(id: string, vars: Record<string, string | number>): string | undefined {
-  return isPromptDisabled(id) ? undefined : renderPrompt(id, vars);
-}
+// The "Allow deletions" system section (see setDeletionPolicy).
+const DELETION_POLICY_SECTION = brainPrompt("system.deletion-policy");
 
 export interface SessionOptions {
   cwd: string;
@@ -333,6 +316,15 @@ export interface SessionOptions {
    * list. Ignored for a child (its registry is its agent type's subset).
    */
   toolAvailability?: Partial<ToolAvailability>;
+  /**
+   * Overrides brain/behavior.json for this session — an embedder/test seam like
+   * toolAvailability, validated with the brain compiler's own rules
+   * (resolveBehavior throws on a bad key or value) and never persisted. An
+   * object resolveBehavior already returned is taken as is: spawnAgent passes
+   * the parent's resolved BASE object, so a subagent child runs with the same
+   * knobs (never the OVERDRIVE overrides — those apply to the root only).
+   */
+  behavior?: BehaviorOverride;
 }
 
 interface PendingToolCall {
@@ -362,6 +354,13 @@ export class Session {
   readonly background: BackgroundManager;
   readonly transcript: Transcript;
   readonly services: SessionServices;
+  /**
+   * The resolved brain/behavior.json knobs this session runs with, OVERDRIVE
+   * overrides NOT applied — what the PermissionEngine and child sessions get.
+   * Decisions read {@link activeBehavior}, which adds the overrides while
+   * OVERDRIVE is on.
+   */
+  readonly behavior: BrainBehavior;
 
   messages: Msg[];
   extraPromptSections: string[];
@@ -385,9 +384,11 @@ export class Session {
   readonly stats: SessionStats;
   private busy = false;
   /**
-   * OVERDRIVE: the fully-autonomous turn-loop policy. When on, the per-turn
-   * iteration/token caps and the auto-nudge ceiling are lifted, the reuse gate
-   * only reminds, and a turn may not end until it passes the self-verify rung.
+   * OVERDRIVE: the fully-autonomous stance. When on, the permission guards act
+   * as overdrive.guards says (shipped: nothing asks), its prompt section and
+   * tool set apply, and the turn loop reads brain/behavior.json with
+   * overdrive.overrides merged in (shipped: one self-verify round per turn).
+   * It does not change turn caps: those key off `child`.
    * Session-scoped, persisted in the meta snapshot so /resume restores it.
    */
   private overdrive = false;
@@ -436,13 +437,14 @@ export class Session {
   /** Whether this turn looked at a page as the user will: drove a browser, or
    *  read an image (a screenshot) through the vision model. */
   private browserEvidenceThisTurn = false;
-  /** Finishing rungs fire at most once per turn each (reset at turn start). */
-  private evidenceNudgeFired = false;
-  /** The browser shape's own once-per-turn fuse: a runtime-evidence reminder
-   *  earlier in the turn must not use it up (a curl-only check would then end
-   *  a UI turn with the page never opened). */
-  private browserNudgeFired = false;
-  private incompleteTasksNudgeFired = false;
+  /** How often each finishing rung has fired this turn (reset at turn start),
+   *  against its finishing.<rung>.maxNudges. */
+  private evidenceNudges = 0;
+  /** The browser shape's own counter: a runtime-evidence reminder earlier in
+   *  the turn must not use it up (a curl-only check would then end a UI turn
+   *  with the page never opened). */
+  private browserNudges = 0;
+  private incompleteTasksNudges = 0;
   private activeChildren = 0;
   /** Foreground child sessions currently running, so interrupt() can propagate.
    *  Background children are deliberately excluded — they detach from the turn
@@ -461,6 +463,7 @@ export class Session {
     this.provider = opts.provider;
     this.registry = opts.registry;
     this.availability = opts.child ? undefined : resolveToolAvailability(opts.toolAvailability);
+    this.behavior = resolveBehavior(opts.behavior);
     this.emit = opts.emit;
     this.messages = opts.initialMessages ?? [];
     this.hooks = opts.hookRunner;
@@ -498,6 +501,7 @@ export class Session {
           }
           addExactPermission(this.cwd, tool, subject, prefix);
         },
+        this.behavior,
     );
     this.services = {
       // The tools' emit seam — and the single place a file_edited diff is
@@ -561,22 +565,21 @@ export class Session {
    *  prompt otherwise instructs it to seek confirmation for them. */
   setDeletionPolicy(allowDeletions: boolean): void {
     this.permissions.setDeletionGuard(!allowDeletions);
-    this.setPromptSection(
-      "deletion-policy",
-      allowDeletions
-        ? `Deletion policy:
-- The user has enabled "Allow deletions" in the app settings — a durable authorization for destructive local operations (deleting files or folders, forced git history rewrites, and similar). They run without an extra confirmation prompt.
-- This is a license, not a directive: delete only what the task genuinely requires, keep the smallest possible blast radius, and still call out anything surprising you are about to remove.`
-        : undefined,
-    );
+    // Switched off (blank prompt), the section is dropped; the guard toggle
+    // above still applies.
+    this.setPromptSection("deletion-policy", allowDeletions ? promptTextIfEnabled(DELETION_POLICY_SECTION) : undefined);
   }
 
-  /** OVERDRIVE toggle. It now means exactly what it says: NOTHING asks —
-   *  deletions at any scope, edits to `.magentra` state and `.env` files, and
-   *  writes outside the workspace all run. Only a user-authored deny rule
-   *  still refuses. In exchange the turn self-verifies against the original
-   *  query before it may end, which is the rung an attended turn does not run.
-   *  Turn budgets are unaffected (`capped` keys off child, not this). Emits the state change so every frontend can sync its indicator. */
+  /** OVERDRIVE toggle. With the shipped brain it means exactly what it says:
+   *  NOTHING asks — deletions at any scope, edits to `.magentra` state and
+   *  `.env` files, and writes outside the workspace all run; only a
+   *  user-authored deny rule and the kill-by-name floor still refuse
+   *  (overdrive.guards can set a guard to refuse instead — never to ask). The
+   *  turn loop reads overdrive.overrides on top of the base knobs (shipped: the
+   *  turn self-verifies against the original query before it may end, the rung
+   *  an attended turn does not run). Turn budgets are unaffected (`capped` keys
+   *  off child, not this). Emits the state change so every frontend can sync
+   *  its indicator. */
   setOverdrive(enabled: boolean): void {
     if (this.overdrive === enabled) return;
     this.overdrive = enabled;
@@ -614,6 +617,16 @@ export class Session {
     return this.overdrive;
   }
 
+  /**
+   * The behaviour knobs in force right now: {@link behavior}, with
+   * overdrive.overrides merged in while OVERDRIVE is on. Root sessions only — a
+   * child never takes the overrides. The same object comes back for the same
+   * stance, so detector caches keyed by it hold.
+   */
+  activeBehavior(): BrainBehavior {
+    return effectiveBehavior(this.behavior, this.overdrive && !this.opts.child);
+  }
+
   /** The last pre-turn OVERDRIVE snapshot: a dangling stash commit ref, or
    *  undefined when the tree was clean (HEAD is the snapshot) or not a repo. */
   private overdriveSnapshotRef: string | undefined;
@@ -626,7 +639,7 @@ export class Session {
         execFile(
           "git",
           ["stash", "create", "overdrive pre-turn snapshot"],
-          { cwd: this.cwd, timeout: 10_000 },
+          { cwd: this.cwd, timeout: this.behavior.overdrive.preTurnSnapshot.timeoutMs },
           (err, stdout) => (err ? rej(err) : res(stdout.trim())),
         );
       });
@@ -771,7 +784,7 @@ export class Session {
     const label = image.label ?? "attached image";
     // A model call with its instruction removed is not a cheaper call: switched
     // off, there is no description, and the caller reports the error.
-    const request = renderIfEnabled(VISION_DESCRIBE_REQUEST, { label });
+    const request = renderPromptIfEnabled(VISION_DESCRIBE_REQUEST, { label });
     if (request === undefined) {
       throw new Error("image description is switched off (vision.describe-request is empty in the prompt registry)");
     }
@@ -896,6 +909,10 @@ export class Session {
       // /session report as the orchestrator's.
       stats: this.stats,
       child: true,
+      // ...and its resolved behaviour (the base: OVERDRIVE overrides are the
+      // root's alone, and a child never self-verifies). resolveBehavior hands
+      // an object it already returned back unchanged.
+      behavior: this.behavior,
     });
 
     // Announce the dispatch before the child's first model turn: without this
@@ -1055,8 +1072,9 @@ export class Session {
   }
 
   /**
-   * Clarify pre-layer: judges the incoming request with the MAIN model and,
-   * when it is genuinely open-ended, asks the user up to three shape-defining
+   * Clarify pre-layer: judges the incoming request with the clarify.model
+   * (shipped: the MAIN model) and, when it is genuinely open-ended, asks the
+   * user up to clarify.maxQuestions (shipped: three) shape-defining
    * multiple-choice questions before any work starts. Returns the answers as
    * a text block to ride with the user message, or undefined to just start.
    * Strictly fail-open — a broken verdict must never cost the user the turn.
@@ -1068,11 +1086,12 @@ export class Session {
     // system prompt would charge the user that latency to ask nothing.
     const system = promptTextIfEnabled(CLARIFY_SYSTEM);
     if (system === undefined) return undefined;
+    const b = this.activeBehavior();
     // Ground the verdict in a cursory look at the code, so the questions are
     // about real, specific choices — and so nothing the code already answers
     // gets asked. Deterministic (file/graph reads, no model call): it rides
     // inside this one inference, adding no round-trip. Fail-open by design.
-    const skim = this.buildClarifySkim();
+    const skim = b.clarify.skim.enabled ? this.buildClarifySkim(b) : undefined;
     let raw: string;
     try {
       raw = await this.runInference({
@@ -1084,12 +1103,13 @@ export class Session {
         // find. This layer is older and quieter, so it was never reported; that
         // makes it more worth fixing, not less.
         maxTokens: 2000,
-        model: this.settings.model,
+        // "small" leaves the model to runInference: settings.smallModel, else settings.model.
+        ...(b.clarify.model === "main" ? { model: this.settings.model } : {}),
       });
     } catch {
       return undefined;
     }
-    const questions = parseClarifyVerdict(raw);
+    const questions = parseClarifyVerdict(raw, b.clarify.maxQuestions);
     if (questions === undefined) return undefined;
     this.emit({ type: "command_output", text: "🧭 open-ended request — clarifying before starting" });
     return this.askQuestionRound(questions, promptTextIfEnabled(CLARIFY_ANSWERS_PREAMBLE));
@@ -1131,7 +1151,7 @@ export class Session {
    *      even a project the graph cannot parse still gets an overview.
    * The result is capped so it stays a cursory glance, never a context dump.
    */
-  private buildClarifySkim(): string | undefined {
+  private buildClarifySkim(b: BrainBehavior): string | undefined {
     let digest: string | undefined;
     try {
       // workspaceLooksNonTrivial is a depth-1 check — cheap enough to gate the
@@ -1139,7 +1159,7 @@ export class Session {
       const skeleton = workspaceLooksNonTrivial(this.cwd)
         ? graphSkeleton(loadOrBuildGraph(this.cwd), projectName(this.cwd))
         : undefined;
-      digest = skeleton ?? this.peekWorkspaceOverview();
+      digest = skeleton ?? this.peekWorkspaceOverview(b);
     } catch {
       return undefined; // fail-open — the question must never wait on the skim
     }
@@ -1154,7 +1174,7 @@ export class Session {
    * the obvious overview files (README, package manifests). Byte-capped so a
    * giant README can never turn a cursory glance into a slow one.
    */
-  private peekWorkspaceOverview(): string | undefined {
+  private peekWorkspaceOverview(b: BrainBehavior): string | undefined {
     const parts: string[] = [];
     try {
       const entries = readdirSync(this.cwd, { withFileTypes: true }).filter((e) => !e.name.startsWith("."));
@@ -1167,7 +1187,7 @@ export class Session {
       // no listing — the overview files below may still exist
     }
     let budget = CLARIFY_PEEK_MAX_CHARS;
-    for (const name of CLARIFY_PEEK_FILES) {
+    for (const name of b.clarify.skim.peekFiles) {
       if (budget <= 0) break;
       let content: string;
       try {
@@ -1210,7 +1230,8 @@ export class Session {
     }
 
     if (this.tasks.list().length === 0) {
-      if (!this.planReminderFired) {
+      const b = this.activeBehavior();
+      if (!this.planReminderFired && b.reminders.planFirst.enabled) {
         this.remind(promptText(PLAN_FIRST_REMINDER));
         this.planReminderFired = true;
       }
@@ -1218,15 +1239,15 @@ export class Session {
       this.planReminderFired = false;
     }
 
-    // Finishing rungs: both the evidence they judge and their once-per-turn
-    // fuses are about THIS turn's work, so they all reset together.
+    // Finishing rungs: both the evidence they judge and their per-turn
+    // counters are about THIS turn's work, so they all reset together.
     this.filesChangedThisTurn.clear();
     this.doubleFilesThisTurn.clear();
     this.ranCommandThisTurn = false;
     this.browserEvidenceThisTurn = false;
-    this.evidenceNudgeFired = false;
-    this.browserNudgeFired = false;
-    this.incompleteTasksNudgeFired = false;
+    this.evidenceNudges = 0;
+    this.browserNudges = 0;
+    this.incompleteTasksNudges = 0;
 
     const turnId = `t_${++this.turnCounter}`;
     this.abortController = new AbortController();
@@ -1256,16 +1277,25 @@ export class Session {
     const namedAddon = addonNamedIn(userText, this.opts.addons ?? []);
     if (namedAddon !== undefined) this.remind(renderPrompt(ADDON_NAMED_REMINDER, { name: namedAddon }));
 
+    // clarify.enabled can only switch the layer off: it is ANDed with the
+    // user's settings.clarify, never a way to force it on.
     let clarification: string | undefined;
-    if (this.settings.clarify && !this.opts.child && namedAddon === undefined) {
-      clarification = await this.maybeClarify(userText);
+    {
+      const b = this.activeBehavior();
+      if (this.settings.clarify && b.clarify.enabled && !this.opts.child && namedAddon === undefined) {
+        clarification = await this.maybeClarify(userText);
+      }
     }
 
     // OVERDRIVE safety net: before an uncapped autonomous turn starts, park a
     // dangling stash commit of the working tree so anything an in-workspace
     // deletion later removes stays recoverable. Root sessions only — children
-    // share the same tree.
-    if (this.overdrive && !this.opts.child) await this.snapshotForOverdrive();
+    // share the same tree. overdrive.preTurnSnapshot.enabled false: no
+    // snapshot, and none from an earlier turn is reported.
+    if (this.overdrive && !this.opts.child) {
+      if (this.behavior.overdrive.preTurnSnapshot.enabled) await this.snapshotForOverdrive();
+      else this.overdriveSnapshotRef = undefined;
+    }
 
     this.pushMessage({
       role: "user",
@@ -1279,24 +1309,29 @@ export class Session {
     let stopHookFired = false;
     let lastBatchHadError = false;
     let nudgeCount = 0;
-    // Consecutive output-length cutoffs (see MAX_CUTOFF_STREAK) and context
-    // overflows recovered by compaction (see MAX_OVERFLOW_RECOVERIES).
+    // Consecutive output-length cutoffs (finishing.lengthCutoff.maxStreak) and
+    // context overflows recovered by compaction (context.overflowRecoveries).
+    // overflowStreak is how many of the current cutoff streak were such
+    // recovered overflows: their resume never depends on the lengthCutoff knobs.
     let cutoffStreak = 0;
+    let overflowStreak = 0;
     let overflowRecoveries = 0;
-    // The interactive root turn runs uncapped — the stall detector is the
-    // brake. Only children keep the numeric budgets, so an explicit
-    // spawn-time child cap is still enforced.
+    // The interactive root turn runs uncapped — the stall detector's
+    // reminders and the user's interrupt are what stop a loop. Only children
+    // keep the numeric budgets, so an explicit spawn-time child cap is still
+    // enforced.
     const capped = this.opts.child ?? false;
-    // Once per turn (re-armed when mid-run steering arrives): the end check
-    // that gates a clean break on "is the query truly handled".
-    let selfVerifyFired = false;
+    // Self-verify rounds spent this turn, against finishing.selfVerify.maxRounds
+    // (re-armed when mid-run steering arrives): the end check that gates a
+    // clean break on "is the query truly handled".
+    let selfVerifyRounds = 0;
     // True for exactly the one streamed response that answers the self-verify
     // injection — that response is buffered (not shown live) so a clean DONE
     // stays invisible and only genuine follow-up work reaches the user.
     let verifyBuffered = false;
     // Stall detector state: the previous round's signature (tool
     // calls + results), how many consecutive rounds matched it, and how many
-    // strategy pivots have been spent (2 pivots, then ask the user).
+    // strategy pivots have been spent (stall.pivots, then ask the user).
     let lastRoundSig = "";
     let identicalRounds = 0;
     let pivotCount = 0;
@@ -1315,7 +1350,12 @@ export class Session {
         return;
       }
       silentReasoningChars += thinkingLength(assistant);
-      if (!silentReminded && silentReasoningChars >= SILENT_REASONING_LIMIT) {
+      const b = this.activeBehavior();
+      if (
+        b.reminders.silentReasoning.enabled &&
+        !silentReminded &&
+        silentReasoningChars >= b.reminders.silentReasoning.thresholdChars
+      ) {
         silentReminded = true;
         this.remind(promptText(SILENT_REASONING_REMINDER));
       }
@@ -1329,7 +1369,7 @@ export class Session {
     const drainSteering = (): boolean => {
       if (this.pendingSteering.length === 0) return false;
       const texts = this.pendingSteering.splice(0);
-      selfVerifyFired = false;
+      selfVerifyRounds = 0;
       pivotCount = 0;
       identicalRounds = 0;
       lastRoundSig = "";
@@ -1376,11 +1416,12 @@ export class Session {
           // fire first, but a huge tool result or a stale estimate can leap
           // past it — so recover the way /compact would, then retry the same
           // call. Nothing was streamed: an overflow is refused before output.
-          if (!signal.aborted && isContextOverflowError(err) && overflowRecoveries < MAX_OVERFLOW_RECOVERIES) {
+          const b = this.activeBehavior();
+          if (!signal.aborted && isContextOverflowError(err) && overflowRecoveries < b.context.overflowRecoveries) {
             overflowRecoveries++;
             this.emit({
               type: "command_output",
-              text: `↻ the request exceeded the model's context window — compacting older history and retrying (${overflowRecoveries}/${MAX_OVERFLOW_RECOVERIES})`,
+              text: `↻ the request exceeded the model's context window — compacting older history and retrying (${overflowRecoveries}/${b.context.overflowRecoveries})`,
             });
             if (await this.maybeCompact(true)) continue;
           }
@@ -1423,8 +1464,14 @@ export class Session {
         // overflow again on a bigger history — compact first, then let the
         // cutoff rungs below resume it. Beyond the recovery budget, end the
         // turn with a visible reason instead of a silent break.
+        //
+        // The resume is this response's own (resumeAfterOverflow), not a
+        // length cutoff the lengthCutoff knobs judge: switching cutoff resumes
+        // off, or a streak of 0, must not end a turn compaction just rescued.
+        let resumeAfterOverflow = false;
         if (stopReason === "context_overflow") {
-          if (overflowRecoveries >= MAX_OVERFLOW_RECOVERIES || !(await this.maybeCompact(true))) {
+          const b = this.activeBehavior();
+          if (overflowRecoveries >= b.context.overflowRecoveries || !(await this.maybeCompact(true))) {
             this.emit({
               type: "error",
               message:
@@ -1437,11 +1484,24 @@ export class Session {
           overflowRecoveries++;
           this.emit({
             type: "command_output",
-            text: `↻ the response hit the model's context window — compacted older history (${overflowRecoveries}/${MAX_OVERFLOW_RECOVERIES}), resuming`,
+            text: `↻ the response hit the model's context window — compacted older history (${overflowRecoveries}/${b.context.overflowRecoveries}), resuming`,
           });
           stopReason = "max_tokens";
+          resumeAfterOverflow = true;
         }
         cutoffStreak = stopReason === "max_tokens" ? cutoffStreak + 1 : 0;
+        overflowStreak = resumeAfterOverflow ? overflowStreak + 1 : cutoffStreak === 0 ? 0 : overflowStreak;
+        /** Whether this cutoff is still inside the streak bound
+         *  (finishing.lengthCutoff.maxStreak). A recovered context overflow is
+         *  also inside it while the streak is made of nothing but recovered
+         *  overflows — those are bounded by context.overflowRecoveries, never
+         *  by the lengthCutoff knobs. With the shipped values (a streak of 3,
+         *  above 2 recoveries) both forms are exactly `cutoffStreak <= maxStreak`,
+         *  as before the knobs existed. */
+        const withinCutoffStreak = (b: BrainBehavior): boolean =>
+          resumeAfterOverflow
+            ? cutoffStreak <= Math.max(b.finishing.lengthCutoff.maxStreak, overflowStreak)
+            : cutoffStreak <= b.finishing.lengthCutoff.maxStreak;
 
         if (toolCalls.length === 0) {
           // Pending steering outranks every end-of-turn decision: the user's
@@ -1459,7 +1519,7 @@ export class Session {
             );
             if (summary.blocked) {
               const stopText =
-                renderIfEnabled(STOP_HOOK_REMINDER, { reason: summary.blockReason }) ?? summary.blockReason;
+                renderPromptIfEnabled(STOP_HOOK_REMINDER, { reason: summary.blockReason }) ?? summary.blockReason;
               // Switched off with no reason to pass on, there is nothing to tell
               // the model, so the turn ends as if the hook had not blocked.
               if (stopText.trim() !== "") {
@@ -1472,24 +1532,37 @@ export class Session {
             }
           }
 
+          // Every rung below reads the knobs in force at this end of the turn.
+          const b = this.activeBehavior();
+
           // LAYER 3: the provider cut the response off at the output-token
           // limit with no tool calls pending — resume rather than ending the
-          // turn on a truncated answer. Bounded by MAX_CUTOFF_STREAK, its own
-          // counter: a model that answers "length" every time would otherwise
-          // resume forever (the root turn has no iteration cap to catch it),
-          // and sharing the nudge budget meant an error-recovery nudge spent
-          // earlier could silently end a turn that only needed resuming.
+          // turn on a truncated answer. Bounded by
+          // finishing.lengthCutoff.maxStreak, its own counter: a model that
+          // answers "length" every time would otherwise resume forever (the
+          // root turn has no iteration cap to catch it), and sharing the nudge
+          // budget meant an error-recovery nudge spent earlier could silently
+          // end a turn that only needed resuming. finishing.lengthCutoff.enabled
+          // false delivers a cut-off answer as is — except the resume after a
+          // context-overflow compaction, which is not a length cutoff's to stop.
+          // reminder.length-continuation switched off (enabled: false or a
+          // blank override) switches every resume off: there is no message to
+          // resume with, and a blank one is still a full round.
           if (stopReason === "max_tokens") {
-            if (cutoffStreak <= MAX_CUTOFF_STREAK) {
+            const continuation = promptTextIfEnabled(LENGTH_CONTINUATION_TEXT);
+            const resumeOn = continuation !== undefined && (resumeAfterOverflow || b.finishing.lengthCutoff.enabled);
+            if (resumeOn && withinCutoffStreak(b)) {
               // A response cut off mid-reasoning is part of the silent stretch too.
               accountSilence(assistant);
               this.emit({ type: "command_output", text: "↻ continuing after output-length cutoff" });
-              this.pushMessage({ role: "user", content: [{ type: "text", text: promptText(LENGTH_CONTINUATION_TEXT) }] });
+              this.pushMessage({ role: "user", content: [{ type: "text", text: continuation }] });
               continue;
             }
             this.emit({
               type: "command_output",
-              text: `⏸ the response was cut off ${cutoffStreak} times in a row — ending the turn. Ask for the work in smaller pieces, or raise maxTokensPerResponse.`,
+              text: resumeOn
+                ? `⏸ the response was cut off ${cutoffStreak} times in a row — ending the turn. Ask for the work in smaller pieces, or raise maxTokensPerResponse.`
+                : "⏸ the response was cut off at the output limit — resuming is switched off",
             });
             break;
           }
@@ -1497,24 +1570,34 @@ export class Session {
           // LAYER 2: the previous tool-result batch had a failure and the
           // turn is ending regardless of what the final text says — weak
           // models sometimes bury a failure under a long non-answer. Nudge
-          // it to keep going; the stall detector terminates a model that
-          // keeps failing identically.
+          // it to keep going; the stall detector reminds a model that keeps
+          // failing identically (it never ends the turn by itself).
           //
           // The flag is spent on the nudge, and the whole rung is bounded by
-          // MAX_AUTO_NUDGES. Both matter: lastBatchHadError is only ever
+          // finishing.nudgeBudget. Both matter: lastBatchHadError is only ever
           // assigned after a tool batch, so on a no-tool-call answer it stays
           // true forever — this rung used to re-fire every iteration of an
           // uncapped turn, and because it sits above the self-verify rung, a
           // turn whose last batch failed never self-verified at all. A later
           // failing batch sets it again, so real recovery still gets nudged.
-          if (stopReason === "end_turn" && lastBatchHadError && nudgeCount < MAX_AUTO_NUDGES) {
+          // finishing.errorRecovery.enabled false leaves the flag unspent, so
+          // rungs 5 and 9 skip this end too, as they do whenever it is set.
+          // reminder.recovery-nudge switched off acts the same way.
+          const recoveryNudge =
+            b.finishing.errorRecovery.enabled &&
+            stopReason === "end_turn" &&
+            lastBatchHadError &&
+            nudgeCount < b.finishing.nudgeBudget
+              ? promptTextIfEnabled(RECOVERY_NUDGE_TEXT)
+              : undefined;
+          if (recoveryNudge !== undefined) {
             nudgeCount++;
             lastBatchHadError = false;
             this.emit({
               type: "command_output",
               text: "↻ auto-recovery: nudging the agent to continue after a failed tool call",
             });
-            this.pushMessage({ role: "user", content: [{ type: "text", text: promptText(RECOVERY_NUDGE_TEXT) }] });
+            this.pushMessage({ role: "user", content: [{ type: "text", text: recoveryNudge }] });
             continue;
           }
 
@@ -1523,8 +1606,9 @@ export class Session {
           // explicitly justify leaving it open. Checked after error-recovery
           // (a failure takes priority) and before the wrap-up nudge.
           //
-          // Fires ONCE per turn, like every other rung on this ladder. Without
-          // the fuse it re-fired on each attempt to end the turn for as long as
+          // Fires at most finishing.incompleteTasks.maxNudges times per turn
+          // (shipped: once), like every other rung on this ladder. Without
+          // the bound it re-fired on each attempt to end the turn for as long as
           // anything stayed open, and each firing is a full-context round trip.
           // A plan of six tasks could therefore charge six extra model calls for
           // one turn's work, which made planning itself expensive and turned the
@@ -1533,23 +1617,31 @@ export class Session {
           // again with work still open, that is an answer, and the wrap-up rung
           // below is where the user hears about it.
           //
-          // It also no longer touches nudgeCount. That counter is the wrap-up
-          // rung's budget and nothing else reads it, so incrementing here only
-          // starved the summary this rung's own reminder asks for.
-          if (stopReason === "end_turn" && !lastBatchHadError && !this.incompleteTasksNudgeFired) {
+          // It also never touches nudgeCount. That counter is the budget of
+          // rungs 4 and 9, so incrementing here only starved the summary this
+          // rung's own reminder asks for.
+          if (
+            stopReason === "end_turn" &&
+            !lastBatchHadError &&
+            this.incompleteTasksNudges < b.finishing.incompleteTasks.maxNudges
+          ) {
             const incomplete = this.tasks.list().filter((t) => t.status === "pending" || t.status === "in_progress");
-            if (incomplete.length > 0) {
-              this.incompleteTasksNudgeFired = true;
+            // undefined: reminder.incomplete-tasks is switched off, so the rung is too.
+            const nudge = incomplete.length > 0 ? incompleteTasksNudgeText(incomplete) : undefined;
+            if (nudge !== undefined) {
+              this.incompleteTasksNudges++;
               this.emit({ type: "command_output", text: "↻ tasks incomplete — continuing" });
-              this.pushMessage({ role: "user", content: [{ type: "text", text: incompleteTasksNudgeText(incomplete) }] });
+              this.pushMessage({ role: "user", content: [{ type: "text", text: nudge }] });
               continue;
             }
           }
 
           // RUNTIME EVIDENCE FLOOR: the turn rewrote source files and never ran
           // a single command, so every claim it is about to make about that code
-          // is an inference. Deterministic, fires once, and only reminds — the
-          // It catches a quiet failure: a turn that looks finished and is not.
+          // is an inference. Deterministic, fires at most
+          // finishing.runtimeEvidence.maxNudges times (shipped: once), and only
+          // reminds. It catches a quiet failure: a turn that looks finished and
+          // is not.
           //
           // Placed ahead of the self-verify rung deliberately. A self-verify
           // that answers DONE breaks the loop where it stands, so anything
@@ -1574,14 +1666,18 @@ export class Session {
           // silently uncovered its half — a turn that ran only its own mocks got
           // no reminder at all, because a command HAD run. Folding the stand-in
           // argument into the same text as a conditional clause keeps both cases
-          // covered by a single fuse and a single prompt an operator can find.
-          if (stopReason === "end_turn" && !this.evidenceNudgeFired) {
-            const changedCode = codeFilesAmong(this.filesChangedThisTurn);
+          // covered by a single counter and a single prompt an operator can find.
+          if (stopReason === "end_turn" && this.evidenceNudges < b.finishing.runtimeEvidence.maxNudges) {
+            const changedCode = codeFilesAmong(this.filesChangedThisTurn, b);
             const doubles = [...this.doubleFilesThisTurn];
             const nothingRan = !this.ranCommandThisTurn;
             const onlyDoubles = this.ranCommandThisTurn && doubles.length > 0;
-            if (changedCode.length > 0 && (nothingRan || onlyDoubles)) {
-              this.evidenceNudgeFired = true;
+            // undefined: finishing.runtime-evidence is switched off, so the rung is too.
+            const evidence = changedCode.length > 0 && (nothingRan || onlyDoubles)
+              ? runtimeEvidenceText(changedCode, this.visionUnavailableReason() === undefined, doubles, b)
+              : undefined;
+            if (evidence !== undefined) {
+              this.evidenceNudges++;
               this.emit({
                 type: "command_output",
                 text: nothingRan
@@ -1593,78 +1689,97 @@ export class Session {
                 // "Vision is on" for the agent means an image can actually be
                 // looked at — the flag alone is not enough without an endpoint
                 // to send it to.
-                content: [
-                  {
-                    type: "text",
-                    text: runtimeEvidenceText(changedCode, this.visionUnavailableReason() === undefined, doubles),
-                  },
-                ],
+                content: [{ type: "text", text: evidence }],
               });
               continue;
             }
           }
           // The third shape: things DID run — the server, curl, an API bot —
           // but a page the user will use was never opened. HTTP 200 proves
-          // the file was served, not that the page works. Its own fuse, so a
-          // UI turn that first ran nothing (and got the reminder above) is
-          // still sent to a browser when it then checks only with curl.
-          if (stopReason === "end_turn" && !this.browserNudgeFired) {
-            const changedUi = uiFilesAmong(this.filesChangedThisTurn);
-            if (changedUi.length > 0 && !this.browserEvidenceThisTurn) {
-              this.browserNudgeFired = true;
+          // the file was served, not that the page works. Its own counter
+          // (finishing.browserEvidence.maxNudges), so a UI turn that first ran
+          // nothing (and got the reminder above) is still sent to a browser
+          // when it then checks only with curl.
+          if (stopReason === "end_turn" && this.browserNudges < b.finishing.browserEvidence.maxNudges) {
+            const changedUi = uiFilesAmong(this.filesChangedThisTurn, b);
+            // undefined: finishing.browser-evidence is switched off, so the rung is too.
+            const browser = changedUi.length > 0 && !this.browserEvidenceThisTurn
+              ? browserEvidenceText(changedUi, this.visionUnavailableReason() === undefined, b)
+              : undefined;
+            if (browser !== undefined) {
+              this.browserNudges++;
               this.emit({ type: "command_output", text: "↻ the page was never opened in a browser — checking it the way the user will" });
               this.pushMessage({
                 role: "user",
-                content: [{ type: "text", text: browserEvidenceText(changedUi, this.visionUnavailableReason() === undefined) }],
+                content: [{ type: "text", text: browser }],
               });
               continue;
             }
           }
 
-          // Self-verify rung: the first time the turn tries to end cleanly,
-          // make the model check the outcome against the original query
-          // (completeness + economy) before the break is allowed. Runs after
-          // the signal rungs above — a real failure or open task list always
+          // Self-verify rung: when the turn tries to end cleanly, make the
+          // model check the outcome against the original query (completeness
+          // + economy) before the break is allowed — at most
+          // finishing.selfVerify.maxRounds times per turn. Runs after the
+          // signal rungs above — a real failure or open task list always
           // outranks a politeness check — and before the wrap-up rung, which
-          // it subsumes. A purely conversational turn (no tools all turn, so
-          // nothing was built and nothing can be left behind) has nothing to
+          // it subsumes. A purely conversational turn (fewer than
+          // finishing.selfVerify.minToolCalls tool calls; shipped: none at all,
+          // so nothing was built and nothing can be left behind) has nothing to
           // verify: skip the rung so a greeting ends instantly, with no extra
           // round-trip and no risk of a leaked sentinel.
           //
-          // OVERDRIVE only (2026-07-26). Autonomous runs are exactly where an
+          // The shipped brain runs it in OVERDRIVE only (base maxRounds 0,
+          // overdrive.overrides 1). Autonomous runs are exactly where an
           // unverified "I think I'm done" is expensive: nothing asked, so the
           // user saw no checkpoint along the way. An attended turn already has
-          // one — the user reads the reply — and does not need to pay a round
-          // trip per turn for a second opinion.
+          // one — the user reads the reply. A subagent child never
+          // self-verifies, whatever the knobs say: its DONE would become the
+          // result the parent reads.
           // undefined means the rung is switched off in the prompt registry. Skip
           // the round entirely then — pushing a blank message would still spend
           // the inference round the operator emptied the prompt to avoid.
           const verify =
-            stopReason === "end_turn" && !selfVerifyFired && totalToolCallsThisTurn > 0 && this.overdrive
-              ? selfVerifyText(codeFilesAmong(this.filesChangedThisTurn), {
-                  symptoms: reportedSymptoms,
-                  hedges: findHedges(assistantText(assistant)),
-                })
+            stopReason === "end_turn" &&
+            !this.opts.child &&
+            selfVerifyRounds < b.finishing.selfVerify.maxRounds &&
+            totalToolCallsThisTurn >= b.finishing.selfVerify.minToolCalls
+              ? selfVerifyText(
+                  codeFilesAmong(this.filesChangedThisTurn, b),
+                  {
+                    symptoms: reportedSymptoms,
+                    hedges: findHedges(assistantText(assistant), b),
+                  },
+                  b,
+                )
               : undefined;
           if (verify !== undefined) {
-            selfVerifyFired = true;
+            selfVerifyRounds++;
             verifyBuffered = true;
             this.suppressAssistantText = true; // the verify answer streams silently
-            this.emit({ type: "command_output", text: "⚡ overdrive: self-verifying against the original query" });
+            // The status chatter is OVERDRIVE identity flavor, as on the DONE
+            // path above; the plain stance verifies just as silently as it works.
+            if (this.overdrive) {
+              this.emit({ type: "command_output", text: "⚡ overdrive: self-verifying against the original query" });
+            }
             this.pushMessage({ role: "user", content: [{ type: "text", text: verify }] });
             continue;
           }
 
           // LAYER 1: the turn did substantial tool-driven work but ended on a
-          // bare reply with no wrap-up for the user — nudge once for a summary
-          // rather than letting the turn end in silence. Checked after LAYER 2
+          // bare reply with no wrap-up for the user — nudge for a summary
+          // rather than letting the turn end in silence (finishing.wrapUp; it
+          // spends finishing.nudgeBudget with rung 4). Checked after LAYER 2
           // so error-recovery still takes priority over the wrap-up nudge.
+          // reminder.wrapup-nudge switched off switches the rung off with it.
           if (
+            b.finishing.wrapUp.enabled &&
             stopReason === "end_turn" &&
             !lastBatchHadError &&
-            totalToolCallsThisTurn >= 5 &&
-            assistantTextLength(assistant) < 150 &&
-            nudgeCount < MAX_AUTO_NUDGES
+            totalToolCallsThisTurn >= b.finishing.wrapUp.minToolCalls &&
+            assistantTextLength(assistant) < b.finishing.wrapUp.answerShorterThanChars &&
+            nudgeCount < b.finishing.nudgeBudget &&
+            !isPromptDisabled(WRAPUP_NUDGE_TEXT)
           ) {
             nudgeCount++;
             this.emit({ type: "command_output", text: "↻ requesting a work summary" });
@@ -1699,24 +1814,30 @@ export class Session {
         // passes the limit, the next request asks for one sentence — once per
         // stretch, re-armed only when the model speaks again. Root only: a
         // child's text is not what the user reads.
-        // The latest six: a failure reported late in a long turn must not be
-        // crowded out by early exploration notes.
-        for (const symptom of findSymptoms(assistantText(assistant))) {
-          if (reportedSymptoms.includes(symptom)) continue;
-          reportedSymptoms.push(symptom);
-          if (reportedSymptoms.length > 6) reportedSymptoms.shift();
+        // The latest finishing.selfVerify.maxSymptoms: a failure reported late
+        // in a long turn must not be crowded out by early exploration notes.
+        {
+          const b = this.activeBehavior();
+          for (const symptom of findSymptoms(assistantText(assistant))) {
+            if (reportedSymptoms.includes(symptom)) continue;
+            reportedSymptoms.push(symptom);
+            if (reportedSymptoms.length > b.finishing.selfVerify.maxSymptoms) reportedSymptoms.shift();
+          }
         }
         accountSilence(assistant);
         totalToolCallsThisTurn += toolCalls.length;
         const results = await this.executeToolCalls(toolCalls, signal);
+        // The rest of this round reads the knobs in force once the batch ran.
+        const b = this.activeBehavior();
         lastBatchHadError = results.some((r) => r.type === "tool_result" && r.isError === true);
-        if (lastBatchHadError) {
+        if (lastBatchHadError && b.reminders.errorBatch.enabled) {
           this.remind(promptText(ERROR_BATCH_REMINDER));
         }
         // Stall detector: a round that exactly repeats the previous one (same
-        // calls, same results) produced nothing new. Three in a row is a
-        // stall — force a strategy pivot; after two spent pivots, force one
-        // concrete question to the user instead of burning forever.
+        // calls, same results) produced nothing new. stall.repeatRounds in a
+        // row is a stall — force a strategy pivot; after stall.pivots spent
+        // pivots, remind the model to put one concrete question to the user.
+        // Reminders only: it never ends the turn itself.
         {
           // The fingerprint must describe WORK, not identity. tool_result blocks
           // carry toolUseId — the provider's per-call random id (`call_…`,
@@ -1736,11 +1857,11 @@ export class Session {
           ]);
           identicalRounds = sig === lastRoundSig ? identicalRounds + 1 : 0;
           lastRoundSig = sig;
-          if (identicalRounds >= 2) {
+          if (identicalRounds >= b.stall.repeatRounds - 1) {
             identicalRounds = 0;
-            if (pivotCount < 2) {
+            if (pivotCount < b.stall.pivots) {
               pivotCount++;
-              this.emit({ type: "command_output", text: `⚡ stall detected — forcing strategy pivot ${pivotCount}/2` });
+              this.emit({ type: "command_output", text: `⚡ stall detected — forcing strategy pivot ${pivotCount}/${b.stall.pivots}` });
               this.remind(promptText(STALL_PIVOT_TEXT));
             } else {
               this.emit({ type: "command_output", text: "⚡ still stalled after pivots — asking the user" });
@@ -1759,10 +1880,12 @@ export class Session {
         }
         this.pushMessage({ role: "user", content: this.withReminders(results) });
         // The tool-call twin of LAYER 3's bound: a model that is cut off
-        // mid-call this many times running is reissuing the same oversized
-        // call (a whole file in one Write) and will be cut off again. This
-        // path used to be unbounded — the endless "↻ continuing" transcript.
-        if (stopReason === "max_tokens" && cutoffStreak > MAX_CUTOFF_STREAK) {
+        // mid-call more than finishing.lengthCutoff.maxStreak times running is
+        // reissuing the same oversized call (a whole file in one Write) and will
+        // be cut off again. This path used to be unbounded — the endless
+        // "↻ continuing" transcript. For a plain cutoff this is exactly
+        // `cutoffStreak > maxStreak`.
+        if (stopReason === "max_tokens" && !withinCutoffStreak(b)) {
           this.emit({
             type: "command_output",
             text: `⏸ the response was cut off mid tool call ${cutoffStreak} times in a row — ending the turn. Ask for the work in smaller pieces (e.g. write the file in parts), or raise maxTokensPerResponse.`,
@@ -2166,7 +2289,7 @@ export class Session {
             );
             if (summary.blocked) {
               return {
-                content: renderIfEnabled(PRE_TOOL_USE_HOOK_REMINDER, { reason: summary.blockReason }) ?? summary.blockReason,
+                content: renderPromptIfEnabled(PRE_TOOL_USE_HOOK_REMINDER, { reason: summary.blockReason }) ?? summary.blockReason,
                 isError: true,
               };
             }
@@ -2201,13 +2324,14 @@ export class Session {
           // results — the user let the call run but wants it steered.
           if (outcome.note !== undefined && outcome.note.trim() !== "") {
             const note = outcome.note.trim();
-            this.remind(renderIfEnabled(APPROVAL_NOTE_REMINDER, { tool: tool.name, note }) ?? note);
+            this.remind(renderPromptIfEnabled(APPROVAL_NOTE_REMINDER, { tool: tool.name, note }) ?? note);
           }
           announce();
           try {
             const result = await tool.execute(input, { ...this.toolContext(), callId: call.id }, signal);
             this.observeTurnWork(tool.name, input, result.isError === true);
-            const truncated = truncateResult(result, tool.outputByteLimit ?? DEFAULT_OUTPUT_LIMIT);
+            const b = this.activeBehavior();
+            const truncated = truncateResult(result, tool.outputByteLimit ?? b.tools.defaultOutputBytes);
             if (this.hooks?.has("PostToolUse")) {
               const summary = this.hooks.summarize(
                 await this.hooks.run("PostToolUse", {
@@ -2221,7 +2345,7 @@ export class Session {
               );
               if (summary.blocked && typeof truncated.content === "string") {
                 const hookText =
-                  renderIfEnabled(POST_TOOL_USE_HOOK_REMINDER, { reason: summary.blockReason }) ??
+                  renderPromptIfEnabled(POST_TOOL_USE_HOOK_REMINDER, { reason: summary.blockReason }) ??
                   summary.blockReason;
                 return {
                   ...truncated,
@@ -2234,7 +2358,7 @@ export class Session {
             if (signal.aborted) throw err;
             // String(): a non-Error throw still reads "undefined", as the inline template did.
             const message = String((err as Error).message);
-            return { content: renderIfEnabled(TOOL_FAILED, { error: message }) ?? message, isError: true };
+            return { content: renderPromptIfEnabled(TOOL_FAILED, { error: message }) ?? message, isError: true };
           }
         },
       });
@@ -2316,7 +2440,7 @@ export class Session {
       const unavailable = this.visionUnavailableReason();
       if (unavailable) {
         // Switched off, the image is dropped: there is nothing true to say about it.
-        const note = renderIfEnabled(TOOL_IMAGE_UNSEEN, { reason: unavailable });
+        const note = renderPromptIfEnabled(TOOL_IMAGE_UNSEEN, { reason: unavailable });
         if (note !== undefined) out.push({ type: "text", text: note });
         continue;
       }
@@ -2330,7 +2454,7 @@ export class Session {
           }),
         });
       } catch (err) {
-        const note = renderIfEnabled(TOOL_IMAGE_FAILED, { error: String((err as Error).message) });
+        const note = renderPromptIfEnabled(TOOL_IMAGE_FAILED, { error: String((err as Error).message) });
         if (note !== undefined) out.push({ type: "text", text: note });
       }
     }
@@ -2355,10 +2479,11 @@ export class Session {
    */
   private observeTurnWork(toolName: string, input: unknown, isError: boolean): void {
     const fields = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+    const b = this.activeBehavior();
     if (toolName === "Bash") {
       this.ranCommandThisTurn = true;
       // A browser run that failed saw no page.
-      if (!isError && typeof fields.command === "string" && looksLikeBrowserRun(fields.command)) this.browserEvidenceThisTurn = true;
+      if (!isError && typeof fields.command === "string" && looksLikeBrowserRun(fields.command, b)) this.browserEvidenceThisTurn = true;
       return;
     }
     if (isError) return;
@@ -2366,7 +2491,7 @@ export class Session {
     if (typeof filePath !== "string" || filePath === "") return;
     // A screenshot that was Read reached the vision model: the page was looked at.
     if (toolName === "Read") {
-      if (/\.(?:png|jpe?g|gif|webp|bmp)$/i.test(filePath)) this.browserEvidenceThisTurn = true;
+      if (isScreenshotPath(filePath, b)) this.browserEvidenceThisTurn = true;
       return;
     }
     if (toolName !== "Write" && toolName !== "Edit") return;
@@ -2381,7 +2506,7 @@ export class Session {
     // the question is what THIS turn stood in for, and a file that already
     // contained mocks before the turn started is not this turn's assumption.
     const written = (input as Record<string, unknown>)[toolName === "Write" ? "content" : "new_string"];
-    if (typeof written === "string" && looksLikeTestDouble(written)) this.doubleFilesThisTurn.add(named);
+    if (typeof written === "string" && looksLikeTestDouble(written, b)) this.doubleFilesThisTurn.add(named);
   }
 
   /**
@@ -2671,13 +2796,17 @@ export class Session {
       return false;
     }
 
-    // Keep the most recent messages (a shorter tail under /compact force, so a
-    // small history can still be squeezed), but never split a tool_use from
+    // Keep the most recent messages (context.compaction.keepTailMessages; the
+    // shorter forceKeepTailMessages under /compact force, so a small history
+    // can still be squeezed), but never split a tool_use from
     // its tool_result: a tail that opens with tool_results whose tool_use was
     // summarized away is a history every provider rejects, bricking the
     // session. Tool pairs are adjacent, so walking the boundary back to a
     // message with no tool_result blocks guarantees each pair lands whole.
-    let splitIdx = this.messages.length - (force ? 2 : 6);
+    const b = this.activeBehavior();
+    let splitIdx =
+      this.messages.length -
+      (force ? b.context.compaction.forceKeepTailMessages : b.context.compaction.keepTailMessages);
     while (splitIdx > 0 && this.messages[splitIdx]!.content.some((b) => b.type === "tool_result")) {
       splitIdx--;
     }
@@ -2836,9 +2965,6 @@ function finalAssistantText(session: Session): string {
   return NO_SUBAGENT_TEXT;
 }
 
-/** How many questions the clarify pre-layer may ask — deliberately light. */
-const CLARIFY_MAX_QUESTIONS = 3;
-
 /** A question a pre-layer puts to the user: protocol-shaped, ready for askUser. */
 interface ShapeQuestion {
   question: string;
@@ -2965,13 +3091,13 @@ function parseQuestionArray(
  * one where the model had already decided to ask, so recovering them is sound.
  * Without this, a layer that ran too long asks nothing and says nothing.
  */
-function parseClarifyVerdict(raw: string): ShapeQuestion[] | undefined {
+function parseClarifyVerdict(raw: string, maxQuestions: number): ShapeQuestion[] | undefined {
   const rec = parseJsonObject(raw);
   if (rec !== undefined) {
     if (rec.clarify !== true) return undefined;
-    return parseQuestionArray(rec.questions, "Clarify", CLARIFY_MAX_QUESTIONS);
+    return parseQuestionArray(rec.questions, "Clarify", maxQuestions);
   }
-  return parseQuestionArray(salvageQuestionObjects(raw), "Clarify", CLARIFY_MAX_QUESTIONS);
+  return parseQuestionArray(salvageQuestionObjects(raw), "Clarify", maxQuestions);
 }
 
 
@@ -2995,8 +3121,9 @@ function thinkingLength(msg: Msg): number {
 /** Builds the incomplete-task nudge text listing each pending/in-progress task. */
 const INCOMPLETE_TASKS_NUDGE = brainPrompt("reminder.incomplete-tasks");
 
-function incompleteTasksNudgeText(tasks: TaskItem[]): string {
-  return renderPrompt(INCOMPLETE_TASKS_NUDGE, {
+/** undefined when reminder.incomplete-tasks is switched off. */
+function incompleteTasksNudgeText(tasks: TaskItem[]): string | undefined {
+  return renderPromptIfEnabled(INCOMPLETE_TASKS_NUDGE, {
     tasks: tasks.map((t) => `- #${t.id} ${t.subject} (${t.status})`).join("\n"),
   });
 }

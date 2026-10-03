@@ -1,8 +1,10 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
-import type { CoreEvent } from "@magentra/protocol";
+import { brainPrompt, renderPromptIfEnabled, type CoreEvent } from "@magentra/protocol";
 import type { BackgroundApi, BackgroundTaskInfo } from "../agent/tool.js";
+
+const BACKGROUND_EXIT = brainPrompt("reminder.background-exit");
 
 interface Handle {
   info: BackgroundTaskInfo;
@@ -60,8 +62,17 @@ export class BackgroundManager implements BackgroundApi {
           kind: "exit",
           payload: { code, description: opts.description, outputFile },
         });
+        // Switched off, the bare fact still goes out: the model must learn the
+        // task ended, or it keeps polling TaskOutput. String(null) is "null",
+        // as the template literal this replaced rendered it.
         this.remind(
-          `<task-notification>Background ${opts.kind} task ${id} ("${opts.description}") finished with exit code ${code}. Output file: ${outputFile}</task-notification>`,
+          renderPromptIfEnabled(BACKGROUND_EXIT, {
+            kind: opts.kind,
+            id,
+            description: opts.description,
+            code: String(code),
+            file: outputFile,
+          }) ?? `<task-notification>Background task ${id} finished with exit code ${code}.</task-notification>`,
         );
       }
     });

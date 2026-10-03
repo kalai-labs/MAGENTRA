@@ -1,0 +1,115 @@
+{
+  "finishing": {
+    "nudgeBudget": 3,
+    "maxNamedFiles": 8,
+    "lengthCutoff": {
+      "enabled": true,
+      "maxStreak": 3
+    },
+    "errorRecovery": {
+      "enabled": true
+    },
+    "incompleteTasks": {
+      "maxNudges": 1
+    },
+    "runtimeEvidence": {
+      "maxNudges": 1
+    },
+    "browserEvidence": {
+      "maxNudges": 1
+    },
+    "selfVerify": {
+      "maxRounds": 0,
+      "minToolCalls": 1,
+      "maxSymptoms": 6,
+      "maxHedges": 5
+    },
+    "wrapUp": {
+      "enabled": true,
+      "minToolCalls": 5,
+      "answerShorterThanChars": 150
+    }
+  },
+  "stall": {
+    "repeatRounds": 3,
+    "pivots": 2
+  },
+  "reminders": {
+    "planFirst": {
+      "enabled": true
+    },
+    "errorBatch": {
+      "enabled": true
+    },
+    "silentReasoning": {
+      "enabled": true,
+      "thresholdChars": 8000
+    }
+  },
+  "clarify": {
+    "enabled": true,
+    "maxQuestions": 3,
+    "model": "main",
+    "skim": {
+      "enabled": true,
+      "peekFiles": ["README.md", "README", "readme.md", "README.txt", "package.json", "pyproject.toml", "Cargo.toml", "go.mod"]
+    }
+  },
+  "context": {
+    "overflowRecoveries": 2,
+    "compaction": {
+      "keepTailMessages": 6,
+      "forceKeepTailMessages": 2
+    }
+  },
+  "tools": {
+    "defaultOutputBytes": 40000
+  },
+  "evidence": {
+    "codeExtensions": [
+      ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs",
+      ".py", ".rb", ".go", ".rs", ".java", ".kt", ".kts", ".scala",
+      ".c", ".h", ".cc", ".cpp", ".hpp", ".cs", ".m", ".mm", ".swift",
+      ".php", ".lua", ".dart", ".ex", ".exs", ".erl", ".hs", ".clj",
+      ".sh", ".bash", ".zsh", ".ps1", ".sql",
+      ".vue", ".svelte", ".html", ".htm", ".css", ".scss", ".sass", ".less"
+    ],
+    "uiExtensions": [".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte", ".jsx", ".tsx"],
+    "uiExcludeInfixes": ["test", "spec", "stories"],
+    "testDoubleMarkers": [
+      "unittest.mock", "MagicMock", "AsyncMock", "mock.patch", "@patch(", "patch.object(",
+      "monkeypatch.setattr", "monkeypatch.setitem",
+      "jest.mock(", "jest.fn(", "vi.mock(", "vi.fn(", "sinon.stub(", "sinon.fake", "sinon.mock(",
+      "class Fake", "class Mock", "class Stub", "class Dummy",
+      "def fake_", "def mock_", "def stub_"
+    ],
+    "browserRun": {
+      "tools": ["playwright", "puppeteer", "selenium", "webdriver", "cypress", "chromedp", "wkhtmltoimage"],
+      "flags": ["--headless", "--screenshot"],
+      "readOnlyHeads": [
+        "cat", "less", "more", "head", "tail", "grep", "egrep", "rg", "ag", "ls", "dir", "find", "echo", "printf",
+        "which", "where", "type", "code", "vi", "vim", "nano", "open", "stat", "wc", "file"
+      ]
+    },
+    "screenshotExtensions": [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]
+  },
+  "overdrive": {
+    "overrides": {
+      "finishing": {
+        "selfVerify": {
+          "maxRounds": 1
+        }
+      }
+    },
+    "preTurnSnapshot": {
+      "enabled": true,
+      "timeoutMs": 10000
+    },
+    "guards": {
+      "deletions": "run",
+      "protectedDeletions": "run",
+      "protectedEdits": "run",
+      "outsideWorkspaceEdits": "run"
+    }
+  }
+}

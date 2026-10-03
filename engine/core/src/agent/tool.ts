@@ -103,8 +103,10 @@ export interface ToolDefinition<I = unknown> {
    * Returns a human-readable description of what would be DELETED (a file,
    * folder, or worktree) when the input is destructive, undefined otherwise.
    * Outside OVERDRIVE, deletion calls require interactive user approval
-   * regardless of broad allow rules or session allows; OVERDRIVE and the
-   * "Allow deletions" switch turn the guard off — see PermissionEngine.check.
+   * regardless of broad allow rules or session allows; the "Allow deletions"
+   * switch turns that guard off. OVERDRIVE never asks: brain/behavior.json
+   * `overdrive.guards.deletions` / `protectedDeletions` decide whether the call
+   * runs or is refused — see PermissionEngine.check.
    */
   deletionSubject?: (input: I) => string | undefined;
   /**
@@ -119,18 +121,22 @@ export interface ToolDefinition<I = unknown> {
   /**
    * Scope classifier for a call already flagged by deletionSubject:
    * "workspace" when every deletion target provably resolves inside the
-   * session workspace — such calls skip the deletion guard while OVERDRIVE is
-   * active. "protected" when a target is a `.magentra` state directory —
-   * such calls ask in every mode but OVERDRIVE, beating the "allow deletions"
-   * setting and explicit allow rules. Anything unprovable is
-   * "unknown" and keeps the ordinary guard. Receives the tool context because
+   * session workspace. "protected" when a target is a `.magentra` state
+   * directory — such calls ask in every mode but OVERDRIVE, beating the
+   * "allow deletions" setting and explicit allow rules, and in OVERDRIVE are
+   * decided by `overdrive.guards.protectedDeletions`. Anything unprovable is
+   * "unknown". PermissionEngine.check reads only "protected" today:
+   * "workspace" and "unknown" are guarded alike. Receives the tool context because
    * only the tool knows its own effective cwd (Bash tracks `cd` across
    * calls). Absent = always "unknown".
    */
   deletionScope?: (input: I, ctx: ToolContext) => "workspace" | "unknown" | "protected";
   /** Max bytes of result kept in history before truncation. Default 40_000. */
   outputByteLimit?: number;
-  /** File-editing tools are auto-approved in both permission stances. */
+  /** File-editing tools are auto-approved in both permission stances, except
+   *  edits into a protected path or outside the workspace — those ask outside
+   *  OVERDRIVE, and in OVERDRIVE follow `overdrive.guards.protectedEdits` /
+   *  `outsideWorkspaceEdits` (see PermissionEngine.check). */
   isFileEdit?: boolean;
   /** Read-only tools run concurrently within one assistant turn. */
   parallelSafe?: boolean;

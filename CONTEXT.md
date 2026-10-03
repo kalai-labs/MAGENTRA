@@ -43,12 +43,15 @@ stance at a time.
 
 ## OVERDRIVE
 
-The fully-autonomous **stance**: nothing asks. Deletions at any path, edits to
-protected files, and writes outside the workspace all run the moment the agent
-decides on them; only a deny rule the user wrote themselves, and a kill by
-process name, still refuse. In
-exchange the turn may not end until it has verified its own work against the
-original request.
+The fully-autonomous **stance**: nothing asks. Every guarded action — a
+deletion, an edit to a protected file, a write outside the workspace — either
+runs the moment the agent decides on it or is refused outright; the brain says
+which, and as shipped they all run. A deny rule the user wrote themselves, and
+a kill by process name, always refuse. In exchange, as shipped, the turn may
+not end until it has verified its own work against the original request.
+
+The brain can make OVERDRIVE stricter, never more hesitant: no setting of it
+brings a question back.
 
 ## Plain Speech
 
@@ -86,7 +89,7 @@ by one file per edit is its own kind of mess.
 Editing documentation is not a behaviour change, so it is not asked to prove
 anything.
 
-A reminder, never a block, and asked once per shape.
+A reminder, never a block, and — as shipped — asked once per shape.
 
 It has two shapes, because there are two ways to arrive with no real evidence:
 nothing was run at all, or something was run and it was a [[Circular Check]].
@@ -143,10 +146,36 @@ system prompt, the reminders, the finishing rungs, the instructions of every
 side call, each tool's description and the description of each of its
 parameters, and which tools a session is offered.
 
-The code decides when a text is sent and what shape a tool's input has. The
-brain decides what the words are. Changing how the agent is addressed means
-editing the brain, not the code. A user's own prompt overrides still apply on
-top of it.
+The brain also holds the **behaviour knobs**, the policy that decides when that
+prose fires and how hard the agent pushes.
+
+The code decides the mechanism: what can happen and in what order. The brain
+decides what the words are and how far each mechanism goes. Changing how the
+agent is addressed, or how persistent it is, means editing the brain, not the
+code. A user's own prompt overrides still apply on top of it.
 
 The prompts that brief a subagent are the one exception. They stay with the
 code that defines the subagent types.
+
+## Behaviour Knob
+
+One policy value in the brain that shapes how the agent works rather than what
+it says: whether a finishing rung runs and how many times, when a stalled turn
+is told to change course, how many questions a clarification may ask, what
+OVERDRIVE does with a guarded action.
+
+A knob is the same for every user of a build. It is not a setting: a setting
+is one user's choice, and a knob is the build's policy around it. Every knob
+has a bounded range, so no value can make a rung fire without end. The order of
+the finishing rungs, the safety floors and the detection of dangerous commands
+are mechanism, never knobs.
+
+## OVERDRIVE Overrides
+
+The knob values that replace the ordinary ones while OVERDRIVE is on. They let
+the autonomous stance push harder or softer than an attended session from the
+brain alone — as shipped, the one difference is that an OVERDRIVE turn checks
+its own work before it ends.
+
+They apply to the session the user is talking to, never to the subagents it
+starts, and they never change what OVERDRIVE itself is.

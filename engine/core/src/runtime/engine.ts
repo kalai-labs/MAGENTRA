@@ -6,9 +6,14 @@ import {
   REASONING_EFFORTS,
   STATE_DIR_NAME,
   brainPrompt,
+  effectiveBehavior,
   isPromptDisabled,
   promptTextIfEnabled,
   renderPrompt,
+  renderPromptIfEnabled,
+  resolveBehavior,
+  type BehaviorOverride,
+  type BrainBehavior,
   type ConnectionSpec,
   type CoreEvent,
   type FrontendRequest,
@@ -147,6 +152,16 @@ export interface EngineOptions {
    * SessionOptions.toolAvailability.
    */
   toolAvailability?: Partial<ToolAvailability>;
+  /**
+   * Overrides brain/behavior.json for every root session this engine creates
+   * (boot, /clear, /resume): a section merges key by key, a list or
+   * `overdrive.overrides` replaces the whole value. Validated by the brain
+   * compiler's own rules when the engine is built — an invalid override throws
+   * here, naming the key. Not a setting and never persisted — an embedder's
+   * choice, e.g. a test that changes one knob (`behaviorWith`). See
+   * SessionOptions.behavior.
+   */
+  behavior?: BehaviorOverride;
 }
 
 /**
@@ -191,10 +206,18 @@ export class Engine {
    * but the engine must not lose it between those two moments.
    */
   private overdriveEnabled = false;
+  /**
+   * EngineOptions.behavior resolved over brain/behavior.json — the same values
+   * every session of this engine runs with. The engine reads it only for the
+   * words it prints about OVERDRIVE (overdriveTexts), so they say what the
+   * session will really do.
+   */
+  private readonly behavior: BrainBehavior;
   /** `!` commands received mid-turn, run in order once the engine goes idle. */
   private readonly pendingBangs: string[] = [];
 
   constructor(private readonly opts: EngineOptions) {
+    this.behavior = resolveBehavior(this.opts.behavior);
     this.scheduler = new CronScheduler({
       stateDir: join(this.opts.cwd, STATE_DIR_NAME),
       isIdle: () => !this.session.isBusy(),
@@ -247,6 +270,7 @@ export class Engine {
       hookRunner: this.hookRunner,
       ...(this.opts.addons ? { addons: this.opts.addons } : {}),
       ...(this.opts.toolAvailability ? { toolAvailability: this.opts.toolAvailability } : {}),
+      ...(this.opts.behavior ? { behavior: this.opts.behavior } : {}),
       ...(sessionId ? { sessionId } : {}),
       ...(initialMessages ? { initialMessages } : {}),
       ...(stats ? { stats } : {}),
@@ -296,7 +320,7 @@ export class Engine {
       v: PROTOCOL_VERSION,
       // Addons ride in the command list as `/<name>`, so the frontend's slash
       // popup lists them next to the built-ins with no extra wiring.
-      commands: [...SLASH_COMMANDS.map(({ cmd, args, desc }) => ({ cmd, args, desc })), ...this.addonCommands()],
+      commands: [...slashCommands(this.behavior).map(({ cmd, args, desc }) => ({ cmd, args, desc })), ...this.addonCommands()],
       rateCard: buildRateCard(this.opts.settings),
       sessionId: this.session.id,
       cwd: this.opts.cwd,
@@ -384,7 +408,7 @@ export class Engine {
     this.emit({
       type: "addons_updated",
       addons: this.addonSummaries(),
-      commands: [...SLASH_COMMANDS.map(({ cmd, args, desc }) => ({ cmd, args, desc })), ...this.addonCommands()],
+      commands: [...slashCommands(this.behavior).map(({ cmd, args, desc }) => ({ cmd, args, desc })), ...this.addonCommands()],
     });
   }
 
@@ -834,7 +858,7 @@ export class Engine {
     // mixed case ("/Compact"); the dispatch must not silently no-op.
     switch (command.replace(/^\//, "").toLowerCase()) {
       case "help":
-        this.emit({ type: "command_output", text: renderHelp() });
+        this.emit({ type: "command_output", text: renderHelp(this.behavior) });
         break;
       case "addons":
         this.emit({ type: "command_output", text: this.renderAddons() });
@@ -900,13 +924,10 @@ export class Engine {
           const enabled = arg === "on";
           this.overdriveEnabled = enabled;
           this.session.setOverdrive(enabled);
+          const texts = overdriveTexts(this.behavior);
           this.emit({
             type: "command_output",
-            text: enabled
-              ? "⚡ OVERDRIVE engaged — nothing asks (deletions, .magentra and .env edits, writes outside the workspace all run; a kill by process name is refused instead), and the turn self-verifies before it ends."
-              : this.session.permissions.getDeletionGuard()
-                ? "OVERDRIVE disengaged — deletions, edits to .magentra/.env and kills by process name ask again; turns end without the self-verify pass."
-                : "OVERDRIVE disengaged — edits to .magentra/.env and kills by process name ask again (deletions still run unasked: Allow deletions is on); turns end without the self-verify pass.",
+            text: enabled ? texts.engaged : texts.disengaged(this.session.permissions.getDeletionGuard()),
           });
         } else if (!arg) {
           this.emit({
@@ -1054,21 +1075,39 @@ export class Engine {
    * endpoint could read.
    *
    * Nothing here can fail the turn. An image that cannot be looked at becomes a
-   * plain note saying so, and the typed text still runs: losing the message
-   * because a vision server was down would be the worse outcome.
+   * plain note saying so (brain/prompts vision.attached-*), and the typed text
+   * still runs: losing the message because a vision server was down would be
+   * the worse outcome.
+   *
+   * A note switched off (blank override) is dropped. Its bare fact stands in
+   * only when nothing else would be left — the user message is never empty.
    */
   private async withImageDescriptions(text: string, images: ImageAttachment[] | undefined): Promise<string> {
     if (!images || images.length === 0) return text;
 
+    /** The facts behind notes that are switched off — the empty-message floor. */
+    const facts: string[] = [];
+    const note = (id: string, vars: Record<string, string | number>, fact: string): string | undefined => {
+      const rendered = renderPromptIfEnabled(id, vars);
+      if (rendered === undefined) facts.push(fact);
+      return rendered;
+    };
+    const assemble = (blocks: (string | undefined)[]): string => {
+      const message = [...blocks, text]
+        .filter((part): part is string => part !== undefined && part.trim() !== "")
+        .join("\n\n");
+      return message === "" && facts.length > 0 ? facts.join("\n\n") : message;
+    };
+
     const rejected = (reason: string): string => {
       this.emit({ type: "error", message: `Image attachment: ${reason}`, fatal: false });
-      return [
-        `[The user attached ${images.length} image(s) to this message, but they could not be read: ${reason}. ` +
-          `You have NOT seen them — do not describe them or draw conclusions from them; say what happened and ask the user how to proceed.]`,
-        text,
-      ]
-        .filter((part) => part.trim() !== "")
-        .join("\n\n");
+      return assemble([
+        note(
+          ATTACHED_UNREADABLE,
+          { count: images.length, reason },
+          `[The user attached ${images.length} image(s) to this message, but they could not be read: ${reason}.]`,
+        ),
+      ]);
     };
 
     const unusable = this.session.visionUnavailableReason();
@@ -1077,16 +1116,22 @@ export class Engine {
       return rejected(`too many images (${images.length}; the limit is ${MAX_IMAGES_PER_MESSAGE} per message)`);
     }
 
-    const blocks: string[] = [];
+    const blocks: (string | undefined)[] = [];
     for (const image of images) {
       const label = typeof image.name === "string" && image.name.trim() !== "" ? image.name.trim() : "attached image";
       if (typeof image.data !== "string" || image.data === "" || typeof image.mediaType !== "string") {
-        blocks.push(`[The user attached "${label}", but it arrived malformed and was not read. You have NOT seen it.]`);
+        blocks.push(
+          note(ATTACHED_MALFORMED, { label }, `[The user attached "${label}", but it arrived malformed and was not read.]`),
+        );
         continue;
       }
       if (image.data.length > MAX_IMAGE_DATA_CHARS) {
         blocks.push(
-          `[The user attached "${label}", but it is too large to send to the vision model. You have NOT seen it.]`,
+          note(
+            ATTACHED_TOO_LARGE,
+            { label },
+            `[The user attached "${label}", but it is too large to send to the vision model.]`,
+          ),
         );
         continue;
       }
@@ -1105,12 +1150,15 @@ export class Engine {
         const message = (err as Error).message;
         this.emit({ type: "error", message: `Could not look at ${label}: ${message}`, fatal: false });
         blocks.push(
-          `[The user attached "${label}", but the vision model could not look at it: ${message}. ` +
-            `You have NOT seen it — do not describe it or draw conclusions from it.]`,
+          note(
+            ATTACHED_FAILED,
+            { label, error: message },
+            `[The user attached "${label}", but the vision model could not look at it: ${message}.]`,
+          ),
         );
       }
     }
-    return [...blocks, text].filter((part) => part.trim() !== "").join("\n\n");
+    return assemble(blocks);
   }
 
   /**
@@ -1591,28 +1639,88 @@ export class Engine {
 /**
  * The single slash-command registry: /help renders from it and session_started
  * ships it to the frontend palette, so the two can never drift apart. `help`
- * holds extra sub-usage lines shown only in /help.
+ * holds extra sub-usage lines shown only in /help. A function of the behaviour
+ * because /overdrive's description says what OVERDRIVE does (overdriveTexts).
  */
-const SLASH_COMMANDS: (SlashCommandInfo & { help?: string[] })[] = [
-  { cmd: "/help", args: "", desc: "show this help" },
-  { cmd: "/clear", args: "", desc: "start a fresh session (history cleared)" },
-  { cmd: "/compact", args: "", desc: "compact the conversation now" },
-  { cmd: "/session", args: "", desc: "this session's usage: tokens per model, API/wall time, code churn, context now" },
-  { cmd: "/tasks", args: "", desc: "show the task list" },
-  { cmd: "/addons", args: "", desc: "list installed addons; invoke one with /<name>" },
-  { cmd: "/overdrive", args: "[on|off]", desc: "fully-autonomous stance: nothing asks, self-verified completion" },
-  // "open" rather than "show": a frontend with a settings UI opens it on the
-  // bare form (the desktop app does), while a headless one still prints the
-  // listing. One description that is true of both.
-  { cmd: "/settings", args: "[global] [k v]", desc: "open settings, or set one (add global to save to ~/.magentra)" },
-  { cmd: "/resume", args: "<session-id>", desc: "resume a previous session" },
-  { cmd: "/sessions", args: "", desc: "list saved sessions" },
-];
+function slashCommands(behavior: BrainBehavior): (SlashCommandInfo & { help?: string[] })[] {
+  return [
+    { cmd: "/help", args: "", desc: "show this help" },
+    { cmd: "/clear", args: "", desc: "start a fresh session (history cleared)" },
+    { cmd: "/compact", args: "", desc: "compact the conversation now" },
+    { cmd: "/session", args: "", desc: "this session's usage: tokens per model, API/wall time, code churn, context now" },
+    { cmd: "/tasks", args: "", desc: "show the task list" },
+    { cmd: "/addons", args: "", desc: "list installed addons; invoke one with /<name>" },
+    { cmd: "/overdrive", args: "[on|off]", desc: overdriveTexts(behavior).slashDesc },
+    // "open" rather than "show": a frontend with a settings UI opens it on the
+    // bare form (the desktop app does), while a headless one still prints the
+    // listing. One description that is true of both.
+    { cmd: "/settings", args: "[global] [k v]", desc: "open settings, or set one (add global to save to ~/.magentra)" },
+    { cmd: "/resume", args: "<session-id>", desc: "resume a previous session" },
+    { cmd: "/sessions", args: "", desc: "list saved sessions" },
+  ];
+}
+
+/**
+ * Everything the engine tells the user OVERDRIVE does — the /overdrive on and
+ * off lines and the /overdrive description in the slash registry — composed
+ * from the behaviour the session will really run with, so a brain that changes
+ * an OVERDRIVE guard or the self-verify rounds cannot leave these lines
+ * promising the old behaviour. One helper, so the three cannot disagree.
+ *
+ * `behavior` is the resolved behaviour; the engaged line and the description
+ * read it with `overdrive.overrides` applied (effectiveBehavior), the
+ * disengaged line reads it as is. The shipped brain yields the exact strings these lines had
+ * before they were composed (guard-status-lines-tell-the-truth).
+ *
+ * Fixed floors, not knobs: a kill by process name is always refused in
+ * OVERDRIVE, and outside it the deletion guard, protected edits and kills by
+ * name ask — so those clauses are words, not reads. A guard set to "refuse" is
+ * not asking, so "nothing asks" stays true in every brain.
+ */
+function overdriveTexts(behavior: BrainBehavior): {
+  engaged: string;
+  disengaged: (deletionGuard: boolean) => string;
+  slashDesc: string;
+} {
+  // Full paths off `b`, never destructured, so a grep for `b.<key>` finds every read.
+  const b = effectiveBehavior(behavior, true);
+  const runs: string[] = [];
+  const refused: string[] = [];
+  // The protected decision is taken first and its value wins, so the two
+  // deletion guards split "deletions" only when they differ.
+  if (b.overdrive.guards.deletions === b.overdrive.guards.protectedDeletions) {
+    (b.overdrive.guards.deletions === "run" ? runs : refused).push("deletions");
+  } else {
+    (b.overdrive.guards.protectedDeletions === "run" ? runs : refused).push("deletions in .magentra");
+    (b.overdrive.guards.deletions === "run" ? runs : refused).push("deletions outside .magentra");
+  }
+  (b.overdrive.guards.protectedEdits === "run" ? runs : refused).push(".magentra and .env edits");
+  (b.overdrive.guards.outsideWorkspaceEdits === "run" ? runs : refused).push("writes outside the workspace");
+  refused.push("a kill by process name");
+  const clauses: string[] = [];
+  if (runs.length > 0) clauses.push(`${runs.join(", ")} ${runs.length > 1 ? "all run" : "run"}`);
+  clauses.push(
+    refused.length === 1
+      ? `${refused[0]} is refused instead`
+      : `${refused.slice(0, -1).join(", ")} and ${refused[refused.length - 1]} are refused instead`,
+  );
+  const odVerifies = b.finishing.selfVerify.maxRounds > 0;
+  const baseVerifies = behavior.finishing.selfVerify.maxRounds > 0;
+  const offTail = baseVerifies ? "; turns still self-verify before they end." : "; turns end without the self-verify pass.";
+  return {
+    engaged: `⚡ OVERDRIVE engaged — nothing asks (${clauses.join("; ")})${odVerifies ? ", and the turn self-verifies before it ends." : "."}`,
+    disengaged: (deletionGuard) =>
+      deletionGuard
+        ? `OVERDRIVE disengaged — deletions, edits to .magentra/.env and kills by process name ask again${offTail}`
+        : `OVERDRIVE disengaged — edits to .magentra/.env and kills by process name ask again (deletions still run unasked: Allow deletions is on)${offTail}`,
+    slashDesc: `fully-autonomous stance: nothing asks${odVerifies ? ", self-verified completion" : ""}`,
+  };
+}
 
 /** The /help text, rendered from the registry plus the non-slash affordances. */
-function renderHelp(): string {
+function renderHelp(behavior: BrainBehavior): string {
   const lines = ["Built-in commands:"];
-  for (const spec of SLASH_COMMANDS) {
+  for (const spec of slashCommands(behavior)) {
     const head = `${spec.cmd}${spec.args ? ` ${spec.args}` : ""}`;
     lines.push(`  ${head.padEnd(24)} ${spec.desc}`);
     if (spec.help) lines.push(...spec.help);
@@ -1726,6 +1834,17 @@ const ADDON_AUTHOR_RETRY_FEEDBACK = brainPrompt("addon-author.retry-feedback");
 
 /** Follows a user's `!` command and its output into the conversation. */
 const SHELL_COMMAND_REMINDER = brainPrompt("reminder.shell-command");
+
+// ── Notes for user-attached images (withImageDescriptions) ──────────────────
+
+/** No image of the message was read: no vision model, vision off, or too many. */
+const ATTACHED_UNREADABLE = brainPrompt("vision.attached-unreadable");
+/** One attached image arrived without data or a media type. */
+const ATTACHED_MALFORMED = brainPrompt("vision.attached-malformed");
+/** One attached image is over MAX_IMAGE_DATA_CHARS. */
+const ATTACHED_TOO_LARGE = brainPrompt("vision.attached-too-large");
+/** The vision model failed on one attached image. */
+const ATTACHED_FAILED = brainPrompt("vision.attached-failed");
 
 /** Optional knobs the wizard passes into addon authoring. */
 type AddonGenOptions = {

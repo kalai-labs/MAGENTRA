@@ -1,6 +1,8 @@
 import { z } from "zod";
-import { toolDescription, toolParam } from "@magentra/protocol";
+import { brainPrompt, promptTextIfEnabled, toolDescription, toolParam } from "@magentra/protocol";
 import type { ToolDefinition } from "@magentra/core";
+
+const SEARCH_DISABLED = brainPrompt("websearch.disabled");
 
 export interface SearchResult {
   title: string;
@@ -155,7 +157,7 @@ export const webSearchTool: ToolDefinition<z.infer<typeof inputSchema>> = {
     const { enabled, provider = "duckduckgo", apiKeyEnv } = ctx.session.settings.search;
     if (enabled === false) {
       return {
-        content: 'Web search is disabled in settings ("search.enabled" is false). Do not retry; work without web search or ask the user to enable it.',
+        content: promptTextIfEnabled(SEARCH_DISABLED) ?? 'Web search is disabled in settings ("search.enabled" is false).',
         isError: true,
       };
     }

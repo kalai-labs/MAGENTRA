@@ -18,103 +18,134 @@
 // from the session or the permission engine, so it can be checked in isolation.
 
 import { extname } from "node:path";
-import { brainPrompt, promptText, renderPrompt } from "@magentra/protocol";
+import { brainPrompt, promptText, renderPrompt, renderPromptIfEnabled, type BrainBehavior } from "@magentra/protocol";
+
+// The detector lists and counts below come from brain/behavior.json (the
+// `evidence` section, finishing.maxNamedFiles, finishing.selfVerify.maxHedges).
+// Every exported judge takes the behaviour object the session is running with
+// — the base, or base + overdrive.overrides while OVERDRIVE is on — so nothing
+// here holds a value of its own.
+
+/** Escapes `text` for a RegExp source. `-` is left alone: outside a character
+ *  class it is literal, and leaving it keeps the rebuilt sources byte-equal to
+ *  the hand-written patterns they replaced. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Matches nothing: what an emptied list compiles to. */
+const NEVER = /(?!)/;
+
+/** The detectors one behaviour object implies, built once per object. */
+interface Detectors {
+  readonly codeExtensions: ReadonlySet<string>;
+  readonly uiExtensions: ReadonlySet<string>;
+  /** `name.<infix>.ext` — a test or story, never the page. */
+  readonly uiExclude: RegExp;
+  readonly testDoubleMarkers: readonly string[];
+  /** A command word or flag that drives a browser. */
+  readonly browserRun: RegExp;
+  /** Heads that only READ or print a command's words: `cat playwright.config.ts` runs no browser. */
+  readonly notARun: RegExp;
+  readonly screenshot: RegExp;
+}
+
+const detectorCache = new WeakMap<BrainBehavior, Detectors>();
+
+function detectorsOf(b: BrainBehavior): Detectors {
+  let d = detectorCache.get(b);
+  if (d === undefined) {
+    const infixes = b.evidence.uiExcludeInfixes;
+    const tools = b.evidence.browserRun.tools;
+    const runParts = [
+      ...(tools.length > 0 ? [`\\b(?:${tools.map(escapeRegExp).join("|")})\\b`] : []),
+      ...b.evidence.browserRun.flags.map((flag) => `${escapeRegExp(flag)}\\b`),
+    ];
+    const heads = b.evidence.browserRun.readOnlyHeads;
+    const shots = b.evidence.screenshotExtensions;
+    d = {
+      codeExtensions: new Set(b.evidence.codeExtensions),
+      uiExtensions: new Set(b.evidence.uiExtensions),
+      uiExclude: infixes.length > 0 ? new RegExp(`\\.(?:${infixes.map(escapeRegExp).join("|")})\\.[^.\\\\/]+$`, "i") : NEVER,
+      testDoubleMarkers: b.evidence.testDoubleMarkers,
+      browserRun: runParts.length > 0 ? new RegExp(runParts.join("|"), "i") : NEVER,
+      notARun: heads.length > 0 ? new RegExp(`^(?:${heads.map(escapeRegExp).join("|")})$`, "i") : NEVER,
+      // A regex, not extname: extname(".png") is "", and the old pattern
+      // matched a bare ".png" too.
+      screenshot: shots.length > 0 ? new RegExp(`\\.(?:${shots.map((e) => escapeRegExp(e.slice(1))).join("|")})$`, "i") : NEVER,
+    };
+    detectorCache.set(b, d);
+  }
+  return d;
+}
 
 /**
- * File suffixes whose contents are executable behaviour, so a change to one can
- * be proven by running it. Deliberately generous — the rung it feeds only ever
- * reminds, and a reminder on a file that turns out to be unrunnable costs one
- * honest sentence, while a miss costs an unverified change.
- *
- * Documentation, configuration and data files are absent on purpose: editing a
- * README or a lockfile is not a behaviour change, and demanding a test run for
- * one is exactly the ceremony the prompts tell the agent to skip.
+ * The subset of `paths` whose suffix marks them as runnable source
+ * (evidence.codeExtensions). The list is deliberately generous — the rung it
+ * feeds only ever reminds, and a reminder on a file that turns out to be
+ * unrunnable costs one honest sentence, while a miss costs an unverified
+ * change. Documentation, configuration and data files are absent on purpose:
+ * editing a README or a lockfile is not a behaviour change.
  */
-const CODE_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
-  ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs",
-  ".py", ".rb", ".go", ".rs", ".java", ".kt", ".kts", ".scala",
-  ".c", ".h", ".cc", ".cpp", ".hpp", ".cs", ".m", ".mm", ".swift",
-  ".php", ".lua", ".dart", ".ex", ".exs", ".erl", ".hs", ".clj",
-  ".sh", ".bash", ".zsh", ".ps1", ".sql",
-  ".vue", ".svelte", ".html", ".htm", ".css", ".scss", ".sass", ".less",
-]);
-
-/** The subset of `paths` whose suffix marks them as runnable source. */
-export function codeFilesAmong(paths: Iterable<string>): string[] {
+export function codeFilesAmong(paths: Iterable<string>, b: BrainBehavior): string[] {
+  const { codeExtensions } = detectorsOf(b);
   const out: string[] = [];
   for (const path of paths) {
-    if (CODE_FILE_EXTENSIONS.has(extname(path).toLowerCase())) out.push(path);
+    if (codeExtensions.has(extname(path).toLowerCase())) out.push(path);
   }
   return out;
 }
 
 /**
- * Text that marks a file as containing a test double the agent wrote itself.
- *
- * Chosen for PRECISION, not coverage. A miss costs nothing beyond today's
- * behaviour — the rung simply stays quiet — while a false positive spends a
- * round trip and teaches the model to skim past the reminder, which is worse
- * than never sending it. So this matches only text that is unambiguously
- * standing something in for something else: the mocking libraries by name, and
- * the naming convention a hand-rolled double announces itself with.
+ * Whether written text stands something in for a real dependency
+ * (evidence.testDoubleMarkers, plain substrings). The markers are chosen for
+ * PRECISION, not coverage: a miss costs nothing beyond today's behaviour, while
+ * a false positive spends a round trip and teaches the model to skim past the
+ * reminder.
  */
-const TEST_DOUBLE_MARKERS: readonly string[] = [
-  "unittest.mock", "MagicMock", "AsyncMock", "mock.patch", "@patch(", "patch.object(",
-  "monkeypatch.setattr", "monkeypatch.setitem",
-  "jest.mock(", "jest.fn(", "vi.mock(", "vi.fn(", "sinon.stub(", "sinon.fake", "sinon.mock(",
-  "class Fake", "class Mock", "class Stub", "class Dummy",
-  "def fake_", "def mock_", "def stub_",
-];
-
-/** Whether written text stands something in for a real dependency. */
-export function looksLikeTestDouble(text: string): boolean {
-  return TEST_DOUBLE_MARKERS.some((marker) => text.includes(marker));
+export function looksLikeTestDouble(text: string, b: BrainBehavior): boolean {
+  return detectorsOf(b).testDoubleMarkers.some((marker) => text.includes(marker));
 }
 
-/** Suffixes of what the user SEES in a browser. Plain .js is left out on purpose:
- *  it is as often a server as a page, and a server is proven by running it. */
-const UI_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
-  ".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte", ".jsx", ".tsx",
-]);
-
-/** The subset of `paths` a user looks at in a browser. A test or spec file is
- *  not the page, however it is spelled. */
-export function uiFilesAmong(paths: Iterable<string>): string[] {
+/** The subset of `paths` a user looks at in a browser (evidence.uiExtensions —
+ *  plain .js is left out: it is as often a server as a page). A test or spec
+ *  file is not the page, however it is spelled (evidence.uiExcludeInfixes). */
+export function uiFilesAmong(paths: Iterable<string>, b: BrainBehavior): string[] {
+  const { uiExclude, uiExtensions } = detectorsOf(b);
   const out: string[] = [];
   for (const path of paths) {
-    if (/\.(?:test|spec|stories)\.[^.\\/]+$/i.test(path)) continue;
-    if (UI_FILE_EXTENSIONS.has(extname(path).toLowerCase())) out.push(path);
+    if (uiExclude.test(path)) continue;
+    if (uiExtensions.has(extname(path).toLowerCase())) out.push(path);
   }
   return out;
 }
 
-/** A command that drives a real or headless browser — evidence of the page as a user meets it. */
-const BROWSER_RUN = /\b(?:playwright|puppeteer|selenium|webdriver|cypress|chromedp|wkhtmltoimage)\b|--headless\b|--screenshot\b/i;
+/** Whether a Read of `path` looked at a picture of the page (evidence.screenshotExtensions). */
+export function isScreenshotPath(path: string, b: BrainBehavior): boolean {
+  return detectorsOf(b).screenshot.test(path);
+}
 
-/** Heads that only READ or print a command's words: `cat playwright.config.ts` runs no browser. */
-const NOT_A_RUN = /^(?:cat|less|more|head|tail|grep|egrep|rg|ag|ls|dir|find|echo|printf|which|where|type|code|vi|vim|nano|open|stat|wc|file)$/i;
 /** Installing or updating a browser driver is not driving one. */
 const INSTALL = /^(?:(?:npm|pnpm|yarn|bun)\s+(?:i|install|add|ci|remove|rm|uninstall|update|up)\b|pip3?\s+install\b|python3?\s+-m\s+(?:pip|playwright)\s+install\b|(?:npx|bunx|pnpm\s+dlx|yarn\s+dlx)\s+(?:-y\s+)?playwright\s+install\b|playwright\s+install\b|brew\s+install\b|apt(?:-get)?\s+install\b)/i;
 
 /** Whether a shell command drives a browser — one of its commands, not a mention of one. */
-export function looksLikeBrowserRun(command: string): boolean {
+export function looksLikeBrowserRun(command: string, b: BrainBehavior): boolean {
+  const { browserRun, notARun } = detectorsOf(b);
   return command.split(/&&|\|\||[;|\n]/).some((segment) => {
     const s = segment.trim().replace(/^(?:sudo|env|time|nohup)\s+/, "");
-    if (!BROWSER_RUN.test(s)) return false;
+    if (!browserRun.test(s)) return false;
     const head = s.split(/\s+/)[0]?.split(/[\\/]/).pop() ?? "";
-    if (NOT_A_RUN.test(head) || INSTALL.test(s)) return false;
+    if (notARun.test(head) || INSTALL.test(s)) return false;
     return !/(?:^|\s)--?(?:version|help|v|h)\b/.test(s);
   });
 }
 
-/** How many changed files a rung names before it starts counting instead. A
+/** The changed files a rung names, then a count (finishing.maxNamedFiles). A
  *  reminder that lists forty paths teaches nothing and costs the context it
  *  takes; the point is to name the work, not to reprint the diff. */
-const MAX_NAMED_FILES = 8;
-
-function fileList(files: string[]): string {
-  if (files.length <= MAX_NAMED_FILES) return files.join(", ");
-  return `${files.slice(0, MAX_NAMED_FILES).join(", ")} and ${files.length - MAX_NAMED_FILES} more`;
+function fileList(files: string[], b: BrainBehavior): string {
+  if (files.length <= b.finishing.maxNamedFiles) return files.join(", ");
+  return `${files.slice(0, b.finishing.maxNamedFiles).join(", ")} and ${files.length - b.finishing.maxNamedFiles} more`;
 }
 
 /**
@@ -155,13 +186,18 @@ const VISION_OFF = brainPrompt("finishing.vision-off");
  */
 const DOUBLE_CLAUSE = brainPrompt("finishing.double-clause");
 
-export function runtimeEvidenceText(files: string[], vision: boolean, doubleFiles: string[] = []): string {
-  return renderPrompt(RUNTIME_EVIDENCE, {
-    files: fileList(files),
+/**
+ * The runtime-evidence rung's text, or undefined when finishing.runtime-evidence
+ * is switched off (enabled: false or a blank override): the caller then skips
+ * the rung, since a blank message would still cost the round it was emptied to avoid.
+ */
+export function runtimeEvidenceText(files: string[], vision: boolean, doubleFiles: string[], b: BrainBehavior): string | undefined {
+  return renderPromptIfEnabled(RUNTIME_EVIDENCE, {
+    files: fileList(files, b),
     visionNote: promptText(vision ? VISION_ON : VISION_OFF),
     doubleNote: doubleFiles.length === 0
       ? ""
-      : renderPrompt(DOUBLE_CLAUSE, { doubleFiles: fileList(doubleFiles) }),
+      : renderPrompt(DOUBLE_CLAUSE, { doubleFiles: fileList(doubleFiles, b) }),
   });
 }
 
@@ -176,9 +212,10 @@ export function runtimeEvidenceText(files: string[], vision: boolean, doubleFile
  */
 const BROWSER_EVIDENCE = brainPrompt("finishing.browser-evidence");
 
-export function browserEvidenceText(files: string[], vision: boolean): string {
-  return renderPrompt(BROWSER_EVIDENCE, {
-    files: fileList(files),
+/** The browser rung's text, or undefined when finishing.browser-evidence is switched off (the rung is skipped). */
+export function browserEvidenceText(files: string[], vision: boolean, b: BrainBehavior): string | undefined {
+  return renderPromptIfEnabled(BROWSER_EVIDENCE, {
+    files: fileList(files, b),
     visionNote: promptText(vision ? VISION_ON : VISION_OFF),
   });
 }
@@ -237,9 +274,9 @@ export function findSymptoms(text: string): string[] {
   return sentencesOf(text).filter((s) => SYMPTOM.test(s) && !NOT_A_SYMPTOM.test(s) && !HEDGE.test(s));
 }
 
-/** The sentences of a final answer that leave something open. At most five. */
-export function findHedges(text: string): string[] {
-  return sentencesOf(text).filter((s) => HEDGE.test(s)).slice(0, 5);
+/** The sentences of a final answer that leave something open. At most finishing.selfVerify.maxHedges. */
+export function findHedges(text: string, b: BrainBehavior): string[] {
+  return sentencesOf(text).filter((s) => HEDGE.test(s)).slice(0, b.finishing.selfVerify.maxHedges);
 }
 
 /** Quoted, for a clause: «a»; «b». */
@@ -258,10 +295,11 @@ const SELF_VERIFY_CLOSING_PLAIN = brainPrompt("finishing.self-verify.closing-pla
  */
 export function selfVerifyText(
   changedCode: string[],
-  open: { symptoms?: string[]; hedges?: string[] } = {},
+  open: { symptoms?: string[]; hedges?: string[] },
+  b: BrainBehavior,
 ): string | undefined {
   const base = changedCode.length > 0
-    ? renderPrompt(SELF_VERIFY_CLOSING_CODE, { files: fileList(changedCode) })
+    ? renderPrompt(SELF_VERIFY_CLOSING_CODE, { files: fileList(changedCode, b) })
     : promptText(SELF_VERIFY_CLOSING_PLAIN);
   // The turn's own loose ends, quoted so the model does not have to find them.
   // They ride inside the one closing slot, so the sentinel head never varies.

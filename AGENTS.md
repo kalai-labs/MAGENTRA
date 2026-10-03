@@ -33,6 +33,7 @@ engine/core       the engine: runtime (Session, Engine), agent, config, knowledg
                   scheduling, state, integrations (MCP)
 engine/tools      the tools an agent calls
 engine/host       the headless process both frontends spawn
+brain/            model-facing prose and behaviour knobs (behavior.json), compiled into the engine
 app/              desktop app — main process, preload bridge, renderer (plain JS)
 tui/              terminal UI (TypeScript, Ink)
 tests/            feature suite (features/, lib/), gateway records (gateway/), approved artifacts

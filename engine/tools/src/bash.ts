@@ -3,11 +3,12 @@ import { createWriteStream, existsSync } from "node:fs";
 import { isAbsolute, join, resolve as pathResolve, sep as pathSep } from "node:path";
 import { z } from "zod";
 import type { SessionServices, ToolDefinition, ToolResult } from "@magentra/core";
-import { toolDescription, toolParam } from "@magentra/protocol";
+import { brainPrompt, promptTextIfEnabled, toolDescription, toolParam } from "@magentra/protocol";
 
 const DEFAULT_TIMEOUT = 120_000;
 const MAX_TIMEOUT = 600_000;
 const PWD_MARKER = "__MAGENTRA_PWD__";
+const FOREGROUND_SLEEP = brainPrompt("bash.foreground-sleep");
 
 // Single-word commands that delete files/folders (POSIX + cmd.exe + common
 // cross-platform CLIs). Matched case-insensitively as a standalone command
@@ -100,13 +101,15 @@ export function bashDeletionSubject(command: string): string | undefined {
   return flagged ? command : undefined;
 }
 
-// ── OVERDRIVE deletion scope ────────────────────────────────────────────────
-// Classifies a deletion-flagged command as provably-in-workspace or unknown.
-// Conservative by construction: git history rewrites, SQL/infra teardown,
-// shell substitution, unparseable segments, bare/root wildcards, and any
-// target that does not resolve strictly inside the workspace all yield
-// "unknown" (which keeps the always-ask guard). Only plain rm/del/find/mv
-// forms whose every target lands inside the workspace yield "workspace".
+// ── Deletion scope ──────────────────────────────────────────────────────────
+// Classifies a deletion-flagged command as protected, provably-in-workspace or
+// unknown. Conservative by construction: git history rewrites, SQL/infra
+// teardown, shell substitution, unparseable segments, bare/root wildcards, and
+// any target that does not resolve strictly inside the workspace all yield
+// "unknown". Only plain rm/del/find/mv forms whose every target lands inside
+// the workspace yield "workspace". The permission engine acts on "protected"
+// alone (see below); "workspace" and "unknown" are reported, and no guard
+// tells them apart today.
 
 /** Substitution or expansion the static classifier cannot see through. */
 const UNANALYZABLE = /[$`]|\$\(|<\(|>\(/;
@@ -175,9 +178,11 @@ export function bashDeletionTargets(command: string): string[] | undefined {
 // `.magentra` directories hold MAGENTRA's own state (settings, sessions,
 // transcripts, worktrees). Deleting one is never routine autonomous cleanup,
 // so any deletion that targets a folder NAMED .magentra — or that we cannot
-// rule out targeting one — classifies as "protected": the guard then asks the
-// user in every mode, beating the "allow deletions" setting, explicit allow
-// rules, and OVERDRIVE's workspace scope-split.
+// rule out targeting one — classifies as "protected". Outside OVERDRIVE the
+// guard then always asks, beating the "allow deletions" setting and explicit
+// allow rules. In OVERDRIVE the protected decision is taken first and follows
+// brain/behavior.json overdrive.guards.protectedDeletions: "run" (shipped)
+// runs it unasked, "refuse" refuses it without asking.
 const MAGENTRA_MENTION = /\.magentra\b/i;
 
 /** True when the target IS a .magentra directory (or empties one via `/*`). */
@@ -692,8 +697,7 @@ export const bashTool: ToolDefinition<z.infer<typeof inputSchema>> = {
   execute: async (input, ctx, signal) => {
     if (/^\s*sleep\s+[\d.]+\s*$/.test(input.command)) {
       return {
-        content:
-          "Foreground sleep is blocked. If you are waiting for something, run the wait in the background (run_in_background with an until-loop) so you keep working meanwhile.",
+        content: promptTextIfEnabled(FOREGROUND_SLEEP) ?? "Foreground sleep is blocked.",
         isError: true,
       };
     }

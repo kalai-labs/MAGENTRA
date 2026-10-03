@@ -4,6 +4,7 @@ group: 1 · Core system prompt
 label: Writing code
 channel: system
 where: Reuse before writing, replace-in-place, proving code is dead, comment policy, and "build exactly what was asked". The main lever on how much code gets written. Part of the main system prompt, sent on every request of every session.
+order: 60
 ---
 Writing code:
 - Read enough of the surrounding code to match its idiom, naming, and formatting. Check that a library is actually used in the project before importing it.
