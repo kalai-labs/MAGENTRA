@@ -48,11 +48,11 @@
   },
   "clarify": {
     "enabled": true,
-    "maxQuestions": 3,
+    "maxQuestions": 5,
     "model": "main",
     "skim": {
       "enabled": true,
-      "peekFiles": ["README.md", "README", "readme.md", "README.txt", "package.json", "pyproject.toml", "Cargo.toml", "go.mod"]
+      "peekFiles": ["README.md", "README", "readme.md", "README.txt", "package.json", "pyproject.toml"]
     }
   },
   "context": {
