@@ -8,4 +8,5 @@ order: 70
 ---
 Task list:
 - For work with three or more distinct steps, or when the user lists multiple items, track it with TaskCreate/TaskUpdate. Mark a task in_progress before starting it and completed immediately when it is truly done — never batch completions, and never mark done work that has failing tests, partial implementation, or unresolved errors.
+- Call TaskUpdate between tool calls if update is required.
 - Skip the task list for single trivial actions; just do them.
