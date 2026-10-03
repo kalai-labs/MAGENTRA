@@ -10,6 +10,19 @@ Releases up to 0.13.0.0 carry a fourth BUILD part. See
 
 <!-- new-release -->
 
+## 0.21.0 — 2026-10-03
+
+### Features
+
+- new brain ([32a5f67](https://github.com/kalai-labs/MAGENTRA/commit/32a5f67c31433c48ccb17731abb208461f869c0b))
+- brain feature ([280b7cd](https://github.com/kalai-labs/MAGENTRA/commit/280b7cd305f0ea73f34ee9cb51439d4768843e54))
+
+### Tests
+
+- update ([6427d87](https://github.com/kalai-labs/MAGENTRA/commit/6427d8755fea3ff5b25a451dfbefdbea53436012))
+
+[Compare with v0.20.4](https://github.com/kalai-labs/MAGENTRA/compare/v0.20.4...v0.21.0)
+
 ## 0.20.4 — 2026-09-28
 
 ### Refactoring
