@@ -16,10 +16,10 @@
     "a-turn-held-on-a-prompt-already-has-its-first-calls-spend-in-the-transcript"
   ],
   "freshness": {
-    "hash": "84a40095d91a590b",
+    "hash": "aa032c0812295bb2",
     "fileHashes": {
-      "engine/core/src/runtime/session.ts": "84a40095d91a590b"
+      "engine/core/src/runtime/session.ts": "aa032c0812295bb2"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

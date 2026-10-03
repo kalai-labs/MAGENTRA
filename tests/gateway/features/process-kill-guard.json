@@ -29,14 +29,14 @@
     "the-approval-card-shows-the-guards-line-in-the-single-console-and-in-a-tiled-pane"
   ],
   "freshness": {
-    "hash": "6b95106549183156",
+    "hash": "9ede19b7308da2cc",
     "fileHashes": {
       "engine/core/src/runtime/permissions.ts": "1ada79ce2c432655",
-      "engine/tools/src/bash.ts": "f1230a0e685f0828",
-      "engine/tools/src/monitor.ts": "53e5de125afed648",
+      "engine/tools/src/bash.ts": "58a57ec9a65e2ff9",
+      "engine/tools/src/monitor.ts": "dbceb519b5a04f7b",
       "app/renderer/modules/landing.js": "17b84406d9e4300b",
       "app/renderer/modules/tabs.js": "d46f0e318ce62e27"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

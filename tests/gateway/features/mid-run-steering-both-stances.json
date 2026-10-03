@@ -18,11 +18,11 @@
     "text-sent-when-the-turn-has-already-ended-becomes-a-normal-user-turn"
   ],
   "freshness": {
-    "hash": "a967891b207cfb9d",
+    "hash": "0e1702868fac336c",
     "fileHashes": {
-      "engine/core/src/runtime/session.ts": "84a40095d91a590b",
-      "engine/core/src/runtime/engine.ts": "84b0212db247b114"
+      "engine/core/src/runtime/session.ts": "aa032c0812295bb2",
+      "engine/core/src/runtime/engine.ts": "3c6da621d8de98c2"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

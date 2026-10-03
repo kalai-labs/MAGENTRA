@@ -20,10 +20,10 @@
     "a-docx-and-a-pdf-come-back-as-extracted-numbered-text-and-a-huge-one-is-refused"
   ],
   "freshness": {
-    "hash": "6d92f6e4ae10d9dd",
+    "hash": "65c3d54426de3025",
     "fileHashes": {
-      "engine/tools/src/read.ts": "6d92f6e4ae10d9dd"
+      "engine/tools/src/read.ts": "65c3d54426de3025"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-10-03"
   }
 }

@@ -20,10 +20,10 @@
     "a-blown-20mb-buffer-is-a-truncated-result-not-a-failure"
   ],
   "freshness": {
-    "hash": "08daf0977698cf28",
+    "hash": "04822449f4c9df06",
     "fileHashes": {
-      "engine/tools/src/grep.ts": "08daf0977698cf28"
+      "engine/tools/src/grep.ts": "04822449f4c9df06"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-10-03"
   }
 }

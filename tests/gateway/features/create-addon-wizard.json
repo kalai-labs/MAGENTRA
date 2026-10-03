@@ -16,11 +16,11 @@
   "deferred": false,
   "tests": [],
   "freshness": {
-    "hash": "530ad5f2e0f8d8ff",
+    "hash": "4f6668167329d3d6",
     "fileHashes": {
-      "engine/core/src/runtime/engine.ts": "84b0212db247b114",
+      "engine/core/src/runtime/engine.ts": "3c6da621d8de98c2",
       "engine/core/src/config/frontmatter.ts": "65783ed844cc82c7"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

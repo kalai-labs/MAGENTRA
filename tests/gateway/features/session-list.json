@@ -22,11 +22,11 @@
     "a-subagent-transcript-is-never-listed-and-a-corrupt-first-line-costs-only-the-label"
   ],
   "freshness": {
-    "hash": "e224457682028bac",
+    "hash": "1ab42ee46aa82415",
     "fileHashes": {
       "engine/core/src/state/transcript.ts": "8dc45df43a958a9c",
-      "engine/core/src/runtime/engine.ts": "84b0212db247b114"
+      "engine/core/src/runtime/engine.ts": "3c6da621d8de98c2"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

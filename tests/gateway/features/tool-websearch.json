@@ -14,10 +14,10 @@
   "deferred": false,
   "tests": [],
   "freshness": {
-    "hash": "d2a0e5b579580cd5",
+    "hash": "61ce1b573cda0841",
     "fileHashes": {
-      "engine/tools/src/webSearch.ts": "d2a0e5b579580cd5"
+      "engine/tools/src/webSearch.ts": "61ce1b573cda0841"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-10-03"
   }
 }

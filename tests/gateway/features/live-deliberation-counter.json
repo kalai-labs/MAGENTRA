@@ -16,12 +16,12 @@
   "deferred": false,
   "tests": [],
   "freshness": {
-    "hash": "1b48ec7346d50c21",
+    "hash": "0d48f470d3d0bed0",
     "fileHashes": {
       "engine/protocol/src/tokens.ts": "b402e08d2f7b0ca4",
       "engine/core/src/runtime/sessionStats.ts": "c928036101235de4",
-      "engine/core/src/runtime/session.ts": "84a40095d91a590b"
+      "engine/core/src/runtime/session.ts": "aa032c0812295bb2"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

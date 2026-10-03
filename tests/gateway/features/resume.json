@@ -19,11 +19,11 @@
     "after-a-resume-the-model-still-knows-what-the-earlier-turn-established"
   ],
   "freshness": {
-    "hash": "f0734d1de175a86f",
+    "hash": "80862808ca9fe6ba",
     "fileHashes": {
       "engine/core/src/state/transcript.ts": "8dc45df43a958a9c",
-      "engine/core/src/runtime/session.ts": "84a40095d91a590b"
+      "engine/core/src/runtime/session.ts": "aa032c0812295bb2"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

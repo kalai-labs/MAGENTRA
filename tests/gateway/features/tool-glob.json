@@ -20,10 +20,10 @@
     "a-thousand-paths-are-returned-followed-by-a-truncation-note"
   ],
   "freshness": {
-    "hash": "e3c275f1bdd221a5",
+    "hash": "7a61108c31e3e6c6",
     "fileHashes": {
-      "engine/tools/src/glob.ts": "e3c275f1bdd221a5"
+      "engine/tools/src/glob.ts": "7a61108c31e3e6c6"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-10-03"
   }
 }

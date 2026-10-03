@@ -22,11 +22,11 @@
     "no-addons-argument-and-an-empty-roster-build-the-identical-prompt"
   ],
   "freshness": {
-    "hash": "e1e2808080bacb93",
+    "hash": "f74494823ae4a85b",
     "fileHashes": {
-      "engine/core/src/agent/prompts.ts": "2a0e6691ac29e865",
-      "engine/core/src/agent/addons.ts": "ff424ed1464098d4"
+      "engine/core/src/agent/prompts.ts": "7b1ac1428afce9d4",
+      "engine/core/src/agent/addons.ts": "9f515305e4028587"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

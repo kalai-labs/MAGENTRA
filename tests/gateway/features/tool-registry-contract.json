@@ -22,11 +22,11 @@
     "read-glob-grep-tasklist-cronlist-and-graphquery-run-against-a-workspace-and-answer"
   ],
   "freshness": {
-    "hash": "009be4f87a23c0ed",
+    "hash": "e2fedebf8cfd6b74",
     "fileHashes": {
       "engine/tools/src/index.ts": "f1fe5ca4c0823e4d",
-      "engine/core/src/agent/tool.ts": "3e5506edf577a6a2"
+      "engine/core/src/agent/tool.ts": "95d5254162b5401a"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

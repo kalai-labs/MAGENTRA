@@ -21,10 +21,10 @@
     "neither-the-test-nor-the-printer-can-write-the-artifact"
   ],
   "freshness": {
-    "hash": "2a0e6691ac29e865",
+    "hash": "7b1ac1428afce9d4",
     "fileHashes": {
-      "engine/core/src/agent/prompts.ts": "2a0e6691ac29e865"
+      "engine/core/src/agent/prompts.ts": "7b1ac1428afce9d4"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

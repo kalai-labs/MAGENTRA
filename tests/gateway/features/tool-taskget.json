@@ -20,10 +20,10 @@
     "owner-and-status-set-by-taskupdate-are-reflected-by-taskget"
   ],
   "freshness": {
-    "hash": "77a380779a3e9d01",
+    "hash": "38a4d9e262d5ddb4",
     "fileHashes": {
-      "engine/tools/src/tasks.ts": "77a380779a3e9d01"
+      "engine/tools/src/tasks.ts": "38a4d9e262d5ddb4"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-10-03"
   }
 }

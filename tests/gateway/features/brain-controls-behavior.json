@@ -1,0 +1,25 @@
+{
+  "id": "brain-controls-behavior",
+  "name": "The brain controls behaviour, not only prose",
+  "area": "protocol",
+  "section": "Protocol & host",
+  "prose": "brain/behavior.json holds the behaviour knobs the engine used to hard-code: which finishing rungs run and their bounds, the stall detector, clarify limits, what OVERDRIVE does beyond its prompt section, and the detector lists the evidence rungs use. Every default equals the constant it replaced, so the shipped brain behaves exactly as before; editing the file and rebuilding changes the behaviour. The last instructional texts still in code move into brain/prompts.",
+  "kinds": [
+    "pure",
+    "fs"
+  ],
+  "entryFiles": [
+    "engine/protocol/src/brain.ts",
+    "tools/brain/compile.mjs"
+  ],
+  "invariant": "Every behaviour knob the engine reads comes from brain/behavior.json, the shipped values reproduce the previous behaviour exactly, and changing a value changes that behaviour on the next build.",
+  "tests": [],
+  "freshness": {
+    "hash": "88ff195847813502",
+    "fileHashes": {
+      "engine/protocol/src/brain.ts": "f18e4a36fddf72cd",
+      "tools/brain/compile.mjs": "2a3dc058723f6681"
+    },
+    "recordedAt": "2026-10-03"
+  }
+}

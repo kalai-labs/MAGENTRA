@@ -19,11 +19,11 @@
     "in-overdrive-a-turn-that-called-no-tool-is-never-self-checked"
   ],
   "freshness": {
-    "hash": "2f829825a1266667",
+    "hash": "96178349c3e78015",
     "fileHashes": {
-      "engine/core/src/runtime/finishing.ts": "e0faf82266e78cdb",
-      "engine/core/src/runtime/session.ts": "84a40095d91a590b"
+      "engine/core/src/runtime/finishing.ts": "40b50e4445d2fbdf",
+      "engine/core/src/runtime/session.ts": "aa032c0812295bb2"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

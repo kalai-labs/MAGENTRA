@@ -21,10 +21,10 @@
     "a-timeout-kills-the-whole-process-tree-not-just-the-shell"
   ],
   "freshness": {
-    "hash": "f1230a0e685f0828",
+    "hash": "58a57ec9a65e2ff9",
     "fileHashes": {
-      "engine/tools/src/bash.ts": "f1230a0e685f0828"
+      "engine/tools/src/bash.ts": "58a57ec9a65e2ff9"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

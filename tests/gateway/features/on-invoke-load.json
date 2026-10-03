@@ -21,11 +21,11 @@
     "a-directory-addons-resources-are-listed-in-a-reminder-and-a-flat-addon-has-no-such-block"
   ],
   "freshness": {
-    "hash": "86ae0d4310b652fa",
+    "hash": "6996c446abce7bcd",
     "fileHashes": {
-      "engine/tools/src/addon.ts": "205536e65e08365b",
-      "engine/core/src/agent/addons.ts": "ff424ed1464098d4"
+      "engine/tools/src/addon.ts": "b6d6813d0a87afa7",
+      "engine/core/src/agent/addons.ts": "9f515305e4028587"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-10-03"
   }
 }

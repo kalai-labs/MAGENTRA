@@ -21,10 +21,10 @@
     "a-near-miss-names-the-first-character-that-differs-and-both-sides-of-it"
   ],
   "freshness": {
-    "hash": "9475f64c0d927113",
+    "hash": "f3698bfb049cc027",
     "fileHashes": {
-      "engine/tools/src/edit.ts": "9475f64c0d927113"
+      "engine/tools/src/edit.ts": "f3698bfb049cc027"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

@@ -15,11 +15,11 @@
   "deferred": false,
   "tests": [],
   "freshness": {
-    "hash": "de7627bed4c471f8",
+    "hash": "f109de1f63b493f0",
     "fileHashes": {
-      "engine/tools/src/agent.ts": "3a034a6c1522e0fe",
+      "engine/tools/src/agent.ts": "afd9f3b179fe8245",
       "engine/core/src/agent/agents.ts": "23e3022b0e512330"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-10-03"
   }
 }

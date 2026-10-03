@@ -14,10 +14,10 @@
   "deferred": false,
   "tests": [],
   "freshness": {
-    "hash": "9ddf1b9e6b0dff3e",
+    "hash": "bd7a4f3d7ca27a20",
     "fileHashes": {
-      "engine/tools/src/webFetch.ts": "9ddf1b9e6b0dff3e"
+      "engine/tools/src/webFetch.ts": "bd7a4f3d7ca27a20"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-10-03"
   }
 }

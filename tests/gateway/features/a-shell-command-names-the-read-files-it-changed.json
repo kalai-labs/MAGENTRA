@@ -17,11 +17,11 @@
     "a-command-that-changes-a-read-file-names-it-and-one-that-does-not-names-nothing"
   ],
   "freshness": {
-    "hash": "84b403c7458d7072",
+    "hash": "5f17a5d96f7dba32",
     "fileHashes": {
-      "engine/tools/src/bash.ts": "f1230a0e685f0828",
+      "engine/tools/src/bash.ts": "58a57ec9a65e2ff9",
       "engine/core/src/runtime/fileState.ts": "1db005bdf8e66660"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

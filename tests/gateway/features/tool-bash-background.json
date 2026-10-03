@@ -17,11 +17,11 @@
     "a-background-command-returns-its-id-at-once-writes-its-output-file-and-announces-its-exit"
   ],
   "freshness": {
-    "hash": "9e54d41cb6665b0a",
+    "hash": "18d6f9651fc0918b",
     "fileHashes": {
-      "engine/tools/src/bash.ts": "f1230a0e685f0828",
+      "engine/tools/src/bash.ts": "58a57ec9a65e2ff9",
       "engine/core/src/scheduling/background.ts": "3bde1c70a8bcb222"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

@@ -20,10 +20,10 @@
     "execute-does-not-resolve-before-the-frontend-answers"
   ],
   "freshness": {
-    "hash": "928c6c50835c4f14",
+    "hash": "fccb5adf13a73ecf",
     "fileHashes": {
-      "engine/tools/src/askUserQuestion.ts": "928c6c50835c4f14"
+      "engine/tools/src/askUserQuestion.ts": "fccb5adf13a73ecf"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-10-03"
   }
 }

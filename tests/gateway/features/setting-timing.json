@@ -22,11 +22,11 @@
     "an-unknown-key-prints-the-valid-keys-no-timing-note-and-writes-nothing"
   ],
   "freshness": {
-    "hash": "3c0097e6bf2e8fc9",
+    "hash": "04c31dad1d0c62a8",
     "fileHashes": {
-      "engine/core/src/runtime/engine.ts": "84b0212db247b114",
+      "engine/core/src/runtime/engine.ts": "3c6da621d8de98c2",
       "engine/core/src/config/settings.ts": "d3f06cfa52514272"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }

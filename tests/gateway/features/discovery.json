@@ -20,10 +20,10 @@
     "an-empty-body-and-an-unreadable-entry-file-are-skipped-and-the-rest-of-the-roster-still-loads"
   ],
   "freshness": {
-    "hash": "ff424ed1464098d4",
+    "hash": "9f515305e4028587",
     "fileHashes": {
-      "engine/core/src/agent/addons.ts": "ff424ed1464098d4"
+      "engine/core/src/agent/addons.ts": "9f515305e4028587"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-10-03"
   }
 }

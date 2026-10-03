@@ -21,11 +21,11 @@
     "the-returned-list-is-sorted-by-name-whatever-tier-and-filename-the-addons-came-from"
   ],
   "freshness": {
-    "hash": "624a959fac7a2b2d",
+    "hash": "f36985377e9eb620",
     "fileHashes": {
-      "engine/core/src/agent/addons.ts": "ff424ed1464098d4",
+      "engine/core/src/agent/addons.ts": "9f515305e4028587",
       "engine/core/src/agent/builtinAddons.ts": "12f143188c4b9b7b"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-10-03"
   }
 }

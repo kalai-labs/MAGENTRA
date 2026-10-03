@@ -20,10 +20,10 @@
     "a-relative-path-is-refused-and-a-brand-new-file-needs-no-prior-read"
   ],
   "freshness": {
-    "hash": "e9e86241c1a3e90a",
+    "hash": "0866ff537557af18",
     "fileHashes": {
-      "engine/tools/src/write.ts": "e9e86241c1a3e90a"
+      "engine/tools/src/write.ts": "0866ff537557af18"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-10-03"
   }
 }

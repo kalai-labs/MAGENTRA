@@ -18,10 +18,10 @@
     "an-unknown-id-is-a-tool-error-not-an-exception"
   ],
   "freshness": {
-    "hash": "1acc572d32244efb",
+    "hash": "ad3e4a77fbb8ebc5",
     "fileHashes": {
-      "engine/tools/src/taskControl.ts": "1acc572d32244efb"
+      "engine/tools/src/taskControl.ts": "ad3e4a77fbb8ebc5"
     },
-    "recordedAt": "2026-09-09"
+    "recordedAt": "2026-10-03"
   }
 }

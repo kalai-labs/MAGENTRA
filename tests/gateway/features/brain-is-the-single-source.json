@@ -31,11 +31,11 @@
     "the-bundled-engine-boots-and-answers-session-started-with-no-brain-folder-beside-it"
   ],
   "freshness": {
-    "hash": "6b5c99745d2f73cc",
+    "hash": "1f52d0e270fd8c8e",
     "fileHashes": {
-      "engine/protocol/src/prompts.ts": "fe250940f2061f6a",
-      "engine/core/src/agent/tool.ts": "3e5506edf577a6a2"
+      "engine/protocol/src/prompts.ts": "9d51f8a6df7bc06d",
+      "engine/core/src/agent/tool.ts": "95d5254162b5401a"
     },
-    "recordedAt": "2026-10-02"
+    "recordedAt": "2026-10-03"
   }
 }

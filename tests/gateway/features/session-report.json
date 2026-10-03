@@ -22,11 +22,11 @@
     "the-slash-command-emits-a-session-report-carrying-the-live-context-breakdown"
   ],
   "freshness": {
-    "hash": "627cbd30dfb9fa12",
+    "hash": "ae9d4dda74156ed9",
     "fileHashes": {
       "engine/core/src/runtime/sessionStats.ts": "c928036101235de4",
-      "engine/core/src/runtime/engine.ts": "84b0212db247b114"
+      "engine/core/src/runtime/engine.ts": "3c6da621d8de98c2"
     },
-    "recordedAt": "2026-09-28"
+    "recordedAt": "2026-10-03"
   }
 }
