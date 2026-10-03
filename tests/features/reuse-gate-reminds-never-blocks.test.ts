@@ -33,6 +33,12 @@
  * `parsed.data`, already through `writeTool.inputSchema`, so a non-string never
  * arrives. Asserting it would mean reaching inside the class, which proves the
  * shape of the code rather than the behaviour of the feature.
+ *
+ * WHAT THE REMINDER SAYS IS NOT ASSERTED HERE. Its wording lives in brain/ and
+ * the owner rewords it freely (decided 2026-10-04: no test pins prompt prose).
+ * The reminder is recognised by a stretch of one of its two shipped templates
+ * (`promptDefault`), so a rewording moves the locator with it. The path it
+ * names and the `<system-reminder>` wrapper are the engine's, not brain's.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -46,6 +52,7 @@ import {
   type Settings,
   type SymbolIndexData,
 } from "@magentra/core";
+import { promptDefault } from "@magentra/protocol";
 import type { ContentBlock, Msg } from "@magentra/providers";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
@@ -57,6 +64,19 @@ const FEATURE = "reuse-gate-reminds-never-blocks";
 /** Verbatim from the record. */
 const INVARIANT =
   "A would-be new-file Write becomes a reminder, never a block: the signal survives, the refusal does not.";
+
+/** The longest slot-free stretch of each reuse-check template — the gate renders one or the other. */
+const REUSE_MARKERS = ["reminder.reuse-check", "reminder.reuse-check-firm"].map((id) =>
+  promptDefault(id)
+    .split(/\{\{\w+\}\}/)
+    .map((part) => part.trim())
+    .reduce((a, b) => (b.length > a.length ? b : a), ""),
+);
+
+/** Whether `text` is a rendered reuse-check reminder. */
+function isReuseReminder(text: string): boolean {
+  return REUSE_MARKERS.some((marker) => text.includes(marker));
+}
 
 /** The shipped defaults, as `settings.ts` declares them. */
 const CFG: Settings["reuseCheck"] = { mode: "remind", maxHits: 5, blockThreshold: 0.75, remindThreshold: 0.5 };
@@ -140,7 +160,7 @@ class TheResultIsNeverAnError extends ReuseGateTest {
     const result = this.evaluate(target, NEW_BODY);
     t.assert.equal(result.kind, "remind", "similar code exists and nothing related was searched");
     const text = result.kind === "remind" ? result.text : "";
-    t.assert.equal(text.startsWith("Reuse check:"), true, "the reminder announces itself as the reuse check");
+    t.assert.equal(isReuseReminder(text), true, "the text is the shipped reuse-check reminder, rendered");
     t.assert.match(text, /src\/userFormatter\.ts/, "and names the closest existing match, so the model can go and read it");
 
     // The result type has exactly two shapes, and neither carries anything a
@@ -202,7 +222,7 @@ class TheWriteRunsAndTheReminderRidesAlong extends ReuseGateTest {
     t.assert.notEqual(result?.isError, true, "the result block the model reads is not an error either");
 
     const texts = (carrier?.content ?? []).filter((b) => b.type === "text").map((b) => (b.type === "text" ? b.text : ""));
-    const reminder = texts.find((text) => text.includes("Reuse check:"));
+    const reminder = texts.find(isReuseReminder);
     t.assert.notEqual(reminder, undefined, "the same message carries the reuse reminder");
     t.assert.match(reminder ?? "", /<system-reminder>/, "wrapped as a harness injection, not as the user's own words");
     t.assert.match(reminder ?? "", /src\/userFormatter\.ts/, "naming the existing file to read");

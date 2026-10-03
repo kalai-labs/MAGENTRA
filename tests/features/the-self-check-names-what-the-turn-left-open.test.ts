@@ -11,18 +11,25 @@
  * everything handled?" does not reliably find its own loose ends, so the engine
  * finds them and quotes them.
  *
- * `pure` + `fs`, as the record declares. `pure` reads the shipped clauses from
- * the prompt registry. `fs` replays the field shape through the real Engine on
+ * `pure` + `fs`, as the record declares. `pure` reads the shipped clauses' shape
+ * (channel and slot) from the prompt registry. `fs` replays the field shape through the real Engine on
  * the scripted provider in OVERDRIVE and reads the self-check the Session sent.
  * `findSymptoms` and `findHedges` are module-private to the finishing rungs, so
  * they are proved through the turn that consults them.
+ *
+ * WHAT THE CLAUSES SAY IS NOT ASSERTED HERE. Their wording lives in brain/ and
+ * the owner rewords it freely (decided 2026-10-04: no test pins prompt prose).
+ * A quoted symptom or hedge is checked as the clause's own shipped template
+ * with the quote in its slot (`promptDefault`), so a rewording moves the
+ * expectation with it. The quoted sentences are the scripted model's, not
+ * brain's.
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { promptCatalog, type PromptEntry } from "@magentra/protocol";
+import { promptCatalog, promptDefault, type PromptEntry } from "@magentra/protocol";
 import type { Msg } from "@magentra/providers";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
@@ -36,8 +43,22 @@ const FEATURE = "the-self-check-names-what-the-turn-left-open";
 const INVARIANT =
   "The self-check quotes back the symptoms the turn reported and the hedges in its answer, so each is re-tested, settled, or left as a plain note to the user.";
 
+/** The longest slot-free stretch of a prompt's shipped text: present verbatim in every render of it. */
+function shippedMarker(id: string): string {
+  return promptDefault(id)
+    .split(/\{\{\w+\}\}/)
+    .map((part) => part.trim())
+    .reduce((a, b) => (b.length > a.length ? b : a), "");
+}
+
 /** The self-check's head — how its message is found in a history. */
-const HEAD = "Internal self-check — this is NOT a new user message";
+const HEAD = shippedMarker("finishing.self-verify");
+
+/** A clause as the engine renders it for one quoted sentence: the shipped template with `«sentence»` in its slot. */
+function clause(id: "finishing.self-verify.symptoms" | "finishing.self-verify.hedges", sentence: string): string {
+  const slot = id.endsWith("symptoms") ? "{{symptoms}}" : "{{hedges}}";
+  return promptDefault(id).replace(slot, `«${sentence}»`);
+}
 
 function shipped(id: string): PromptEntry {
   const entry = promptCatalog().find((p) => p.id === id);
@@ -50,28 +71,19 @@ function shipped(id: string): PromptEntry {
 class TheClausesAsShipped extends PureTest {
   readonly featureId = FEATURE;
   readonly invariant = INVARIANT;
-  readonly id = "the-two-clauses-are-registered-reminders-and-none-demands-a-pass";
+  readonly id = "the-two-clauses-are-registered-reminders-each-with-its-one-slot";
   readonly whyItExists =
-    "a clause that asked the model to 'make sure it passes' would turn the self-check into a demand for a green result, which a stand-in satisfies cheapest";
+    "a clause whose slot is not declared, or not carried, renders without the very sentences it exists to quote, and the self-check goes back to asking 'is everything handled?' with nothing named";
 
   override run(t: TestRun): void {
     const symptoms = shipped("finishing.self-verify.symptoms");
     const hedges = shipped("finishing.self-verify.hedges");
     t.assert.deepEqual([...(symptoms.placeholders ?? [])], ["symptoms"]);
     t.assert.deepEqual([...(hedges.placeholders ?? [])], ["hedges"]);
+    t.assert.equal(symptoms.defaultText.includes("{{symptoms}}"), true, "the symptoms clause carries its slot");
+    t.assert.equal(hedges.defaultText.includes("{{hedges}}"), true, "the hedges clause carries its slot");
     t.assert.equal(symptoms.channel, "reminder");
     t.assert.equal(hedges.channel, "reminder");
-    t.assert.match(symptoms.defaultText, /re-tested after its fix/);
-    t.assert.match(symptoms.defaultText, /does not settle another/, "one passing case is named as not enough");
-    t.assert.match(hedges.defaultText, /keep it in your answer as a plain note to the user; that is fine/, "an honest note is a complete answer");
-    t.assert.match(hedges.defaultText, /never stand in for a cleanup you could do yourself/);
-    t.assert.match(shipped("finishing.self-verify.closing-code").defaultText, /search every file for it/, "a repeated mistake is searched for everywhere");
-    for (const entry of [symptoms, hedges]) {
-      const text = entry.defaultText.toLowerCase();
-      for (const demand of ["must pass", "make sure it passes", "until it passes", "all tests pass"]) {
-        t.assert.equal(text.includes(demand), false, `${entry.id} must not demand a pass ("${demand}")`);
-      }
-    }
   }
 }
 
@@ -123,11 +135,20 @@ class TheFieldShapeIsQuotedBack extends OverdriveTurnTest {
       { text: "Combat confirmed working. Two stray test sessions may still be registered server-side.", stopReason: "end_turn" },
       { text: "DONE", stopReason: "end_turn" },
     ]);
-    t.assert.match(text, /While you worked you reported: «The player never kills anything and enemies never damage the player\.»/, "the symptom the turn reported is quoted back");
-    t.assert.match(text, /Your answer hedges: «Two stray test sessions may still be registered server-side\.»/, "and the hedge from its own answer");
+    t.assert.equal(
+      text.includes(clause("finishing.self-verify.symptoms", "The player never kills anything and enemies never damage the player.")),
+      true,
+      "the symptom the turn reported is quoted back in the symptoms clause",
+    );
+    t.assert.equal(
+      text.includes(clause("finishing.self-verify.hedges", "Two stray test sessions may still be registered server-side.")),
+      true,
+      "and the hedge from its own answer in the hedges clause",
+    );
     t.assert.equal(text.includes("«Combat confirmed working.»"), false, "a confident sentence is not a hedge");
     t.assert.equal(text.includes("«Checking the combat code.»"), false, "a sentence that reports no failure is not a symptom");
-    t.assert.equal(text.trimEnd().endsWith("</system-reminder>"), true, "the clauses ride inside the one closing slot");
+    const afterClosing = promptDefault("finishing.self-verify").split("{{closing}}")[1]?.trim() ?? "";
+    t.assert.equal(text.trimEnd().endsWith(afterClosing), true, "the clauses ride inside the one closing slot");
   }
 }
 
@@ -142,8 +163,8 @@ class ACleanTurnPaysNothing extends OverdriveTurnTest {
       { text: "The folder holds three files.", stopReason: "end_turn" },
       { text: "DONE", stopReason: "end_turn" },
     ]);
-    t.assert.equal(text.includes("While you worked you reported"), false, "no failure was reported, so none is quoted");
-    t.assert.equal(text.includes("Your answer hedges"), false, "the answer left nothing open");
+    t.assert.equal(text.includes(shippedMarker("finishing.self-verify.symptoms")), false, "no failure was reported, so no symptoms clause");
+    t.assert.equal(text.includes(shippedMarker("finishing.self-verify.hedges")), false, "the answer left nothing open, so no hedges clause");
   }
 }
 

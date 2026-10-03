@@ -13,6 +13,12 @@
  *
  * `pure` + `fs`, and the record said `pure`. Re-declared 2026-09-20.
  *
+ * WHAT THE REMINDER SAYS IS NOT ASSERTED HERE. Its wording lives in brain/ and
+ * the owner rewords it freely (decided 2026-10-04: no test pins prompt prose).
+ * The pure half holds only the rung's shape — its channel and its three slots —
+ * and the fs half finds the reminder by a stretch of its own shipped template
+ * (`promptDefault`), so a rewording moves the locator with it.
+ *
  * WHY NOT ALL PURE, WHICH IS WHAT THE CHECKLIST ASSUMES. The checklist calls
  * `codeFilesAmong()` and `runtimeEvidenceText()` directly. Neither is reachable:
  * `engine/core/src/runtime/finishing.ts` is not re-exported by
@@ -27,7 +33,7 @@
  *          `definePrompt` registers `finishing.runtime-evidence` and its two
  *          vision clauses when the engine module loads, and `defaultText` is the
  *          text as committed, unaffected by any override file this machine may
- *          hold. That is what checklist item 2 is about: what the reminder says.
+ *          hold: the rung's channel and the slots it declares and carries.
  *   fs   — the rung firing, through a real Engine on a scripted provider. The
  *          suffix predicate (item 1), the rendering of `{{files}}` and the
  *          eight-file cut-off (item 2's tail), and items 3–5 are all claims
@@ -50,7 +56,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { promptCatalog, type PromptEntry } from "@magentra/protocol";
+import { promptCatalog, promptDefault, type PromptEntry } from "@magentra/protocol";
 import type { Msg } from "@magentra/providers";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
@@ -64,8 +70,14 @@ const FEATURE = "runtime-evidence-floor";
 const INVARIANT =
   "A turn that edited source and ran no command gets one reminder naming the files; it reminds, never blocks.";
 
-/** The sentence only the runtime-evidence rung says — the self-verify closing also opens with "You changed code this turn". */
-const EVIDENCE_MARKER = "did not run a single command";
+/**
+ * The longest slot-free stretch of the rung's shipped text: present verbatim in
+ * every render of it, and long enough that no other finishing text shares it.
+ */
+const EVIDENCE_MARKER = promptDefault("finishing.runtime-evidence")
+  .split(/\{\{\w+\}\}/)
+  .map((part) => part.trim())
+  .reduce((a, b) => (b.length > a.length ? b : a), "");
 
 /** What the Session prints to the user when the floor fires with nothing run. */
 const EVIDENCE_NOTE = "↻ nothing was run — verifying the change for real";
@@ -100,17 +112,17 @@ function lastUserText(messages: readonly Msg[]): string {
     .join("\n");
 }
 
-/* ---- checklist 2 — pure, the shipped text ----------------------------- */
+/* ---- checklist 2 — pure, the shipped rung's shape ---------------------- */
 
 abstract class ShippedTextTest extends PureTest {
   readonly featureId = FEATURE;
   readonly invariant = INVARIANT;
 }
 
-class TheReminderAsksForARunAndCarriesItsThreeSlots extends ShippedTextTest {
-  readonly id = "the-shipped-reminder-asks-for-a-real-run-in-five-steps-and-declares-its-three-slots";
+class TheReminderCarriesItsThreeSlots extends ShippedTextTest {
+  readonly id = "the-shipped-reminder-is-a-reminder-and-declares-and-carries-its-three-slots";
   readonly whyItExists =
-    "the numbered steps were trimmed to 'run something', so the agent ran the project's typecheck and reported the change verified — a gate that proves the code parses was accepted as proof that it behaves";
+    "a slot the Session fills but the text no longer carries is dropped without a trace: the changed files, the vision clause or the stand-in clause silently stop reaching the model while the rung still fires";
 
   override run(t: TestRun): void {
     const rung = shippedPrompt("finishing.runtime-evidence");
@@ -125,38 +137,6 @@ class TheReminderAsksForARunAndCarriesItsThreeSlots extends ShippedTextTest {
     for (const slot of ["{{files}}", "{{visionNote}}", "{{doubleNote}}"]) {
       t.assert.equal(text.includes(slot), true, `the text actually carries ${slot}, or the declared placeholder is a lie`);
     }
-
-    t.assert.match(text, /did not run a single command/, "it states the fact that fired it");
-    t.assert.match(text, /nothing you wrote has been observed working/);
-    for (const step of [1, 2, 3, 4, 5]) {
-      t.assert.match(text, new RegExp(`^${step}\\. `, "m"), `step ${step} of the list survives`);
-    }
-    t.assert.match(text, /^1\. Fast gate first.*passing it is NOT evidence/ms, "the fast gate is first AND is named as not being proof");
-    t.assert.match(text, /^2\. Execute the path you changed, and the callers it reaches/m);
-    t.assert.match(text, /^3\..*system temp directory, not in the repository.*DELETE it in this same turn/ms, "the throwaway harness is temp-dir'd and deleted in the same turn");
-    t.assert.match(text, /^4\. Judge against something you can actually read: exit codes, stdout/m);
-    t.assert.match(text, /^5\. Say in your wrap-up what you ran and what you observed/m);
-    t.assert.match(text, /<system-reminder>/, "wrapped as a harness injection, not as words from the user");
-  }
-}
-
-class TheTwoVisionClausesSayOppositeThings extends ShippedTextTest {
-  readonly id = "the-vision-clause-substituted-into-the-rung-has-an-on-shape-and-an-off-shape";
-  readonly whyItExists =
-    "one fixed clause was substituted whatever the workspace could do, so on a vision-less workspace step 4 told the agent to go and look at a screenshot it had no way to read, and it reported having looked";
-
-  override run(t: TestRun): void {
-    const off = shippedPrompt("finishing.vision-off");
-    const on = shippedPrompt("finishing.vision-on");
-
-    t.assert.match(off.defaultText, /Vision is off for this workspace/);
-    t.assert.match(off.defaultText, /Never claim you looked at a screenshot or a window/);
-    t.assert.match(off.defaultText, /or say plainly that the appearance stays unverified/, "the off clause offers the honest gap as the way out");
-
-    t.assert.match(on.defaultText, /capture a screenshot of the running app and Read it/);
-    t.assert.match(on.defaultText, /never claim you looked at the screen yourself/i, "even with vision on, the observation belongs to the describing model");
-    t.assert.equal(on.defaultText.includes("Vision is off"), false, "the two clauses are not the same sentence with a negation");
-    t.assert.equal(off.defaultText.includes("capture a screenshot"), false);
   }
 }
 
@@ -252,9 +232,12 @@ class ATurnThatWroteCodeAndRanNothingIsRemindedOnce extends FloorTest {
 
     const reminders = this.evidenceReminders(history as Msg[]);
     t.assert.equal(reminders.length, 1, "exactly one evidence reminder in the whole history — never two");
-    t.assert.match(reminders[0] ?? "", /You changed code this turn \(/, "it names the work it is about");
     t.assert.equal((reminders[0] ?? "").includes(join("src", "a.ts")), true, "and names the file that changed, spelled the way this platform spells a path");
-    t.assert.match(reminders[0] ?? "", /Vision is off for this workspace/, "the vision slot was filled for a workspace with no vision model");
+    t.assert.equal(
+      (reminders[0] ?? "").includes(promptDefault("finishing.vision-off").trim()),
+      true,
+      "the vision slot was filled with the vision-off clause for a workspace with no vision model",
+    );
 
     // `provider.requests[n].messages` is the LIVE array, so this reads the
     // history as it stands after the turn: the reminder is the last thing the
@@ -454,8 +437,7 @@ class AWriteThatFailedChangedNothingToVerify extends FloorTest {
 }
 
 registerFeatureTests(
-  new TheReminderAsksForARunAndCarriesItsThreeSlots(),
-  new TheTwoVisionClausesSayOppositeThings(),
+  new TheReminderCarriesItsThreeSlots(),
   new ATurnThatWroteCodeAndRanNothingIsRemindedOnce(),
   new OnlyRunnableSuffixesWakeTheFloor(),
   new PastEightFilesTheRestAreCounted(),

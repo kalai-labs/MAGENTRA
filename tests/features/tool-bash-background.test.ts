@@ -16,7 +16,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { CoreEvent } from "@magentra/protocol";
+import { renderPrompt, type CoreEvent } from "@magentra/protocol";
 import type { Msg } from "@magentra/providers";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
@@ -103,8 +103,10 @@ class TheLifecycle extends ProcTest {
     const carried = history
       .filter((m) => m.role === "user" && m.content.some((b) => b.type === "tool_result"))
       .map((m) => JSON.stringify(m.content));
-    t.assert.equal(carried[0]?.includes("<task-notification>"), false, "not before it exited");
-    t.assert.match(carried[1] ?? "", new RegExp(`task-notification>Background bash task ${id}[^<]*exit code 3`), "and then with the next round's results");
+    const notice = renderPrompt("reminder.background-exit", { kind: "bash", id: id!, description: "a short job", code: "3", file: payload.outputFile });
+    const inBlocks = JSON.stringify(notice).slice(1, -1);
+    t.assert.equal(carried[0]?.includes(inBlocks), false, "not before it exited");
+    t.assert.equal(carried[1]?.includes(inBlocks), true, "and then with the next round's results");
   }
 }
 

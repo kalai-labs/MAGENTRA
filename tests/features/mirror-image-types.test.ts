@@ -18,7 +18,7 @@
  *        disagreement for a reason that has nothing to do with the tables.
  *   `fs` (item 4) — the real Read tool, inside a real Engine on a scripted
  *        provider, over a `.png` in a workspace with no vision model: refused,
- *        with the message that says it cannot be seen. The same turn reads a
+ *        with the brain's unseen-image refusal. The same turn reads a
  *        `.bin`, whose refusal LISTS the engine's keys — a runtime check that
  *        the parsed table is the one the built engine runs.
  *   `ui` (item 3) — the real app's `context:pickFiles` handler, which derives
@@ -34,8 +34,9 @@
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
+import { renderPrompt } from "@magentra/protocol";
 import ts from "typescript";
 
 import { openWorkspace } from "../lib/appDriver.ts";
@@ -263,7 +264,8 @@ class ReadRefusesAnImageWithNoVisionModel extends FsTest {
     const image = byPath(png);
     t.assert.notEqual(image, undefined);
     t.assert.equal(image?.isError, true, "an image with no vision model must be refused");
-    t.assert.match(image?.resultPreview ?? "", /is an image and you cannot see it/, "the refusal must say the image cannot be seen");
+    const unseenHead = renderPrompt("read.image-unseen", { file: basename(png), reason: "\u0000" }).split("\u0000")[0]!;
+    t.assert.ok((image?.resultPreview ?? "").startsWith(unseenHead), "the refusal must be the unseen-image one, for that file");
     t.assert.match(image?.resultPreview ?? "", /names no vision model/, "and why");
     t.assert.doesNotMatch(image?.resultPreview ?? "", /binary file/, "an image is refused as an image, never as an unknown binary");
 
@@ -289,7 +291,7 @@ class ReadRefusesAnImageWithNoVisionModel extends FsTest {
       .map((block) => JSON.stringify(block));
     t.assert.ok(toolResults.length >= 3, "the three reads' results must have gone back to the model");
     t.assert.ok(
-      toolResults.some((block) => /square\.png is an image and you cannot see it/.test(block)),
+      toolResults.some((block) => block.includes(JSON.stringify(unseenHead).slice(1, -1))),
       "the refusal must reach the model as a tool result",
     );
   }

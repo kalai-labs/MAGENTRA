@@ -2,14 +2,11 @@
  * `prompt-contract`.
  *
  * OVERDRIVE switches the permission engine off; the prompt has to say so. While
- * it is on, the system prompt carries an extra section — `# OVERDRIVE —
- * fully-autonomous mode` — telling the model the user is not watching, that
- * NOTHING asks, and that only a deny rule the user wrote and a kill by process
- * name can still stop a call.
- * The standing harness section points forward at it ("if an OVERDRIVE section
- * appears, not even on those"), the section is added when the switch goes on
- * and removed when it goes off, and the state change is announced once per real
- * change.
+ * it is on, the system prompt carries an extra section (`system.overdrive`)
+ * telling the model the user is not watching and that nothing asks. The
+ * section is added when the switch goes on and removed when it goes off, the
+ * standing harness section stays in every prompt either way, and the state
+ * change is announced once per real change.
  *
  * `fs` + `pure`, and the record said `pure`. Re-declared 2026-09-20: items 1–4
  * are about the prompt a REQUEST carries and the event a frame produces, and
@@ -20,16 +17,16 @@
  * function of its argument, and pure.
  *
  * WHERE THE SECTION LIVES. The description names `engine/core/src/agent/
- * prompts.ts` for the harness line and `engine/core/src/runtime/session.ts` for
- * `OVERDRIVE_PROMPT_SECTION`; both still hold, but the section constant is
- * module-private (`definePrompt` output, not exported), so its text is asserted
- * by the two sentences the feature promises rather than by identity. The switch
- * is thrown over the protocol (`set_overdrive`), which is how the desktop app,
- * the TUI and `/overdrive` all reach `Session.setOverdrive`.
+ * prompts.ts` for the harness section and `engine/core/src/runtime/session.ts`
+ * for `OVERDRIVE_PROMPT_SECTION`. The section is found by its own brain text
+ * (`promptDefault("system.overdrive")`), never by a phrase copied into this
+ * file, so rewording the prose moves no assertion here. The switch is thrown
+ * over the protocol (`set_overdrive`), which is how the desktop app, the TUI
+ * and `/overdrive` all reach `Session.setOverdrive`.
  */
 
 import { SECTION_HARNESS, buildSystemPrompt, environmentBlock } from "@magentra/core";
-import type { CoreEvent } from "@magentra/protocol";
+import { promptDefault, type CoreEvent } from "@magentra/protocol";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
 import { FsTest } from "../lib/fsTest.ts";
@@ -41,11 +38,8 @@ const FEATURE = "prompt-contract";
 /** Verbatim from the record. */
 const INVARIANT = "The OVERDRIVE stance is stated in the prompt, so the model knows nothing will stop to ask.";
 
-/** The section's own heading — what "present exactly while ON" is measured by. */
-const HEADING = "# OVERDRIVE — fully-autonomous mode";
-
-/** The standing forward reference in the harness section. */
-const FORWARD_REFERENCE = "if an OVERDRIVE section appears, not even on those";
+/** The section as brain ships it — what "present exactly while ON" is measured by. */
+const SECTION = promptDefault("system.overdrive").trim();
 
 /** One scripted assistant turn that ends cleanly, runs no tool, and fires no rung. */
 function reply(text: string): FakeTurn {
@@ -99,7 +93,7 @@ abstract class PromptContractTest extends FsTest {
 /* ---- checklist 1 ----------------------------------------------------- */
 
 class TheHarnessLinePointsAtASectionThatIsNotThere extends PromptContractTest {
-  readonly id = "while-overdrive-is-off-the-section-is-absent-and-the-harness-line-still-points-at-it";
+  readonly id = "while-overdrive-is-off-the-section-is-absent-and-the-harness-section-stays";
   readonly whyItExists =
     "the section was appended to the prompt once and never taken back out, so an ordinary attended session was told nothing would ask — and the model deleted files expecting no prompt, while the user was in fact being asked";
 
@@ -109,17 +103,10 @@ class TheHarnessLinePointsAtASectionThatIsNotThere extends PromptContractTest {
     t.assert.equal(turn.stopReason, "end_turn", "the turn ran, so there is a real request to read");
 
     const system = this.systemOf(engine, 0);
-    t.assert.equal(system.includes(HEADING), false, "no OVERDRIVE section while the stance is off");
-    t.assert.equal(system.includes("NOTHING asks"), false, "and none of its promises either");
+    t.assert.equal(system.includes(SECTION), false, "no OVERDRIVE section while the stance is off");
 
-    // The standing line is there in every prompt, pointing at a section that
-    // only sometimes exists — that is what makes its absence meaningful.
-    t.assert.equal(system.includes(FORWARD_REFERENCE), true, "the harness section forward-references the stance");
-    t.assert.equal(
-      SECTION_HARNESS.includes(FORWARD_REFERENCE),
-      true,
-      "and that sentence comes from SECTION_HARNESS, not from somewhere the section could drift away from",
-    );
+    // The standing harness section is in every prompt, whichever the stance.
+    t.assert.equal(system.includes(SECTION_HARNESS.trim()), true, "the harness section is in the prompt");
   }
 }
 
@@ -133,23 +120,17 @@ class SwitchingItOnAddsTheSection extends PromptContractTest {
   override async run(t: TestRun): Promise<void> {
     const engine = await this.boot([reply("first"), reply("second")]);
     await engine.runTurn("before");
-    t.assert.equal(this.systemOf(engine, 0).includes(HEADING), false, "off for the first call");
+    t.assert.equal(this.systemOf(engine, 0).includes(SECTION), false, "off for the first call");
 
     await this.setOverdrive(engine, true);
     await engine.runTurn("after");
 
     const system = this.systemOf(engine, 1);
-    t.assert.equal(countOf(system, HEADING), 1, "the section is in the next request, once");
-    t.assert.equal(countOf(system, "NOTHING asks"), 1, "and says so exactly once — a repeat would mean it was appended twice");
-    t.assert.match(
-      system,
-      /Only two things can still stop a call: a deny rule the user wrote themselves, and a command that stops processes by name/,
-      "the remaining refusals are named, so the model does not read a denial as a bug",
-    );
+    t.assert.equal(countOf(system, SECTION), 1, "the section is in the next request, once — a repeat would mean it was appended twice");
     t.assert.equal(
-      system.indexOf(FORWARD_REFERENCE) < system.indexOf(HEADING),
+      system.indexOf(SECTION_HARNESS.trim()) < system.indexOf(SECTION),
       true,
-      "the standing line still comes first and now points at a section that is really there",
+      "the standing harness section still comes first, and the OVERDRIVE section follows it",
     );
   }
 }
@@ -166,15 +147,14 @@ class SwitchingItOffRemovesTheSection extends PromptContractTest {
 
     await this.setOverdrive(engine, true);
     await engine.runTurn("autonomous");
-    t.assert.equal(this.systemOf(engine, 0).includes(HEADING), true, "on for the first call");
+    t.assert.equal(this.systemOf(engine, 0).includes(SECTION), true, "on for the first call");
 
     await this.setOverdrive(engine, false);
     await engine.runTurn("attended");
 
     const system = this.systemOf(engine, 1);
-    t.assert.equal(system.includes(HEADING), false, "the section is gone again");
-    t.assert.equal(system.includes("NOTHING asks"), false);
-    t.assert.equal(system.includes(FORWARD_REFERENCE), true, "and the rest of the prompt is untouched");
+    t.assert.equal(system.includes(SECTION), false, "the section is gone again");
+    t.assert.equal(system.includes(SECTION_HARNESS.trim()), true, "and the rest of the prompt is untouched");
   }
 }
 

@@ -28,8 +28,6 @@
     "//test:artifacts": "Same shape as test:llm and for the same reason: the script NAME is the opt-in, read by realArtifactTestsEnabled() in tests/lib/featureTest.ts. These build a real installer and launch what it produced, which takes minutes and holds the exclusive lock. See docs/decisions/0010.",
     "test:artifacts": "node --test --test-concurrency=1 \"tests/features/**/*.test.ts\"",
     "app": "npm start --workspace app",
-    "//approve": "Regenerate the approved artifacts under tests/approved/. A PERSON runs this; no test does, and no environment variable makes one. Running it only moves the bytes — the approval is the diff you then read and commit. See docs/decisions/0015.",
-    "approve": "node tools/approvals/regenerate.mjs",
     "gateway": "tsx tools/magentra-gateway/src/cli.ts",
     "brain-editor": "tsx tools/brain-editor/src/cli.ts",
     "dist:win": "npm run dist --workspace app",

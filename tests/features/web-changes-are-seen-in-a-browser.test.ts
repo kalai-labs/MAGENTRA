@@ -9,20 +9,25 @@
  * of the running app and Read it" (vision was on) — but that rung fires only
  * on a turn that ran NO command, and this one ran 45.
  *
- * `pure` + `fs`, as the record declares. `pure` reads the shipped prompt from
- * the registry, the way `runtime-evidence-floor` does. `fs` runs the real
+ * `pure` + `fs`, as the record declares. `pure` reads the shipped prompt's shape
+ * (channel and slots) from the registry, the way `runtime-evidence-floor` does. `fs` runs the real
  * Engine on the scripted provider over a real workspace: `uiFilesAmong` and
  * `looksLikeBrowserRun` are module-private to the finishing rungs, so they are
  * proved through the turns that consult them. Not covered here: a SUCCESSFUL
  * Read of a screenshot counting as evidence — that needs a vision endpoint to
  * describe the image; a Read that fails (vision off) is covered, and must not
  * count.
+ *
+ * WHAT THE REMINDER SAYS IS NOT ASSERTED HERE. Its wording lives in brain/ and
+ * the owner rewords it freely (decided 2026-10-04: no test pins prompt prose).
+ * The reminder is found in a history by a stretch of its own shipped template
+ * (`promptDefault`), so a rewording moves the locator with it.
  */
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { promptCatalog } from "@magentra/protocol";
+import { promptCatalog, promptDefault } from "@magentra/protocol";
 import type { Msg } from "@magentra/providers";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
@@ -36,18 +41,21 @@ const FEATURE = "web-changes-are-seen-in-a-browser";
 const INVARIANT =
   "A turn that changed a web page and never looked at it in a browser gets one reminder to drive it the way the user will, or to say it stays unverified; it reminds, never blocks.";
 
-/** The sentence only this rung says. */
-const MARKER = "Nothing has been observed in a browser";
+/** The longest slot-free stretch of the rung's shipped text: present verbatim in every render of it. */
+const MARKER = promptDefault("finishing.browser-evidence")
+  .split(/\{\{\w+\}\}/)
+  .map((part) => part.trim())
+  .reduce((a, b) => (b.length > a.length ? b : a), "");
 
 /** What the user sees when it fires. */
 const NOTE = "↻ the page was never opened in a browser — checking it the way the user will";
 
-/* ---- checklist 2 — the shipped text ---------------------------------- */
+/* ---- checklist 2 — the shipped rung's shape ---------------------------- */
 
 class TheShippedText extends PureTest {
   readonly featureId = FEATURE;
   readonly invariant = INVARIANT;
-  readonly id = "the-shipped-reminder-sends-the-agent-to-a-browser-and-keeps-the-honest-ending";
+  readonly id = "the-shipped-reminder-is-a-registered-reminder-that-declares-and-carries-its-two-slots";
   readonly whyItExists =
     "the only sentence that pointed at a screenshot lived in a rung the field turn never met, so 'HTTP 200 for the files' was accepted as a verified game";
 
@@ -56,13 +64,9 @@ class TheShippedText extends PureTest {
     t.assert.ok(rung, "the rung is registered, so it can be found and switched off like every other prompt");
     t.assert.equal(rung!.channel, "reminder");
     t.assert.deepEqual([...(rung!.placeholders ?? [])].sort(), ["files", "visionNote"]);
-    const text = rung!.defaultText;
-    t.assert.match(text, new RegExp(MARKER), "it states the fact that fired it");
-    t.assert.match(text, /HTTP 200 and still not work/, "and why the checks it did run do not settle it");
-    t.assert.match(text, /each main thing the user asked for with the default settings/, "it asks for the user's own goals, on the settings the user gets");
-    t.assert.match(text, /system temp directory, deleted in this same turn/, "the throwaway script stays out of the repository");
-    t.assert.match(text, /say plainly that the page itself stays unverified/, "an honest gap is a complete answer");
-    t.assert.match(text, /<system-reminder>/);
+    for (const slot of ["{{files}}", "{{visionNote}}"]) {
+      t.assert.equal(rung!.defaultText.includes(slot), true, `the text actually carries ${slot}, or the changed pages or the vision clause never reach the model`);
+    }
   }
 }
 
@@ -113,7 +117,11 @@ class APageCheckedOnlyFromOutside extends BrowserFloorTest {
     t.assert.equal(calls, 4, "the write, the command, the attempt to end, and the round the reminder bought");
     t.assert.equal(reminders.length, 1, "exactly one browser reminder");
     t.assert.equal(reminders[0]!.includes(join("static", "index.html")), true, "naming the page that changed");
-    t.assert.match(reminders[0]!, /Vision is off for this workspace/, "with the vision clause for a workspace that has none");
+    t.assert.equal(
+      reminders[0]!.includes(promptDefault("finishing.vision-off").trim()),
+      true,
+      "with the vision-off clause for a workspace that has none",
+    );
     t.assert.equal(notes.filter((n) => n === NOTE).length, 1, `the user is told once why the turn went on: ${NOTE}`);
   }
 }

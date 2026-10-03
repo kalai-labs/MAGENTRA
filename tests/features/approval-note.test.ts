@@ -25,6 +25,8 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { promptDefault } from "@magentra/protocol";
+
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
 import { LlmTest } from "../lib/llmTest.ts";
 
@@ -133,8 +135,11 @@ class ANoteOnADenialBecomesTheRefusalReason extends ApprovalNoteTest {
       transcript.includes(ANoteOnADenialBecomesTheRefusalReason.NOTE),
       "the user's reason must reach the model, or it cannot adjust its approach",
     );
+    // The deletion-declined refusal up to its {{detail}} slot, read from brain
+    // and escaped as the JSONL transcript stores it.
+    const refusalHead = JSON.stringify(promptDefault("reminder.permission-deletion-declined").split("{{detail}}")[0]).slice(1, -1);
     t.assert.ok(
-      transcript.includes("The user declined this destructive tool call"),
+      transcript.includes(refusalHead),
       "the refusal must say what kind of refusal it was, so the model does not read it as a tool error to retry",
     );
   }

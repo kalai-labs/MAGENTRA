@@ -10,7 +10,7 @@ cannot drift apart.
 **Read this to find where something already lives before writing a second one.**
 Narrative and rationale are in [`BIG-PICTURE.md`](BIG-PICTURE.md); this is the index.
 
-- files scanned **342** — engine 77, app 35, other 230
+- files scanned **338** — engine 77, app 35, other 226
 - `app/` is typechecked by **nothing**; `tsc -b` covers `engine/*` and `tui/` only.
 
 ---
@@ -20,102 +20,102 @@ Narrative and rationale are in [`BIG-PICTURE.md`](BIG-PICTURE.md); this is the i
 Changing one of these reaches the whole system. `↓N` = transitive importers.
 
 ### `engine/protocol/src/brain.generated.ts`
-*2127L · ↓166 transitive · ←2 direct*
+*2125L · ↓163 transitive · ←2 direct*
 
 **exports** `BrainPromptDefault` `BrainToolDefault` `BrainAvailabilityDefault` `BRAIN_PROMPTS` `BRAIN_TOOLS` `BRAIN_BUILTIN_TOOLS` `BRAIN_AVAILABILITY` `BRAIN_CORE_ORDER` `BrainBehavior` `BrainBehaviorOverrides` `BrainBehaviorRule` `BrainBehaviorCrossRule` `BrainBehaviorSpec` `BRAIN_BEHAVIOR_SPEC` `BRAIN_BEHAVIOR`
 **members** `BRAIN_PROMPTS:33 BRAIN_TOOLS:912 BRAIN_BUILTIN_TOOLS:1135 BRAIN_AVAILABILITY:1166 BRAIN_CORE_ORDER:1224 BRAIN_BEHAVIOR_SPEC:1569 BRAIN_BEHAVIOR:1890`
 **imported by** `engine/protocol/src/brain.ts` `engine/protocol/src/prompts.ts`
 
 ### `engine/core/src/runtime/session.ts`
-*3330L · ↓122 transitive · ←2 direct*
+*3330L · ↓119 transitive · ←2 direct*
 
 **exports** `isSelfVerifyDone` `addonNamedIn` `SessionOptions` `Session`
 **members** `cleanSessionTitle:91 isSelfVerifyDone:161 graphSkeleton:194 addonNamedIn:224 remind:541 addContextMessage:550 setPromptSection:557 setDeletionPolicy:566 setOverdrive:583 setProvider:602 steer:611 isOverdrive:616 activeBehavior:626 snapshotForOverdrive:634 runInference:663 visionUnavailableReason:737 describeImage:765 describeImageForContext:811 emitFromChild:828 spawnAgent:862 interrupt:986 stopBackgroundTasks:993 isBusy:1001 toolSchemas:1005 buildSystemPrompt:1013 section:1041 recentExchange:1060 maybeClarify:1082 askQuestionRound:1128 buildClarifySkim:1154 peekWorkspaceOverview:1177 runTurn:1207 streamAssistantTurn:1971 executeToolCalls:2157 describeToolImages:2432 toolContext:2464 observeTurnWork:2480 fileEditOutsideWorkspace:2519 fileEditProtectedPath:2540 evaluateWriteReuseGate:2557` …+42
 **imported by** `engine/core/src/index.ts` `engine/core/src/runtime/engine.ts`
 
 ### `engine/protocol/src/prompts.ts`
-*318L · ↓166 transitive · ←2 direct*
+*318L · ↓163 transitive · ←2 direct*
 
 **exports** `PromptChannel` `PromptMeta` `PromptEntry` `promptsDir` `promptFile` `definePrompt` `promptText` `renderPrompt` `promptTextIfEnabled` `isPromptDisabled` `renderPromptIfEnabled` `promptDefault` `promptCatalog` `writePromptOverride` `clearPromptOverride` `orphanedPromptFiles` `brainPrompt` `brainPromptIdList` `coreSectionOrder`
 **members** `promptsDir:91 promptFile:97 definePrompt:108 overrideText:118 promptText:154 renderPrompt:165 promptTextIfEnabled:180 isPromptDisabled:186 renderPromptIfEnabled:195 promptDefault:205 promptCatalog:212 writePromptOverride:239 clearPromptOverride:254 orphanedPromptFiles:261 brainPrompt:298 brainPromptIdList:306 coreSectionOrder:315`
 **imported by** `engine/protocol/src/brain.generated.ts` `engine/protocol/src/index.ts`
 
 ### `engine/protocol/src/types.ts`
-*543L · ↓164 transitive · ←2 direct*
+*543L · ↓161 transitive · ←2 direct*
 
 **exports** `PROTOCOL_VERSION` `TaskStatus` `TaskItem` `Usage` `QuestionOption` `Question` `SessionSummary` `PermissionDecision` `SlashCommandInfo` `CoreEvent` `RestoredToolCall` `RestoredMessage` `ConnectionSpec` `VisionConnectionSpec` `REASONING_EFFORTS` `ReasoningEffort` `ImageAttachment` `FrontendRequest` `Frame`
 **members** `PROTOCOL_VERSION:1 REASONING_EFFORTS:428`
 **imported by** `engine/protocol/src/index.ts` `engine/protocol/src/tokens.ts`
 
 ### `engine/protocol/src/brain.ts`
-*385L · ↓163 transitive · ←1 direct*
+*385L · ↓160 transitive · ←1 direct*
 
 **exports** `BrainBehavior` `BrainBehaviorCrossRule` `BrainBehaviorOverrides` `BrainBehaviorRule` `BrainBehaviorSpec` `toolDescription` `toolParam` `assertToolParamStates` `brainToolNames` `unreadToolParams` `ToolAvailability` `builtinToolNames` `isBuiltinTool` `brainAvailability` `resolveToolAvailability` `toolAvailabilityWith` `isToolOffered` `BehaviorOverride` `behaviorProblems` `brainBehavior` `brainBehaviorSpec` `resolveBehavior` `effectiveBehavior` `behaviorWith`
 **members** `toolDescription:43 toolParam:55 assertToolParamStates:71 brainToolNames:83 unreadToolParams:92 builtinToolNames:111 isBuiltinTool:115 brainAvailability:120 resolveToolAvailability:130 toolAvailabilityWith:145 isToolOffered:156 childrenOf:190 leafProblems:200 sectionProblems:227 mergeBehavior:263 crossProblems:273 behaviorProblems:289 cloneJson:303 deepFreeze:309 brainBehavior:329 brainBehaviorSpec:334 resolveBehavior:347 effectiveBehavior:367 behaviorWith:382`
 **imported by** `engine/protocol/src/index.ts`
 
 ### `engine/protocol/src/index.ts`
-*7L · ↓162 transitive · ←102 direct*
+*7L · ↓159 transitive · ←109 direct*
 
-**imported by** `engine/core/src/agent/addons.ts` `engine/core/src/agent/agents.ts` `engine/core/src/agent/prompts.ts` `engine/core/src/agent/tool.ts` `engine/core/src/config/settings.ts` `engine/core/src/knowledge/graph.ts` `engine/core/src/knowledge/reuseGate.ts` `engine/core/src/runtime/engine.ts` …+94
+**imported by** `engine/core/src/agent/addons.ts` `engine/core/src/agent/agents.ts` `engine/core/src/agent/prompts.ts` `engine/core/src/agent/tool.ts` `engine/core/src/config/settings.ts` `engine/core/src/knowledge/graph.ts` `engine/core/src/knowledge/reuseGate.ts` `engine/core/src/runtime/engine.ts` …+101
 
 ### `engine/protocol/src/branding.ts`
-*6L · ↓166 transitive · ←2 direct*
+*6L · ↓163 transitive · ←2 direct*
 
 **exports** `PRODUCT_NAME` `PRODUCT_REPO_URL` `CLI_NAME` `STATE_DIR_NAME`
 **members** `PRODUCT_NAME:1 PRODUCT_REPO_URL:3 CLI_NAME:4 STATE_DIR_NAME:5`
 **imported by** `engine/protocol/src/index.ts` `engine/protocol/src/prompts.ts`
 
 ### `engine/protocol/src/tokens.ts`
-*133L · ↓163 transitive · ←1 direct*
+*133L · ↓160 transitive · ←1 direct*
 
 **exports** `emptyUsage` `addUsage` `reasoningPart` `inputTokensOf` `CHARS_PER_TOKEN` `estimateTokens` `formatTokens` `contextPercentOf` `freeContextOf`
 **members** `emptyUsage:30 addUsage:39 reasoningPart:56 inputTokensOf:73 CHARS_PER_TOKEN:83 estimateTokens:91 formatTokens:106 contextPercentOf:119 freeContextOf:130`
 **imported by** `engine/protocol/src/index.ts`
 
 ### `engine/protocol/src/ndjson.ts`
-*44L · ↓163 transitive · ←1 direct*
+*44L · ↓160 transitive · ←1 direct*
 
 **exports** `encodeFrame` `decodeFrames`
 **members** `encodeFrame:3 parseLine:37`
 **imported by** `engine/protocol/src/index.ts`
 
 ### `engine/core/src/runtime/engine.ts`
-*1923L · ↓121 transitive · ←1 direct*
+*1923L · ↓118 transitive · ←1 direct*
 
 **exports** `SETTING_TIMING` `EngineOptions` `Engine` `reconstructForDisplay`
 **members** `SETTING_TIMING:85 createSession:240 start:283 publishModelCatalog:298 announceSession:316 idle:362 stopBackgroundJobs:372 addonSummaries:379 addonCommands:388 emitAddonsUpdated:407 reloadAddons:421 handleAddonCommand:441 startAddonGeneration:471 generateAddon:501 installAddon:562 exportAddon:591 startExclusive:627 maybeAutoNameSession:656 currentSession:674 send:678 handleSlash:856 renderAddons:987 extensionLines:1012 handleSettings:1017 renderSettings:1049 withImageDescriptions:1085 handleSetModel:1170 applySettingLive:1186 handleSetConnection:1220 rebuildProvider:1311 applyInsecureTls:1325 handleBang:1340 flushPendingBangs:1351 runBang:1357 gcStateFiles:1379 pruneStateDirectory:1428 listSessions:1466 resumeSession:1510 renameSession:1554 archiveSession:1584` …+12
 **imported by** `engine/core/src/index.ts`
 
 ### `engine/providers/src/openai-compat.ts`
-*620L · ↓139 transitive · ←1 direct*
+*620L · ↓136 transitive · ←1 direct*
 
 **exports** `OpenAICompatOptions` `OpenAICompatProvider`
 **members** `rejectedField:95 buildBody:144 ollamaNative:176 listModels:272 mapFinish:499 toWireTool:522 toWireMessages:543 joinText:599 joinThinking:607 flattenToolResult:614`
 **imported by** `engine/providers/src/index.ts`
 
 ### `engine/core/src/index.ts`
-*30L · ↓120 transitive · ←91 direct*
+*30L · ↓117 transitive · ←91 direct*
 
 **exports** `writeFileAtomic` `AsyncQueue` `zodToJsonSchema`
 **imported by** `engine/host/src/bootstrap.ts` `engine/host/src/serve.ts` `engine/tools/src/addon.ts` `engine/tools/src/agent.ts` `engine/tools/src/askUserQuestion.ts` `engine/tools/src/bash.ts` `engine/tools/src/cron.ts` `engine/tools/src/edit.ts` …+83
 
 ### `engine/core/src/util/fsAtomic.ts`
-*35L · ↓148 transitive · ←7 direct*
+*35L · ↓145 transitive · ←7 direct*
 
 **exports** `writeFileAtomic`
 **members** `writeFileAtomic:17`
 **imported by** `engine/core/src/config/settings.ts` `engine/core/src/index.ts` `engine/core/src/knowledge/graph.ts` `engine/core/src/knowledge/symbols.ts` `engine/core/src/state/taskStore.ts` `tools/brain-editor/src/model.ts` `tools/magentra-gateway/src/registry.ts`
 
 ### `engine/providers/src/ollama.ts`
-*295L · ↓140 transitive · ←2 direct*
+*295L · ↓137 transitive · ←2 direct*
 
 **exports** `OllamaOptions` `OllamaProvider`
 **members** `thinkFor:44 describeThink:55 buildBody:65 mapDone:212 toOllamaTool:218 toOllamaMessages:244 joinText:284 flattenToolResult:291`
 **imported by** `engine/providers/src/index.ts` `engine/providers/src/openai-compat.ts`
 
 ### `engine/providers/src/anthropic.ts`
-*282L · ↓139 transitive · ←1 direct*
+*282L · ↓136 transitive · ←1 direct*
 
 **exports** `AnthropicOptions` `AnthropicProvider`
 **members** `listModels:174 countTokens:179 describeAnthropicEffort:199 mapStop:216 toAnthropicMessage:231 toAnthropicImage:240 toAnthropicBlock:251`
@@ -279,39 +279,39 @@ before adding one.
 
 **engine/core/src/**
 
-- `agent/addons.ts` · 210L · ↓123 — addonInvocationHeader, ADDONS_DIR, ADDON_ENTRY, Addon, loadAddons
-- `agent/agents.ts` · 101L · ↓123 — AgentTypeDef, AGENT_TYPES, SUBAGENT_RESULT_ID, agentRoleText, agentDescriptionText, resolveAgentType, agentToolNames
-- `agent/builtinAddons.ts` · 109L · ↓124 — BUILTIN_ADDONS
-- `agent/hooks.ts` · 134L · ↓123 — HookConfig, HookOutcome, HookSummary, HookRunner
-- `agent/prompts.ts` · 114L · ↓123 — SECTION_IDENTITY, SECTION_HARNESS, SECTION_COMMUNICATION, SECTION_ACTION_CARE, SECTION_GIT, SECTION_CODE_STYLE, SECTION_TASKS, SECTION_WORKING_METHOD, SECTION_AUTONOMY, behaviorCore, …
-- `agent/tool.ts` · 313L · ↓129 — PermissionClass, ToolResult, SpawnAgentOptions, SessionServices, ToolContext, ToolDescriptionVars, ToolDefinition, AnyToolDefinition, registerToolPrompt, toolDescriptionText, …
-- `config/frontmatter.ts` · 66L · ↓124 — FrontmatterEntry, Frontmatter, parseFrontmatter
-- `config/pricing.ts` · 84L · ↓124 — ModelPricing, MODEL_PRICING, pricingFor, contextWindowFor, formatDuration
-- `config/providerFactory.ts` · 107L · ↓123 — ProviderKind, EndpointSpec, isLocalBaseUrl, ConnectionSettings, endpointSpecFromSettings, createProviderForEndpoint
-- `config/settings.ts` · 665L · ↓135 — DEFAULT_OPENAI_BASE_URL, DEFAULT_API_KEY_ENV, settingsSchema, Settings, Hooks, HookEvent, HookMatcherEntry, SettingsWarning, globalSettingsPath, projectSettingsPath, …
-- `index.ts` ⬢ · 30L · ↓120 — writeFileAtomic, AsyncQueue, zodToJsonSchema
-- `integrations/mcp.ts` · 323L · ↓121 — McpServerConfig, mcpServerConfigSchema, McpToolInfo, McpToolError, McpClient, createMcpTools
-- `knowledge/docs.ts` · 889L · ↓121 — extractPdfText, extractDocxText, extractPptxText, extractXlsxText, extractRtfText, extractOdtText, extractEpubText, extractDocumentText
-- `knowledge/graph.ts` · 1247L · ↓126 — GraphFileEntry, GraphData, MAX_FILE_BYTES, SCAN_EXTS, langOf, shouldSkipDir, normalizeToId, extOf, buildGraph, loadOrBuildGraph, …
-- `knowledge/reuseGate.ts` · 160L · ↓123 — SearchLog, ReuseGateResult, evaluateReuseGate
-- `knowledge/seeds.ts` · 55L · ↓121 — resolveSeeds
-- `knowledge/standards.ts` · 32L · ↓123 — STANDARDS_FILENAMES, loadStandards
-- `knowledge/symbols.ts` · 442L · ↓125 — SymbolFileEntry, SymbolIndexData, a, c, D, NAME, SymbolSite, extractSymbolSites, extractSymbols, buildSymbolIndex, …
-- `knowledge/workspace.ts` · 50L · ↓123 — workspaceLooksNonTrivial, projectName
-- `runtime/engine.ts` ⬢ · 1923L · ↓121 — SETTING_TIMING, EngineOptions, Engine, reconstructForDisplay
-- `runtime/fileState.ts` · 67L · ↓123 — FileState
-- `runtime/finishing.ts` · 315L · ↓123 — codeFilesAmong, looksLikeTestDouble, uiFilesAmong, isScreenshotPath, looksLikeBrowserRun, runtimeEvidenceText, browserEvidenceText, findSymptoms, findHedges, selfVerifyText
-- `runtime/permissions.ts` · 598L · ↓123 — PermissionRequestPayload, PermissionOutcome, ApprovalSource, protectedEditPath, ExactGrant, deriveAlwaysGrant, PermissionEngine
-- `runtime/session.ts` ⬢ · 3330L · ↓122 — isSelfVerifyDone, addonNamedIn, SessionOptions, Session
-- `runtime/sessionStats.ts` · 326L · ↓123 — ContextBreakdown, SessionStats
-- `scheduling/background.ts` · 113L · ↓123 — BackgroundManager
-- `scheduling/cron.ts` · 348L · ↓130 — CronFields, parseCron, matchesCron, nextCronMatch, CronJobSource, CronJob, CronSchedulerOptions, CronScheduler
-- `scheduling/workflow.ts` · 328L · ↓121 — ParsedMeta, WorkflowMeta, WorkflowResult, WorkflowRunOptions, WorkflowRunner
-- `state/taskStore.ts` · 136L · ↓123 — TaskStore
-- `state/transcript.ts` · 225L · ↓123 — stripSystemReminders, unansweredToolUseIds, syntheticToolResults, repairToolPairing, TranscriptRecord, Transcript
-- `util/asyncQueue.ts` · 32L · ↓122 — AsyncQueue
-- `util/fsAtomic.ts` ⬢ · 35L · ↓148 — writeFileAtomic
-- `util/zodToJsonSchema.ts` · 8L · ↓123 — zodToJsonSchema
+- `agent/addons.ts` · 210L · ↓120 — addonInvocationHeader, ADDONS_DIR, ADDON_ENTRY, Addon, loadAddons
+- `agent/agents.ts` · 101L · ↓120 — AgentTypeDef, AGENT_TYPES, SUBAGENT_RESULT_ID, agentRoleText, agentDescriptionText, resolveAgentType, agentToolNames
+- `agent/builtinAddons.ts` · 109L · ↓121 — BUILTIN_ADDONS
+- `agent/hooks.ts` · 134L · ↓120 — HookConfig, HookOutcome, HookSummary, HookRunner
+- `agent/prompts.ts` · 114L · ↓120 — SECTION_IDENTITY, SECTION_HARNESS, SECTION_COMMUNICATION, SECTION_ACTION_CARE, SECTION_GIT, SECTION_CODE_STYLE, SECTION_TASKS, SECTION_WORKING_METHOD, SECTION_AUTONOMY, behaviorCore, …
+- `agent/tool.ts` · 313L · ↓126 — PermissionClass, ToolResult, SpawnAgentOptions, SessionServices, ToolContext, ToolDescriptionVars, ToolDefinition, AnyToolDefinition, registerToolPrompt, toolDescriptionText, …
+- `config/frontmatter.ts` · 66L · ↓121 — FrontmatterEntry, Frontmatter, parseFrontmatter
+- `config/pricing.ts` · 84L · ↓121 — ModelPricing, MODEL_PRICING, pricingFor, contextWindowFor, formatDuration
+- `config/providerFactory.ts` · 107L · ↓120 — ProviderKind, EndpointSpec, isLocalBaseUrl, ConnectionSettings, endpointSpecFromSettings, createProviderForEndpoint
+- `config/settings.ts` · 665L · ↓132 — DEFAULT_OPENAI_BASE_URL, DEFAULT_API_KEY_ENV, settingsSchema, Settings, Hooks, HookEvent, HookMatcherEntry, SettingsWarning, globalSettingsPath, projectSettingsPath, …
+- `index.ts` ⬢ · 30L · ↓117 — writeFileAtomic, AsyncQueue, zodToJsonSchema
+- `integrations/mcp.ts` · 323L · ↓118 — McpServerConfig, mcpServerConfigSchema, McpToolInfo, McpToolError, McpClient, createMcpTools
+- `knowledge/docs.ts` · 889L · ↓118 — extractPdfText, extractDocxText, extractPptxText, extractXlsxText, extractRtfText, extractOdtText, extractEpubText, extractDocumentText
+- `knowledge/graph.ts` · 1247L · ↓123 — GraphFileEntry, GraphData, MAX_FILE_BYTES, SCAN_EXTS, langOf, shouldSkipDir, normalizeToId, extOf, buildGraph, loadOrBuildGraph, …
+- `knowledge/reuseGate.ts` · 160L · ↓120 — SearchLog, ReuseGateResult, evaluateReuseGate
+- `knowledge/seeds.ts` · 55L · ↓118 — resolveSeeds
+- `knowledge/standards.ts` · 32L · ↓120 — STANDARDS_FILENAMES, loadStandards
+- `knowledge/symbols.ts` · 442L · ↓122 — SymbolFileEntry, SymbolIndexData, a, c, D, NAME, SymbolSite, extractSymbolSites, extractSymbols, buildSymbolIndex, …
+- `knowledge/workspace.ts` · 50L · ↓120 — workspaceLooksNonTrivial, projectName
+- `runtime/engine.ts` ⬢ · 1923L · ↓118 — SETTING_TIMING, EngineOptions, Engine, reconstructForDisplay
+- `runtime/fileState.ts` · 67L · ↓120 — FileState
+- `runtime/finishing.ts` · 315L · ↓120 — codeFilesAmong, looksLikeTestDouble, uiFilesAmong, isScreenshotPath, looksLikeBrowserRun, runtimeEvidenceText, browserEvidenceText, findSymptoms, findHedges, selfVerifyText
+- `runtime/permissions.ts` · 598L · ↓120 — PermissionRequestPayload, PermissionOutcome, ApprovalSource, protectedEditPath, ExactGrant, deriveAlwaysGrant, PermissionEngine
+- `runtime/session.ts` ⬢ · 3330L · ↓119 — isSelfVerifyDone, addonNamedIn, SessionOptions, Session
+- `runtime/sessionStats.ts` · 326L · ↓120 — ContextBreakdown, SessionStats
+- `scheduling/background.ts` · 113L · ↓120 — BackgroundManager
+- `scheduling/cron.ts` · 348L · ↓127 — CronFields, parseCron, matchesCron, nextCronMatch, CronJobSource, CronJob, CronSchedulerOptions, CronScheduler
+- `scheduling/workflow.ts` · 328L · ↓118 — ParsedMeta, WorkflowMeta, WorkflowResult, WorkflowRunOptions, WorkflowRunner
+- `state/taskStore.ts` · 136L · ↓120 — TaskStore
+- `state/transcript.ts` · 225L · ↓120 — stripSystemReminders, unansweredToolUseIds, syntheticToolResults, repairToolPairing, TranscriptRecord, Transcript
+- `util/asyncQueue.ts` · 32L · ↓119 — AsyncQueue
+- `util/fsAtomic.ts` ⬢ · 35L · ↓145 — writeFileAtomic
+- `util/zodToJsonSchema.ts` · 8L · ↓120 — zodToJsonSchema
 
 **engine/host/src/**
 
@@ -324,50 +324,50 @@ before adding one.
 
 **engine/protocol/src/**
 
-- `brain.generated.ts` ⬢ · 2127L · ↓166 — BrainPromptDefault, BrainToolDefault, BrainAvailabilityDefault, BRAIN_PROMPTS, BRAIN_TOOLS, BRAIN_BUILTIN_TOOLS, BRAIN_AVAILABILITY, BRAIN_CORE_ORDER, BrainBehavior, BrainBehaviorOverrides, …
-- `brain.ts` ⬢ · 385L · ↓163 — BrainBehavior, BrainBehaviorCrossRule, BrainBehaviorOverrides, BrainBehaviorRule, BrainBehaviorSpec, toolDescription, toolParam, assertToolParamStates, brainToolNames, unreadToolParams, …
-- `branding.ts` ⬢ · 6L · ↓166 — PRODUCT_NAME, PRODUCT_REPO_URL, CLI_NAME, STATE_DIR_NAME
-- `index.ts` ⬢ · 7L · ↓162
-- `ndjson.ts` ⬢ · 44L · ↓163 — encodeFrame, decodeFrames
-- `prompts.ts` ⬢ · 318L · ↓166 — PromptChannel, PromptMeta, PromptEntry, promptsDir, promptFile, definePrompt, promptText, renderPrompt, promptTextIfEnabled, isPromptDisabled, …
-- `tokens.ts` ⬢ · 133L · ↓163 — emptyUsage, addUsage, reasoningPart, inputTokensOf, CHARS_PER_TOKEN, estimateTokens, formatTokens, contextPercentOf, freeContextOf
-- `types.ts` ⬢ · 543L · ↓164 — PROTOCOL_VERSION, TaskStatus, TaskItem, Usage, QuestionOption, Question, SessionSummary, PermissionDecision, SlashCommandInfo, CoreEvent, …
+- `brain.generated.ts` ⬢ · 2125L · ↓163 — BrainPromptDefault, BrainToolDefault, BrainAvailabilityDefault, BRAIN_PROMPTS, BRAIN_TOOLS, BRAIN_BUILTIN_TOOLS, BRAIN_AVAILABILITY, BRAIN_CORE_ORDER, BrainBehavior, BrainBehaviorOverrides, …
+- `brain.ts` ⬢ · 385L · ↓160 — BrainBehavior, BrainBehaviorCrossRule, BrainBehaviorOverrides, BrainBehaviorRule, BrainBehaviorSpec, toolDescription, toolParam, assertToolParamStates, brainToolNames, unreadToolParams, …
+- `branding.ts` ⬢ · 6L · ↓163 — PRODUCT_NAME, PRODUCT_REPO_URL, CLI_NAME, STATE_DIR_NAME
+- `index.ts` ⬢ · 7L · ↓159
+- `ndjson.ts` ⬢ · 44L · ↓160 — encodeFrame, decodeFrames
+- `prompts.ts` ⬢ · 318L · ↓163 — PromptChannel, PromptMeta, PromptEntry, promptsDir, promptFile, definePrompt, promptText, renderPrompt, promptTextIfEnabled, isPromptDisabled, …
+- `tokens.ts` ⬢ · 133L · ↓160 — emptyUsage, addUsage, reasoningPart, inputTokensOf, CHARS_PER_TOKEN, estimateTokens, formatTokens, contextPercentOf, freeContextOf
+- `types.ts` ⬢ · 543L · ↓161 — PROTOCOL_VERSION, TaskStatus, TaskItem, Usage, QuestionOption, Question, SessionSummary, PermissionDecision, SlashCommandInfo, CoreEvent, …
 
 **engine/providers/src/**
 
-- `anthropic.ts` ⬢ · 282L · ↓139 — AnthropicOptions, AnthropicProvider
-- `effort.ts` · 126L · ↓141 — WIRE_EFFORTS, WireEffort, toWireEffort, EffortClamp, mentionsReasoningEffort, looksLikeUnknownField
-- `fake.ts` · 88L · ↓139 — FakeToolCall, FakeTurn, FakeProvider
-- `index.ts` · 9L · ↓138 — FakeProvider, FakeToolCall, FakeTurn, OpenAICompatOptions, OpenAICompatProvider, OllamaOptions, OllamaProvider, ThinkTagSplitter, EffortClamp, toWireEffort, …
-- `ollama.ts` ⬢ · 295L · ↓140 — OllamaOptions, OllamaProvider
-- `openai-compat.ts` ⬢ · 620L · ↓139 — OpenAICompatOptions, OpenAICompatProvider
-- `retry.ts` · 231L · ↓142 — RetryOptions, RetryInfo, ProviderHttpError, looksLikeContextOverflow, isContextOverflowError, isRetryable, retryReason, friendlyProviderError, withRetry, parseRetryAfter
-- `think.ts` · 93L · ↓141 — ThinkTagSplitter
-- `types.ts` · 108L · ↓143 — ContentBlock, ToolResultPart, Msg, ToolSchema, StopReason, ProviderEvent, StreamRequest, Provider
+- `anthropic.ts` ⬢ · 282L · ↓136 — AnthropicOptions, AnthropicProvider
+- `effort.ts` · 126L · ↓138 — WIRE_EFFORTS, WireEffort, toWireEffort, EffortClamp, mentionsReasoningEffort, looksLikeUnknownField
+- `fake.ts` · 88L · ↓136 — FakeToolCall, FakeTurn, FakeProvider
+- `index.ts` · 9L · ↓135 — FakeProvider, FakeToolCall, FakeTurn, OpenAICompatOptions, OpenAICompatProvider, OllamaOptions, OllamaProvider, ThinkTagSplitter, EffortClamp, toWireEffort, …
+- `ollama.ts` ⬢ · 295L · ↓137 — OllamaOptions, OllamaProvider
+- `openai-compat.ts` ⬢ · 620L · ↓136 — OpenAICompatOptions, OpenAICompatProvider
+- `retry.ts` · 231L · ↓139 — RetryOptions, RetryInfo, ProviderHttpError, looksLikeContextOverflow, isContextOverflowError, isRetryable, retryReason, friendlyProviderError, withRetry, parseRetryAfter
+- `think.ts` · 93L · ↓138 — ThinkTagSplitter
+- `types.ts` · 108L · ↓140 — ContentBlock, ToolResultPart, Msg, ToolSchema, StopReason, ProviderEvent, StreamRequest, Provider
 
 **engine/tools/src/**
 
-- `addon.ts` · 69L · ↓86 — addonTool
-- `agent.ts` · 76L · ↓86 — agentTool
-- `askUserQuestion.ts` · 43L · ↓86 — askUserQuestionTool
-- `bash.ts` · 904L · ↓87 — bashDeletionSubject, bashDeletionTargets, bashDeletionScope, bashProcessKillSubject, bashTool, resolveBashPath, spawnShell, killTree
-- `cron.ts` · 162L · ↓86 — cronCreateTool, cronDeleteTool, cronListTool, scheduleWakeupTool
-- `edit.ts` · 123L · ↓86 — editTool
-- `glob.ts` · 86L · ↓86 — globTool
-- `graphQuery.ts` · 143L · ↓86 — graphQueryTool
-- `grep.ts` · 92L · ↓86 — grepTool
-- `index.ts` · 98L · ↓85 — addonTool, agentTool, askUserQuestionTool, bashTool, cronCreateTool, cronDeleteTool, cronListTool, editTool, enterWorktreeTool, exitWorktreeTool, …
-- `monitor.ts` · 155L · ↓86 — monitorTool
-- `pushNotification.ts` · 95L · ↓86 — pushNotificationTool
-- `read.ts` · 179L · ↓86 — readTool
-- `taskControl.ts` · 71L · ↓86 — taskStopTool, taskOutputTool
-- `tasks.ts` · 191L · ↓86 — resolveTaskId, taskCreateTool, taskUpdateTool, taskListTool, taskGetTool
-- `util/diff.ts` · 122L · ↓88 — unifiedDiff
-- `webFetch.ts` · 149L · ↓86 — webFetchTool, htmlToText
-- `webSearch.ts` · 226L · ↓86 — SearchResult, SearchBackend, parseDuckDuckGoHtml, DuckDuckGoBackend, BraveBackend, TavilyBackend, webSearchTool
-- `workflow.ts` · 87L · ↓86 — workflowTool
-- `worktree.ts` · 248L · ↓86 — enterWorktreeTool, exitWorktreeTool
-- `write.ts` · 48L · ↓86 — writeTool
+- `addon.ts` · 69L · ↓83 — addonTool
+- `agent.ts` · 76L · ↓83 — agentTool
+- `askUserQuestion.ts` · 43L · ↓83 — askUserQuestionTool
+- `bash.ts` · 904L · ↓84 — bashDeletionSubject, bashDeletionTargets, bashDeletionScope, bashProcessKillSubject, bashTool, resolveBashPath, spawnShell, killTree
+- `cron.ts` · 162L · ↓83 — cronCreateTool, cronDeleteTool, cronListTool, scheduleWakeupTool
+- `edit.ts` · 123L · ↓83 — editTool
+- `glob.ts` · 86L · ↓83 — globTool
+- `graphQuery.ts` · 143L · ↓83 — graphQueryTool
+- `grep.ts` · 92L · ↓83 — grepTool
+- `index.ts` · 98L · ↓82 — addonTool, agentTool, askUserQuestionTool, bashTool, cronCreateTool, cronDeleteTool, cronListTool, editTool, enterWorktreeTool, exitWorktreeTool, …
+- `monitor.ts` · 155L · ↓83 — monitorTool
+- `pushNotification.ts` · 95L · ↓83 — pushNotificationTool
+- `read.ts` · 179L · ↓83 — readTool
+- `taskControl.ts` · 71L · ↓83 — taskStopTool, taskOutputTool
+- `tasks.ts` · 191L · ↓83 — resolveTaskId, taskCreateTool, taskUpdateTool, taskListTool, taskGetTool
+- `util/diff.ts` · 122L · ↓85 — unifiedDiff
+- `webFetch.ts` · 149L · ↓83 — webFetchTool, htmlToText
+- `webSearch.ts` · 226L · ↓83 — SearchResult, SearchBackend, parseDuckDuckGoHtml, DuckDuckGoBackend, BraveBackend, TavilyBackend, webSearchTool
+- `workflow.ts` · 87L · ↓83 — workflowTool
+- `worktree.ts` · 248L · ↓83 — enterWorktreeTool, exitWorktreeTool
+- `write.ts` · 48L · ↓83 — writeTool
 
 **tests/features/a-404-on-models-is-disambiguated-not-assumed.test.ts/**
 
@@ -395,7 +395,7 @@ before adding one.
 
 **tests/features/allow-all-stance.test.ts/**
 
-- `` · 289L · ↓0
+- `` · 294L · ↓0
 
 **tests/features/api-key-resolution-has-no-silent-shadow.test.ts/**
 
@@ -403,7 +403,7 @@ before adding one.
 
 **tests/features/approval-note.test.ts/**
 
-- `` · 170L · ↓0
+- `` · 175L · ↓0
 
 **tests/features/boots.test.ts/**
 
@@ -415,19 +415,19 @@ before adding one.
 
 **tests/features/brain-controls-behavior.test.ts/**
 
-- `` · 1705L · ↓0
+- `` · 1738L · ↓0
 
 **tests/features/brain-editor.test.ts/**
 
-- `` · 504L · ↓0
+- `` · 520L · ↓0
 
 **tests/features/brain-is-the-single-source.test.ts/**
 
-- `` · 1518L · ↓0
+- `` · 1175L · ↓0
 
 **tests/features/bundled-files.test.ts/**
 
-- `` · 244L · ↓0
+- `` · 249L · ↓0
 
 **tests/features/changes-panel.test.ts/**
 
@@ -435,7 +435,7 @@ before adding one.
 
 **tests/features/cheap-until-used.test.ts/**
 
-- `` · 154L · ↓0
+- `` · 158L · ↓0
 
 **tests/features/clarify-pre-layer.test.ts/**
 
@@ -479,7 +479,7 @@ before adding one.
 
 **tests/features/deletion-guard.test.ts/**
 
-- `` · 530L · ↓0
+- `` · 534L · ↓0
 
 **tests/features/deletion-scope-split.test.ts/**
 
@@ -535,11 +535,11 @@ before adding one.
 
 **tests/features/honest-gap-outranks-a-manufactured-green.test.ts/**
 
-- `` · 310L · ↓0
+- `` · 139L · ↓0
 
 **tests/features/hooks.test.ts/**
 
-- `` · 534L · ↓0
+- `` · 540L · ↓0
 
 **tests/features/images-go-to-a-second-model-never-to-the-coding-one.test.ts/**
 
@@ -563,7 +563,7 @@ before adding one.
 
 **tests/features/long-silent-work-stays-visible.test.ts/**
 
-- `` · 224L · ↓0
+- `` · 227L · ↓0
 
 **tests/features/long-streams-never-stall-the-window.test.ts/**
 
@@ -591,7 +591,7 @@ before adding one.
 
 **tests/features/mirror-image-types.test.ts/**
 
-- `` · 299L · ↓0
+- `` · 301L · ↓0
 
 **tests/features/mirror-local-endpoint.test.ts/**
 
@@ -631,7 +631,7 @@ before adding one.
 
 **tests/features/on-invoke-load.test.ts/**
 
-- `` · 131L · ↓0
+- `` · 135L · ↓0
 
 **tests/features/one-token-algebra.test.ts/**
 
@@ -663,7 +663,7 @@ before adding one.
 
 **tests/features/process-kill-guard.test.ts/**
 
-- `` · 575L · ↓0
+- `` · 578L · ↓0
 
 **tests/features/profile-pickup.test.ts/**
 
@@ -671,7 +671,7 @@ before adding one.
 
 **tests/features/prompt-contract.test.ts/**
 
-- `` · 266L · ↓0
+- `` · 246L · ↓0
 
 **tests/features/prompt-registry.test.ts/**
 
@@ -703,11 +703,11 @@ before adding one.
 
 **tests/features/reuse-gate-reminds-never-blocks.test.ts/**
 
-- `` · 313L · ↓0
+- `` · 333L · ↓0
 
 **tests/features/runtime-evidence-floor.test.ts/**
 
-- `` · 466L · ↓0
+- `` · 448L · ↓0
 
 **tests/features/sandbox-unaffected.test.ts/**
 
@@ -723,7 +723,7 @@ before adding one.
 
 **tests/features/self-check-sharpening.test.ts/**
 
-- `` · 341L · ↓0
+- `` · 348L · ↓0
 
 **tests/features/self-verify-rung.test.ts/**
 
@@ -783,11 +783,7 @@ before adding one.
 
 **tests/features/system-prompt-assembly.test.ts/**
 
-- `` · 216L · ↓0
-
-**tests/features/system-prompt-is-pinned.test.ts/**
-
-- `` · 195L · ↓0
+- `` · 217L · ↓0
 
 **tests/features/the-console-reads-plainly.test.ts/**
 
@@ -807,7 +803,7 @@ before adding one.
 
 **tests/features/the-self-check-names-what-the-turn-left-open.test.ts/**
 
-- `` · 201L · ↓0
+- `` · 222L · ↓0
 
 **tests/features/the-sessions-list-follows-the-live-session.test.ts/**
 
@@ -819,7 +815,7 @@ before adding one.
 
 **tests/features/tool-bash-background.test.ts/**
 
-- `` · 112L · ↓0
+- `` · 114L · ↓0
 
 **tests/features/tool-bash-cwd.test.ts/**
 
@@ -827,7 +823,7 @@ before adding one.
 
 **tests/features/tool-bash.test.ts/**
 
-- `` · 319L · ↓0
+- `` · 320L · ↓0
 
 **tests/features/tool-edit.test.ts/**
 
@@ -880,10 +876,6 @@ before adding one.
 **tests/features/tool-taskupdate.test.ts/**
 
 - `` · 174L · ↓0
-
-**tests/features/tool-wire-contract-is-pinned.test.ts/**
-
-- `` · 176L · ↓0
 
 **tests/features/tool-write.test.ts/**
 
@@ -939,7 +931,7 @@ before adding one.
 
 **tests/features/web-changes-are-seen-in-a-browser.test.ts/**
 
-- `` · 300L · ↓0
+- `` · 308L · ↓0
 
 **tests/features/windows-artifact.test.ts/**
 
@@ -965,10 +957,6 @@ before adding one.
 
 - `` · 176L · ↓0
 
-**tests/lib/approved.ts/**
-
-- `` · 147L · ↓4 — CANONICAL_ENV, approvedPath, readApproved, overriddenPromptIds, renderSystemPrompt, renderToolContract, firstDifference
-
 **tests/lib/childProcesses.ts/**
 
 - `` · 284L · ↓58 — SpawnOptions, Exit, ProcHandle, ChildProcesses
@@ -987,15 +975,15 @@ before adding one.
 
 **tests/lib/featureTest.ts/**
 
-- `` · 746L · ↓153 — TestRun, FeatureTest, inventoryLinkageProblems, LLM_OPT_IN_VAR, realModelTestsEnabled, ARTIFACT_OPT_IN_VAR, realArtifactTestsEnabled, UI_OPT_IN_VAR, realUiTestsEnabled, kindScopeRequested, …
+- `` · 746L · ↓151 — TestRun, FeatureTest, inventoryLinkageProblems, LLM_OPT_IN_VAR, realModelTestsEnabled, ARTIFACT_OPT_IN_VAR, realArtifactTestsEnabled, UI_OPT_IN_VAR, realUiTestsEnabled, kindScopeRequested, …
 
 **tests/lib/fsTest.ts/**
 
-- `` · 103L · ↓70 — FsTest
+- `` · 103L · ↓69 — FsTest
 
 **tests/lib/inventory.ts/**
 
-- `` · 120L · ↓158 — repoRoot, Kind, FeatureRecordSubset, featureRecordPath, readFeatureRecord
+- `` · 120L · ↓155 — repoRoot, Kind, FeatureRecordSubset, featureRecordPath, readFeatureRecord
 
 **tests/lib/llmTest.ts/**
 
@@ -1019,7 +1007,7 @@ before adding one.
 
 **tests/lib/pureTest.ts/**
 
-- `` · 59L · ↓59 — PureTest
+- `` · 59L · ↓56 — PureTest
 
 **tests/lib/scriptedEngine.ts/**
 
@@ -1033,22 +1021,18 @@ before adding one.
 
 - `` · 427L · ↓32 — AppHandle, UiTest
 
-**tools/approvals/regenerate.mjs/**
-
-- `` · 85L · ↓0
-
 **tools/brain-editor/src/**
 
-- `cli.ts` · 267L · ↓0
+- `cli.ts` · 264L · ↓0
 - `compiler.ts` · 120L · ↓8 — REPO, SHIPPED_BRAIN, GENERATED_MODULE, COMPILER_FILE, CompiledPrompt, CompiledTool, Availability, Json, JsonObject, CompileResult, …
-- `engine.ts` · 118L · ↓5 — PinCheck, ProbeResult, probeUnavailable, probeBrain, forgetProbes
+- `engine.ts` · 112L · ↓5 — ProbeResult, probeUnavailable, probeBrain, forgetProbes
 - `format.ts` · 239L · ↓5 — PROMPT_KEY_ORDER, PromptFile, FormatError, normalizeText, formatPrompt, formatToolDescription, ParamSection, formatParams, formatAvailability, replaceJsonValue, …
 - `guide.ts` · 133L · ↓3 — FieldGuide, OpGuide, CHANGE_GUIDE
-- `model.ts` · 1114L · ↓4 — PromptItem, ToolItem, KnobItem, BrokenFile, BrainSnapshot, brainRevision, loadBrain, checkEngine, Change, CHANGE_OPS, …
-- `probe.mjs` · 71L · ↓0
-- `project.ts` · 181L · ↓5 — isShippedBrain, Holder, PIN_HOLDERS, PIN_TESTS, holdersOf, promptUsers, LocalOverride, localOverrides, EngineState, engineState, …
+- `model.ts` · 1097L · ↓4 — PromptItem, ToolItem, KnobItem, BrokenFile, BrainSnapshot, brainRevision, loadBrain, checkEngine, Change, CHANGE_OPS, …
+- `probe.mjs` · 64L · ↓0
+- `project.ts` · 161L · ↓5 — isShippedBrain, Holder, holdersOf, promptUsers, LocalOverride, localOverrides, EngineState, engineState, BuildRun, startBuild
 - `server.ts` · 252L · ↓1 — ACTION_HEADER, BrainEditorOptions, BrainEditor, createBrainEditor
-- `ui/app.js` · 1720L · ↓0
+- `ui/app.js` · 1716L · ↓0
 - `ui/brain.js` · 529L · ↓0
 
 **tools/brain/compile.mjs/**

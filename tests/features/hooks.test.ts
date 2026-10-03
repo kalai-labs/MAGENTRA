@@ -44,11 +44,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HookRunner, type HookConfig, type HookOutcome } from "@magentra/core";
-import type { CoreEvent } from "@magentra/protocol";
+import { renderPrompt, type CoreEvent } from "@magentra/protocol";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
 import { ProcTest } from "../lib/procTest.ts";
 import { startScriptedEngine, type ScriptedEngine } from "../lib/scriptedEngine.ts";
+
+/** Whether a `tool_call_finished` preview shows `text`: all of it, or a prefix the engine cut with "…". */
+function isPreviewOf(preview: string | undefined, text: string): boolean {
+  return preview === text || (preview !== undefined && preview.endsWith("…") && text.startsWith(preview.slice(0, -1)));
+}
 
 const FEATURE = "hooks";
 
@@ -390,9 +395,10 @@ class APreToolUseBlockStopsTheCallBeforeItRuns extends HookTest {
     t.assert.equal(turn.toolResults.length, 1, "the call was still answered — a blocked call is a result, not a silence");
     const result = turn.toolResults[0];
     t.assert.equal(result?.isError, true, "a block must reach the model as an error, or it reads as a successful write");
+    const blocked = renderPrompt("reminder.pre-tool-use-hook", { reason: "policy: this file is generated" });
     t.assert.ok(
-      (result?.resultPreview ?? "").startsWith("PreToolUse hook blocked this call:"),
-      `the result must name the hook as the cause; it said ${JSON.stringify(result?.resultPreview)}`,
+      isPreviewOf(result?.resultPreview, blocked),
+      `the result must be the hook-block reminder carrying the hook's reason; it said ${JSON.stringify(result?.resultPreview)}`,
     );
     t.assert.match(result?.resultPreview ?? "", /policy: this file is generated/, "the hook's own reason must survive to the model");
 
@@ -413,7 +419,7 @@ class APreToolUseBlockStopsTheCallBeforeItRuns extends HookTest {
       .flatMap((message) => message.content)
       .filter((block) => block.type === "tool_result");
     t.assert.ok(
-      results.some((block) => JSON.stringify(block).includes("PreToolUse hook blocked this call")),
+      results.some((block) => JSON.stringify(block).includes(JSON.stringify(blocked).slice(1, -1))),
       "the blocked result never made it into a request, so the model was never told",
     );
   }
@@ -464,7 +470,7 @@ class AStopBlockSendsTheModelBackToWork extends HookTest {
       .filter((block) => block.type === "text")
       .map((block) => block.text);
     t.assert.ok(
-      (pushed ?? []).some((text) => text.includes("Stop hook: finish tests")),
+      (pushed ?? []).some((text) => text.includes(renderPrompt("reminder.stop-hook", { reason: "finish tests" }))),
       `the hook's reason never reached the model; the user turns were ${JSON.stringify(pushed)}`,
     );
   }

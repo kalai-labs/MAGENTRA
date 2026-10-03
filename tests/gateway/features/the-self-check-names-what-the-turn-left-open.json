@@ -15,7 +15,7 @@
   "invariant": "The self-check quotes back the symptoms the turn reported and the hedges in its answer, so each is re-tested, settled, or left as a plain note to the user.",
   "deferred": false,
   "tests": [
-    "the-two-clauses-are-registered-reminders-and-none-demands-a-pass",
+    "the-two-clauses-are-registered-reminders-each-with-its-one-slot",
     "the-field-turns-unchecked-symptom-and-its-may-still-hedge-are-quoted-to-the-self-check",
     "a-clean-turn-is-self-checked-with-neither-clause",
     "the-way-defects-and-gaps-are-really-phrased-is-found-and-plans-and-successes-are-not",

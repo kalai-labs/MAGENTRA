@@ -38,9 +38,10 @@
  */
 
 import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { FileState, type ToolContext } from "@magentra/core";
+import { renderPrompt } from "@magentra/protocol";
 import { readTool } from "@magentra/tools";
 
 import { resultText, runTool, strictServices } from "../lib/directTool.ts";
@@ -322,11 +323,10 @@ class AnImageNeverReachesTheCodingModel extends ReadTest {
     });
     t.assert.equal(refused.isError, true, "with no vision model, reading an image is refused");
     t.assert.equal(
-      resultText(refused).includes("cannot see it"),
-      true,
-      `it says so plainly; it said ${JSON.stringify(resultText(refused))}`,
+      resultText(refused),
+      renderPrompt("read.image-unseen", { file: basename(png), reason: "no vision model" }),
+      "it is the unseen-image refusal, carrying the reason it was given",
     );
-    t.assert.equal(resultText(refused).includes("no vision model"), true, "and it passes on the reason it was given");
     t.assert.equal(describeCalls, 0, "the image was never sent anywhere");
     t.assert.equal(this.state.wasRead(png), false, "and a refused read is not a read");
 

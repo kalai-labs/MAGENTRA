@@ -33,7 +33,7 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { PermissionEngine, type ApprovalSource, type PermissionRequestPayload } from "@magentra/core";
-import type { CoreEvent, PermissionDecision } from "@magentra/protocol";
+import { promptText, type CoreEvent, type PermissionDecision } from "@magentra/protocol";
 import { bashTool, writeTool } from "@magentra/tools";
 
 import { strictServices } from "../lib/directTool.ts";
@@ -41,6 +41,11 @@ import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
 import { FsTest } from "../lib/fsTest.ts";
 import { PureTest } from "../lib/pureTest.ts";
 import { startScriptedEngine, type ScriptedEngine } from "../lib/scriptedEngine.ts";
+
+/** Whether a `tool_call_finished` preview shows `text`: all of it, or a prefix the engine cut with "…". */
+function isPreviewOf(preview: string | undefined, text: string): boolean {
+  return preview === text || (preview !== undefined && preview.endsWith("…") && text.startsWith(preview.slice(0, -1)));
+}
 
 const FEATURE = "allow-all-stance";
 
@@ -182,7 +187,7 @@ class ADenyRuleRefusesInsteadOfAsking extends OverdriveTest {
     t.assert.equal(out.allowed, false);
     t.assert.equal(out.source, "rule");
     t.assert.deepEqual(p.asks, [], "it refused without a round trip to a user who is not there");
-    t.assert.match(out.message ?? "", /do not retry it verbatim/, "the model is told not to repeat the call");
+    t.assert.equal(out.message, promptText("reminder.permission-rule-denied"), "the model is handed the deny-rule refusal");
 
     // Everything the rule does not name still runs unprompted.
     const other = await p.engine.check(bashTool, bashInput("npm run build"), "npm run build", "build", deletionScopeOf("npm run build"), false, undefined);
@@ -273,7 +278,7 @@ class TheSwitchReachesTheEngineThatDecides extends FsTest {
     t.assert.equal(wrote?.isError, false, wrote?.resultPreview);
     t.assert.equal(existsSync(stateFile), true, "the edit into .magentra landed without a click");
     t.assert.equal(refused?.isError, true, "the denied call came back as an error the model can read");
-    t.assert.match(refused?.resultPreview ?? "", /Permission denied by settings rule/);
+    t.assert.ok(isPreviewOf(refused?.resultPreview, promptText("reminder.permission-rule-denied")), "the refusal is the deny-rule one");
     t.assert.equal(existsSync(forbidden), false, "and the deny rule stopped the write from happening");
   }
 }

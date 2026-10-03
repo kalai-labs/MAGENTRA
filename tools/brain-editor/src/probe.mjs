@@ -11,11 +11,11 @@
 //
 // A module resolve hook swaps engine/protocol/dist/brain.generated.js for that
 // file, so the engine code is the last build's and the brain is the one asked
-// about. Then it does what the engine and the pin tests do at load: build the
-// tool registry (every toolDescription/toolParam/assertToolParamStates runs),
-// load the core (every brainPrompt id is checked), and render the two pinned
-// artifacts with tests/lib/approved.ts — the same printers the tests and
-// `npm run approve` use, never a copy.
+// about. Then it does what the engine does at load: build the tool registry
+// (every toolDescription/toolParam/assertToolParamStates runs) and load the
+// core (every brainPrompt id is checked). It renders the standing system prompt
+// for one fixed environment and hashes every tool's wire text, so a plan can
+// say whether either changes.
 //
 // Prints ONE JSON line on stdout.
 
@@ -39,29 +39,22 @@ registerHooks({
   },
 });
 
+// One fixed environment, so two probes differ only where their brains do.
+const ENV = { cwd: "/w", isGitRepo: false, platform: "win32", model: "m", date: "2026-01-01" };
+
 const out = { ok: true };
 try {
-  const approved = await import(pathToFileURL(join(repo, "tests", "lib", "approved.ts")).href);
   const protocol = await import(pathToFileURL(join(repo, "engine", "protocol", "dist", "index.js")).href);
-  await import(pathToFileURL(join(repo, "engine", "core", "dist", "index.js")).href);
-  const systemPrompt = approved.renderSystemPrompt();
-  const toolContract = approved.renderToolContract();
-  const pin = (featureId, name, rendered) => {
-    let approvedText;
-    try {
-      approvedText = approved.readApproved(featureId, name);
-    } catch {
-      return { holds: false, difference: "no approved artifact on disk" };
-    }
-    const difference = approved.firstDifference(rendered, approvedText);
-    return difference === undefined ? { holds: true } : { holds: false, difference };
-  };
-  out.systemPrompt = systemPrompt;
-  out.toolContractHash = createHash("sha256").update(toolContract).digest("hex").slice(0, 16);
-  out.pins = {
-    "system-prompt-is-pinned": pin("system-prompt-is-pinned", "system-prompt.txt", systemPrompt),
-    "tool-wire-contract-is-pinned": pin("tool-wire-contract-is-pinned", "tools.json", toolContract),
-  };
+  const tools = await import(pathToFileURL(join(repo, "engine", "tools", "dist", "index.js")).href);
+  const core = await import(pathToFileURL(join(repo, "engine", "core", "dist", "index.js")).href);
+  const { z } = await import("zod");
+  const wire = tools
+    .createDefaultRegistry()
+    .list()
+    .map((t) => ({ name: t.name, description: t.description, descriptionVars: Object.keys(t.descriptionVars ?? {}).sort(), inputSchema: z.toJSONSchema(t.inputSchema) }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  out.systemPrompt = core.buildSystemPrompt({ env: ENV }).replace(/\r\n/g, "\n").trimEnd() + "\n";
+  out.toolContractHash = createHash("sha256").update(JSON.stringify(wire)).digest("hex").slice(0, 16);
   out.unreadParams = protocol.unreadToolParams();
 } catch (err) {
   out.ok = false;

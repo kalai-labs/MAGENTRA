@@ -16,7 +16,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { loadAddons } from "@magentra/core";
+import { addonInvocationHeader, loadAddons } from "@magentra/core";
 import type { CoreEvent } from "@magentra/protocol";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
@@ -96,7 +96,7 @@ class ArgumentsAreSubstitutedIntoTheBody extends NameInvocationTest {
     t.assert.equal(engine.provider.requests.length, 1, "one model call for the one turn");
     const text = this.lastUserText(engine);
     t.assert.ok(text.includes("<command-name>/foo</command-name>"), text);
-    t.assert.ok(text.includes('The "foo" addon was invoked'), "the invocation header names the addon");
+    t.assert.ok(text.startsWith(addonInvocationHeader("foo")), "it opens with the ONE shared invocation header the Addon tool uses, for this addon");
     t.assert.ok(text.includes("Handle do x now."), "the body with the args substituted");
     t.assert.equal(text.includes("$ARGUMENTS"), false);
     t.assert.equal(engine.events.some((e) => e.type === "command_output" && e.text === "🧩 foo loaded — following its instructions."), true);

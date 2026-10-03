@@ -14,7 +14,7 @@
   "invariant": "The OVERDRIVE stance is stated in the prompt, so the model knows nothing will stop to ask.",
   "deferred": false,
   "tests": [
-    "while-overdrive-is-off-the-section-is-absent-and-the-harness-line-still-points-at-it",
+    "while-overdrive-is-off-the-section-is-absent-and-the-harness-section-stays",
     "switching-overdrive-on-puts-the-section-in-the-next-request-exactly-once",
     "switching-overdrive-off-takes-the-section-back-out-of-the-following-request",
     "overdrive-changed-is-emitted-once-per-real-change-and-not-for-a-repeat",

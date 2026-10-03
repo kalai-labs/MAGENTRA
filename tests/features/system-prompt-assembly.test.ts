@@ -32,12 +32,11 @@ import {
   SECTION_COMMUNICATION,
   SECTION_GIT,
   SECTION_HARNESS,
-  SECTION_IDENTITY,
   SECTION_TASKS,
   SECTION_WORKING_METHOD,
   type PromptEnvironment,
 } from "@magentra/core";
-import { isPromptDisabled, PRODUCT_NAME, PRODUCT_REPO_URL, promptCatalog, renderPrompt } from "@magentra/protocol";
+import { isPromptDisabled, PRODUCT_NAME, PRODUCT_REPO_URL, promptCatalog, promptDefault, renderPrompt } from "@magentra/protocol";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
 import { FsTest } from "../lib/fsTest.ts";
@@ -91,13 +90,12 @@ class NineSectionsOnceEachInOrder extends AssemblyTest {
       t.assert.ok(at > last, `the ${name} section must come after the one before it`);
       last = at;
     }
-    const env = prompt.indexOf("Environment:");
-    t.assert.ok(env > last, "the environment block follows every behaviour section");
-    t.assert.ok(prompt.includes("- Working directory: C:\\work\\demo"));
-    t.assert.ok(prompt.includes("- Git repository: yes"));
-    t.assert.ok(prompt.includes("- Platform: win32"));
-    t.assert.ok(prompt.includes("- Model: some/model"));
-    t.assert.ok(prompt.includes("- Today's date: 2026-09-19"));
+    const block = environmentBlock(ENV).trim();
+    t.assert.equal(countOf(prompt, block), 1, "the environment block is in the prompt once");
+    t.assert.ok(prompt.indexOf(block) > last, "the environment block follows every behaviour section");
+    for (const value of [ENV.cwd, ENV.platform, ENV.model, ENV.date]) {
+      t.assert.ok(block.includes(value), `the environment block carries ${value}`);
+    }
     t.assert.equal(prompt, buildSystemPrompt({ env: ENV }), "the assembly is deterministic");
     // The nine constants really are nine distinct definitions.
     t.assert.equal(new Set(SECTIONS_IN_ORDER.map(([, text]) => text)).size, 9);
@@ -111,14 +109,17 @@ class TheAddonRosterFollowsTheEnvironment extends AssemblyTest {
   readonly whyItExists = "a header with no addons under it told the model there were procedures to load and left it inventing names";
 
   override run(t: TestRun): void {
-    const withAddons = buildSystemPrompt({ env: ENV, addons: [{ name: "x", description: "d" }] });
-    t.assert.ok(withAddons.includes("Available addons"), "the roster header is present");
+    const addons = [{ name: "x", description: "d" }];
+    const roster = addonsBlock(addons)?.trim() ?? "";
+    t.assert.ok(roster.length > 0, "one addon renders a roster");
+    const withAddons = buildSystemPrompt({ env: ENV, addons });
+    t.assert.ok(withAddons.includes(roster), "the roster, header and all, is in the prompt");
     t.assert.ok(withAddons.includes("\n- x: d"), "the roster line is `- name: description`");
-    t.assert.ok(withAddons.indexOf("Available addons") > withAddons.indexOf("Environment:"), "the roster comes after the environment block");
+    t.assert.ok(withAddons.indexOf(roster) > withAddons.indexOf(environmentBlock(ENV).trim()), "the roster comes after the environment block");
 
     const without = buildSystemPrompt({ env: ENV, addons: [] });
-    t.assert.equal(without.includes("Available addons"), false, "no header when there is nothing to list");
     t.assert.equal(addonsBlock([]), undefined);
+    t.assert.equal(without, buildSystemPrompt({ env: ENV }), "no header when there is nothing to list: an empty roster adds nothing");
   }
 }
 
@@ -195,19 +196,19 @@ class IdentityRendersItsPlaceholders extends AssemblyTest {
   readonly whyItExists = "the model introduced itself as '{{product}}' after a refactor moved the placeholders and nobody rendered them";
 
   override run(t: TestRun): void {
-    // The shipped text spells the name and URL out; the prompt is REGISTERED
-    // with `product` and `repo` placeholders so an operator's override may use
-    // them instead. Both routes must end in the same words reaching the model.
+    // The prompt is REGISTERED with `product` and `repo` placeholders, so the
+    // shipped text or an operator's override may use them. Whichever slots the
+    // text in force holds, the model receives their values, never the slot.
     const registered = promptCatalog().find((p) => p.id === "system.identity");
     t.assert.deepEqual(registered?.placeholders, ["product", "repo"], "the identity prompt declares its two placeholders");
     t.assert.equal(renderPrompt("system.identity", { product: PRODUCT_NAME, repo: PRODUCT_REPO_URL }).includes("{{"), false, "rendering leaves no slot behind");
-    t.assert.equal(SECTION_IDENTITY.includes(PRODUCT_NAME), true, "the shipped text names the product");
 
     const prompt = buildSystemPrompt({ env: ENV });
     t.assert.equal(prompt.includes("{{product}}"), false, "no literal {{product}} reaches the model");
     t.assert.equal(prompt.includes("{{repo}}"), false, "no literal {{repo}} either");
-    t.assert.ok(prompt.includes(PRODUCT_NAME), `the product name (${PRODUCT_NAME}) is rendered in`);
-    t.assert.ok(prompt.includes(PRODUCT_REPO_URL), `and the repository URL (${PRODUCT_REPO_URL})`);
+    const shipped = promptDefault("system.identity");
+    if (shipped.includes("{{product}}")) t.assert.ok(prompt.includes(PRODUCT_NAME), `the product name (${PRODUCT_NAME}) is rendered in`);
+    if (shipped.includes("{{repo}}")) t.assert.ok(prompt.includes(PRODUCT_REPO_URL), `and the repository URL (${PRODUCT_REPO_URL})`);
     t.assert.match(PRODUCT_NAME, /magentra/i);
   }
 }

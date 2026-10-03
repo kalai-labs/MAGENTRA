@@ -1,8 +1,8 @@
 /**
  * What the editor knows about the repository around a brain: which tests hold
- * the shipped brain's bytes, which engine file uses each prompt, which prompts
- * this machine overrides, whether the engine was built from the brain on disk,
- * and the build itself.
+ * the shipped brain's tool access and knob values, which engine file uses each
+ * prompt, which prompts this machine overrides, whether the engine was built
+ * from the brain on disk, and the build itself.
  *
  * Each answer is read from the place that owns it — the compiler, the built
  * protocol package, the root package.json's `build` script — never restated.
@@ -27,24 +27,12 @@ export function isShippedBrain(dir: string): boolean {
 /* ---- the tests that hold the shipped brain -------------------------------- */
 
 export interface Holder {
-  /** The feature id whose test fails when this file changes, until a person approves the new bytes. */
+  /** The feature id whose test fails when this file changes, until a person updates what it expects. */
   readonly test: string;
   /** What that test compares the file against, in plain words. */
   readonly why: string;
 }
 
-const SYSTEM_PROMPT_PIN: Holder = {
-  test: "system-prompt-is-pinned",
-  why: "The system prompt is pinned byte for byte in tests/approved/system-prompt-is-pinned/system-prompt.txt.",
-};
-const TOOL_WIRE_PIN: Holder = {
-  test: "tool-wire-contract-is-pinned",
-  why: "Every tool's description and parameter text is pinned in tests/approved/tool-wire-contract-is-pinned/tools.json.",
-};
-const BASELINE: Holder = {
-  test: "brain-is-the-single-source",
-  why: "Prompts outside the system prompt are held against their earlier text in tests/features/fixtures/brain-baseline/.",
-};
 const AVAILABILITY: Holder = {
   test: "brain-is-the-single-source",
   why: "The shipped tool access is checked: every built-in tool except Agent and Workflow, in both contexts.",
@@ -54,21 +42,13 @@ const BEHAVIOR: Holder = {
   why: "The shipped knob values are checked against the constants the engine used before behavior.json existed.",
 };
 
-/** The two pins the engine probe can check exactly (engine.ts). */
-export const PIN_HOLDERS = { "system-prompt-is-pinned": SYSTEM_PROMPT_PIN, "tool-wire-contract-is-pinned": TOOL_WIRE_PIN } as const;
-export const PIN_TESTS: readonly string[] = Object.keys(PIN_HOLDERS);
-
 /**
  * The tests a change to `path` (brain-relative, "/"-separated) makes fail in
- * the SHIPPED brain, per brain/README.md and AGENTS.md rule 5. A profile folder
- * is held by nothing. Only the owner moves these bytes (`npm run approve`, or
- * the baseline fixture); the editor never does.
+ * the SHIPPED brain. Prompt and tool texts are held by no test: rewording them
+ * is free. A profile folder is held by nothing.
  */
 export function holdersOf(path: string, shipped: boolean): Holder[] {
   if (!shipped) return [];
-  if (path.startsWith("prompts/1-core-system/")) return [SYSTEM_PROMPT_PIN];
-  if (path.startsWith("prompts/")) return [BASELINE];
-  if (path.startsWith("tools/")) return [TOOL_WIRE_PIN];
   if (path === "availability.json") return [AVAILABILITY];
   if (path === "behavior.json") return [BEHAVIOR];
   return [];

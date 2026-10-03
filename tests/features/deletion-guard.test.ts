@@ -46,7 +46,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { PermissionEngine, type ApprovalSource, type ExactGrant, type PermissionRequestPayload } from "@magentra/core";
-import type { CoreEvent, PermissionDecision } from "@magentra/protocol";
+import { renderPrompt, type CoreEvent, type PermissionDecision } from "@magentra/protocol";
 import { bashDeletionSubject, bashTool, monitorTool } from "@magentra/tools";
 
 import { strictServices } from "../lib/directTool.ts";
@@ -54,6 +54,11 @@ import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
 import { ProcTest } from "../lib/procTest.ts";
 import { PureTest } from "../lib/pureTest.ts";
 import { startScriptedEngine, type ScriptedEngine } from "../lib/scriptedEngine.ts";
+
+/** Whether a `tool_call_finished` preview shows `text`: all of it, or a prefix the engine cut with "…". */
+function isPreviewOf(preview: string | undefined, text: string): boolean {
+  return preview === text || (preview !== undefined && preview.endsWith("…") && text.startsWith(preview.slice(0, -1)));
+}
 
 const FEATURE = "deletion-guard";
 
@@ -252,9 +257,8 @@ class ARefusalTellsTheModelNotToRetry extends DeletionGuardTest {
 
     t.assert.equal(out.allowed, false);
     t.assert.equal(out.source, "user", "the refusal is the user's, and the transcript records it as such");
-    t.assert.match(out.message ?? "", /Deletion calls always require approval/, out.message ?? "(no message)");
-    // The instruction that stops the model reissuing the same command.
-    t.assert.match(out.message ?? "", /adjust your approach instead of retrying the same call/i, out.message ?? "(no message)");
+    // The deletion-declined reminder, not a bare denial: it is what stops the model reissuing the same command.
+    t.assert.equal(out.message, renderPrompt("reminder.permission-deletion-declined", { detail: "." }), out.message ?? "(no message)");
     t.assert.deepEqual(p.grants, [], "a refusal must never leave a grant behind");
   }
 }
@@ -495,7 +499,7 @@ class ARealDeletionIsStoppedAndThenAllowed extends ProcTest {
     t.assert.equal(existsSync(refusedWorkspace.doomed), true, "the file was deleted although the user said no");
     t.assert.equal(refusedTurn.toolResults.length, 1);
     t.assert.equal(refusedTurn.toolResults[0]?.isError, true, "a refusal must reach the model as an error it can read");
-    t.assert.match(refusedTurn.toolResults[0]?.resultPreview ?? "", /Deletion calls always require approval/);
+    t.assert.ok(isPreviewOf(refusedTurn.toolResults[0]?.resultPreview, renderPrompt("reminder.permission-deletion-declined", { detail: "." })), "the refusal is the deletion-declined one");
 
     /* --- approved: the file is really gone ----------------------------- */
 

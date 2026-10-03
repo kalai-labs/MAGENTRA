@@ -23,7 +23,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { join } from "node:path";
 
 import { FileState, type ToolContext } from "@magentra/core";
-import type { CoreEvent } from "@magentra/protocol";
+import { promptText, type CoreEvent } from "@magentra/protocol";
 import { writeTool } from "@magentra/tools";
 
 import { resultText, runTool, strictServices } from "../lib/directTool.ts";
@@ -90,7 +90,7 @@ class ANewFileBringsItsDirectoriesWithIt extends WriteTest {
     t.assert.equal(result.isError, undefined, resultText(result));
     t.assert.equal(readFileSync(path, "utf8"), "hello\n", "the file landed, directories and all");
     t.assert.equal(resultText(result).startsWith(`File written: ${path}`), true, resultText(result));
-    t.assert.equal(resultText(result).includes("replaced entirely"), false, "a create is not an overwrite");
+    t.assert.equal(resultText(result).includes(promptText("write.replaced-note")), false, "a create carries no overwrite note");
 
     const diffs = this.diffs();
     t.assert.equal(diffs.length, 1, "exactly one file_edited per write");
@@ -165,7 +165,7 @@ class AFreshOverwriteReplacesAndRestamps extends WriteTest {
     t.assert.equal(result.isError, undefined, resultText(result));
     t.assert.equal(readFileSync(path, "utf8"), "new line\n", "the file was replaced entirely");
     t.assert.equal(
-      resultText(result).includes("existing file replaced entirely"),
+      resultText(result).includes(promptText("write.replaced-note")),
       true,
       `an overwrite says so; it said ${JSON.stringify(resultText(result))}`,
     );

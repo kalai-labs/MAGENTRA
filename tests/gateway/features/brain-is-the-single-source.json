@@ -13,14 +13,13 @@
     "engine/protocol/src/prompts.ts",
     "engine/core/src/agent/tool.ts"
   ],
-  "invariant": "Every model-facing default outside the subagent.* group is read from brain/ and nowhere else, and moving it there changed no byte the model receives except the deliberate withholding of Agent and Workflow.",
+  "invariant": "Every model-facing default outside the subagent.* group is read from brain/ and nowhere else, and Agent and Workflow are withheld by default.",
   "tests": [
     "the-catalog-outside-the-subagent-group-and-the-brain-files-are-one-to-one",
     "no-definePrompt-call-outside-agents-ts-carries-literal-text",
     "the-engines-defaults-are-a-fresh-compile-of-brain-and-every-file-round-trips",
     "every-registered-tool-has-one-brain-folder-and-every-wire-description-comes-from-it",
     "the-shipped-availability-withholds-agent-and-workflow-and-filters-only-built-in-tools",
-    "the-wire-pin-still-holds-agent-and-workflow-and-every-pinned-text-is-brains",
     "the-compiler-returns-each-body-byte-for-byte-including-the-whitespace-a-trim-would-take",
     "a-tool-absent-from-main-is-not-offered-and-a-call-to-it-is-refused-by-name",
     "a-tool-absent-from-overdrive-is-withheld-only-while-overdrive-is-on",

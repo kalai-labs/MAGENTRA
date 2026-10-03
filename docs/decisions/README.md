@@ -30,7 +30,8 @@ change its meaning: it is superseded by a later record that names it.
 | [0012](0012-os-tests-are-selected-by-subject.md) | `test:mac` / `test:windows` select by the OS a test's SUBJECT belongs to |
 | [0013](0013-a-test-llm-run-is-the-llm-kind-alone.md) | `test:llm` subtracts like `test:ui`; supersedes 0009's additive half |
 | [0014](0014-magentra-does-not-ship-linux.md) | MAGENTRA does not ship Linux: no Linux binary is built, published or tested |
-| [0015](0015-approved-artifacts-live-in-tests-approved.md) | The pinned system prompt and tool contract live in `tests/approved/`, and only a person regenerates them |
+| [0015](0015-approved-artifacts-live-in-tests-approved.md) | The pinned system prompt and tool contract live in `tests/approved/`, and only a person regenerates them. Superseded by 0016 |
+| [0016](0016-no-test-holds-prompt-wording.md) | No test holds prompt wording: tests read prompt text from brain, the pins and the baseline are gone; supersedes 0015 |
 | [SPEC.md](SPEC.md) | The implementation specification |
 | [INVENTORY.md](INVENTORY.md) | Verified feature count, and the three gaps `FEATURES.md` has |
 

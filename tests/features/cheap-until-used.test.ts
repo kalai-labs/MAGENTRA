@@ -22,6 +22,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { addonsBlock, buildSystemPrompt, loadAddons, type PromptEnvironment } from "@magentra/core";
+import { renderPrompt } from "@magentra/protocol";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
 import { FsTest } from "../lib/fsTest.ts";
@@ -38,6 +39,9 @@ const ENV: PromptEnvironment = { cwd: "/w", isGitRepo: false, platform: "linux",
 /** A sentence that appears nowhere else, so its presence anywhere is unambiguous. */
 const SENTINEL = "the-quokka-recites-the-seventeenth-stanza-backwards";
 
+/** The roster block's own text with an empty list — brain's header, whatever its wording. */
+const header = (): string => renderPrompt("system.addons-block", { list: "" }).trim();
+
 abstract class PromptBuilderTest extends PureTest {
   readonly featureId = FEATURE;
   readonly invariant = INVARIANT;
@@ -52,8 +56,8 @@ class NoAddonsMeansNoHeader extends PromptBuilderTest {
   override run(t: TestRun): void {
     t.assert.equal(addonsBlock([]), undefined);
     const prompt = buildSystemPrompt({ env: ENV });
-    t.assert.equal(prompt.includes("Available addons"), false);
-    t.assert.equal(buildSystemPrompt({ env: ENV, addons: [] }).includes("Available addons"), false);
+    t.assert.equal(prompt.includes(header()), false);
+    t.assert.equal(buildSystemPrompt({ env: ENV, addons: [] }).includes(header()), false);
   }
 }
 
@@ -66,7 +70,7 @@ class TheRosterLineIsNameColonDescription extends PromptBuilderTest {
   override run(t: TestRun): void {
     const prompt = buildSystemPrompt({ env: ENV, addons: [{ name: "x", description: "d" }] });
     t.assert.ok(prompt.includes("\n- x: d"), "exactly `- x: d`, on its own line");
-    t.assert.ok(prompt.includes("Available addons"), "under the header");
+    t.assert.ok(prompt.includes(renderPrompt("system.addons-block", { list: "- x: d" })), "under the header, in the list slot");
     const two = addonsBlock([
       { name: "a", description: "first" },
       { name: "b", description: "second" },

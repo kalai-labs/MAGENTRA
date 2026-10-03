@@ -23,7 +23,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { loadAddons, type Addon } from "@magentra/core";
+import { addonInvocationHeader, loadAddons, type Addon } from "@magentra/core";
+import { renderPrompt } from "@magentra/protocol";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
 import { FsTest } from "../lib/fsTest.ts";
@@ -142,13 +143,17 @@ class InvokingListsThePathsAndNotTheContents extends BundledFilesTest {
     t.assert.deepEqual(turn.errors, [], turn.errors.join(" | "));
     const invoked = turn.toolResults.find((r) => r.tool === "Addon");
     t.assert.equal(invoked?.isError, false, "the real Addon tool loaded the real directory addon");
-    t.assert.ok(invoked?.resultPreview.includes('The "kit" addon was invoked'), invoked?.resultPreview);
+    // The preview is capped at 400 characters, so it is a prefix of the header or starts with all of it.
+    const header = addonInvocationHeader("kit");
+    const shown = invoked?.resultPreview.replace(/…$/, "") ?? "";
+    t.assert.ok(shown !== "" && (header.startsWith(shown) || shown.startsWith(header)), `the result opens with the kit invocation header: ${shown}`);
 
     // What the model was actually sent: the tool_result block of the next request.
     const second = engine.provider.requests[1];
     t.assert.notEqual(second, undefined, "there was a second model call after the tool ran");
     const toolResults = JSON.stringify(second!.messages.flatMap((m) => m.content).filter((b) => b.type === "tool_result"));
-    t.assert.ok(toolResults.includes("<system-reminder>Files bundled with this addon"), "the siblings arrive in their own reminder block");
+    const list = renderPrompt("reminder.addon-resources", { files: this.kitResources().map((r) => `- ${r}`).join("\n") });
+    t.assert.ok(toolResults.includes(JSON.stringify(list).slice(1, -1)), "the siblings arrive in brain's bundled-files reminder block");
     for (const resource of this.kitResources()) {
       t.assert.ok(toolResults.includes(JSON.stringify(`- ${resource}`).slice(1, -1)), `one dash line for ${resource}`);
     }

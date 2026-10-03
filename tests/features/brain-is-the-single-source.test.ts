@@ -23,28 +23,14 @@
  *   - `proc` for checklist 4 — "fails the build" is an exit code, so the real
  *     compiler is spawned — and checklist 7, which bundles and boots engine.cjs.
  *
- * ITEM 2 IS CHECKED AGAINST THE PRE-MIGRATION TEXTS, committed as fixtures in
- * `fixtures/brain-baseline/`: `catalog.json` is promptCatalog() outside groups 6
- * and 7 as dumped before the move (HEAD ce49931, 43 prompts), and
- * `addon-author.json` is that commit's buildAddonPrompt() and validator
- * feedback, evaluated. The prompts that were inline literals until this feature
- * registered them are compared against those literals, written out below as
- * HEAD built them, and their composition with the values around them is
- * checked through the real engine. The two pins (`system-prompt-is-pinned`,
- * `tool-wire-contract-is-pinned`, run unchanged — checklist 6) hold the
- * assembled system prompt and every tool's wire contract. Beside that, the
+ * ITEM 2 IS CHECKED AGAINST BRAIN ITSELF, never against copied prose: the
  * engine's runtime defaults equal a fresh compile of brain/ field for field;
  * the generated module on disk IS that fresh compile; every brain file
- * re-serialises to its own bytes from what the compiler read out of it; and
- * the compiler, given bodies built to tempt a trim, returns them byte for byte.
- * A drift anywhere fails a named test. Rewording a brain prompt on purpose
- * therefore fails here too, as it fails a pin: a person updates the fixture.
- *
- * CHECKLIST 6 IS THE TWO PIN TESTS THEMSELVES, run unchanged; the class here for
- * it proves the one fact their passing depends on: the wire pin covers the
- * REGISTERED tools, so withholding Agent and Workflow from what a session
- * offers leaves the pinned artifact — Agent and Workflow included — intact, and
- * every description in it is the brain file's text.
+ * re-serialises to its own bytes from what the compiler read out of it; the
+ * compiler, given bodies built to tempt a trim, returns them byte for byte; and
+ * the texts the code composes around values reach the model as their brain
+ * templates filled in. Rewording a brain prompt on purpose moves no assertion
+ * here — only a text that no longer comes from brain/ does.
  *
  * CHECKLIST 7 IS `artifact = true` (docs/decisions/0010): it runs the real
  * bundler and boots what it produced, so it is withheld unless asked for —
@@ -86,7 +72,6 @@ import {
 import type { Msg, StreamRequest } from "@magentra/providers";
 import { createDefaultRegistry } from "@magentra/tools";
 
-import { readApproved } from "../lib/approved.ts";
 import { withExclusiveLock } from "../lib/exclusive.ts";
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
 import { FsTest } from "../lib/fsTest.ts";
@@ -99,7 +84,7 @@ const FEATURE = "brain-is-the-single-source";
 
 /** Verbatim from the record. The base fails every test here if these ever differ. */
 const INVARIANT =
-  "Every model-facing default outside the subagent.* group is read from brain/ and nowhere else, and moving it there changed no byte the model receives except the deliberate withholding of Agent and Workflow.";
+  "Every model-facing default outside the subagent.* group is read from brain/ and nowhere else, and Agent and Workflow are withheld by default.";
 
 /** The one documented exception: these stay literals in engine/core/src/agent/agents.ts. */
 const SUBAGENT_GROUP = "6 · Subagents (Agent tool)";
@@ -112,9 +97,8 @@ const BRAIN_DIR = join(repoRoot(), "brain");
 const COMPILER = join(repoRoot(), "tools", "brain", "compile.mjs");
 const GENERATED = join(repoRoot(), "engine", "protocol", "src", "brain.generated.ts");
 
-/** The refusal a withheld or switched-off tool gets, byte for byte (session.ts executeToolCalls). */
-const switchedOff = (name: string): string =>
-  `The ${name} tool is switched off in this workspace and cannot be called. Reach the goal another way, and do not retry it this turn.`;
+/** The refusal a withheld or switched-off tool gets: brain's template with the tool's name filled in (session.ts executeToolCalls). */
+const switchedOff = (name: string): string => promptDefault("reminder.tool-switched-off").replace(/\{\{name\}\}/g, () => name);
 
 /* ---- the compiler, imported as it is -------------------------------- */
 
@@ -452,8 +436,13 @@ class RuntimeDefaultsAreAFreshCompileOfBrain extends BrainPureTest {
       t.assert.equal(order.map((path) => `## ${path}\n${tool.params[path]}\n`).join("\n"), text, `brain/tools/${name}/params.md does not round-trip`);
     }
 
-    // And those bytes are the ones the model got before the move.
-    assertPreMigrationTexts(t);
+    // And no side call's system prompt is a literal in code any more.
+    for (const file of engineSources()) {
+      const source = readFileSync(join(repoRoot(), file), "utf8");
+      for (const match of source.matchAll(/runInference\(\{([\s\S]*?)\}\)/g)) {
+        t.assert.doesNotMatch(match[1]!, /\bsystem\s*:\s*["'`]/, `${file}: a runInference call passes a literal system prompt`);
+      }
+    }
   }
 }
 
@@ -548,32 +537,6 @@ class TheShippedAvailabilityWithholdsAgentAndWorkflow extends BrainPureTest {
     t.assert.throws(() => resolveToolAvailability({ overdrive: ["mcp__server__tool"] }), {
       message: "unknown tool in tool availability (overdrive): mcp__server__tool",
     });
-  }
-}
-
-/* ---- checklist 6 ------------------------------------------------------ */
-
-class ThePinsStillCoverTheWithheldToolsFromBrain extends BrainPureTest {
-  readonly id = "the-wire-pin-still-holds-agent-and-workflow-and-every-pinned-text-is-brains";
-  readonly whyItExists =
-    "if the pinned contract followed the OFFERED tools, withholding Agent and Workflow would have passed as a contract change and been re-approved away; and a pinned description that no longer matches its brain file means the pin and the source have parted";
-
-  override run(t: TestRun): void {
-    const approved = JSON.parse(readApproved("tool-wire-contract-is-pinned", "tools.json")) as {
-      name: string;
-      description: string;
-      inputSchema: unknown;
-    }[];
-    const pinnedNames = approved.map((tool) => tool.name);
-    for (const name of WITHHELD) t.assert.ok(pinnedNames.includes(name), `the wire pin lost ${name} when it was withheld`);
-    t.assert.deepEqual(pinnedNames, [...brainToolNames()], "the pin and brain/tools name the same tools");
-
-    for (const tool of approved) {
-      t.assert.equal(tool.description, toolDescription(tool.name), `the pinned description of ${tool.name} is not brain's`);
-      for (const [path, text] of Object.entries(describedParams(tool.inputSchema))) {
-        t.assert.equal(text, toolParam(tool.name, path), `the pinned ${tool.name} ${path} is not brain's`);
-      }
-    }
   }
 }
 
@@ -965,10 +928,10 @@ class AnOverrideStillWinsOverBrain extends BrainFsTest {
 
     // A blank override is an override too: on a wrapper the code composes, it
     // drops the prose and keeps the value — and with none, the composed bytes
-    // are the literals the code built before the move.
+    // are the brain templates joined to their values.
     await this.#engine.close();
     this.#engine = undefined;
-    await assertComposedFormerLiterals(t, {
+    await assertComposedTexts(t, {
       workspace: this.tempDir("magentra-brain-ws-"),
       prompts: dir,
       writeFile: (path, contents) => this.writeFile(path, contents),
@@ -979,322 +942,14 @@ class AnOverrideStillWinsOverBrain extends BrainFsTest {
   }
 }
 
-/* ---- checklist 2, against the pre-migration texts ---------------------- */
-
-const BASELINE_DIR = join(repoRoot(), "tests", "features", "fixtures", "brain-baseline");
-
-interface BaselinePrompt {
-  readonly id: string;
-  readonly group: string;
-  readonly label: string;
-  readonly channel: string;
-  readonly where: string;
-  readonly placeholders: readonly string[] | null;
-  readonly text: string;
-}
-
-interface AddonAuthorBaseline {
-  readonly feedbackError: string;
-  readonly feedback: string;
-  readonly cases: readonly { description: string; taken: string[]; context?: string; prompt: string }[];
-}
-
-/** fixtures/brain-baseline/catalog.json: promptCatalog() outside groups 6 and 7, dumped before the move (HEAD ce49931). */
-const baselineCatalog = (): BaselinePrompt[] => JSON.parse(readFileSync(join(BASELINE_DIR, "catalog.json"), "utf8")) as BaselinePrompt[];
-
-/** fixtures/brain-baseline/addon-author.json: HEAD ce49931's buildAddonPrompt() and retry feedback, evaluated before the move. */
-const addonAuthorBaseline = (): AddonAuthorBaseline => JSON.parse(readFileSync(join(BASELINE_DIR, "addon-author.json"), "utf8")) as AddonAuthorBaseline;
-
 /** renderPrompt's substitution — one pass, a function replacement, unknown slots kept — over the SHIPPED text, so this machine's overrides cannot move the answer. */
 function renderDefault(id: string, vars: Record<string, string> = {}): string {
   return promptDefault(id).replace(/\{\{(\w+)\}\}/g, (whole, name: string) => vars[name] ?? whole);
 }
 
-/** Values that would expose a second substitution pass or a `$&` expansion. */
-const TRICKY = "a $& b $1 {{name}} c";
-
-/**
- * Every prompt that was an inline literal before the move, with the literal
- * exactly as HEAD ce49931 built it (session.ts, engine.ts, addon.ts,
- * webFetch.ts), and what the brain default renders to with the same values.
- * The addon-author prompts are compared in the class below, from the fixture.
- */
-const FORMER_LITERALS: readonly { id: string; rendered: string; head: string }[] = [
-  { id: "reminder.steering", rendered: renderDefault("reminder.steering"), head: "<system-reminder>The user adds, mid-run — steer the ongoing work accordingly:</system-reminder>" },
-  { id: "reminder.stop-hook", rendered: renderDefault("reminder.stop-hook", { reason: TRICKY }), head: `<system-reminder>Stop hook: ${TRICKY}</system-reminder>` },
-  { id: "reminder.interrupted", rendered: renderDefault("reminder.interrupted"), head: "<system-reminder>The user interrupted this turn before it finished.</system-reminder>" },
-  { id: "reminder.turn-error", rendered: renderDefault("reminder.turn-error"), head: "<system-reminder>This turn ended with an error before its tool calls completed.</system-reminder>" },
-  { id: "reminder.post-tool-use-hook", rendered: renderDefault("reminder.post-tool-use-hook", { reason: TRICKY }), head: `<system-reminder>PostToolUse hook: ${TRICKY}</system-reminder>` },
-  { id: "reminder.tool-failed", rendered: renderDefault("reminder.tool-failed", { error: TRICKY }), head: `Tool failed: ${TRICKY}` },
-  { id: "reminder.tool-did-not-run", rendered: renderDefault("reminder.tool-did-not-run"), head: "Tool did not run." },
-  {
-    id: "vision.tool-image-unseen",
-    rendered: renderDefault("vision.tool-image-unseen", { reason: TRICKY }),
-    head: `[This tool returned an image. You have NOT seen it — ${TRICKY}. Do not describe it or draw conclusions from it.]`,
-  },
-  {
-    id: "vision.tool-image-failed",
-    rendered: renderDefault("vision.tool-image-failed", { error: TRICKY }),
-    head: `[This tool returned an image, but the vision model could not look at it: ${TRICKY}. You have NOT seen it.]`,
-  },
-  {
-    id: "reminder.wrapup-standards",
-    rendered: promptDefault("reminder.wrapup-nudge").replace("</system-reminder>", () => `\n${renderDefault("reminder.wrapup-standards")}</system-reminder>`),
-    head: promptDefault("reminder.wrapup-nudge").replace("</system-reminder>", `\nConfirm the diff complies with STANDARDS.md — name any deviation and why.</system-reminder>`),
-  },
-  { id: "vision.describe-request", rendered: renderDefault("vision.describe-request", { label: TRICKY }), head: `Describe this image (${TRICKY}).` },
-  {
-    id: "reminder.clarify-answers",
-    rendered: renderDefault("reminder.clarify-answers"),
-    head: "Clarify pre-layer: before starting, the user answered these questions — honor the answers as requirements. Unanswered questions are yours to decide sensibly:",
-  },
-  {
-    id: "reminder.final-round",
-    rendered: renderDefault("reminder.final-round"),
-    head: "Final tool round: the per-turn iteration cap is reached after this response. Give your complete final answer now — further tool calls will be cut off.",
-  },
-  {
-    id: "reminder.tool-switched-off",
-    rendered: renderDefault("reminder.tool-switched-off", { name: "Glob" }),
-    head: `The Glob tool is switched off in this workspace and cannot be called. Reach the goal another way, and do not retry it this turn.`,
-  },
-  { id: "reminder.pre-tool-use-hook", rendered: renderDefault("reminder.pre-tool-use-hook", { reason: TRICKY }), head: "PreToolUse hook blocked this call: " + TRICKY },
-  {
-    id: "reminder.approval-note",
-    rendered: renderDefault("reminder.approval-note", { tool: "Bash", note: TRICKY }),
-    head: `The user approved this Bash call but attached a note — read it and adjust your approach accordingly:\n${TRICKY}`,
-  },
-  {
-    id: "reminder.shell-command",
-    rendered: renderDefault("reminder.shell-command"),
-    head: "<system-reminder>The user ran this shell command directly; its output above is context, not a request.</system-reminder>",
-  },
-  {
-    id: "reminder.addon-resources",
-    rendered: renderDefault("reminder.addon-resources", { files: `- notes.md\n- ${TRICKY}` }),
-    head: `<system-reminder>Files bundled with this addon — read the ones its instructions point at, and run its scripts with Bash:\n- notes.md\n- ${TRICKY}</system-reminder>`,
-  },
-  {
-    id: "webfetch.system",
-    rendered: renderDefault("webfetch.system"),
-    head: "You are given the readable text of a web page and a question about it. Answer the question using only the page content. Be concise and factual; if the page does not contain the answer, say so.",
-  },
-
-  // ---- brain-controls-behavior: the last instructional texts composed in code.
-  // Each head is the literal as HEAD 32a5f67 built it (session.ts, engine.ts,
-  // permissions.ts, reuseGate.ts, background.ts and the five tools), with the
-  // values the code passes rendered in the same way.
-  {
-    id: "system.deletion-policy",
-    rendered: renderDefault("system.deletion-policy"),
-    head: `Deletion policy:
-- The user has enabled "Allow deletions" in the app settings — a durable authorization for destructive local operations (deleting files or folders, forced git history rewrites, and similar). They run without an extra confirmation prompt.
-- This is a license, not a directive: delete only what the task genuinely requires, keep the smallest possible blast radius, and still call out anything surprising you are about to remove.`,
-  },
-  {
-    id: "vision.attached-unreadable",
-    rendered: renderDefault("vision.attached-unreadable", { count: "3", reason: TRICKY }),
-    head:
-      `[The user attached 3 image(s) to this message, but they could not be read: ${TRICKY}. ` +
-      `You have NOT seen them — do not describe them or draw conclusions from them; say what happened and ask the user how to proceed.]`,
-  },
-  {
-    id: "vision.attached-malformed",
-    rendered: renderDefault("vision.attached-malformed", { label: TRICKY }),
-    head: `[The user attached "${TRICKY}", but it arrived malformed and was not read. You have NOT seen it.]`,
-  },
-  {
-    id: "vision.attached-too-large",
-    rendered: renderDefault("vision.attached-too-large", { label: TRICKY }),
-    head: `[The user attached "${TRICKY}", but it is too large to send to the vision model. You have NOT seen it.]`,
-  },
-  {
-    id: "vision.attached-failed",
-    rendered: renderDefault("vision.attached-failed", { label: "shot.png", error: TRICKY }),
-    head:
-      `[The user attached "shot.png", but the vision model could not look at it: ${TRICKY}. ` +
-      `You have NOT seen it — do not describe it or draw conclusions from it.]`,
-  },
-  {
-    // The pre-existing literal never filled its two counts: the model received
-    // `{{noiseLimit}}` and `{{noiseWindowSec}}` as written, and the move keeps
-    // that byte for byte (the code still passes only the id).
-    id: "reminder.monitor-noise-stop",
-    rendered: renderDefault("reminder.monitor-noise-stop", { id: "monitor_0a1b2c3d" }),
-    head: "<task-notification>Monitor monitor_0a1b2c3d was stopped automatically: more than {{noiseLimit}} events within {{noiseWindowSec}}s (too noisy). Narrow the command and restart if you still need it.</task-notification>",
-  },
-  {
-    id: "reminder.background-exit",
-    rendered: renderDefault("reminder.background-exit", { kind: "bash", id: "bash_0a1b2c3d", description: TRICKY, code: String(null), file: "/tmp/out.log" }),
-    head: `<task-notification>Background bash task bash_0a1b2c3d ("${TRICKY}") finished with exit code ${null}. Output file: /tmp/out.log</task-notification>`,
-  },
-  {
-    id: "reminder.permission-rule-denied",
-    rendered: renderDefault("reminder.permission-rule-denied"),
-    head: `Permission denied by settings rule. The user's configuration forbids this call; do not retry it verbatim.`,
-  },
-  {
-    id: "reminder.permission-kill-overdrive",
-    rendered: renderDefault("reminder.permission-kill-overdrive"),
-    head: "Refused: this command stops processes by name, which stops every matching process on this computer, not only the ones this session started. In OVERDRIVE nothing asks, so a kill by name never runs. To stop a background command you started, use TaskStop with its task id; to stop one process, kill its pid. If the user wants every matching process stopped, say so in your answer: they can run it themselves or turn OVERDRIVE off.",
-  },
-  ...[undefined, TRICKY].flatMap((note) => {
-    // `res.message ? `: ${res.message}` : "."` — the code's {{detail}}, with and without the user's note.
-    const detail = note ? `: ${note}` : ".";
-    return [
-      {
-        id: "reminder.permission-kill-declined",
-        rendered: renderDefault("reminder.permission-kill-declined", { detail }),
-        head: `The user declined this process kill${note ? `: ${note}` : "."} It stops processes by name — every matching process on this computer. To stop a background command you started, use TaskStop with its task id, or kill its pid; do not retry the same call.`,
-      },
-      {
-        id: "reminder.permission-protected-declined",
-        rendered: renderDefault("reminder.permission-protected-declined", { path: "/w/.env", detail }),
-        head: `The user declined this edit to a protected path (/w/.env)${note ? `: ${note}` : "."} Edits to .magentra state and .env files always require approval; do not retry the same call.`,
-      },
-      {
-        id: "reminder.permission-deletion-declined",
-        rendered: renderDefault("reminder.permission-deletion-declined", { detail }),
-        head: `The user declined this destructive tool call${note ? `: ${note}` : "."} Deletion calls always require approval; adjust your approach instead of retrying the same call.`,
-      },
-      {
-        id: "reminder.permission-declined",
-        rendered: renderDefault("reminder.permission-declined", { detail }),
-        head: `The user declined this tool call${note ? `: ${note}` : "."} Adjust your approach instead of retrying the same call.`,
-      },
-    ];
-  }),
-  {
-    id: "reminder.reuse-check-firm",
-    rendered: renderDefault("reminder.reuse-check-firm", { target: "src/profile.ts", hits: `- src/user.ts — formatUserDisplayName (0.93)\n- ${TRICKY}` }),
-    head:
-      `Reuse check: src/profile.ts was just created, but very similar code already exists and no related search/read happened this session:\n` +
-      `- src/user.ts — formatUserDisplayName (0.93)\n- ${TRICKY}` +
-      "\nRead the closest match now. If it already covers this, extend it (Edit) and delete the new file; keep the new file only if it is genuinely distinct.",
-  },
-  {
-    id: "reminder.reuse-check",
-    rendered: renderDefault("reminder.reuse-check", { target: "src/profile.ts", hits: `- src/user.ts — formatUserDisplayName (0.61)\n- ${TRICKY}` }),
-    head:
-      `Reuse check: src/profile.ts was just created, but similar code may already exist:\n` +
-      `- src/user.ts — formatUserDisplayName (0.61)\n- ${TRICKY}` +
-      "\nIf one of these already covers it, extend that with Edit and remove the new file rather than keeping a parallel implementation.",
-  },
-  {
-    id: "bash.foreground-sleep",
-    rendered: renderDefault("bash.foreground-sleep"),
-    head: "Foreground sleep is blocked. If you are waiting for something, run the wait in the background (run_in_background with an until-loop) so you keep working meanwhile.",
-  },
-  {
-    id: "read.image-unseen",
-    rendered: renderDefault("read.image-unseen", { file: "shot.png", reason: TRICKY }),
-    head:
-      `shot.png is an image and you cannot see it — ${TRICKY}. ` +
-      `Do not describe or draw conclusions from it. Verify this change some other way, or say plainly that it stays unverified.`,
-  },
-  {
-    id: "read.image-failed",
-    rendered: renderDefault("read.image-failed", { file: "shot.png", error: TRICKY }),
-    head: `Could not look at shot.png: ${TRICKY}. ` + `You have NOT seen this image — do not describe it or draw conclusions from it.`,
-  },
-  {
-    // The code keeps the newline that puts the note on its own line after "File written: …".
-    id: "write.replaced-note",
-    rendered: `\n${renderDefault("write.replaced-note")}`,
-    head: "\nnote: existing file replaced entirely — for incremental changes, use Edit instead of rewriting with Write.",
-  },
-  {
-    id: "websearch.disabled",
-    rendered: renderDefault("websearch.disabled"),
-    head: 'Web search is disabled in settings ("search.enabled" is false). Do not retry; work without web search or ask the user to enable it.',
-  },
-];
-
-/**
- * Model-facing texts with no pre-migration literal: brain-controls-behavior's
- * three OVERDRIVE refusals, sent only when a guard in brain/behavior.json is
- * set to "refuse" (never with the shipped "run"). Their bytes are the ones the
- * owner approved; rewording one fails here, as a reworded pin does.
- */
-const NEW_TEXTS: readonly { id: string; text: string }[] = [
-  {
-    id: "reminder.overdrive-deletion-refused",
-    text: "Refused by policy: in OVERDRIVE this workspace refuses calls that delete, and this one would delete ({{what}}). Nothing ran and nobody was asked. Do not retry it, and do not delete the same thing another way. Reach the goal without deleting; if the deletion is truly needed, say so in your answer so the user can do it.",
-  },
-  {
-    id: "reminder.overdrive-protected-edit-refused",
-    text: "Refused by policy: in OVERDRIVE this workspace refuses edits to .magentra state and .env files, and this edit targets one ({{path}}). The file was not changed and nobody was asked. Do not retry it, and do not change the file another way. Reach the goal without editing it; if the change is truly needed, say in your answer what it is so the user can make it.",
-  },
-  {
-    id: "reminder.overdrive-outside-edit-refused",
-    text: "Refused by policy: in OVERDRIVE this workspace refuses edits outside the workspace, and this edit targets a file outside it ({{path}}). The file was not changed and nobody was asked. Do not retry it, and do not change the file another way. Keep the work inside the workspace; if the change is truly needed, say in your answer what it is so the user can make it.",
-  },
-];
-
-/** The ids brought into the registry from inline literals by this feature: FORMER_LITERALS plus the addon-author three. */
-const ADDON_AUTHOR_IDS = ["addon-author.context-line", "addon-author.instruction", "addon-author.retry-feedback"] as const;
-
-/**
- * Checklist 2 against the texts as they were before the move — run by
- * {@link RuntimeDefaultsAreAFreshCompileOfBrain}. The two pins hold only the
- * assembled system prompt and the tool wire, so a reminder, a finishing rung or
- * a side-call instruction reworded in the move — or a literal re-typed into
- * brain/ with one character off — would otherwise reach the model with nothing
- * failing.
- */
-function assertPreMigrationTexts(t: TestRun): void {
-  {
-    const catalog = new Map(promptCatalog().map((e) => [e.id, e]));
-    const baseline = baselineCatalog();
-    t.assert.equal(baseline.length, 43, "the fixture is the pre-migration catalog outside the subagent and tool groups: 43 prompts");
-    for (const before of baseline) {
-      const now = catalog.get(before.id);
-      t.assert.ok(now, `${before.id} was registered before the move and is gone`);
-      t.assert.equal(now!.defaultText, before.text, `${before.id}: the default text changed in the move`);
-      t.assert.equal(promptDefault(before.id), before.text, `${before.id}: promptDefault is not the pre-migration text`);
-      t.assert.deepEqual(
-        { group: now!.group, label: now!.label, channel: now!.channel, where: now!.where, placeholders: now!.placeholders ?? null },
-        { group: before.group, label: before.label, channel: before.channel, where: before.where, placeholders: before.placeholders },
-        `${before.id}: its catalog entry changed in the move`,
-      );
-    }
-
-    for (const literal of FORMER_LITERALS) t.assert.equal(literal.rendered, literal.head, `${literal.id} does not render to the literal it replaced`);
-    for (const added of NEW_TEXTS) t.assert.equal(promptDefault(added.id), added.text, `${added.id}: its default is not the approved text`);
-
-    // Composed as engine.ts composes them (buildAddonPrompt, the retry feedback).
-    const addon = addonAuthorBaseline();
-    t.assert.equal(addon.cases.length >= 2, true);
-    for (const c of addon.cases) {
-      const context = c.context?.trim() ? `\n\n${renderDefault("addon-author.context-line", { context: c.context.trim() })}` : "";
-      const prompt = renderDefault("addon-author.instruction", { description: c.description, context, taken: c.taken.join(", ") || "(none)" });
-      t.assert.equal(prompt, c.prompt, `addon-author.instruction for ${JSON.stringify(c.description)} is not HEAD's buildAddonPrompt()`);
-    }
-    t.assert.equal(`\n\n${renderDefault("addon-author.retry-feedback", { error: addon.feedbackError })}`, addon.feedback, "addon-author.retry-feedback is not HEAD's validator feedback");
-
-    // Nothing in brain/ escapes both checks: every id is either a pre-migration
-    // prompt or a former literal compared above.
-    const covered = new Set([...baseline.map((p) => p.id), ...FORMER_LITERALS.map((l) => l.id), ...ADDON_AUTHOR_IDS, ...NEW_TEXTS.map((n) => n.id)]);
-    t.assert.deepEqual(
-      brainPromptIdList().filter((id) => !covered.has(id)),
-      [],
-      "a brain prompt with no pre-migration text to compare against — add its old literal here",
-    );
-    t.assert.deepEqual(
-      [...covered].filter((id) => !brainPromptIdList().includes(id)),
-      [],
-      "a pre-migration prompt or former literal that brain/ does not hold",
-    );
-
-    // And no side call's system prompt is a literal in code any more.
-    for (const file of engineSources()) {
-      const source = readFileSync(join(repoRoot(), file), "utf8");
-      for (const match of source.matchAll(/runInference\(\{([\s\S]*?)\}\)/g)) {
-        t.assert.doesNotMatch(match[1]!, /\bsystem\s*:\s*["'`]/, `${file}: a runInference call passes a literal system prompt`);
-      }
-    }
-  }
-}
+/** A create-addon request with context and taken names, and the rejection the script below provokes. */
+const ADDON_CASE = { description: "Audit $& the {{taken}} deps $1", taken: ["one", "two"], context: "  when the lockfile changes \n" } as const;
+const ADDON_REJECTION = "the file must open with --- frontmatter";
 
 /* ---- the composed bytes, through the real engine ----------------------- */
 
@@ -1311,50 +966,53 @@ function userTextWith(request: StreamRequest | undefined, needle: string): strin
 }
 
 /**
- * The former literals as the real engine composes them — run by
- * {@link AnOverrideStillWinsOverBrain} on an engine of its own. Comparing a
- * brain text to its old literal does not prove the code still joins it to the
+ * The texts the code composes around values, as the real engine composes them
+ * — run by {@link AnOverrideStillWinsOverBrain} on an engine of its own. A
+ * template that renders exactly does not prove the code still joins it to the
  * same neighbours: a dropped blank line before the user's extra detail, or a
- * reminder glued to the output it follows, changes the bytes the model reads
- * while every template still matches. And an emptied wrapper must drop its
- * prose and keep the value it wrapped.
+ * reminder glued to the output it follows, changes the bytes the model reads.
+ * And an emptied wrapper must drop its prose and keep the value it wrapped.
  */
-async function assertComposedFormerLiterals(
+async function assertComposedTexts(
   t: TestRun,
   opts: { workspace: string; prompts: string; writeFile: (path: string, contents: string) => void; started: (engine: ScriptedEngine) => void },
 ): Promise<void> {
-  const addon = addonAuthorBaseline();
-  const withContext = addon.cases.find((c) => c.context !== undefined && c.taken.length > 0)!;
+  // engine.ts buildAddonPrompt() and the retry feedback, from their brain templates.
+  const instruction = renderDefault("addon-author.instruction", {
+    description: ADDON_CASE.description,
+    context: `\n\n${renderDefault("addon-author.context-line", { context: ADDON_CASE.context.trim() })}`,
+    taken: ADDON_CASE.taken.join(", "),
+  });
+  const feedback = `\n\n${renderDefault("addon-author.retry-feedback", { error: ADDON_REJECTION })}`;
   const valid = "---\nname: audit-deps\ndescription: When the lockfile changes.\n---\nList each changed dependency.\n";
 
   const engine = await startScriptedEngine({
     workspace: opts.workspace,
     // A draft the validator rejects, then one it accepts; then two plain turns.
     turns: [{ text: "Here is your addon." }, { text: valid }, { text: "ok" }, { text: "ok" }],
-    addons: withContext.taken.map((name) => ({ name, description: `${name} addon`, body: "Do it.", resources: [], source: "workspace" as const })),
+    addons: ADDON_CASE.taken.map((name) => ({ name, description: `${name} addon`, body: "Do it.", resources: [], source: "workspace" as const })),
   });
   opts.started(engine);
 
-  // The create-addon wizard: HEAD's prompt, then HEAD's prompt + HEAD's feedback.
-  engine.send({ type: "generate_addon", description: withContext.description, context: withContext.context! });
+  // The create-addon wizard: the instruction, then the instruction + the validator feedback.
+  engine.send({ type: "generate_addon", description: ADDON_CASE.description, context: ADDON_CASE.context });
   const draft = await engine.waitFor((e) => e.type === "addon_draft");
   t.assert.equal(draft.type === "addon_draft" && draft.ok, true, `the second draft is valid: ${JSON.stringify(draft)}`);
-  t.assert.equal(userTextWith(engine.provider.requests[0], "The user wants a new addon"), withContext.prompt, "the first attempt's instruction is HEAD's, byte for byte");
+  t.assert.equal(userTextWith(engine.provider.requests[0], ADDON_CASE.description), instruction, "the first attempt's instruction is brain's template, filled");
   t.assert.equal(
-    userTextWith(engine.provider.requests[1], "The user wants a new addon"),
-    withContext.prompt + addon.feedback,
-    "the retry carries HEAD's validator feedback after a blank line",
+    userTextWith(engine.provider.requests[1], ADDON_CASE.description),
+    instruction + feedback,
+    "the retry carries the validator feedback after a blank line",
   );
-  t.assert.equal(addon.feedbackError, "the file must open with --- frontmatter", "the fixture's feedback is for the rejection this script provokes");
 
-  // A `!` command, then a turn: the context message is HEAD's literal.
+  // A `!` command, then a turn: the output, then the shell-command reminder on its own line.
   engine.send({ type: "bang_command", cmd: "echo brain-one" });
   await engine.waitFor((e) => e.type === "command_output" && e.text === "brain-one");
   const first = await engine.runTurn("next");
   t.assert.deepEqual([...first.errors], []);
   t.assert.equal(
     userTextWith(engine.provider.requests[2], "! echo brain-one"),
-    `<bash-input>! echo brain-one</bash-input>\n<bash-output exit-code="0">\nbrain-one\n</bash-output>\n<system-reminder>The user ran this shell command directly; its output above is context, not a request.</system-reminder>`,
+    `<bash-input>! echo brain-one</bash-input>\n<bash-output exit-code="0">\nbrain-one\n</bash-output>\n${promptDefault("reminder.shell-command")}`,
   );
 
   // Switched off, the reminder goes and the command and its output stay.
@@ -1505,7 +1163,6 @@ registerFeatureTests(
   new RuntimeDefaultsAreAFreshCompileOfBrain(),
   new EveryWireDescriptionComesFromBrain(),
   new TheShippedAvailabilityWithholdsAgentAndWorkflow(),
-  new ThePinsStillCoverTheWithheldToolsFromBrain(),
   new TheCompilerKeepsEveryByte(),
   new AToolAbsentFromMainIsWithheldAndRefused(),
   new AToolAbsentFromOverdriveIsWithheldOnlyWhileOverdriveIsOn(),

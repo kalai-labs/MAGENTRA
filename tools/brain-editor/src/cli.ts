@@ -94,7 +94,7 @@ function describePlan(plan: Plan, verb: string): string {
     for (const f of plan.files) lines.push(`  ${f.before === null ? "added  " : f.after === null ? "deleted" : "changed"} ${f.path}`);
   }
   if (plan.heldBy.length) {
-    lines.push("Tests this moves in the shipped brain (the owner approves the new text):");
+    lines.push("Tests this moves in the shipped brain (the owner updates what they expect):");
     for (const h of plan.heldBy) lines.push(`  ${h.test}: ${h.why}`);
   }
   for (const p of plan.newProblems) lines.push(`Problem: ${p}`);
@@ -164,9 +164,6 @@ async function check(): Promise<number> {
       for (const w of snapshot.warnings) lines.push(`  warning: ${w}`);
       if (engine && !engine.available) lines.push(`  engine check skipped: ${engine.reason}`);
       if (engine && engine.available && !engine.ok) lines.push(`  the engine does not load this brain: ${engine.error}`);
-      if (engine && engine.available && engine.ok && snapshot.shipped && engine.pins) {
-        for (const [test, pin] of Object.entries(engine.pins)) lines.push(`  ${test}: ${pin.holds ? "holds" : "moved — the owner approves the new text"}`);
-      }
       if (built === "needs-build") lines.push("  the engine was built from an older brain: run npm run build");
       return lines.join("\n");
     },

@@ -45,6 +45,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { FileState, type ToolContext } from "@magentra/core";
+import { promptText } from "@magentra/protocol";
 import { bashDeletionSubject, bashTool } from "@magentra/tools";
 
 import { resultText, runTool, strictServices } from "../lib/directTool.ts";
@@ -254,7 +255,7 @@ class OneStreamAndAnHonestExitCode extends BashRunTest {
     // subshell rather than a bare `sleep`.
     const slept = await this.bash("sleep 5");
     t.assert.equal(slept.isError, true);
-    t.assert.match(resultText(slept), /Foreground sleep is blocked/);
+    t.assert.equal(resultText(slept), promptText("bash.foreground-sleep"), "the refusal is the foreground-sleep one");
   }
 }
 

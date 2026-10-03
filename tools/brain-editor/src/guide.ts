@@ -30,7 +30,7 @@ export const CHANGE_GUIDE = {
   workflow: [
     "1. Read: `show --json` gives every prompt, tool, knob and the brain's `revision`.",
     "2. Plan: `plan changes.json --expect <revision> --json` writes nothing and returns `ok`, `refusal`, `files` (before/after), `newProblems`, `newWarnings`, `heldBy` and `summary`.",
-    "3. Apply: `apply changes.json --expect <revision> --json`. In the shipped brain/, add `--acknowledge <test,...>` naming every test in the plan's `heldBy`; those tests fail until the owner approves the new text, so only acknowledge what you were asked to change.",
+    "3. Apply: `apply changes.json --expect <revision> --json`. In the shipped brain/, add `--acknowledge <test,...>` naming every test in the plan's `heldBy` (only tool access and knob values are held; prompt and tool texts are not); those tests fail until the owner updates what they expect, so only acknowledge what you were asked to change.",
     "4. For a new profile, copy first (`new-profile <dir>`), then pass `--brain <dir>` to every command. A profile folder is held by no test and is never built into the engine.",
     "5. After changing the shipped brain, run `npm run build` so the engine carries it.",
   ],
@@ -40,7 +40,7 @@ export const CHANGE_GUIDE = {
     "breaks-brain": "The staged brain would have a compiler problem it did not have before. The message quotes the compiler.",
     "breaks-engine": "The built engine would throw on load with the staged brain (for example a parameter text the code reads was removed).",
     mismatch: "A file would not compile back to exactly what you sent. This should not happen; report it.",
-    "needs-acknowledge": "The change moves bytes tests hold in the shipped brain. See `heldBy`.",
+    "needs-acknowledge": "The change moves tool access or knob values tests hold in the shipped brain. See `heldBy`.",
     busy: "Another save to the same brain is running. Retry.",
   },
   ops: [

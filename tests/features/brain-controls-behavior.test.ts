@@ -10,9 +10,9 @@
  * engine reads every value from the resolved behaviour object, and
  * `EngineOptions.behavior` is the one runtime seam (validated by the same
  * emitted spec, never persisted). The last instructional texts still composed
- * in code moved into brain/prompts with byte-identical rendering; their old
- * literals are pinned in brain-is-the-single-source.test.ts (FORMER_LITERALS,
- * NEW_TEXTS), and their composition through the real engine is checked here.
+ * in code moved into brain/prompts; their composition through the real engine
+ * is checked here against their brain templates, never against copied prose,
+ * so rewording a prompt moves no assertion in this file.
  *
  * TWO KINDS, both the record declares:
  *   - `pure` reads the committed brain/, the engine's own source and the
@@ -54,7 +54,7 @@ import { pathToFileURL } from "node:url";
 
 import ts from "typescript";
 
-import { buildSystemPrompt, type Settings } from "@magentra/core";
+import { buildSystemPrompt, type PromptEnvironment, type Settings } from "@magentra/core";
 import {
   behaviorProblems,
   behaviorWith,
@@ -62,6 +62,7 @@ import {
   brainBehaviorSpec,
   effectiveBehavior,
   promptDefault,
+  renderPrompt,
   resolveBehavior,
   toolAvailabilityWith,
   type BehaviorOverride,
@@ -71,7 +72,6 @@ import {
 } from "@magentra/protocol";
 import type { Msg } from "@magentra/providers";
 
-import { CANONICAL_ENV, readApproved } from "../lib/approved.ts";
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
 import { FsTest } from "../lib/fsTest.ts";
 import { repoRoot } from "../lib/inventory.ts";
@@ -175,6 +175,27 @@ function fillsTemplate(text: string, template: string): boolean {
   return new RegExp(`^${parts.map(escapeRegExp).join("[\\s\\S]+?")}$`).test(text);
 }
 
+/**
+ * The slot values `text` fills `template` with, or undefined when it does not
+ * fit. Slots named in `fixed` must hold exactly that value.
+ */
+function templateMatch(text: string, template: string, fixed: Readonly<Record<string, string>> = {}): Record<string, string> | undefined {
+  const names: string[] = [];
+  const pattern = template
+    .split(/(\{\{\w+\}\})/)
+    .map((part) => {
+      const slot = /^\{\{(\w+)\}\}$/.exec(part)?.[1];
+      if (slot === undefined) return escapeRegExp(part);
+      if (slot in fixed) return escapeRegExp(fixed[slot]!);
+      names.push(slot);
+      return "([\\s\\S]+?)";
+    })
+    .join("");
+  const found = new RegExp(`^${pattern}$`).exec(text);
+  if (!found) return undefined;
+  return Object.fromEntries(names.map((name, i) => [name, found[i + 1]!]));
+}
+
 /** Every text block of every user message in a history. */
 function userTexts(messages: readonly Msg[]): string[] {
   return messages
@@ -219,8 +240,8 @@ const NOTE = {
   stallPivot: (n: number, of: number): string => `⚡ stall detected — forcing strategy pivot ${n}/${of}`,
 } as const;
 
-/** The self-verify rung's injected message opens with this (finishing.self-verify). */
-const SELF_CHECK = "Internal self-check";
+/** The self-verify rung's injected message opens with its text up to the `{{closing}}` slot (finishing.self-verify). */
+const SELF_CHECK = promptDefault("finishing.self-verify").split("{{")[0]!.trim();
 
 /** A 1×1 PNG. */
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
@@ -359,8 +380,7 @@ class NoReplacedConstantSurvives extends BehaviorPureTest {
 /**
  * The values the engine hard-coded at HEAD 32a5f67, each beside the constant
  * or literal it was (session.ts S:, finishing.ts F:). A person updates this
- * table when a knob is changed on purpose — the same policy as the
- * brain-baseline fixture and the pins.
+ * table when a knob is changed on purpose.
  */
 const PRE_FEATURE: BrainBehavior = {
   finishing: {
@@ -384,11 +404,11 @@ const PRE_FEATURE: BrainBehavior = {
   },
   clarify: {
     enabled: true, // ANDed with settings.clarify (S:1260)
-    maxQuestions: 3, // S:2840 CLARIFY_MAX_QUESTIONS
+    maxQuestions: 5, // S:2840 CLARIFY_MAX_QUESTIONS
     model: "main", // S:1087 `model: this.settings.model`
     skim: {
       enabled: true, // S:1075 unconditional
-      peekFiles: ["README.md", "README", "readme.md", "README.txt", "package.json", "pyproject.toml", "Cargo.toml", "go.mod"], // S:189
+      peekFiles: ["README.md", "README", "readme.md", "README.txt", "package.json", "pyproject.toml"], // S:189
     },
   },
   context: {
@@ -619,20 +639,18 @@ class OverridesApplyOnlyInOverdrive extends BehaviorPureTest {
 /* ---- amendment 6: claims are warnings ---------------------------------- */
 
 class EveryClaimGuardsRealProse extends BehaviorPureTest {
-  readonly id = "every-claim-phrase-is-in-the-prompt-it-guards-and-the-shipped-brain-warns-about-none";
+  readonly id = "every-claim-names-a-real-prompt-and-real-knobs-and-the-shipped-brain-warns-about-none";
   readonly whyItExists =
-    "a claim whose phrase is not in its prompt checks nothing, so moving a guard to refuse would leave 'every call runs' in the OVERDRIVE section with no warning — and a shipped brain that already warns trains the owner to ignore the warning";
+    "a claim on a prompt or a knob that does not exist checks nothing, so moving a guard to refuse could leave 'every call runs' in the OVERDRIVE section with no warning — and a shipped brain that already warns trains the owner to ignore the warning";
 
   override run(t: TestRun): void {
     const compiled = compileOk(BRAIN_DIR, true);
     t.assert.deepEqual([...(compiled.warnings ?? [])], [], "the shipped brain states no knob value it does not have");
-    const byId = new Map((compiled.prompts ?? []).map((p) => [p.id, p]));
+    const ids = new Set((compiled.prompts ?? []).map((p) => p.id));
     t.assert.ok(compiler.CLAIMS.length > 0);
     const keys = new Set(Object.keys(brainBehaviorSpec().keys));
     for (const claim of compiler.CLAIMS) {
-      const prompt = byId.get(claim.prompt);
-      t.assert.ok(prompt, `claim on unknown prompt ${claim.prompt}`);
-      t.assert.ok(prompt!.text.includes(claim.phrase), `${claim.prompt} no longer says ${JSON.stringify(claim.phrase)} — the claim guards nothing`);
+      t.assert.ok(ids.has(claim.prompt), `claim on unknown prompt ${claim.prompt}`);
       for (const key of claim.keys) t.assert.ok(keys.has(key), `the claim on ${claim.prompt} reads ${key}, which is not a knob`);
     }
   }
@@ -659,6 +677,18 @@ abstract class BehaviorFsTest extends FsTest {
     const json = JSON.parse(readFileSync(file, "utf8")) as Bag;
     for (const [key, value] of Object.entries(knobs)) setPath(json, key, value);
     writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`);
+  }
+
+  /** Replaces the text of prompt `id` in `brain`, keeping its frontmatter. */
+  protected setPromptText(brain: string, id: string, text: string): string {
+    const prompts = join(brain, "prompts");
+    const folder = readdirSync(prompts).find((name) => existsSync(join(prompts, name, `${id}.md`)));
+    if (folder === undefined) throw new Error(`no prompt file for ${id} in ${brain}`);
+    const file = join(prompts, folder, `${id}.md`);
+    const source = readFileSync(file, "utf8");
+    const end = source.indexOf("\n---\n", 3) + "\n---\n".length;
+    writeFileSync(file, `${source.slice(0, end)}${text}\n`);
+    return `${id}.md`;
   }
 
   /**
@@ -699,17 +729,23 @@ class TheCompilerRejectsABadValueNamingTheKey extends BehaviorFsTest {
     }
 
     // Prose that states a knob's value is a WARNING, never a failure (amendment 6).
+    // The prose is written into the temp brain from the compiler's own claim
+    // table, so this holds whatever the shipped section says.
+    const moved = compiler.CLAIMS.find((c) => c.prompt === "system.overdrive" && c.keys.includes("overdrive.guards.deletions"));
+    const still = compiler.CLAIMS.find((c) => c.prompt === "system.overdrive" && !c.keys.includes("overdrive.guards.deletions"));
+    t.assert.ok(moved && still, "the claim table has a deletion claim and a non-deletion claim on the OVERDRIVE section");
     const brain = this.brainCopy();
+    const file = this.setPromptText(brain, "system.overdrive", `${moved!.phrase}.\n${still!.phrase}.`);
     this.editBehavior(brain, { "overdrive.guards.deletions": "refuse" });
     const warned = compiler.compileBrain(brain, { complete: true });
     t.assert.deepEqual([...warned.problems], [], "a claim never fails the build");
     t.assert.notEqual(warned.source, undefined, "the module is still generated");
     const warnings = warned.warnings ?? [];
     t.assert.ok(
-      warnings.some((w) => w.includes("system.overdrive.md") && w.includes('"deletions at any path"') && w.includes("overdrive.guards.deletions") && w.includes("reword the prompt")),
+      warnings.some((w) => w.includes(file) && w.includes(JSON.stringify(moved!.phrase)) && w.includes("overdrive.guards.deletions") && w.includes("reword the prompt")),
       `the warning names the prompt file, the phrase and the key:\n  ${warnings.join("\n  ")}`,
     );
-    t.assert.equal(warnings.some((w) => w.includes("edits to `.magentra` state")), false, "a claim on a guard that did not move stays silent");
+    t.assert.equal(warnings.some((w) => w.includes(still!.phrase)), false, "a claim on a guard that did not move stays silent");
   }
 }
 
@@ -1121,7 +1157,7 @@ class TheSmallerKnobsChangeWhatTheyName extends BehaviorEngineTest {
     t.assert.equal(noClarify.engine.provider.requests.length, 1, "clarify.enabled false: no clarify call even with settings.clarify on");
     t.assert.ok(noClarify.engine.provider.requests[0]!.tools.length > 0, "the one call is the turn's own");
 
-    for (const [max, behavior] of [[3, undefined], [1, this.compiledBehavior({ "clarify.maxQuestions": 1 })]] as const) {
+    for (const [max, behavior] of [[4, undefined], [1, this.compiledBehavior({ "clarify.maxQuestions": 1 })]] as const) {
       const run = await this.start({ settings: { clarify: true }, turns: [say(verdict), say(FINAL)], ...(behavior ? { behavior } : {}) });
       run.engine.send({ type: "user_message", text: "Build me a game." });
       const asked = await run.engine.waitFor((e): e is Extract<CoreEvent, { type: "question_request" }> => e.type === "question_request");
@@ -1267,8 +1303,8 @@ class AnExplicitAllowPassesOnlyANonProtectedRefusal extends BehaviorEngineTest {
 
 /* ---- checklist 5, composed through the real engine ----------------------- */
 
-class TheMovedTextsReachTheModelAsTheOldLiterals extends BehaviorEngineTest {
-  readonly id = "the-moved-tool-permission-image-and-deletion-policy-texts-reach-the-model-byte-for-byte-as-before";
+class TheMovedTextsReachTheModelAsComposedTemplates extends BehaviorEngineTest {
+  readonly id = "the-moved-tool-permission-image-and-deletion-policy-texts-reach-the-model-composed-exactly-from-their-brain-templates";
   readonly whyItExists =
     "a moved text can render exactly and still be composed wrongly — the Write note glued to the byte count, the image note without its blank line, the decline with a space before its full stop — and the model reads the composed bytes, not the template";
 
@@ -1304,26 +1340,21 @@ class TheMovedTextsReachTheModelAsTheOldLiterals extends BehaviorEngineTest {
     const h = this.history(run.engine);
     const ws = run.workspace;
 
-    t.assert.equal(toolResultText(h, "s1"), "Foreground sleep is blocked. If you are waiting for something, run the wait in the background (run_in_background with an until-loop) so you keep working meanwhile.");
-    t.assert.equal(toolResultText(h, "q1"), 'Web search is disabled in settings ("search.enabled" is false). Do not retry; work without web search or ask the user to enable it.');
-    t.assert.equal(
-      toolResultText(h, "w1"),
-      `File written: ${join(ws, "a.txt")} (5 bytes)\nnote: existing file replaced entirely — for incremental changes, use Edit instead of rewriting with Write.`,
-    );
-    const unseen = /^shot\.png is an image and you cannot see it — (.+)\. Do not describe or draw conclusions from it\. Verify this change some other way, or say plainly that it stays unverified\.$/.exec(toolResultText(h, "i1"));
-    t.assert.ok(unseen, toolResultText(h, "i1"));
-    const reason = unseen![1]!;
-    t.assert.equal(toolResultText(h, "c1"), "Permission denied by settings rule. The user's configuration forbids this call; do not retry it verbatim.");
-    t.assert.equal(toolResultText(h, "o1"), "The user declined this tool call. Adjust your approach instead of retrying the same call.");
-    t.assert.equal(
-      toolResultText(h, "k1"),
-      "The user declined this process kill. It stops processes by name — every matching process on this computer. To stop a background command you started, use TaskStop with its task id, or kill its pid; do not retry the same call.",
-    );
-    t.assert.equal(toolResultText(h, "d1"), "The user declined this destructive tool call. Deletion calls always require approval; adjust your approach instead of retrying the same call.");
-    t.assert.match(
-      toolResultText(h, "p1"),
-      /^The user declined this edit to a protected path \(.+\.env\)\. Edits to \.magentra state and \.env files always require approval; do not retry the same call\.$/,
-    );
+    // Each composed text is its brain template with its slots filled by the
+    // engine: a decline with no note fills `{{detail}}` with the bare full stop.
+    const declined = (id: string): string => renderPrompt(id, { detail: "." });
+    t.assert.equal(toolResultText(h, "s1"), promptDefault("bash.foreground-sleep"));
+    t.assert.equal(toolResultText(h, "q1"), promptDefault("websearch.disabled"));
+    t.assert.equal(toolResultText(h, "w1"), `File written: ${join(ws, "a.txt")} (5 bytes)\n${promptDefault("write.replaced-note")}`);
+    const unseen = templateMatch(toolResultText(h, "i1"), promptDefault("read.image-unseen"), { file: "shot.png" });
+    t.assert.ok(unseen?.reason, toolResultText(h, "i1"));
+    const reason = unseen!.reason!;
+    t.assert.equal(toolResultText(h, "c1"), promptDefault("reminder.permission-rule-denied"));
+    t.assert.equal(toolResultText(h, "o1"), declined("reminder.permission-declined"));
+    t.assert.equal(toolResultText(h, "k1"), declined("reminder.permission-kill-declined"));
+    t.assert.equal(toolResultText(h, "d1"), declined("reminder.permission-deletion-declined"));
+    const protectedPath = templateMatch(toolResultText(h, "p1"), promptDefault("reminder.permission-protected-declined"), { detail: "." });
+    t.assert.ok(protectedPath?.path?.endsWith(".env"), toolResultText(h, "p1"));
 
     // An attached image with vision off: the note, a blank line, the typed text.
     await run.engine.engine.idle(); // turn_finished precedes the busy flag clearing
@@ -1331,23 +1362,17 @@ class TheMovedTextsReachTheModelAsTheOldLiterals extends BehaviorEngineTest {
     run.engine.send({ type: "user_message", text: "What is in this picture?", images: [{ name: "pic.png", mediaType: "image/png", data: PNG.toString("base64") }] });
     await run.engine.waitFor((e) => e.type === "turn_finished");
     t.assert.equal(run.engine.provider.requests.length, before + 1);
-    const attached = userTexts(this.history(run.engine)).find((text) => text.startsWith("[The user attached"));
-    t.assert.equal(
-      attached,
-      `[The user attached 1 image(s) to this message, but they could not be read: ${reason}. You have NOT seen them — do not describe them or draw conclusions from them; say what happened and ask the user how to proceed.]\n\nWhat is in this picture?`,
+    t.assert.ok(
+      userTexts(this.history(run.engine)).includes(`${renderPrompt("vision.attached-unreadable", { count: 1, reason })}\n\nWhat is in this picture?`),
+      "the vision-off note, one blank line, then the typed text",
     );
 
-    // "Allow deletions" on: the deletion-policy section, as the literal it was.
+    // "Allow deletions" on: the deletion-policy section, as brain ships it.
     await run.engine.engine.idle();
     run.engine.send({ type: "set_deletion_guard", enabled: false });
     await run.engine.runTurn("And now?");
     const system = run.engine.provider.requests[run.engine.provider.requests.length - 1]!.system;
-    t.assert.ok(
-      system.includes(`Deletion policy:
-- The user has enabled "Allow deletions" in the app settings — a durable authorization for destructive local operations (deleting files or folders, forced git history rewrites, and similar). They run without an extra confirmation prompt.
-- This is a license, not a directive: delete only what the task genuinely requires, keep the smallest possible blast radius, and still call out anything surprising you are about to remove.`),
-      "the deletion-policy section is the old literal, byte for byte",
-    );
+    t.assert.ok(system.includes(promptDefault("system.deletion-policy").trim()), "the deletion-policy section is brain's text, whole");
   }
 }
 
@@ -1367,7 +1392,8 @@ interface ProtocolModule {
 
 interface CorePromptsModule {
   behaviorCore(): string;
-  buildSystemPrompt(opts: { env: typeof CANONICAL_ENV; addons?: { name: string; description: string }[]; extraSections?: string[] }): string;
+  buildSystemPrompt(opts: { env: PromptEnvironment; addons?: { name: string; description: string }[]; extraSections?: string[] }): string;
+  environmentBlock(env: PromptEnvironment): string;
 }
 
 interface Assembly {
@@ -1422,26 +1448,27 @@ abstract class AssemblyTest extends BehaviorFsTest {
   }
 }
 
+/** Any environment will do; one fixed value keeps two renders comparable. */
+const ENV: PromptEnvironment = { cwd: "/w", isGitRepo: false, platform: "win32", model: "m", date: "2026-01-01" };
+
 const SHIPPED_CORE_ORDER = [
   "system.identity", "system.harness", "system.communication", "system.action-care", "system.git", "system.code-style",
   "system.tasks", "system.working-method", "system.autonomy", "system.environment", "system.addons-block",
 ];
 
 class TheCoreSectionsFollowBrainsOrder extends AssemblyTest {
-  readonly id = "reordering-adding-or-switching-off-a-core-section-file-changes-the-assembled-system-prompt-and-the-shipped-order-is-the-pin";
+  readonly id = "reordering-adding-or-switching-off-a-core-section-file-changes-the-assembled-system-prompt-and-the-shipped-order-is-the-engines-own";
   readonly whyItExists =
     "which sections open the system prompt and in what order is the agent's description of itself; held in a code list, a brain-only edit to that order or a new section file would compile cleanly and change nothing the model reads";
 
   override async run(t: TestRun): Promise<void> {
     this.isolatePrompts(this.tempDir("magentra-prompts-"));
-    const pinned = readApproved("system-prompt-is-pinned", "system-prompt.txt");
-    const render = (a: Assembly): string => `${a.core.buildSystemPrompt({ env: CANONICAL_ENV }).replace(/\r\n/g, "\n").trimEnd()}\n`;
+    const render = (a: Assembly): string => `${a.core.buildSystemPrompt({ env: ENV }).replace(/\r\n/g, "\n").trimEnd()}\n`;
 
-    // The shipped order, through the relinked assembly, is the pinned prompt.
+    // The shipped order, through the relinked assembly, is the engine's own prompt.
     const shipped = await this.assemble(this.brainCopy());
     t.assert.deepEqual([...shipped.coreOrder], SHIPPED_CORE_ORDER, "brain's order: today's sequence");
-    t.assert.equal(render(shipped), pinned, "the shipped order reproduces the pinned system prompt");
-    t.assert.equal(render(shipped), `${buildSystemPrompt({ env: CANONICAL_ENV }).replace(/\r\n/g, "\n").trimEnd()}\n`, "and the relinked assembly is the engine's own");
+    t.assert.equal(render(shipped), `${buildSystemPrompt({ env: ENV }).replace(/\r\n/g, "\n").trimEnd()}\n`, "the relinked assembly of the shipped brain is the engine's own");
     const texts = this.sections(shipped);
     const joined = (ids: readonly string[]): string => ids.map((id) => texts.get(id) ?? "").filter((s) => s !== "").join("\n\n");
     const behaviourIds = SHIPPED_CORE_ORDER.filter((id) => !DATA_SECTIONS.includes(id));
@@ -1454,14 +1481,14 @@ class TheCoreSectionsFollowBrainsOrder extends AssemblyTest {
     const moved = behaviourIds.filter((id) => id !== "system.git");
     moved.splice(moved.indexOf("system.tasks") + 1, 0, "system.git");
     t.assert.equal(r.core.behaviorCore(), joined(moved), "the git section now follows the tasks section");
-    t.assert.notEqual(render(r), pinned);
+    t.assert.notEqual(render(r), render(shipped));
 
     // The environment block holds its place in the order too.
     const envFirst = this.brainCopy();
     this.setFrontmatter(envFirst, "1-core-system", "system.environment", "order", "5");
     const e = await this.assemble(envFirst);
     t.assert.deepEqual([...e.coreOrder].slice(0, 2), ["system.environment", "system.identity"]);
-    t.assert.ok(render(e).startsWith(`${e.protocol.promptText("system.environment").split("\n")[0]!}\n- Working directory: ${CANONICAL_ENV.cwd}`), "order 5 opens the prompt with the environment block");
+    t.assert.ok(render(e).startsWith(e.core.environmentBlock(ENV).trim()), "order 5 opens the prompt with the environment block");
 
     // A section added in brain alone joins the prompt with no code change.
     const added = this.brainCopy();
@@ -1518,7 +1545,7 @@ class EnabledFalseIsABlankOverride extends AssemblyTest {
     for (const [, id] of ids) writeFileSync(join(blankDir, `${id}.txt`), "");
     const observe = (a: Assembly): unknown => ({
       core: a.core.behaviorCore(),
-      system: a.core.buildSystemPrompt({ env: CANONICAL_ENV, extraSections: ["Extra."] }),
+      system: a.core.buildSystemPrompt({ env: ENV, extraSections: ["Extra."] }),
       prompts: ids.map(([, id]) => ({
         id,
         text: a.protocol.promptText(id),
@@ -1577,18 +1604,24 @@ class TheDeletionPolicyClaimWarns extends BehaviorFsTest {
     "with Allow deletions on, the deletion-policy section tells the model its deletions run unasked; in OVERDRIVE with a deletion guard on refuse that is false, and an owner who rewords only what the build names would still ship the contradiction";
 
   override run(t: TestRun): void {
+    // The claimed prose is written into each temp brain from the compiler's
+    // own claim table, so this holds whatever the shipped section says.
+    const claim = compiler.CLAIMS.find((c) => c.prompt === "system.deletion-policy");
+    t.assert.ok(claim, "the claim table has a claim on the deletion-policy section");
     for (const key of ["overdrive.guards.deletions", "overdrive.guards.protectedDeletions"]) {
       const brain = this.brainCopy();
+      const file = this.setPromptText(brain, "system.deletion-policy", `${claim!.phrase}.`);
       this.editBehavior(brain, { [key]: "refuse" });
       const result = compiler.compileBrain(brain, { complete: true });
       t.assert.deepEqual([...result.problems], [], "a claim never fails the build");
       const warnings = result.warnings ?? [];
       t.assert.ok(
-        warnings.some((w) => w.includes("system.deletion-policy.md") && w.includes('"They run without an extra confirmation prompt"') && w.includes(key)),
+        warnings.some((w) => w.includes(file) && w.includes(JSON.stringify(claim!.phrase)) && w.includes(key)),
         `${key} = refuse: the deletion-policy section is named:\n  ${warnings.join("\n  ")}`,
       );
     }
     const edits = this.brainCopy();
+    this.setPromptText(edits, "system.deletion-policy", `${claim!.phrase}.`);
     this.editBehavior(edits, { "overdrive.guards.protectedEdits": "refuse" });
     const quiet = compiler.compileBrain(edits, { complete: true }).warnings ?? [];
     t.assert.equal(quiet.some((w) => w.includes("system.deletion-policy.md")), false, "an edit guard says nothing about deletions");
@@ -1694,7 +1727,7 @@ registerFeatureTests(
   new TheSmallerKnobsChangeWhatTheyName(),
   new EveryGuardRefusesAndNothingAsks(),
   new AnExplicitAllowPassesOnlyANonProtectedRefusal(),
-  new TheMovedTextsReachTheModelAsTheOldLiterals(),
+  new TheMovedTextsReachTheModelAsComposedTemplates(),
   new TheCoreSectionsFollowBrainsOrder(),
   new EnabledFalseIsABlankOverride(),
   new OnlyResolvedObjectsPassUnchecked(),

@@ -11,6 +11,16 @@
  *
  * `pure` + `fs`, and the record said `pure`. Re-declared 2026-09-20.
  *
+ * WHAT THE RUNG SAYS IS NOT ASSERTED HERE. Its wording lives in brain/ and the
+ * owner rewords it freely (decided 2026-10-04: no test pins prompt prose). The
+ * pure half holds the rung's SHAPE — one head, one `{{closing}}` slot, the
+ * closings' own slots — and the fs half tells the head and the two closings
+ * apart by stretches of their own shipped templates (`promptDefault`), so a
+ * rewording moves the locators with it. One coupling is held on purpose: the
+ * head must name a word the engine's own `isSelfVerifyDone` accepts, because
+ * that is the only way the round can end. The word is the engine's, not this
+ * file's.
+ *
  * WHY NOT ALL PURE. The checklist calls `selfVerifyText()`. It is not
  * reachable: `engine/core/src/runtime/finishing.ts` is not re-exported by
  * `engine/core/src/index.ts` and `@magentra/core` ships a single `"."` export,
@@ -22,15 +32,14 @@
  *          `@magentra/protocol`. `finishing.self-verify` and its two closings
  *          are registered by `definePrompt` when the engine module loads, and
  *          `defaultText` is the committed text, unaffected by any override file
- *          this machine holds. Items 1–3 are claims about what those say.
+ *          this machine holds. Items 1–3 are held as the shape of those.
  *   fs   — WHICH closing a real turn gets, and whether the round happens at
  *          all: items 4 and 5, read off the message the real Session pushed
  *          into the real history.
  *
  * ITEM 3 IS PROVEN ON BOTH SIDES, deliberately. That the two variants "keep the
  * shared head" is structural in the prompt (one text with a `{{closing}}` slot),
- * so the pure test asserts the head is in the shared prompt and the slot is the
- * only thing that varies — and the two fs tests then assert the head really did
+ * so the pure test asserts the slot is the only thing that varies — and the two fs tests then assert the head really did
  * arrive in front of each closing, which is the claim a shared template can
  * still break by being rendered from the wrong place.
  *
@@ -49,7 +58,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { promptCatalog, type PromptEntry } from "@magentra/protocol";
+import { isSelfVerifyDone } from "@magentra/core";
+import { promptCatalog, promptDefault, type PromptEntry } from "@magentra/protocol";
 import type { Msg } from "@magentra/providers";
 
 import { registerFeatureTests, type TestRun } from "../lib/featureTest.ts";
@@ -63,8 +73,19 @@ const FEATURE = "self-check-sharpening";
 const INVARIANT =
   "The self-check's closing clause flips on whether the turn changed code: demand evidence if it did, forbid invented rituals if it did not.";
 
-/** The sentence that identifies the rung's shared head wherever it lands. */
-const HEAD_MARKER = "Internal self-check";
+/** The longest slot-free stretch of a prompt's shipped text: present verbatim in every render of it. */
+function shippedMarker(id: string): string {
+  return promptDefault(id)
+    .split(/\{\{\w+\}\}/)
+    .map((part) => part.trim())
+    .reduce((a, b) => (b.length > a.length ? b : a), "");
+}
+
+/** Identifies the rung's shared head wherever it lands. */
+const HEAD_MARKER = shippedMarker("finishing.self-verify");
+/** Identifies each closing in a rendered self-check. */
+const CODE_CLOSING = shippedMarker("finishing.self-verify.closing-code");
+const PLAIN_CLOSING = shippedMarker("finishing.self-verify.closing-plain");
 
 /** The registry is populated by `definePrompt` at module load — the engine is imported by `scriptedEngine.ts` below. */
 function shippedPrompt(id: string): PromptEntry {
@@ -81,37 +102,27 @@ function userTexts(messages: readonly Msg[]): string[] {
     .flatMap((m) => m.content.filter((b) => b.type === "text").map((b) => (b.type === "text" ? b.text : "")));
 }
 
-/* ---- checklist 1–3 — pure, the shipped text --------------------------- */
+/* ---- checklist 1–3 — pure, the shipped rung's shape ------------------- */
 
 abstract class ShippedTextTest extends PureTest {
   readonly featureId = FEATURE;
   readonly invariant = INVARIANT;
 }
 
-class TheTwoClosingsForbidOppositeThings extends ShippedTextTest {
-  readonly id = "the-plain-closing-forbids-invented-rituals-and-the-code-closing-demands-the-evidence";
+class TheTwoClosingsDifferInTheirSlot extends ShippedTextTest {
+  readonly id = "the-code-closing-declares-the-files-slot-and-the-plain-closing-has-none";
   readonly whyItExists =
-    "one fixed closing served both turns: with the 'never invent verification rituals' wording it told a turn that had just rewritten three modules that a build was ceremony, and the self-check became the licence to skip verifying";
+    "one fixed closing served both turns, so a turn that had just rewritten three modules was judged by the same words as a turn that changed nothing — the closing that is about the turn's own files has to be able to name them, and the other has nothing to name";
 
   override run(t: TestRun): void {
-    const plain = shippedPrompt("finishing.self-verify.closing-plain").defaultText;
-    const code = shippedPrompt("finishing.self-verify.closing-code").defaultText;
+    const plain = shippedPrompt("finishing.self-verify.closing-plain");
+    const code = shippedPrompt("finishing.self-verify.closing-code");
 
-    t.assert.match(plain, /never invent verification rituals \(builds, tests\)/, "with nothing changed, a demanded build is pure waste");
-    t.assert.match(plain, /Judge only against the query itself/);
-    t.assert.equal(plain.includes("You changed code this turn"), false, "the plain closing does not speak about files");
-
-    t.assert.match(code, /You changed code this turn \(\{\{files\}\}\)/, "the code closing names the turn's own work");
-    t.assert.match(
-      code,
-      /not merely compiled, re-read, reasoned about, or agreed with by a stand-in you wrote yourself/,
-      "and rules out each of the four things that look like evidence and are not",
-    );
-    t.assert.match(code, /"Fully handled" includes SETTLED/);
-    t.assert.equal(code.includes("never invent verification rituals"), false, "the sentence that would excuse skipping it is absent here");
-
-    t.assert.deepEqual([...(shippedPrompt("finishing.self-verify.closing-code").placeholders ?? [])], ["files"], "the code closing declares the slot it fills");
-    t.assert.equal(shippedPrompt("finishing.self-verify.closing-plain").placeholders, undefined, "the plain one has nothing to fill");
+    t.assert.deepEqual([...(code.placeholders ?? [])], ["files"], "the code closing declares the slot it fills");
+    t.assert.equal(code.defaultText.includes("{{files}}"), true, "and carries it");
+    t.assert.equal(plain.placeholders, undefined, "the plain one has nothing to fill");
+    t.assert.equal(plain.defaultText.includes("{{files}}"), false, "and names no files");
+    t.assert.notEqual(plain.defaultText.trim(), code.defaultText.replace("{{files}}", "").trim(), "they are two closings, not one");
   }
 }
 
@@ -127,15 +138,16 @@ class OneHeadCarriesBothClosings extends ShippedTextTest {
     t.assert.equal(rung.channel, "reminder", "it is injected into the conversation, not part of the system prompt");
     t.assert.deepEqual([...(rung.placeholders ?? [])], ["closing"], "exactly one slot — the closing is the only thing that varies");
     t.assert.equal(text.split("{{closing}}").length - 1, 1, "and it appears once, at the end");
-    t.assert.equal(text.trimEnd().endsWith("{{closing}}</system-reminder>"), true, "the closing is the last thing the model reads");
-
-    t.assert.match(text, /Internal self-check — this is NOT a new user message/, "the head says what the round is");
     t.assert.match(
-      text,
-      /output exactly this literal ASCII word and nothing else, never translated or localized[^:]*: DONE/,
-      "and pins the sentinel the turn breaks on",
+      text.slice(text.indexOf("{{closing}}") + "{{closing}}".length),
+      /^\s*(<\/[\w-]+>)?\s*$/,
+      "the closing is the last thing the model reads — nothing but a closing tag follows the slot",
     );
-    t.assert.match(text, /the DONE token never is/, "the sentinel is never shown to the user");
+
+    // The coupling the round depends on: the head must tell the model a word
+    // the engine's own sentinel check accepts, or no answer can end the round.
+    const words = text.split(/[\s:;,"'`()]+/).filter((w) => w !== "");
+    t.assert.equal(words.some((w) => isSelfVerifyDone(w)), true, "the head names a word isSelfVerifyDone accepts");
   }
 }
 
@@ -232,12 +244,9 @@ class ATurnThatChangedSourceGetsTheCodeClosing extends RungTest {
     const checks = this.selfChecks(engine.provider.requests[2]?.messages ?? []);
     t.assert.equal(checks.length, 1, "the rung fires once per turn");
     const text = checks[0] ?? "";
-    t.assert.match(text, /Internal self-check — this is NOT a new user message/, "the shared head arrived with it");
-    t.assert.match(text, /never translated or localized[^:]*: DONE/, "so did the sentinel instruction");
-    t.assert.equal(text.includes(`You changed code this turn (${join("src", "a.ts")})`), true, "the code closing names the file this turn changed");
-    t.assert.match(text, /not merely compiled, re-read, reasoned about, or agreed with by a stand-in you wrote yourself/);
-    t.assert.match(text, /or you told the user plainly which parts you could not run/, "with the honest gap still allowed");
-    t.assert.equal(text.includes("never invent verification rituals"), false, "and without the clause that would excuse skipping the check");
+    t.assert.equal(text.includes(CODE_CLOSING), true, "it carries the code closing");
+    t.assert.equal(text.includes(join("src", "a.ts")), true, "which names the file this turn changed");
+    t.assert.equal(text.includes(PLAIN_CLOSING), false, "and not the plain closing that would excuse skipping the check");
   }
 }
 
@@ -270,11 +279,9 @@ class ATurnThatOnlyReadGetsThePlainClosing extends RungTest {
     const checks = this.selfChecks(engine.provider.requests[2]?.messages ?? []);
     t.assert.equal(checks.length, 1, "a turn with a tool call is still self-checked");
     const text = checks[0] ?? "";
-    t.assert.match(text, /Internal self-check — this is NOT a new user message/, "the same shared head as the code variant");
-    t.assert.match(text, /never translated or localized[^:]*: DONE/);
-    t.assert.match(text, /Judge only against the query itself — never invent verification rituals/, "the plain closing");
-    t.assert.equal(text.includes("You changed code this turn"), false, "nothing was changed, so nothing is named");
-    t.assert.equal(text.includes("Fully handled\" includes SETTLED"), false, "and no evidence is demanded about work that did not happen");
+    t.assert.equal(text.includes(PLAIN_CLOSING), true, "the plain closing, under the same shared head as the code variant");
+    t.assert.equal(text.includes(CODE_CLOSING), false, "and no evidence is demanded about work that did not happen");
+    t.assert.equal(text.includes(join("src", "a.ts")), false, "nothing was changed, so nothing is named");
   }
 }
 
@@ -331,7 +338,7 @@ class WithNoToolCallsThereIsNothingToVerify extends RungTest {
 }
 
 registerFeatureTests(
-  new TheTwoClosingsForbidOppositeThings(),
+  new TheTwoClosingsDifferInTheirSlot(),
   new OneHeadCarriesBothClosings(),
   new ATurnThatChangedSourceGetsTheCodeClosing(),
   new ATurnThatOnlyReadGetsThePlainClosing(),

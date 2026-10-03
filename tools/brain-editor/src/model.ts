@@ -12,9 +12,9 @@
  *   - every prompt, tool, knob and tool set the change touched compiles back to
  *     exactly what was asked, and
  *   - the brain on disk is still the revision the change was planned against.
- * Otherwise nothing on disk changes. In the shipped brain/ a change must also
- * name the tests it moves (`acknowledge`), because only the owner re-approves
- * pinned bytes.
+ * Otherwise nothing on disk changes. In the shipped brain/ a change to tool
+ * access or a knob value must also name the tests it moves (`acknowledge`),
+ * because those tests check the shipped values and only the owner updates them.
  */
 
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -50,7 +50,7 @@ import {
   type PromptFile,
 } from "./format.ts";
 import { probeBrain, type ProbeResult } from "./engine.ts";
-import { PIN_HOLDERS, PIN_TESTS, holdersOf, isShippedBrain, promptUsers, type Holder } from "./project.ts";
+import { holdersOf, isShippedBrain, promptUsers, type Holder } from "./project.ts";
 
 /* =========================================================================
  * Reading
@@ -74,7 +74,6 @@ export interface PromptItem {
   readonly text: string;
   /** The engine file that sends it; for a core section, how it joins the system prompt; null when nothing uses it. */
   readonly usedBy: string | null;
-  readonly heldBy: readonly Holder[];
 }
 
 export interface ToolItem {
@@ -83,7 +82,6 @@ export interface ToolItem {
   /** In the file's own order. */
   readonly params: readonly ParamSection[];
   readonly offered: { readonly main: boolean; readonly overdrive: boolean };
-  readonly heldBy: readonly Holder[];
 }
 
 export interface KnobItem {
@@ -219,7 +217,6 @@ function load(dir: string): { snapshot: BrainSnapshot; source?: string } {
       enabled: p.enabled !== false,
       text: split.body,
       usedBy: users.get(p.id) ?? null,
-      heldBy: holdersOf(file, shipped),
     });
   }
   // A readable place in the system prompt: 1-based.
@@ -251,7 +248,6 @@ function load(dir: string): { snapshot: BrainSnapshot; source?: string } {
       description: tool.description,
       params,
       offered: { main: availability?.main.includes(name) ?? false, overdrive: availability?.overdrive.includes(name) ?? false },
-      heldBy: holdersOf(`tools/${name}/description.md`, shipped),
     });
   }
 
@@ -295,8 +291,7 @@ function load(dir: string): { snapshot: BrainSnapshot; source?: string } {
 
 /**
  * What the built engine makes of the brain in `dir` as it is on disk: whether
- * it loads, the system prompt it sends, and whether the two pins hold. See
- * engine.ts. Not part of loadBrain because it is a child process.
+ * it loads and the system prompt it sends. See engine.ts. Not part of loadBrain because it is a child process.
  */
 export async function checkEngine(dir: string): Promise<ProbeResult> {
   const { source } = load(dir);
@@ -930,11 +925,9 @@ async function stagePlan(dir: string, input: unknown, options: PlanOptions): Pro
   const fixedProblems = snapshot.problems.filter((p) => !after.has(p) && !p.includes("the editor reads this file differently"));
   const warnings = [...(staged.warnings ?? [])];
 
-  // The engine's own answer, when it can be asked: does it still load, and which pins does the change really move?
+  // The engine's own answer, when it can be asked: does it still load?
   let engine: Plan["engine"] = { checked: false, reason: "the brain does not compile" };
   let engineError: string | undefined;
-  const exactPins = new Set<string>();
-  let pinsKnown = false;
   if (files.length > 0 && staged.source !== undefined) {
     const [now, next] = await Promise.all([currentSource !== undefined ? probeBrain(currentSource) : undefined, probeBrain(staged.source)]);
     if (!next.available) {
@@ -951,24 +944,14 @@ async function stagePlan(dir: string, input: unknown, options: PlanOptions): Pro
         const known = now?.available === true ? (now.unreadParams ?? []) : [];
         if (!known.includes(p)) warnings.push(`tools/${p.split(" ")[0]}/params.md: no tool reads the parameter text "${p.split(" ").slice(1).join(" ")}", so it is never sent`);
       }
-      if (snapshot.shipped && next.ok && next.pins) {
-        pinsKnown = true;
-        const moved = { "system-prompt-is-pinned": engine.systemPromptChanged !== false, "tool-wire-contract-is-pinned": engine.toolsChanged !== false };
-        for (const [test, check] of Object.entries(next.pins)) if (!check.holds && moved[test as keyof typeof moved]) exactPins.add(test);
-      }
     }
   }
   const newWarnings = warnings.filter((w) => !snapshot.warnings.includes(w));
 
   const holders = new Map<string, Holder>();
   for (const f of files) {
-    for (const h of holdersOf(f.path, snapshot.shipped)) {
-      // With the engine's answer, a pin is named only when the change really moves its bytes.
-      if (pinsKnown && PIN_TESTS.includes(h.test)) continue;
-      if (!holders.has(h.test)) holders.set(h.test, h);
-    }
+    for (const h of holdersOf(f.path, snapshot.shipped)) if (!holders.has(h.test)) holders.set(h.test, h);
   }
-  for (const test of exactPins) holders.set(test, PIN_HOLDERS[test as keyof typeof PIN_HOLDERS]);
   const heldBy = [...holders.values()];
 
   const base = {
@@ -998,7 +981,7 @@ async function stagePlan(dir: string, input: unknown, options: PlanOptions): Pro
     if (missing.length > 0) {
       refusal = {
         code: "needs-acknowledge",
-        message: `This changes text the tests hold in the shipped brain: ${missing.map((h) => h.test).join(", ")}. Those tests fail until the owner approves the new text. Acknowledge ${missing.length === 1 ? "it" : "them"} to save anyway.`,
+        message: `This changes values the tests hold in the shipped brain: ${missing.map((h) => h.test).join(", ")}. Those tests fail until the owner updates what they expect. Acknowledge ${missing.length === 1 ? "it" : "them"} to save anyway.`,
       };
     }
   }

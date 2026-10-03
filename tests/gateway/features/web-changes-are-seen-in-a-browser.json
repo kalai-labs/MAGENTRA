@@ -15,7 +15,7 @@
   "invariant": "A turn that changed a web page and never looked at it in a browser gets one reminder to drive it the way the user will, or to say it stays unverified; it reminds, never blocks.",
   "deferred": false,
   "tests": [
-    "the-shipped-reminder-sends-the-agent-to-a-browser-and-keeps-the-honest-ending",
+    "the-shipped-reminder-is-a-registered-reminder-that-declares-and-carries-its-two-slots",
     "a-page-checked-only-with-commands-gets-one-reminder-and-the-next-end-is-allowed",
     "a-browser-run-settles-it-and-a-server-only-change-never-asks",
     "a-screenshot-read-that-failed-is-not-evidence",

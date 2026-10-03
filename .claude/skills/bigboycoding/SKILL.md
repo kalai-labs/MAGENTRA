@@ -197,19 +197,18 @@ start-up banner does (`npm run gateway -- --no-open`). Re-recording is a
 review: a person confirms the record still describes the code, then uses the
 gateway UI's reconcile action. It is never a way through the gate.
 
-### 6. Approved artifacts move only when a person moves them (docs/decisions/0015)
+### 6. No test holds prompt wording, so the owner does (docs/decisions/0016)
 
-`tests/approved/system-prompt-is-pinned/system-prompt.txt` and
-`tests/approved/tool-wire-contract-is-pinned/tools.json` hold the exact bytes
-of the standing system prompt and of every tool's wire schema. Rewording a
-core section in `brain/prompts/1-core-system/`, or any tool description or
-parameter text in `brain/tools/<Name>/`, fails them by design. **Never run
-`npm run approve`.** Show the owner the before and after wording, get approval,
-and the owner runs it and reads the diff. Other model-facing wording — turn
-reminders, finishing rungs, side-call prompts under `brain/prompts/` — is not
-in `tests/approved/`, but `brain-is-the-single-source` holds it against
-`tests/features/fixtures/brain-baseline/`, and it still needs the owner's
-approval before it changes.
+The pins and the brain baseline were removed on 2026-10-04. A rewording in
+`brain/prompts/` or `brain/tools/<Name>/` stays green while it changes what
+every session sends, so show the owner the before and after wording and get
+approval. A test that needs a prompt's text reads it from brain
+(`promptDefault`, `promptText`, `renderPrompt`, the engine's builders), never
+as a literal, and never asserts that a phrase is present. A tool schema
+change (field name, required, enum) is caught by nothing now: say so when you
+make one. Three word dependencies remain, listed in `brain/README.md`: the
+self-verify `DONE` sentinel, the `assertToolParamStates()` facts, and the
+compiler's `CLAIMS` phrases.
 
 ### 7. Smoke, and what CI gates
 
@@ -233,7 +232,7 @@ they held is proven again:
 | Deleted check | Now proven by |
 |---|---|
 | `permission-check.mjs` | `permission-stances`, `deletion-guard`, `allow-all-stance`, `command-shape-always-allow`, `protected-state-dir` |
-| `tools-check.mjs` | `tool-registry-contract` (it also RUNS Read, Glob, Grep, TaskList, CronList and GraphQuery against a workspace), `tool-wire-contract-is-pinned` |
+| `tools-check.mjs` | `tool-registry-contract` (it also RUNS Read, Glob, Grep, TaskList, CronList and GraphQuery against a workspace) |
 | `addon-check.mjs` | `discovery`, `precedence`, `on-invoke-load`, `name-invocation`, `cheap-until-used`, `bundled-files` |
 | `glob-state-dir-check.mjs` | `tool-glob` |
 | `reasoning-effort-check.mjs` | `reasoning-effort-clamp` (over a real 127.0.0.1 server), `mirror-reasoning-efforts` |
@@ -294,9 +293,8 @@ node .claude/skills/bigpicture/bigpicture.mjs check           # after editing
   `brain/availability.json` decides which built-in tools a root session
   offers. `npm run build` compiles brain/ into the engine
   (`tools/brain/compile.mjs`); `brain/README.md` has the exact file rules.
-  Editing a file there changes what every session sends, and
-  `system-prompt-is-pinned` / `tool-wire-contract-is-pinned` fail on any
-  changed byte. Only the owner re-approves them (Verification gates, step 6).
+  Editing a file there changes what every session sends, and no test fails
+  on a rewording, so the owner approves it (Verification gates, step 6).
   The `subagent.*` prompts in `engine/core/src/agent/agents.ts` are the one
   exception and stay in code.
 - **Behaviour policy lives in `brain/behavior.json`, not in `session.ts`.**

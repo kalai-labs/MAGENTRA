@@ -14,8 +14,7 @@
   "invariant": "A turn that edited source and ran no command gets one reminder naming the files; it reminds, never blocks.",
   "deferred": false,
   "tests": [
-    "the-shipped-reminder-asks-for-a-real-run-in-five-steps-and-declares-its-three-slots",
-    "the-vision-clause-substituted-into-the-rung-has-an-on-shape-and-an-off-shape",
+    "the-shipped-reminder-is-a-reminder-and-declares-and-carries-its-three-slots",
     "a-write-of-source-with-no-command-pushes-exactly-one-reminder-and-the-next-end-turn-is-allowed",
     "documentation-and-configuration-written-beside-source-are-not-named-in-the-reminder",
     "ten-changed-source-files-are-named-eight-at-a-time-and-the-rest-are-counted",

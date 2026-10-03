@@ -15,6 +15,7 @@
  */
 
 import { addonInvocationHeader, type Addon, type ToolContext } from "@magentra/core";
+import { renderPrompt } from "@magentra/protocol";
 import { addonTool } from "@magentra/tools";
 
 import { resultText, runTool, strictServices } from "../lib/directTool.ts";
@@ -102,9 +103,10 @@ class TheHeaderComesFirst extends AddonToolTest {
 
   override async run(t: TestRun): Promise<void> {
     const { text } = await this.invoke([addon("foo", "Body here.")], { addon: "foo" });
-    t.assert.ok(text.startsWith("<system-reminder>"), "the content opens with the reminder block");
-    t.assert.ok(text.includes('The "foo" addon was invoked'), "the header names the addon");
-    t.assert.ok(text.includes("The user outranks them in turn"), "and the user's precedence over the addon");
+    t.assert.ok(
+      text.startsWith(`<system-reminder>${renderPrompt("addon.invoke-header", { name: "foo" })}</system-reminder>\n`),
+      "the content opens with the reminder block: brain's invocation header, rendered for this addon",
+    );
     t.assert.ok(text.includes("</system-reminder>\n<command-name>/foo</command-name>\n"), "the command-name tag follows the reminder");
     t.assert.ok(text.startsWith(addonInvocationHeader("foo")), "it is the ONE shared header both invocation paths use, verbatim");
     t.assert.ok(text.endsWith("Body here."), "and the body follows it");
@@ -119,11 +121,13 @@ class BundledFilesAreListedNotInlined extends AddonToolTest {
 
   override async run(t: TestRun): Promise<void> {
     const bundled = await this.invoke([addon("kit", "Use the notes.", ["x/notes.md", "x/scripts/run.sh"])], { addon: "kit" });
-    t.assert.ok(bundled.text.includes("<system-reminder>Files bundled with this addon"), bundled.text);
-    t.assert.ok(bundled.text.includes("\n- x/notes.md\n- x/scripts/run.sh</system-reminder>"), "each resource is one dash line, paths as given");
-    t.assert.ok(bundled.text.indexOf("Use the notes.") < bundled.text.indexOf("Files bundled"), "the body comes before the file list");
+    const list = renderPrompt("reminder.addon-resources", { files: "- x/notes.md\n- x/scripts/run.sh" });
+    t.assert.ok(
+      bundled.text.endsWith(`Use the notes.\n\n${list}`),
+      `the body, then the file list in brain's bundled-files reminder, each resource one dash line, paths as given: ${bundled.text}`,
+    );
     const flat = await this.invoke([addon("flat", "Just do it.")], { addon: "flat" });
-    t.assert.equal(flat.text.includes("Files bundled"), false, "a flat addon has no bundled-files block");
+    t.assert.equal(flat.text, `${addonInvocationHeader("flat")}Just do it.`, "a flat addon is the header and the body — no bundled-files block");
   }
 }
 

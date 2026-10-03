@@ -54,10 +54,8 @@ code is text that only frames or reports runtime data:
 - user-visible status lines (`command_output` text: ⏸ ↻ ⚡ ⚙).
 
 Known residuals, recorded for a person to reword through an approved change
-(each is pinned bytes or a model-facing change):
+(each is a model-facing change):
 
-- `clarify.system` tells the clarify model "Questions: at most 5" while
-  `clarify.maxQuestions` ships 3; the extra questions are dropped by code.
 - The `where` of `finishing.browser-evidence` says it shares the
   runtime-evidence fuse; each rung has its own count
   (`finishing.*.maxNudges`).
@@ -156,14 +154,11 @@ sections are joined with one blank line. Two of them are data sections whose
 text code fills: `system.environment` (the cwd/platform/model block) and
 `system.addons-block` (the addon roster, only when an addon is installed).
 They hold their place in the order like any other section. `behaviorCore()` is
-the order without those two. The shipped numbers (10, 20 … 110) reproduce the
-pinned system prompt; the gaps leave room to insert. A new section file added
-here with an `order` joins the prompt with no code change. Changing an
-`order`, or adding or removing a core file, moves the pinned prompt
-(`tests/approved/system-prompt-is-pinned`), which only a person approves.
-Today `tests/features/brain-is-the-single-source.test.ts` also fails on a new
-core file: no `brainPrompt("<id>")` call names it, and it has no
-pre-migration text. A person must update those checks too.
+the order without those two. The shipped numbers are 10, 20 … 110; the gaps
+leave room to insert. A new section file added here with an `order` joins the
+prompt with no code change. Today
+`tests/features/brain-is-the-single-source.test.ts` fails on a new core file
+whose id no `brainPrompt("<id>")` call names.
 
 **`enabled: false` — switch a prompt off from brain.** The prompt registers
 BLANK (its default text is `""`), which is exactly what a blank override file
@@ -369,7 +364,7 @@ addon).
 | key | type | ships | effect | reads |
 | --- | --- | --- | --- | --- |
 | `enabled` | boolean | true | ANDed with `settings.clarify`: brain can switch clarify off, never force it on. | session.ts clarify gate |
-| `maxQuestions` | int 1..5 | 3 | How many of the verdict's questions reach the user. | session.ts |
+| `maxQuestions` | int 1..5 | 5 | How many of the verdict's questions reach the user. | session.ts |
 | `model` | `"main"` \| `"small"` | `"main"` | Which configured model judges: `settings.model`, or `settings.smallModel` (falling back to `settings.model`). | session.ts clarify call |
 | `skim.enabled` | boolean | true | false: the clarify call gets no "Codebase overview". | session.ts |
 | `skim.peekFiles` | 0..20 bare file names | README.md … go.mod (8) | Overview files the peek reads, richest first, when the import graph parses nothing. | session.ts |
@@ -501,7 +496,7 @@ metadata for a person and are not checked.
 | Compaction sizing internals (summary budget, clip sizes, chunk sizes) | Derived from the window; a bad value loops or crashes. When compaction fires is the user's setting. |
 | Clarify's verdict-call token budget, skim size internals, option bounds (2..4) and header length | Copies of the AskUserQuestion schema or parser robustness. |
 | Root-turn caps (`maxIterationsPerTurn` / `maxTokensPerTurn` on the root) | Interactive root turns run uncapped by design; the values are settings. |
-| Cron, wakeup and tool limits | Stated in pinned tool descriptions; moving them moves pinned bytes. |
+| Cron, wakeup and tool limits | Stated in tool descriptions; a knob would leave the description stating a value the code no longer uses. |
 | The OVERDRIVE boot stance | Owned by the frontends (the app re-sends it; the TUI trusts folders). |
 | Subagent internals (`agents.ts`, `subagent.*`, child limits) | Out of scope. Children inherit the root's resolved base behaviour. |
 | Frontend copy describing OVERDRIVE (app/, tui/) | Untyped frontend text brain cannot reach; recorded as a residual above. |
@@ -540,14 +535,22 @@ it still validates a `behavior.json` that is present.) Claim warnings print as
 ```bash
 node tools/brain/compile.mjs --check   # validate brain/, and fail if the generated module is stale
 npm run build                          # compile brain/, then tsc -b
-npm test                               # the pins: system-prompt-is-pinned, tool-wire-contract-is-pinned
+npm test                               # brain-is-the-single-source, brain-controls-behavior, …
 ```
 
 Use `node tools/brain/compile.mjs --brain <dir> --out <file>` to compile
 another folder without touching the real generated module.
 
-Rewording a prompt or tool text here moves pinned bytes
-(`tests/approved/`). Only a person approves that. See AGENTS.md rule 5. The
-prompts the pins do not cover (reminders, rungs, side calls) are held against
-their pre-migration text by `tests/features/fixtures/brain-baseline/`, which a
-person updates with the rewording.
+No test holds the wording of a prompt or tool text (`docs/decisions/0016`):
+tests read the text they need from brain, so a rewording stays green. It still
+changes what every session sends, so the owner approves it (AGENTS.md rule 5).
+Three things do depend on words, and a rewording must keep them:
+
+- `finishing.self-verify` must tell the model to answer with the word
+  `isSelfVerifyDone()` accepts (`DONE`), or an OVERDRIVE self-check round can
+  never end;
+- the Monitor `timeout_ms` and PushNotification `message` parameter texts must
+  state the code's values (`assertToolParamStates()`), or the engine refuses
+  to load;
+- a `CLAIMS` phrase in `tools/brain/compile.mjs` only warns while the phrase
+  is in its prompt; reword the phrase away and that claim guards nothing.

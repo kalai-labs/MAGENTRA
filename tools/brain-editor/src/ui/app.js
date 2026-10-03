@@ -56,7 +56,7 @@ const REFUSAL_TITLES = {
   "breaks-brain": "This would break the brain",
   "breaks-engine": "The engine would not start with this",
   mismatch: "The files would not say what you wrote",
-  "needs-acknowledge": "This changes text the tests hold",
+  "needs-acknowledge": "This changes values the tests hold",
   busy: "Another save is running",
 };
 
@@ -806,7 +806,6 @@ function promptEditor(p, section) {
     p.usedBy
       ? el("span", { class: "chip", text: p.usedBy.startsWith("the system prompt") ? `Section ${p.usedBy.replace(/^the system prompt, section /, "")} of the system prompt` : `Sent from ${p.usedBy}` })
       : el("span", { class: "chip warn", text: "No engine code sends this yet" }),
-    ...p.heldBy.map((h) => el("span", { class: "chip warn", attrs: { title: h.why }, text: `Held by test ${h.test}` })),
     override ? el("span", { class: "chip warn", attrs: { title: override.file }, text: override.blank ? "Switched off on this machine" : "Overridden on this machine" }) : null,
   );
 
@@ -1033,7 +1032,6 @@ function toolEditor(t) {
     { class: "editor-inner" },
     conflictList.length ? conflictNote(conflictList) : null,
     el("div", { class: "title-row" }, el("h2", { class: "title-input", text: t.name }), accessSwitch("main", "Offered"), accessSwitch("overdrive", "In OVERDRIVE")),
-    el("div", { class: "chips" }, ...t.heldBy.map((h) => el("span", { class: "chip warn", attrs: { title: h.why }, text: `Held by test ${h.test}` }))),
     el(
       "div",
       { class: "field" },
@@ -1325,13 +1323,11 @@ function renderModelView(main) {
       put(body, el("div", { class: "note bad", text: `The engine does not load this brain: ${r.error}` }));
       return;
     }
-    const pins = S.brain.shipped && r.pins ? Object.entries(r.pins) : [];
     put(body, 
       el(
         "div",
         { class: "chips" },
         el("span", { class: "chip accent", text: "The engine loads this brain" }),
-        ...pins.map(([test, pin]) => el("span", { class: `chip ${pin.holds ? "" : "warn"}`, attrs: { title: pin.difference || "" }, text: `${test}: ${pin.holds ? "matches the approved text" : "differs from the approved text"}` })),
         el("button", { class: "chip", text: "Copy", attrs: { type: "button" }, on: { click: () => navigator.clipboard.writeText(r.systemPrompt).then(() => toast("Copied the system prompt.", "ok")) } }),
       ),
       r.unreadParams && r.unreadParams.length ? el("div", { class: "note warn", text: `Input texts no tool reads (never sent): ${r.unreadParams.join(", ")}` }) : null,
@@ -1499,7 +1495,7 @@ function showPlan(dialog, plan, changes, revision, opts, applied) {
     plan.files.length === 0 && !code
       ? "The files already say this."
       : code === "needs-acknowledge"
-        ? "The change checks out, and it moves text the tests hold in the shipped brain. Tick each test to save anyway; the owner then approves the new text."
+        ? "The change checks out, and it moves values the tests hold in the shipped brain. Tick each test to save anyway; the owner then updates what those tests expect."
         : plan.refusal
           ? plan.refusal.message
           : "The brain compiles, the engine loads it, and every text compiles back to exactly what you wrote.";

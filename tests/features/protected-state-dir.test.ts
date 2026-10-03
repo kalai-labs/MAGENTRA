@@ -40,7 +40,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { PermissionEngine, protectedEditPath, type ApprovalSource, type PermissionRequestPayload } from "@magentra/core";
-import type { CoreEvent, PermissionDecision } from "@magentra/protocol";
+import { renderPrompt, type CoreEvent, type PermissionDecision } from "@magentra/protocol";
 import { bashTool, writeTool } from "@magentra/tools";
 
 import { strictServices } from "../lib/directTool.ts";
@@ -137,7 +137,7 @@ class ABroadGrantNeverSatisfiesTheEditGuard extends ProtectedTest {
     t.assert.equal(p.asks[0]?.payload.subject, target, "the payload names the file, so an always-allow can be scoped to it");
     t.assert.equal(out.allowed, false, "a denial is a denial");
     t.assert.equal(out.source, "user");
-    t.assert.match(out.message ?? "", /protected path/, out.message ?? "(no message)");
+    t.assert.equal(out.message, renderPrompt("reminder.permission-protected-declined", { path: target, detail: ": not that file" }), out.message ?? "(no message)");
     t.assert.match(out.message ?? "", /not that file/, "the user's own words reach the model");
     t.assert.deepEqual(p.grants, [], "a refusal records nothing");
   }

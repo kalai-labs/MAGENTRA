@@ -27,7 +27,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { PermissionEngine, type ApprovalSource, type ExactGrant, type PermissionRequestPayload } from "@magentra/core";
-import type { CoreEvent, PermissionDecision } from "@magentra/protocol";
+import { promptText, renderPrompt, type CoreEvent, type PermissionDecision } from "@magentra/protocol";
 import { bashProcessKillSubject, bashTool, monitorTool } from "@magentra/tools";
 
 import { openWorkspace, waitForSpawn } from "../lib/appDriver.ts";
@@ -36,6 +36,11 @@ import { ProcTest } from "../lib/procTest.ts";
 import { PureTest } from "../lib/pureTest.ts";
 import { startScriptedEngine, type ScriptedEngine } from "../lib/scriptedEngine.ts";
 import { UiTest, type AppHandle } from "../lib/uiTest.ts";
+
+/** Whether a `tool_call_finished` preview shows `text`: all of it, or a prefix the engine cut with "…". */
+function isPreviewOf(preview: string | undefined, text: string): boolean {
+  return preview === text || (preview !== undefined && preview.endsWith("…") && text.startsWith(preview.slice(0, -1)));
+}
 
 const FEATURE = "process-kill-guard";
 
@@ -242,8 +247,7 @@ class OutsideOverdriveItAsks extends KillGuardTest {
 
     t.assert.equal(out.allowed, false);
     t.assert.equal(out.source, "user");
-    t.assert.match(out.message ?? "", /TaskStop/, "a decline tells the model which tool stops its own job");
-    t.assert.match(out.message ?? "", /do not retry the same call/);
+    t.assert.equal(out.message, renderPrompt("reminder.permission-kill-declined", { detail: "." }), "a decline hands the model the kill-declined reminder");
   }
 }
 
@@ -261,8 +265,7 @@ class InOverdriveItIsRefused extends KillGuardTest {
 
     t.assert.deepEqual(p.asks, [], "OVERDRIVE never asks");
     t.assert.equal(out.allowed, false, "and a kill by name never runs there");
-    t.assert.match(out.message ?? "", /TaskStop/);
-    t.assert.match(out.message ?? "", /OVERDRIVE/);
+    t.assert.equal(out.message, promptText("reminder.permission-kill-overdrive"), "the refusal is the OVERDRIVE kill reminder");
 
     // Everything else still runs unasked in that stance.
     const kill = await check(p, "kill 4321");
@@ -454,7 +457,7 @@ class ARealSessionNeverRunsItUnasked extends ProcTest {
     t.assert.equal(existsSync(od.marker), false, "the command ran in OVERDRIVE");
     t.assert.equal(asked(odTurn.events).length, 0, "OVERDRIVE asked");
     t.assert.equal(odTurn.toolResults[0]?.isError, true, "the refusal reaches the model as an error it can read");
-    t.assert.match(odTurn.toolResults[0]?.resultPreview ?? "", /TaskStop/);
+    t.assert.ok(isPreviewOf(odTurn.toolResults[0]?.resultPreview, promptText("reminder.permission-kill-overdrive")), "the refusal is the OVERDRIVE kill reminder");
 
     /* --- normal stance, declined: asked, not run ---------------------- */
     const no = await this.#session("deny", false);

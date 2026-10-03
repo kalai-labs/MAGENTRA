@@ -5,8 +5,8 @@
  * reads at load: every `toolParam("Read", "limit")` must find its section,
  * every `assertToolParamStates` must find the value the code uses, every
  * `brainPrompt` id must exist. probe.mjs loads the last build of the engine
- * with a brain swapped in and reports that, plus the two pinned artifacts
- * rendered by the tests' own printers.
+ * with a brain swapped in and reports that, plus the standing system prompt
+ * and a hash of every tool's wire text.
  *
  * Needs a built engine (engine/*\/dist) and Node 22.18 or newer (module hooks
  * and TypeScript type stripping, which the test suite needs as well). Without
@@ -23,22 +23,16 @@ import { fileURLToPath } from "node:url";
 
 import { REPO } from "./compiler.ts";
 
-export interface PinCheck {
-  readonly holds: boolean;
-  /** The first line that differs, when it does not hold. */
-  readonly difference?: string;
-}
-
 export type ProbeResult =
   | {
       readonly available: true;
       /** The engine loaded with this brain. False means a build from it would start an engine that throws on load. */
       readonly ok: boolean;
       readonly error?: string;
-      /** The standing system prompt, as the pin renders it. */
+      /** The standing system prompt, rendered for one fixed environment. */
       readonly systemPrompt?: string;
+      /** A hash of every registered tool's name, description and input schema. */
       readonly toolContractHash?: string;
-      readonly pins?: Readonly<Record<"system-prompt-is-pinned" | "tool-wire-contract-is-pinned", PinCheck>>;
       /** Parameter texts no tool reads: they are never sent. */
       readonly unreadParams?: readonly string[];
     }

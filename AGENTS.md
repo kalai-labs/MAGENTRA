@@ -78,13 +78,14 @@ node .claude/skills/bigpicture/bigpicture.mjs impact <file> | check | sync | map
    `tests/features/<id>.test.ts` (one file per feature — extend it). Editing a
    record's entry files makes it stale; re-recording it is a person's review in
    the gateway UI, never a way through the gate.
-5. **Pinned bytes move only by a person.** Model-facing prose lives in
-   `brain/` (see `brain/README.md`), not in code. Change it with the brain
-   editor (`tools/brain-editor/README.md`), which checks every save against the
-   compiler and the built engine and names the tests it moves. The system prompt and every
-   tool's wire schema are pinned in `tests/approved/`. Rewording them fails
-   those tests by design. Never run `npm run approve`; show the owner the
-   before and after.
+5. **Model-facing prose is the owner's.** It lives in `brain/` (see
+   `brain/README.md`), not in code. Change it with the brain editor
+   (`tools/brain-editor/README.md`), which checks every save against the
+   compiler and the built engine and names the tests it moves. No test holds
+   the wording (`docs/decisions/0016`), so a rewording stays green while it
+   changes what every session sends: show the owner the before and after.
+   Tests that need a prompt's text read it from brain (`promptDefault`,
+   `renderPrompt`), never as a literal.
 6. **State keys are additive only.** Never rename or repurpose a settings or
    state key — there is no migration machinery, on purpose.
 7. **Keep the big picture true.** After an edit, run `bigpicture.mjs check`. If a

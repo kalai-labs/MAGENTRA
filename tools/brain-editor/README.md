@@ -19,18 +19,19 @@ A save is a list of changes, applied in order as one unit:
    (`complete: true`). The editor has no rules of its own; the compiler is the
    judge, and its words are the ones you see.
 3. The **built engine** loads the copy (`src/engine.ts` → `src/probe.mjs`): every
-   `brainPrompt`, `toolParam` and `assertToolParamStates` runs, and the two
-   pinned artifacts are rendered with the tests' own printers
-   (`tests/lib/approved.ts`). This catches what the compiler cannot, such as a
+   `brainPrompt`, `toolParam` and `assertToolParamStates` runs, and the standing
+   system prompt and the tools' wire text are rendered, so the plan can say
+   whether either changes. This catches what the compiler cannot, such as a
    removed parameter text the tool still reads.
 4. Every edited prompt, tool text, knob and tool list must **compile back to
    exactly what was asked**, byte for byte.
 5. The folder must still be the **revision** the change was planned against.
    Otherwise someone else (the page, an agent, `git checkout`) changed it in
    between.
-6. In the **shipped** `brain/`, a change that moves text a test holds is refused
-   until the caller **acknowledges** that test. Those tests then fail until the
-   owner approves the new text. The editor never runs `npm run approve`.
+6. In the **shipped** `brain/`, a change to tool access (`availability.json`) or
+   a knob value (`behavior.json`) is refused until the caller **acknowledges**
+   the test that checks the shipped value. That test then fails until the owner
+   updates what it expects. Prompt and tool texts are held by no test.
 
 Only then are the files written, each atomically. If one write fails, the
 files already written are put back. When any check fails, nothing on disk
@@ -76,7 +77,7 @@ npm run -s brain-editor -- help changes --json        # every change type, its f
 npm run -s brain-editor -- show --json                # the whole brain, with its "revision"
 npm run -s brain-editor -- show prompt reminder.stall-ask
 npm run -s brain-editor -- show knobs --json          # every knob with its rule (type, range, doc)
-npm run -s brain-editor -- check --json               # compiles? engine loads it? pins hold?
+npm run -s brain-editor -- check --json               # compiles? engine loads it?
 npm run -s brain-editor -- plan changes.json --expect <revision> --json
 npm run -s brain-editor -- apply changes.json --expect <revision> --json [--acknowledge a,b]
 npm run -s brain-editor -- new-profile ../brains/reviewer --json

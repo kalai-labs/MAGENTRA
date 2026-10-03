@@ -11,8 +11,10 @@
  *
  *   - `fs` is the silent-reasoning rung: the real Engine on the scripted
  *     provider, reading what the Session actually SENT the model. The reminder
- *     is a registry prompt, so it is found by the words of the request, and
- *     counted in the last request's history — every reminder ever attached is
+ *     is a registry prompt, so it is found by its own shipped text
+ *     (`promptDefault`) — never by words written here, because the owner
+ *     rewords brain/ freely (decided 2026-10-04) — and counted in the last
+ *     request's history — every reminder ever attached is
  *     still there, so the count is how many times it fired.
  *   - `ui` is the reasoning block's summary and the now-line, in the real app,
  *     with frames sent on the channel main sends them on.
@@ -20,6 +22,7 @@
 
 import { join } from "node:path";
 
+import { promptDefault } from "@magentra/protocol";
 import type { StreamRequest } from "@magentra/providers";
 
 import { openWorkspace, waitForSpawn } from "../lib/appDriver.ts";
@@ -37,8 +40,8 @@ const FEATURE = "long-silent-work-stays-visible";
 const INVARIANT =
   "Long silent work shows that it is going on: the live reasoning block counts its time and size, and after a long stretch of reasoning with no word to the user the next request asks the model for one sentence, once per stretch.";
 
-/** The reminder's opening words — enough to find it, nothing about how it is phrased after. */
-const REMINDER = "The user has seen nothing from you for a while";
+/** The reminder's shipped text, as it appears inside a JSON-serialised message (it has no slots). */
+const REMINDER = JSON.stringify(promptDefault("reminder.silent-reasoning").trim()).slice(1, -1);
 
 let roundNo = 0;
 

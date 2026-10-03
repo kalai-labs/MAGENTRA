@@ -32,7 +32,7 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { PermissionEngine, type AnyToolDefinition, type ApprovalSource, type ExactGrant, type PermissionRequestPayload } from "@magentra/core";
-import type { CoreEvent, PermissionDecision } from "@magentra/protocol";
+import { promptText, type CoreEvent, type PermissionDecision } from "@magentra/protocol";
 import { askUserQuestionTool, bashTool, readTool, webFetchTool, writeTool } from "@magentra/tools";
 
 import { strictServices } from "../lib/directTool.ts";
@@ -113,7 +113,7 @@ class ADenyRuleIsDecidedFirst extends StanceTest {
     t.assert.equal(out.allowed, false, "the deny rule refuses even in OVERDRIVE with a broad allow and a session allow");
     t.assert.equal(out.source, "rule", "the refusal is the rule's, not the user's");
     t.assert.deepEqual(p.asks, [], "a deny rule refuses; it never asks");
-    t.assert.match(out.message ?? "", /Permission denied by settings rule/, out.message ?? "(no message)");
+    t.assert.equal(out.message, promptText("reminder.permission-rule-denied"), out.message ?? "(no message)");
 
     // Same engine, a subject the rule does not cover: the deny branch is not a
     // blanket refusal of the tool.

@@ -8,8 +8,9 @@
  * engine (engine.ts, probe.mjs); it is written only when the brain still
  * compiles, the engine still loads it, every edited text compiles back to
  * exactly what was asked and the folder is still the revision it was planned
- * against. In the shipped brain/ a change that moves text a test holds is
- * refused until that test is acknowledged.
+ * against. In the shipped brain/ a change to tool access or a knob value is
+ * refused until the test that checks it is acknowledged; prompt and tool texts
+ * are held by no test.
  *
  * Every write here goes to a COPY of brain/ in a temp folder. The shipped
  * brain is only ever read, and planned against (planning writes nothing; the
@@ -250,19 +251,19 @@ class AStaleChangeIsRefused extends EditorFsTest {
   }
 }
 
-class HeldTextNeedsAcknowledging extends EditorFsTest {
-  readonly id = "in-the-shipped-brain-a-change-to-held-text-is-refused-until-its-test-is-acknowledged";
+class HeldValuesNeedAcknowledging extends EditorFsTest {
+  readonly id = "in-the-shipped-brain-a-change-to-tool-access-or-a-knob-is-refused-until-its-test-is-acknowledged";
   readonly whyItExists =
-    "pinned bytes move only by a person (AGENTS.md rule 5); an agent saving into brain/ without being told which tests it breaks would turn the suite red with no one having decided to";
+    "the shipped tool access and knob values are checked by tests; an agent saving into brain/ without being told which test it breaks would turn the suite red with no one having decided to, while a reworded prompt, which no test holds, must not be stopped";
 
   override async run(t: TestRun): Promise<void> {
     const shippedBefore = brainRevision(BRAIN_DIR);
+    const shipped = loadBrain(BRAIN_DIR);
+    const nudgeBudget = shipped.knobs.find((k) => k.key === "finishing.nudgeBudget")!.value as number;
+    const agent = shipped.tools.find((x) => x.name === "Agent")!;
     const cases: { change: Bag; held: string }[] = [
-      { change: { op: "prompt.update", id: "system.git", text: "Git: be careful." }, held: "system-prompt-is-pinned" },
-      { change: { op: "prompt.update", id: "reminder.stall-ask", text: "Ask." }, held: "brain-is-the-single-source" },
-      { change: { op: "tool.update", name: "Read", description: "Reads a file of up to {{maxLines}} lines." }, held: "tool-wire-contract-is-pinned" },
-      { change: { op: "behavior.set", key: "finishing.nudgeBudget", value: 2 }, held: "brain-controls-behavior" },
-      { change: { op: "availability.update", tool: "Agent", main: true }, held: "brain-is-the-single-source" },
+      { change: { op: "behavior.set", key: "finishing.nudgeBudget", value: nudgeBudget === 2 ? 1 : 2 }, held: "brain-controls-behavior" },
+      { change: { op: "availability.update", tool: "Agent", main: !agent.offered.main }, held: "brain-is-the-single-source" },
     ];
     const copy = this.brainCopy();
     for (const { change, held } of cases) {
@@ -275,9 +276,24 @@ class HeldTextNeedsAcknowledging extends EditorFsTest {
       t.assert.equal(inCopy.ok, true, "a profile folder is held by no test");
       t.assert.deepEqual([...inCopy.heldBy], []);
     }
-    const reminder = await planChanges(BRAIN_DIR, [{ op: "prompt.update", id: "reminder.stall-ask", text: "Ask." }]);
-    t.assert.equal(reminder.engine.checked, true, "the built engine was asked");
-    t.assert.equal(reminder.engine.systemPromptChanged, false, "a reminder does not move the system prompt pin, so it is not named");
+
+    const textOf = (id: string): string => shipped.prompts.find((p) => p.id === id)!.text;
+    const read = shipped.tools.find((x) => x.name === "Read")!;
+    const section = shipped.prompts.find((p) => p.dir === "1-core-system" && p.enabled)!;
+    const reminder = shipped.prompts.find((p) => p.dir === "3-in-turn-reminders" && p.enabled && p.placeholders.length === 0)!;
+    const texts: { change: Bag; systemPrompt: boolean; tools: boolean }[] = [
+      { change: { op: "prompt.update", id: section.id, text: `${textOf(section.id)} Edited.` }, systemPrompt: true, tools: false },
+      { change: { op: "prompt.update", id: reminder.id, text: `${textOf(reminder.id)} Edited.` }, systemPrompt: false, tools: false },
+      { change: { op: "tool.update", name: "Read", description: `${read.description} Edited.` }, systemPrompt: false, tools: true },
+    ];
+    for (const { change, systemPrompt, tools } of texts) {
+      const plan = await planChanges(BRAIN_DIR, [change]);
+      t.assert.equal(plan.ok, true, `${JSON.stringify(change)}: a text change is held by no test — ${plan.refusal?.message ?? ""}`);
+      t.assert.deepEqual([...plan.heldBy], []);
+      t.assert.equal(plan.engine.checked, true, "the built engine was asked");
+      t.assert.equal(plan.engine.systemPromptChanged, systemPrompt, `${JSON.stringify(change)}: whether the system prompt changes`);
+      t.assert.equal(plan.engine.toolsChanged, tools, `${JSON.stringify(change)}: whether the tools' wire text changes`);
+    }
     t.assert.equal(brainRevision(BRAIN_DIR), shippedBefore, "planning against the shipped brain wrote nothing");
   }
 }
@@ -496,7 +512,7 @@ registerFeatureTests(
   new ASavedTextRoundTrips(),
   new ABrokenChangeWritesNothing(),
   new AStaleChangeIsRefused(),
-  new HeldTextNeedsAcknowledging(),
+  new HeldValuesNeedAcknowledging(),
   new NewProfileNeverOverwrites(),
   new TheServerGuardsItsWrites(),
   new TheCommandLineIsTheSamePath(),
